@@ -39,7 +39,7 @@ use reth_revm::{
     State, database::StateProviderDatabase, db::states::bundle_state::BundleRetention,
 };
 use reth_transaction_pool::TransactionPool;
-use reth_trie::{HashedPostState, updates::TrieUpdates};
+use reth_trie::{HashedPostState, TrieInput, updates::TrieUpdates};
 use revm::Database as _;
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
@@ -82,6 +82,11 @@ pub struct FlashblocksExecutionInfo {
 
     /// Flashblock-level access list builder
     pub(crate) access_list_builder: FlashblockAccessListBuilder,
+
+    /// Trie updates from the previous flashblock state root calculation, used so the
+    /// next `state_root_from_nodes_with_updates` call can reuse cached trie nodes.
+    /// `None` for the first flashblock in a block or until a state root has been computed.
+    pub(crate) prev_trie_updates: Option<Arc<TrieUpdates>>,
 }
 
 /// Base payload builder
@@ -982,23 +987,65 @@ where
     // calculate the state root
     let state_root_start_time = Instant::now();
     let mut state_root = B256::ZERO;
-    let mut trie_output = TrieUpdates::default();
     let mut hashed_state = HashedPostState::default();
+    let mut trie_updates_to_cache: Option<Arc<TrieUpdates>> = None;
 
     if calculate_state_root {
         let state_provider = state.database.as_ref();
+        let prev_trie = info.extra.prev_trie_updates.clone();
+        let flashblock_index = ctx.flashblock_index();
+
         hashed_state = state_provider.hashed_post_state(&state.bundle_state);
-        (state_root, trie_output) =
+
+        let trie_output;
+        (state_root, trie_output) = if let Some(prev_trie) = prev_trie {
+            debug!(
+                target: "payload_builder",
+                flashblock_index,
+                "Using incremental state root calculation with cached trie",
+            );
+
+            let trie_input = TrieInput::new(
+                (*prev_trie).clone(),
+                hashed_state.clone(),
+                hashed_state.construct_prefix_sets(),
+            );
+
+            state_provider
+                .state_root_from_nodes_with_updates(trie_input)
+                .map_err(PayloadBuilderError::other)?
+        } else {
+            debug!(
+                target: "payload_builder",
+                flashblock_index,
+                "Using full state root calculation",
+            );
+
             state_provider.state_root_with_updates(hashed_state.clone()).inspect_err(|err| {
-                warn!(target: "payload_builder",
+                warn!(
+                    target: "payload_builder",
                     parent_header=%ctx.parent().hash(),
                     %err,
                     "failed to calculate state root for payload"
                 );
-            })?;
+            })?
+        };
+
+        trie_updates_to_cache = Some(Arc::new(trie_output));
+
         let state_root_calculation_time = state_root_start_time.elapsed();
         BuilderMetrics::state_root_calculation_duration().record(state_root_calculation_time);
         BuilderMetrics::state_root_calculation_gauge().set(state_root_calculation_time);
+
+        debug!(
+            target: "payload_builder",
+            flashblock_index,
+            state_root = %state_root,
+            duration_ms = state_root_calculation_time.as_millis(),
+            "State root calculation completed",
+        );
+
+        info.extra.prev_trie_updates = trie_updates_to_cache.clone();
     }
 
     let mut requests_hash = None;
@@ -1083,7 +1130,11 @@ where
             state: state.take_bundle(),
         }),
         hashed_state: Either::Left(Arc::new(hashed_state)),
-        trie_updates: Either::Left(Arc::new(trie_output)),
+        trie_updates: Either::Left(
+            trie_updates_to_cache
+                .clone()
+                .unwrap_or_else(|| Arc::new(TrieUpdates::default())),
+        ),
     };
     debug!(target: "payload_builder", message = "Executed block created");
 
