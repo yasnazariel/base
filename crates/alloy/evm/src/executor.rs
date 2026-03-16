@@ -476,7 +476,7 @@ mod tests {
             ))),
             Address::ZERO,
         );
-        let tx_env = tx.to_tx_env();
+        let tx_env: base_revm::OpTransaction<revm::context::TxEnv> = tx.to_tx_env();
 
         assert!(executor.da_footprint_used == 0);
 
@@ -522,7 +522,7 @@ mod tests {
             ))),
             Address::ZERO,
         );
-        let tx_env = tx.to_tx_env();
+        let tx_env: base_revm::OpTransaction<revm::context::TxEnv> = tx.to_tx_env();
 
         assert!(executor.da_footprint_used == 0);
 
@@ -580,7 +580,7 @@ mod tests {
             ))),
             Address::ZERO,
         );
-        let tx_env = tx.to_tx_env();
+        let tx_env: base_revm::OpTransaction<revm::context::TxEnv> = tx.to_tx_env();
 
         assert!(executor.da_footprint_used == 0);
 

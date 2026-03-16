@@ -507,7 +507,7 @@ mod tests {
     use alloy_primitives::{Address, B256, Bloom, Bytes, Signature, U256};
     use alloy_provider::network::TransactionResponse;
     use alloy_rpc_types_engine::PayloadId;
-    use base_alloy_consensus::{OpReceipt, OpTxEnvelope, TxDeposit};
+    use base_alloy_consensus::{OpReceipt, OpTxEnvelope, OpTxType, TxDeposit};
     use base_alloy_flashblocks::{
         ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, Flashblock, Metadata,
     };

@@ -16,7 +16,7 @@ workspace = true
 reth-primitives-traits.workspace = true
 
 # ethereum
-alloy-primitives.workspace = true
+alloy-primitives = { workspace = true, optional = true }
 alloy-consensus.workspace = true
 
 # base
@@ -28,6 +28,9 @@ serde_with = { workspace = true, optional = true }
 
 [dev-dependencies]
 reth-codecs = { workspace = true, features = ["test-utils"] }
+base-alloy-consensus = { workspace = true, features = ["arbitrary"] }
+serde = { workspace = true, features = ["derive"] }
+alloy-primitives.workspace = true
 
 alloy-eips.workspace = true
 alloy-rlp.workspace = true
@@ -49,7 +52,7 @@ secp256k1 = { workspace = true, features = ["rand"] }
 default = [ "std" ]
 std = [
 	"alloy-consensus/std",
-	"alloy-primitives/std",
+	"alloy-primitives?/std",
 	"base-alloy-consensus/std",
 	"bytes/std",
 	"reth-primitives-traits/std",
@@ -63,7 +66,7 @@ alloy-compat = [ "base-alloy-consensus/alloy-compat" ]
 reth-codec = [ "reth-primitives-traits/reth-codec", "std" ]
 serde = [
 	"alloy-consensus/serde",
-	"alloy-primitives/serde",
+	"alloy-primitives?/serde",
 	"base-alloy-consensus/serde",
 	"bytes/serde",
 	"dep:serde",
@@ -75,6 +78,7 @@ serde = [
 serde-bincode-compat = [
 	"alloy-consensus/serde-bincode-compat",
 	"base-alloy-consensus/serde-bincode-compat",
+	"dep:alloy-primitives",
 	"reth-primitives-traits/serde-bincode-compat",
 	"serde",
 	"serde_with",
@@ -83,6 +87,7 @@ arbitrary = [
 	"alloy-consensus/arbitrary",
 	"alloy-primitives/arbitrary",
 	"base-alloy-consensus/arbitrary",
+	"dep:alloy-primitives",
 	"reth-codecs/arbitrary",
 	"reth-primitives-traits/arbitrary",
 	"std",

@@ -15,9 +15,7 @@ use base_txpool_rpc::{TxPoolRpcConfig, TxPoolRpcExtension};
 use base_txpool_tracing::{TxPoolExtension, TxpoolConfig};
 use eyre::{Context, Result, eyre};
 use reth_db::{
-    ClientVersion, DatabaseEnv, init_db,
-    mdbx::DatabaseArguments,
-    test_utils::tempdir_path,
+    ClientVersion, DatabaseEnv, init_db, mdbx::DatabaseArguments, test_utils::tempdir_path,
 };
 use reth_node_builder::{Node, NodeBuilder, NodeConfig, NodeHandle};
 use reth_node_core::{

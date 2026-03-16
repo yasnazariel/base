@@ -2,7 +2,7 @@
 
 use std::{collections::HashMap, fmt::Debug, sync::Arc};
 
-use base_alloy_consensus::{OpReceipt, OpTxEnvelope, OpTxType};
+use base_alloy_consensus::{OpReceipt, OpTxEnvelope};
 use base_alloy_evm::{OpBlockExecutor, OpTxResult};
 use base_execution_chainspec::OpChainSpec;
 use base_execution_evm::OpRethReceiptBuilder;
@@ -10,10 +10,9 @@ use base_flashblocks::{FlashblocksAPI, FlashblocksState};
 use base_revm::{OpHaltReason, OpTransaction};
 use reth_errors::BlockExecutionError;
 use reth_evm::{
-    Evm, RecoveredTx,
+    Evm,
     block::{BlockExecutor, ExecutableTx, InternalBlockExecutionError},
 };
-use reth_primitives_traits::Recovered;
 use reth_provider::BlockNumReader;
 use reth_revm::State;
 use revm::{
@@ -164,19 +163,15 @@ where
             return self.executor.execute_transaction_without_commit(executing_tx);
         }
 
-        let executing_tx_recovered = executing_tx.into_parts().1;
-        let tx_hash = executing_tx_recovered.tx().tx_hash();
+        let tx_hash = executing_tx.tx().tx_hash();
 
         // find tx just before this one
-        let tx_position = self.position_by_hash.get(&tx_hash);
+        let tx_position = self.position_by_hash.get(&tx_hash).copied();
 
         // not found, we need to execute the transaction
         let Some(tx_position) = tx_position else {
             self.all_txs_cached = false;
-            return self.executor.execute_transaction_without_commit(Recovered::new_unchecked(
-                executing_tx_recovered.tx(),
-                *executing_tx_recovered.signer(),
-            ));
+            return self.executor.execute_transaction_without_commit(executing_tx);
         };
 
         let prev_tx_hash = tx_position.checked_sub(1).and_then(|pos| self.txs.get(pos));
@@ -197,10 +192,7 @@ where
             return Ok(cached_execution.result);
         }
         self.all_txs_cached = false;
-        self.executor.execute_transaction_without_commit(Recovered::new_unchecked(
-            executing_tx_recovered.tx(),
-            *executing_tx_recovered.signer(),
-        ))
+        self.executor.execute_transaction_without_commit(executing_tx)
     }
 
     fn apply_pre_execution_changes(&mut self) -> Result<(), BlockExecutionError> {
