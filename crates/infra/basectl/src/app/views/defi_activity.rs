@@ -9,9 +9,8 @@ use crate::{
     app::{Action, Resources, View},
     commands::common::{
         ACTIVITY_COUNT_CHARS, ACTIVITY_LABEL_CHARS, ActivityBarState, COLOR_ACTIVE_BORDER,
-        EVENT_GROUP_COUNT, EVENT_GROUP_DEFS, FILTER_MENU_ITEMS, VOLUME_STATS_ROWS, block_color,
-        build_volume_lines, cursor_to_filter, render_filter_menu, render_sparkline_row,
-        truncate_block_number,
+        EVENT_GROUP_COUNT, EVENT_GROUP_DEFS, FilterMenuState, VOLUME_STATS_ROWS, block_color,
+        build_volume_lines, render_filter_menu, render_sparkline_row, truncate_block_number,
     },
     tui::Keybinding,
 };
@@ -23,6 +22,7 @@ const KEYBINDINGS: &[Keybinding] = &[
     Keybinding { key: "Up/k", description: "Scroll up" },
     Keybinding { key: "Down/j", description: "Scroll down" },
     Keybinding { key: "Home/g", description: "Top (auto-scroll)" },
+    Keybinding { key: "End/G", description: "Bottom" },
     Keybinding { key: "f", description: "Event filters" },
 ];
 
@@ -35,8 +35,7 @@ const KEYBINDINGS: &[Keybinding] = &[
 pub(crate) struct DefiActivityView {
     table_state: TableState,
     auto_scroll: bool,
-    filter_menu_open: bool,
-    filter_menu_cursor: usize,
+    filter_menu: FilterMenuState,
 }
 
 impl Default for DefiActivityView {
@@ -50,7 +49,7 @@ impl DefiActivityView {
     pub(crate) fn new() -> Self {
         let mut table_state = TableState::default();
         table_state.select(Some(0));
-        Self { table_state, auto_scroll: true, filter_menu_open: false, filter_menu_cursor: 0 }
+        Self { table_state, auto_scroll: true, filter_menu: FilterMenuState::default() }
     }
 }
 
@@ -60,32 +59,12 @@ impl View for DefiActivityView {
     }
 
     fn handle_key(&mut self, key: KeyEvent, resources: &mut Resources) -> Action {
-        if self.filter_menu_open {
+        if self.filter_menu.open {
             match key.code {
-                KeyCode::Up | KeyCode::Char('k') => {
-                    if self.filter_menu_cursor > 0 {
-                        self.filter_menu_cursor -= 1;
-                    }
-                }
-                KeyCode::Down | KeyCode::Char('j') => {
-                    if self.filter_menu_cursor + 1 < FILTER_MENU_ITEMS {
-                        self.filter_menu_cursor += 1;
-                    }
-                }
-                KeyCode::Char(' ') => {
-                    let (group_idx, sub_idx) = cursor_to_filter(self.filter_menu_cursor);
-                    match sub_idx {
-                        None => resources.flash.activity.toggle_group(group_idx),
-                        Some(si) => {
-                            let idx = EVENT_GROUP_DEFS[group_idx].sub_offset + si;
-                            let active = &mut resources.flash.activity.active;
-                            active[idx] = !active[idx];
-                        }
-                    }
-                }
-                KeyCode::Char('f') | KeyCode::Esc => {
-                    self.filter_menu_open = false;
-                }
+                KeyCode::Up | KeyCode::Char('k') => self.filter_menu.move_up(),
+                KeyCode::Down | KeyCode::Char('j') => self.filter_menu.move_down(),
+                KeyCode::Char(' ') => self.filter_menu.toggle(&mut resources.flash.activity),
+                KeyCode::Char('f') | KeyCode::Esc => self.filter_menu.open = false,
                 _ => {}
             }
             return Action::None;
@@ -93,7 +72,7 @@ impl View for DefiActivityView {
 
         match key.code {
             KeyCode::Char('f') => {
-                self.filter_menu_open = true;
+                self.filter_menu.open = true;
                 Action::None
             }
             KeyCode::Char(' ') => {
@@ -124,6 +103,12 @@ impl View for DefiActivityView {
             KeyCode::Home | KeyCode::Char('g') => {
                 self.table_state.select(Some(0));
                 self.auto_scroll = true;
+                Action::None
+            }
+            KeyCode::End | KeyCode::Char('G') => {
+                let max = resources.flash.activity.window.len().saturating_sub(1);
+                self.table_state.select(Some(max));
+                self.auto_scroll = false;
                 Action::None
             }
             _ => Action::None,
@@ -164,8 +149,8 @@ impl View for DefiActivityView {
         render_sparkline_section(frame, chunks[1], activity, paused, border_color);
         render_block_table(frame, chunks[2], activity, border_color, &mut self.table_state.clone());
 
-        if self.filter_menu_open {
-            render_filter_menu(frame, area, &activity.active, self.filter_menu_cursor);
+        if self.filter_menu.open {
+            render_filter_menu(frame, area, &activity.active, self.filter_menu.cursor);
         }
     }
 }

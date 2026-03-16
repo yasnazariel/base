@@ -12,9 +12,9 @@ use crate::{
     app::{Action, Resources, View},
     commands::common::{
         COLOR_BASE_BLUE, COLOR_BURN, COLOR_GROWTH, COLOR_ROW_HIGHLIGHTED, COLOR_ROW_SELECTED,
-        EVENT_GROUP_DEFS, FILTER_MENU_ITEMS, L1_BLOCK_WINDOW, L1BlockFilter, L1BlocksTableParams,
+        FilterMenuState, L1_BLOCK_WINDOW, L1BlockFilter, L1BlocksTableParams,
         RATE_WINDOW_2M, activity_bar_height, backlog_size_color, block_color, block_color_bright,
-        build_gas_bar, cursor_to_filter, format_bytes, format_duration, format_gwei, format_rate,
+        build_gas_bar, format_bytes, format_duration, format_gwei, format_rate,
         render_activity_bar, render_da_backlog_bar, render_filter_menu, render_gas_usage_bar,
         render_l1_blocks_table, target_usage_color, time_diff_color, truncate_block_number,
     },
@@ -47,8 +47,7 @@ pub(crate) struct CommandCenterView {
     flash_table_state: TableState,
     l1_table_state: TableState,
     highlighted_block: Option<u64>,
-    filter_menu_open: bool,
-    filter_menu_cursor: usize,
+    filter_menu: FilterMenuState,
 }
 
 impl Default for CommandCenterView {
@@ -72,8 +71,7 @@ impl CommandCenterView {
             flash_table_state,
             l1_table_state,
             highlighted_block: None,
-            filter_menu_open: false,
-            filter_menu_cursor: 0,
+            filter_menu: FilterMenuState::default(),
         }
     }
 
@@ -146,32 +144,12 @@ impl View for CommandCenterView {
     }
 
     fn handle_key(&mut self, key: KeyEvent, resources: &mut Resources) -> Action {
-        if self.filter_menu_open {
+        if self.filter_menu.open {
             match key.code {
-                KeyCode::Up | KeyCode::Char('k') => {
-                    if self.filter_menu_cursor > 0 {
-                        self.filter_menu_cursor -= 1;
-                    }
-                }
-                KeyCode::Down | KeyCode::Char('j') => {
-                    if self.filter_menu_cursor + 1 < FILTER_MENU_ITEMS {
-                        self.filter_menu_cursor += 1;
-                    }
-                }
-                KeyCode::Char(' ') => {
-                    let (group_idx, sub_idx) = cursor_to_filter(self.filter_menu_cursor);
-                    match sub_idx {
-                        None => resources.flash.activity.toggle_group(group_idx),
-                        Some(si) => {
-                            let idx = EVENT_GROUP_DEFS[group_idx].sub_offset + si;
-                            let active = &mut resources.flash.activity.active;
-                            active[idx] = !active[idx];
-                        }
-                    }
-                }
-                KeyCode::Char('f') | KeyCode::Esc => {
-                    self.filter_menu_open = false;
-                }
+                KeyCode::Up | KeyCode::Char('k') => self.filter_menu.move_up(),
+                KeyCode::Down | KeyCode::Char('j') => self.filter_menu.move_down(),
+                KeyCode::Char(' ') => self.filter_menu.toggle(&mut resources.flash.activity),
+                KeyCode::Char('f') | KeyCode::Esc => self.filter_menu.open = false,
                 _ => {}
             }
             return Action::None;
@@ -179,7 +157,7 @@ impl View for CommandCenterView {
 
         match key.code {
             KeyCode::Char('f') => {
-                self.filter_menu_open = true;
+                self.filter_menu.open = true;
                 Action::None
             }
             KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') => {
@@ -376,12 +354,12 @@ impl View for CommandCenterView {
             render_activity_bar(frame, main_chunks[4], &resources.flash.activity, window_secs);
         }
 
-        if self.filter_menu_open {
+        if self.filter_menu.open {
             render_filter_menu(
                 frame,
                 area,
                 &resources.flash.activity.active,
-                self.filter_menu_cursor,
+                self.filter_menu.cursor,
             );
         }
     }

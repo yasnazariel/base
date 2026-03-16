@@ -9,10 +9,10 @@ use ratatui::{
 use crate::{
     app::{Action, Resources, View},
     commands::common::{
-        COLOR_ACTIVE_BORDER, COLOR_ROW_HIGHLIGHTED, COLOR_ROW_SELECTED, EVENT_GROUP_DEFS,
-        FILTER_MENU_ITEMS, activity_bar_height, block_color, block_color_bright, build_gas_bar,
-        cursor_to_filter, format_gas, format_gwei, render_activity_bar, render_filter_menu,
-        render_gas_usage_bar, time_diff_color, truncate_block_number,
+        COLOR_ACTIVE_BORDER, COLOR_ROW_HIGHLIGHTED, COLOR_ROW_SELECTED, FilterMenuState,
+        activity_bar_height, block_color, block_color_bright, build_gas_bar,
+        format_gas, format_gwei, render_activity_bar, render_filter_menu, render_gas_usage_bar,
+        time_diff_color, truncate_block_number,
     },
     tui::{Keybinding, Toast},
 };
@@ -38,8 +38,7 @@ const KEYBINDINGS: &[Keybinding] = &[
 pub(crate) struct FlashblocksView {
     table_state: TableState,
     auto_scroll: bool,
-    filter_menu_open: bool,
-    filter_menu_cursor: usize,
+    filter_menu: FilterMenuState,
 }
 
 impl Default for FlashblocksView {
@@ -53,7 +52,7 @@ impl FlashblocksView {
     pub(crate) fn new() -> Self {
         let mut table_state = TableState::default();
         table_state.select(Some(0));
-        Self { table_state, auto_scroll: true, filter_menu_open: false, filter_menu_cursor: 0 }
+        Self { table_state, auto_scroll: true, filter_menu: FilterMenuState::default() }
     }
 }
 
@@ -63,32 +62,12 @@ impl View for FlashblocksView {
     }
 
     fn handle_key(&mut self, key: KeyEvent, resources: &mut Resources) -> Action {
-        if self.filter_menu_open {
+        if self.filter_menu.open {
             match key.code {
-                KeyCode::Up | KeyCode::Char('k') => {
-                    if self.filter_menu_cursor > 0 {
-                        self.filter_menu_cursor -= 1;
-                    }
-                }
-                KeyCode::Down | KeyCode::Char('j') => {
-                    if self.filter_menu_cursor + 1 < FILTER_MENU_ITEMS {
-                        self.filter_menu_cursor += 1;
-                    }
-                }
-                KeyCode::Char(' ') => {
-                    let (group_idx, sub_idx) = cursor_to_filter(self.filter_menu_cursor);
-                    match sub_idx {
-                        None => resources.flash.activity.toggle_group(group_idx),
-                        Some(si) => {
-                            let idx = EVENT_GROUP_DEFS[group_idx].sub_offset + si;
-                            let active = &mut resources.flash.activity.active;
-                            active[idx] = !active[idx];
-                        }
-                    }
-                }
-                KeyCode::Char('f') | KeyCode::Esc => {
-                    self.filter_menu_open = false;
-                }
+                KeyCode::Up | KeyCode::Char('k') => self.filter_menu.move_up(),
+                KeyCode::Down | KeyCode::Char('j') => self.filter_menu.move_down(),
+                KeyCode::Char(' ') => self.filter_menu.toggle(&mut resources.flash.activity),
+                KeyCode::Char('f') | KeyCode::Esc => self.filter_menu.open = false,
                 _ => {}
             }
             return Action::None;
@@ -96,7 +75,7 @@ impl View for FlashblocksView {
 
         match key.code {
             KeyCode::Char('f') => {
-                self.filter_menu_open = true;
+                self.filter_menu.open = true;
                 Action::None
             }
             KeyCode::Char(' ') => {
@@ -345,8 +324,8 @@ impl View for FlashblocksView {
             render_activity_bar(frame, chunks[2], &flash.activity, window_secs);
         }
 
-        if self.filter_menu_open {
-            render_filter_menu(frame, area, &flash.activity.active, self.filter_menu_cursor);
+        if self.filter_menu.open {
+            render_filter_menu(frame, area, &flash.activity.active, self.filter_menu.cursor);
         }
     }
 }

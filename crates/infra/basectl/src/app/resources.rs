@@ -7,7 +7,10 @@ use tokio::sync::mpsc;
 use crate::{
     commands::common::{ActivityBarState, DaTracker, FlashblockEntry, LoadingState},
     config::ChainConfig,
-    rpc::{BacklogFetchResult, BlockDaInfo, L1BlockInfo, L1ConnectionMode, TimestampedFlashblock},
+    rpc::{
+        BacklogFetchResult, BlockDaInfo, BlockLogs, L1BlockInfo, L1ConnectionMode,
+        TimestampedFlashblock,
+    },
     tui::ToastState,
 };
 
@@ -71,6 +74,7 @@ pub(crate) struct FlashState {
     pub paused: bool,
     last_flashblock: Option<(u64, u64)>,
     fb_rx: Option<mpsc::Receiver<TimestampedFlashblock>>,
+    log_rx: Option<mpsc::Receiver<BlockLogs>>,
 }
 
 impl Resources {
@@ -312,6 +316,7 @@ impl FlashState {
             paused: false,
             last_flashblock: None,
             fb_rx: None,
+            log_rx: None,
         }
     }
 
@@ -320,7 +325,12 @@ impl FlashState {
         self.fb_rx = Some(fb_rx);
     }
 
-    /// Drains pending flashblocks from the channel unless paused.
+    /// Sets the channel for receiving grouped log batches from the log subscriber.
+    pub(crate) fn set_log_channel(&mut self, log_rx: mpsc::Receiver<BlockLogs>) {
+        self.log_rx = Some(log_rx);
+    }
+
+    /// Drains pending flashblocks and log batches from channels unless paused.
     pub(crate) fn poll(&mut self) {
         if self.paused {
             return;
@@ -334,6 +344,12 @@ impl FlashState {
 
         for tsf in flashblocks {
             self.add_flashblock(tsf);
+        }
+
+        if let Some(rx) = self.log_rx.as_mut() {
+            while let Ok(batch) = rx.try_recv() {
+                self.activity.record_logs(batch.block_number, &batch.logs);
+            }
         }
     }
 
@@ -366,7 +382,7 @@ impl FlashState {
 
     /// Processes a received flashblock and updates tracking state.
     pub(crate) fn add_flashblock(&mut self, tsf: TimestampedFlashblock) {
-        let TimestampedFlashblock { flashblock: fb, received_at, metadata: receipt_metadata } = tsf;
+        let TimestampedFlashblock { flashblock: fb, received_at } = tsf;
 
         self.message_count += 1;
 
@@ -405,8 +421,6 @@ impl FlashState {
             timestamp: received_at,
             time_diff_ms,
         };
-
-        self.activity.record_logs(block_number, &receipt_metadata.collect_logs());
 
         self.entries.push_front(entry);
         self.evict_old_blocks();

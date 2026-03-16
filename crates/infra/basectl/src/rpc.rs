@@ -3,16 +3,19 @@ use std::{sync::Arc, time::Duration};
 use alloy_eips::eip2718::Encodable2718;
 use alloy_primitives::Address;
 use alloy_provider::{Provider, ProviderBuilder};
-use alloy_rpc_types_eth::{BlockNumberOrTag, TransactionTrait};
+use alloy_rpc_types_eth::{BlockNumberOrTag, Filter, Log, TransactionTrait};
 use anyhow::Result;
-use base_alloy_flashblocks::{Flashblock, Metadata};
+use base_alloy_flashblocks::Flashblock;
 use base_alloy_network::Base;
 use futures::{StreamExt, stream};
 use tokio::sync::mpsc;
 use tokio_tungstenite::connect_async;
 use tracing::warn;
 
-use crate::{commands::common::FlashblocksMetadata, tui::Toast};
+use crate::{
+    commands::common::{ReceiptLog, all_tracked_topics},
+    tui::Toast,
+};
 
 const CONCURRENT_BLOCK_FETCHES: usize = 16;
 const WS_RECONNECT_INITIAL_DELAY: Duration = Duration::from_secs(1);
@@ -137,47 +140,191 @@ pub(crate) async fn run_flashblock_ws(
         .await;
 }
 
-/// A flashblock paired with its local receive timestamp and parsed receipt metadata.
+/// A flashblock paired with its local receive timestamp.
 #[derive(Debug)]
 pub(crate) struct TimestampedFlashblock {
     /// The decoded flashblock.
     pub flashblock: Flashblock,
     /// Local time when this flashblock was received.
     pub received_at: chrono::DateTime<chrono::Local>,
-    /// Parsed receipt metadata for event log filtering.
-    pub metadata: FlashblocksMetadata,
 }
 
-/// Subscribes to flashblocks via WebSocket and forwards timestamped flashblocks
-/// with parsed receipt metadata for event activity tracking.
-///
-/// Uses `Flashblock::try_decode_payload` to handle decompression and parse the
-/// full `FlashblocksPayloadV1`, then extracts receipt metadata from the raw
-/// `metadata` Value.
+/// Subscribes to flashblocks via WebSocket and forwards timestamped flashblocks.
 pub(crate) async fn run_flashblock_ws_timestamped(
     url: String,
     tx: mpsc::Sender<TimestampedFlashblock>,
     toast_tx: mpsc::Sender<Toast>,
 ) {
     run_flashblock_ws_inner(&url, &tx, &toast_tx, |data| {
-        let payload = Flashblock::try_decode_payload(data).ok()?;
-        let metadata: Metadata = serde_json::from_value(payload.metadata.clone()).ok()?;
-        let receipt_metadata: FlashblocksMetadata =
-            serde_json::from_value(payload.metadata).unwrap_or_default();
-
-        Some(TimestampedFlashblock {
-            flashblock: Flashblock {
-                payload_id: payload.payload_id,
-                index: payload.index,
-                base: payload.base,
-                diff: payload.diff,
-                metadata,
-            },
-            received_at: chrono::Local::now(),
-            metadata: receipt_metadata,
-        })
+        let fb = Flashblock::try_decode_message(data).ok()?;
+        Some(TimestampedFlashblock { flashblock: fb, received_at: chrono::Local::now() })
     })
     .await;
+}
+
+/// A batch of logs belonging to a single L2 block.
+#[derive(Debug)]
+pub(crate) struct BlockLogs {
+    /// L2 block number.
+    pub block_number: u64,
+    /// Logs emitted in this block.
+    pub logs: Vec<ReceiptLog>,
+}
+
+/// Fetches L2 logs, preferring WebSocket subscription with HTTP polling fallback.
+///
+/// Only fetches logs matching the `DeFi` event signatures tracked by the activity
+/// bar (swaps, transfers, lending, bridges, etc.) to avoid overwhelming public RPCs.
+///
+/// Tries `eth_subscribe("logs")` over WebSocket first. If the WS connection or
+/// subscription fails, falls back to polling `eth_getLogs` over HTTP.
+pub(crate) async fn run_log_subscriber(
+    l2_rpc: String,
+    result_tx: mpsc::Sender<BlockLogs>,
+    toast_tx: mpsc::Sender<Toast>,
+) {
+    let ws_url = http_to_ws(&l2_rpc);
+
+    if run_log_subscriber_ws(&ws_url, &result_tx, &toast_tx).await.is_err() {
+        run_log_subscriber_poll(&l2_rpc, &result_tx, &toast_tx).await;
+    }
+}
+
+/// Builds a log filter matching only the tracked `DeFi` event signatures.
+fn defi_log_filter() -> Filter {
+    Filter::new().event_signature(all_tracked_topics().to_vec())
+}
+
+/// Converts an alloy `Log` into the local `ReceiptLog` representation.
+fn log_to_receipt(log: &Log) -> ReceiptLog {
+    ReceiptLog {
+        address: log.address(),
+        topics: log.topics().to_vec(),
+        data: log.data().data.clone(),
+    }
+}
+
+async fn run_log_subscriber_ws(
+    ws_url: &str,
+    result_tx: &mpsc::Sender<BlockLogs>,
+    toast_tx: &mpsc::Sender<Toast>,
+) -> Result<(), ()> {
+    let provider = ProviderBuilder::new().connect(ws_url).await.map_err(|e| {
+        warn!(error = %e, "Failed to connect to L2 WebSocket for log subscription");
+        let _ = toast_tx.try_send(Toast::warning("L2 log WS failed, falling back to polling"));
+    })?;
+
+    let filter = defi_log_filter();
+    let sub = provider.subscribe_logs(&filter).await.map_err(|e| {
+        warn!(error = %e, "Failed to subscribe to logs");
+        let _ =
+            toast_tx.try_send(Toast::warning("L2 log subscribe failed, falling back to polling"));
+    })?;
+
+    let mut stream = sub.into_stream();
+
+    let mut current_block: Option<u64> = None;
+    let mut pending_logs: Vec<ReceiptLog> = Vec::new();
+
+    while let Some(log) = stream.next().await {
+        let Some(block_number) = log.block_number else {
+            continue;
+        };
+
+        // Flush accumulated logs when we move to a new block.
+        if current_block != Some(block_number) {
+            if let Some(prev_block) = current_block
+                && !pending_logs.is_empty()
+                && result_tx
+                    .send(BlockLogs {
+                        block_number: prev_block,
+                        logs: std::mem::take(&mut pending_logs),
+                    })
+                    .await
+                    .is_err()
+            {
+                return Ok(());
+            }
+            current_block = Some(block_number);
+        }
+
+        pending_logs.push(log_to_receipt(&log));
+    }
+
+    // Flush any remaining logs.
+    if let Some(block_number) = current_block
+        && !pending_logs.is_empty()
+    {
+        let _ = result_tx.send(BlockLogs { block_number, logs: pending_logs }).await;
+    }
+
+    warn!("L2 log subscription stream ended");
+    let _ = toast_tx.try_send(Toast::warning("L2 log subscription disconnected"));
+
+    Err(())
+}
+
+async fn run_log_subscriber_poll(
+    l2_rpc: &str,
+    result_tx: &mpsc::Sender<BlockLogs>,
+    toast_tx: &mpsc::Sender<Toast>,
+) {
+    let provider = match ProviderBuilder::new().connect(l2_rpc).await {
+        Ok(p) => p,
+        Err(e) => {
+            warn!(error = %e, "Failed to connect to L2 RPC for log polling");
+            let _ = toast_tx.try_send(Toast::warning("Log poller connection failed"));
+            return;
+        }
+    };
+
+    let mut last_block: Option<u64> = None;
+
+    loop {
+        let latest = match provider.get_block_number().await {
+            Ok(n) => n,
+            Err(e) => {
+                warn!(error = %e, "Failed to fetch latest block number during log polling");
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                continue;
+            }
+        };
+
+        let from_block = last_block.map_or(latest, |b| b + 1);
+        if from_block > latest {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            continue;
+        }
+
+        // Fetch one block at a time to keep responses small and latency low.
+        // When behind, processes blocks back-to-back without sleeping to catch up.
+        for block_num in from_block..=latest {
+            let filter = defi_log_filter().from_block(block_num).to_block(block_num);
+
+            match provider.get_logs(&filter).await {
+                Ok(logs) => {
+                    if !logs.is_empty() {
+                        let receipt_logs = logs.iter().map(log_to_receipt).collect();
+
+                        if result_tx
+                            .send(BlockLogs { block_number: block_num, logs: receipt_logs })
+                            .await
+                            .is_err()
+                        {
+                            return;
+                        }
+                    }
+                    last_block = Some(block_num);
+                }
+                Err(e) => {
+                    warn!(error = %e, block = block_num, "Failed to fetch logs for block");
+                    break;
+                }
+            }
+        }
+
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
 }
 
 /// Summary of the initial DA backlog between safe and latest blocks.

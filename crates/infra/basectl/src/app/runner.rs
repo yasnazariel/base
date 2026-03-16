@@ -10,9 +10,10 @@ use crate::{
     config::ChainConfig,
     l1_client::fetch_full_system_config,
     rpc::{
-        BacklogFetchResult, BlockDaInfo, L1BlockInfo, L1ConnectionMode, TimestampedFlashblock,
-        fetch_initial_backlog_with_progress, run_block_fetcher, run_flashblock_ws,
-        run_flashblock_ws_timestamped, run_l1_blob_watcher, run_safe_head_poller,
+        BacklogFetchResult, BlockDaInfo, BlockLogs, L1BlockInfo, L1ConnectionMode,
+        TimestampedFlashblock, fetch_initial_backlog_with_progress, run_block_fetcher,
+        run_flashblock_ws, run_flashblock_ws_timestamped, run_l1_blob_watcher,
+        run_log_subscriber, run_safe_head_poller,
     },
     tui::Toast,
 };
@@ -47,7 +48,10 @@ fn start_background_services(config: &ChainConfig, resources: &mut Resources) {
     let (l1_block_tx, l1_block_rx) = mpsc::channel::<L1BlockInfo>(100);
     let (toast_tx, toast_rx) = mpsc::channel::<Toast>(50);
 
+    let (log_tx, log_rx) = mpsc::channel::<BlockLogs>(100);
+
     resources.flash.set_channel(fb_rx);
+    resources.flash.set_log_channel(log_rx);
     resources.da.set_channels(
         da_fb_rx,
         sync_rx,
@@ -65,6 +69,8 @@ fn start_background_services(config: &ChainConfig, resources: &mut Resources) {
     ));
 
     tokio::spawn(run_flashblock_ws(config.flashblocks_ws.to_string(), da_fb_tx, toast_tx.clone()));
+
+    tokio::spawn(run_log_subscriber(config.rpc.to_string(), log_tx, toast_tx.clone()));
 
     tokio::spawn(run_block_fetcher(
         config.rpc.to_string(),

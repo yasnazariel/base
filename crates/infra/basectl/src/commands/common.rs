@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashSet, VecDeque},
     time::{Duration, Instant},
 };
 
@@ -7,10 +7,8 @@ use alloy_primitives::{Address, B256, Bytes};
 use chrono::{DateTime, Local};
 use ratatui::{
     prelude::*,
-    widgets::{Block, Borders, Cell, Paragraph, Row, Table, TableState},
+    widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table, TableState},
 };
-use serde::Deserialize;
-
 use crate::rpc::{L1BlockInfo, L1ConnectionMode};
 
 /// Size of a single blob in bytes (128 `KiB`).
@@ -1159,83 +1157,17 @@ pub(crate) fn time_diff_color(ms: i64) -> Color {
 }
 
 // =============================================================================
-// Flashblock Receipt Metadata
+// Receipt Log
 // =============================================================================
 
-// TODO: unify with `FlashblocksMetadata` in `base-builder-core` once receipts
-// are added to the shared `Metadata` type.
-
-/// Local metadata type that mirrors `FlashblocksMetadata` from `base-builder-core`.
-///
-/// Only the `receipts` field is used; other fields (`new_account_balances`,
-/// `access_list`, `block_number`) are ignored. Receipt values are kept as raw
-/// JSON to avoid redefining the receipt envelope types — we only need the
-/// embedded `logs` arrays.
-#[derive(Debug, Deserialize, Clone, Default)]
-pub(crate) struct FlashblocksMetadata {
-    /// Per-transaction receipts keyed by tx hash string.
-    ///
-    /// Values are raw JSON because the wire format varies (externally-tagged
-    /// envelope in production, flat object in older versions). We walk the
-    /// JSON tree to extract log entries rather than fully deserializing.
-    #[serde(default)]
-    pub receipts: HashMap<String, serde_json::Value>,
-}
-
-impl FlashblocksMetadata {
-    /// Extracts all log entries from the raw receipt JSON values.
-    ///
-    /// Walks each receipt value looking for `"logs"` arrays at any nesting
-    /// depth (handles both tagged `{"Eip1559": {"logs": [...]}}` and flat
-    /// `{"logs": [...]}` wire formats).
-    pub(crate) fn collect_logs(&self) -> Vec<ReceiptLog> {
-        let mut logs = Vec::new();
-        for receipt in self.receipts.values() {
-            Self::extract_logs(receipt, &mut logs);
-        }
-        logs
-    }
-
-    /// Recursively searches a JSON value for `"logs"` arrays and deserializes
-    /// each element as a [`ReceiptLog`].
-    fn extract_logs(value: &serde_json::Value, out: &mut Vec<ReceiptLog>) {
-        match value {
-            serde_json::Value::Object(map) => {
-                if let Some(logs_val) = map.get("logs") {
-                    if let Some(arr) = logs_val.as_array() {
-                        for entry in arr {
-                            if let Ok(log) = serde_json::from_value::<ReceiptLog>(entry.clone()) {
-                                out.push(log);
-                            }
-                        }
-                    }
-                } else {
-                    // Tagged envelope: recurse into inner objects.
-                    for v in map.values() {
-                        Self::extract_logs(v, out);
-                    }
-                }
-            }
-            serde_json::Value::Array(arr) => {
-                for v in arr {
-                    Self::extract_logs(v, out);
-                }
-            }
-            _ => {}
-        }
-    }
-}
-
 /// A single log entry from a transaction receipt.
-#[derive(Debug, Deserialize, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct ReceiptLog {
     /// The contract address that emitted this log.
     pub address: Address,
     /// Indexed log topics. `topics[0]` is the event signature hash.
-    #[serde(default)]
     pub topics: Vec<B256>,
     /// Non-indexed ABI-encoded event data.
-    #[serde(default)]
     pub data: Bytes,
 }
 
@@ -1247,10 +1179,49 @@ pub(crate) struct ReceiptLog {
 pub(crate) const EVENT_GROUP_COUNT: usize = 6;
 
 /// Total number of sub-filters across all groups.
-pub(crate) const SUB_FILTER_TOTAL: usize = 18;
+pub(crate) const SUB_FILTER_TOTAL: usize = 19;
 
 /// Total number of rows in the hierarchical filter menu (groups + sub-filters).
 pub(crate) const FILTER_MENU_ITEMS: usize = EVENT_GROUP_COUNT + SUB_FILTER_TOTAL;
+
+/// Shared state for the hierarchical event filter popup menu.
+///
+/// Embedded by views that offer event filter toggling (command center,
+/// flashblocks, `DeFi` activity). The view translates key events into method
+/// calls; this struct owns cursor position and open/closed state.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct FilterMenuState {
+    /// Whether the filter popup is currently visible.
+    pub open: bool,
+    /// Current cursor position in the flat menu (`0..FILTER_MENU_ITEMS`).
+    pub cursor: usize,
+}
+
+impl FilterMenuState {
+    /// Moves the cursor up one row, clamping at the top.
+    pub(crate) const fn move_up(&mut self) {
+        self.cursor = self.cursor.saturating_sub(1);
+    }
+
+    /// Moves the cursor down one row, clamping at the bottom.
+    pub(crate) const fn move_down(&mut self) {
+        if self.cursor + 1 < FILTER_MENU_ITEMS {
+            self.cursor += 1;
+        }
+    }
+
+    /// Toggles the item under the cursor (group header or sub-filter).
+    pub(crate) fn toggle(&self, activity: &mut ActivityBarState) {
+        let (group_idx, sub_idx) = cursor_to_filter(self.cursor);
+        match sub_idx {
+            None => activity.toggle_group(group_idx),
+            Some(si) => {
+                let idx = EVENT_GROUP_DEFS[group_idx].sub_offset + si;
+                activity.active[idx] = !activity.active[idx];
+            }
+        }
+    }
+}
 
 /// Maximum number of blocks retained in the activity bar rolling window.
 ///
@@ -1402,6 +1373,32 @@ const TOPIC_WITHDRAW_COLLATERAL_MORPHO: [u8; 32] = [
     0x65, 0x65, 0x1f, 0x83, 0xd5, 0x3c, 0x8b, 0x9b, 0x06, 0x90, 0x1d, 0x16, 0x7e, 0x32, 0x11, 0x42,
 ];
 
+// Euler V2 lending event topics (ERC-4626 standard signatures).
+
+/// `Deposit(address,address,uint256,uint256)` — Euler V2 `EVault` deposit (ERC-4626).
+const TOPIC_DEPOSIT_EULER: [u8; 32] = [
+    0x8b, 0x77, 0x9e, 0xad, 0xfa, 0xd1, 0x24, 0x9b, 0xa1, 0xe8, 0x78, 0x1e, 0xf5, 0xd8, 0x01, 0xac,
+    0x68, 0x3e, 0x76, 0x82, 0x75, 0x88, 0x64, 0x4a, 0x54, 0xd4, 0x27, 0xe6, 0x63, 0x7c, 0x5d, 0x0b,
+];
+
+/// `Withdraw(address,address,address,uint256,uint256)` — Euler V2 `EVault` withdraw (ERC-4626).
+const TOPIC_WITHDRAW_EULER: [u8; 32] = [
+    0x80, 0x4c, 0x4b, 0xd3, 0xd5, 0xc8, 0x58, 0xdd, 0xf0, 0x5e, 0x93, 0xd4, 0x6d, 0x8f, 0xb1, 0x7d,
+    0x45, 0x31, 0xd8, 0x11, 0x74, 0xcc, 0x2f, 0x7b, 0x7a, 0xa9, 0xef, 0xdf, 0x9c, 0x36, 0xb8, 0xc2,
+];
+
+/// `Borrow(address,uint256)` — Euler V2 `EVault` borrow.
+const TOPIC_BORROW_EULER: [u8; 32] = [
+    0x1b, 0xd8, 0xa1, 0xb4, 0xbb, 0x68, 0x6c, 0x06, 0x68, 0x60, 0x29, 0xaa, 0x8b, 0x8a, 0xf2, 0x07,
+    0xe7, 0x85, 0x6a, 0xbd, 0x0d, 0x43, 0x66, 0x4c, 0x09, 0x93, 0xf1, 0x1a, 0x11, 0x1f, 0x13, 0xb0,
+];
+
+/// `Repay(address,uint256)` — Euler V2 `EVault` repay.
+const TOPIC_REPAY_EULER: [u8; 32] = [
+    0x4d, 0x4d, 0x0e, 0xf7, 0x46, 0x44, 0xa0, 0xd0, 0x18, 0x88, 0xdb, 0x2e, 0x37, 0x21, 0x3a, 0x54,
+    0x8b, 0xc6, 0xf9, 0x68, 0x6f, 0xf5, 0xc9, 0xbd, 0xd7, 0x21, 0x3f, 0x6b, 0x9d, 0xa5, 0xb6, 0x92,
+];
+
 // Bridge event topics.
 
 /// `ETHBridgeInitiated(address,address,uint256,bytes)` — OP Stack ETH withdrawal (L2 → L1).
@@ -1508,6 +1505,8 @@ pub(crate) struct EventGroupDef {
     pub sub_filters: &'static [SubFilterDef],
     /// Index of the first sub-filter in the flat `counts`/`active` arrays.
     pub sub_offset: usize,
+    /// If true, sub-filters are differentiated by contract address rather than topic.
+    pub match_by_address: bool,
 }
 
 /// Ordered list of all built-in event group definitions with hierarchical sub-filters.
@@ -1539,6 +1538,7 @@ pub(crate) const EVENT_GROUP_DEFS: [EventGroupDef; EVENT_GROUP_COUNT] = [
             },
         ],
         sub_offset: 0,
+        match_by_address: true,
     },
     // Group 1: Swaps (sub_offset 3..6)
     EventGroupDef {
@@ -1567,6 +1567,7 @@ pub(crate) const EVENT_GROUP_DEFS: [EventGroupDef; EVENT_GROUP_COUNT] = [
             },
         ],
         sub_offset: 3,
+        match_by_address: false,
     },
     // Group 2: Pool Liquidity (sub_offset 6..9)
     EventGroupDef {
@@ -1601,8 +1602,9 @@ pub(crate) const EVENT_GROUP_DEFS: [EventGroupDef; EVENT_GROUP_COUNT] = [
             },
         ],
         sub_offset: 6,
+        match_by_address: false,
     },
-    // Group 3: Lending (sub_offset 9..12)
+    // Group 3: Lending (sub_offset 9..13)
     EventGroupDef {
         label: "Lending",
         short_label: "LEND",
@@ -1622,6 +1624,10 @@ pub(crate) const EVENT_GROUP_DEFS: [EventGroupDef; EVENT_GROUP_COUNT] = [
             TOPIC_REPAY_MORPHO,
             TOPIC_SUPPLY_COLLATERAL_MORPHO,
             TOPIC_WITHDRAW_COLLATERAL_MORPHO,
+            TOPIC_DEPOSIT_EULER,
+            TOPIC_WITHDRAW_EULER,
+            TOPIC_BORROW_EULER,
+            TOPIC_REPAY_EULER,
         ],
         sub_filters: &[
             SubFilterDef {
@@ -1636,7 +1642,7 @@ pub(crate) const EVENT_GROUP_DEFS: [EventGroupDef; EVENT_GROUP_COUNT] = [
                 catch_all: false,
             },
             SubFilterDef {
-                label: "Compound",
+                label: "Comp/Moon",
                 topics: &[
                     TOPIC_SUPPLY_COMPOUND,
                     TOPIC_SUPPLY_COLLATERAL_COMPOUND,
@@ -1659,10 +1665,62 @@ pub(crate) const EVENT_GROUP_DEFS: [EventGroupDef; EVENT_GROUP_COUNT] = [
                 addresses: &[],
                 catch_all: false,
             },
+            SubFilterDef {
+                label: "Euler",
+                topics: &[
+                    TOPIC_DEPOSIT_EULER,
+                    TOPIC_WITHDRAW_EULER,
+                    TOPIC_BORROW_EULER,
+                    TOPIC_REPAY_EULER,
+                ],
+                addresses: &[],
+                catch_all: false,
+            },
         ],
         sub_offset: 9,
+        match_by_address: false,
     },
-    // Group 4: Bridge (sub_offset 12..14)
+    // Group 4: Liquidation (sub_offset 13..17)
+    EventGroupDef {
+        label: "Liquidation",
+        short_label: "LIQS",
+        color: Color::Rgb(255, 80, 80),
+        topics: &[
+            TOPIC_LIQUIDATION_AAVE_V3,
+            TOPIC_LIQUIDATION_COMPOUND_V3,
+            TOPIC_LIQUIDATION_MORPHO,
+            TOPIC_LIQUIDATION_EULER_V2,
+        ],
+        sub_filters: &[
+            SubFilterDef {
+                label: "Aave",
+                topics: &[TOPIC_LIQUIDATION_AAVE_V3],
+                addresses: &[],
+                catch_all: false,
+            },
+            SubFilterDef {
+                label: "Comp/Moon",
+                topics: &[TOPIC_LIQUIDATION_COMPOUND_V3],
+                addresses: &[],
+                catch_all: false,
+            },
+            SubFilterDef {
+                label: "Morpho",
+                topics: &[TOPIC_LIQUIDATION_MORPHO],
+                addresses: &[],
+                catch_all: false,
+            },
+            SubFilterDef {
+                label: "Euler",
+                topics: &[TOPIC_LIQUIDATION_EULER_V2],
+                addresses: &[],
+                catch_all: false,
+            },
+        ],
+        sub_offset: 13,
+        match_by_address: false,
+    },
+    // Group 5: Bridge (sub_offset 17..19)
     EventGroupDef {
         label: "Bridge",
         short_label: "BRDG",
@@ -1687,48 +1745,32 @@ pub(crate) const EVENT_GROUP_DEFS: [EventGroupDef; EVENT_GROUP_COUNT] = [
                 catch_all: false,
             },
         ],
-        sub_offset: 12,
-    },
-    // Group 5: Liquidation (sub_offset 14..18)
-    EventGroupDef {
-        label: "Liquidation",
-        short_label: "LIQS",
-        color: Color::Rgb(255, 80, 80),
-        topics: &[
-            TOPIC_LIQUIDATION_AAVE_V3,
-            TOPIC_LIQUIDATION_COMPOUND_V3,
-            TOPIC_LIQUIDATION_MORPHO,
-            TOPIC_LIQUIDATION_EULER_V2,
-        ],
-        sub_filters: &[
-            SubFilterDef {
-                label: "Aave",
-                topics: &[TOPIC_LIQUIDATION_AAVE_V3],
-                addresses: &[],
-                catch_all: false,
-            },
-            SubFilterDef {
-                label: "Compound",
-                topics: &[TOPIC_LIQUIDATION_COMPOUND_V3],
-                addresses: &[],
-                catch_all: false,
-            },
-            SubFilterDef {
-                label: "Morpho",
-                topics: &[TOPIC_LIQUIDATION_MORPHO],
-                addresses: &[],
-                catch_all: false,
-            },
-            SubFilterDef {
-                label: "Euler",
-                topics: &[TOPIC_LIQUIDATION_EULER_V2],
-                addresses: &[],
-                catch_all: false,
-            },
-        ],
-        sub_offset: 14,
+        sub_offset: 17,
+        match_by_address: false,
     },
 ];
+
+/// Returns all unique event topic0 hashes tracked by the activity bar.
+///
+/// Used to build an `eth_getLogs` filter that only fetches logs matching
+/// events we care about, avoiding the massive response from unfiltered queries.
+///
+/// Computed once and cached for the process lifetime.
+pub(crate) fn all_tracked_topics() -> &'static [B256] {
+    static TOPICS: std::sync::LazyLock<Vec<B256>> = std::sync::LazyLock::new(|| {
+        let mut seen = HashSet::new();
+        let mut topics = Vec::new();
+        for group in &EVENT_GROUP_DEFS {
+            for &t in group.topics {
+                if seen.insert(t) {
+                    topics.push(B256::from(t));
+                }
+            }
+        }
+        topics
+    });
+    &TOPICS
+}
 
 /// Per-block event counts across all filters.
 #[derive(Clone, Debug, Default)]
@@ -1854,18 +1896,15 @@ impl ActivityBarState {
         // Pass 1: collect addresses that emitted Swap events (these are pool contracts).
         let swap_topics: &[&[u8; 32]] = &[&TOPIC_SWAP_V2, &TOPIC_SWAP_V3, &TOPIC_SWAP_V4];
 
-        let mut swap_pools: Vec<&[u8]> = Vec::new();
-        for log in logs {
-            if let Some(topic0) = log.topics.first() {
-                let t0 = topic0.as_slice();
-                if swap_topics.iter().any(|st| st.as_ref() == t0) {
-                    let addr = log.address.as_slice();
-                    if !swap_pools.contains(&addr) {
-                        swap_pools.push(addr);
-                    }
-                }
-            }
-        }
+        let swap_pools: HashSet<&[u8]> = logs
+            .iter()
+            .filter(|log| {
+                log.topics
+                    .first()
+                    .is_some_and(|t0| swap_topics.iter().any(|st| st.as_ref() == t0.as_slice()))
+            })
+            .map(|log| log.address.as_slice())
+            .collect();
 
         // Find or create the entry for this block.
         if self.window.front().map(|e| e.block_number) != Some(block_number) {
@@ -1887,7 +1926,7 @@ impl ActivityBarState {
                     continue;
                 }
                 // ERC20 group: differentiate sub-filters by address.
-                if group.sub_offset == 0 {
+                if group.match_by_address {
                     let addr = log.address.as_slice();
                     let mut matched = false;
                     for (si, sf) in group.sub_filters.iter().enumerate() {
@@ -1950,6 +1989,8 @@ impl ActivityBarState {
                 || t0 == TOPIC_SUPPLY_MORPHO.as_ref()
                 || t0 == TOPIC_REPAY_MORPHO.as_ref()
                 || t0 == TOPIC_SUPPLY_COLLATERAL_MORPHO.as_ref()
+                || t0 == TOPIC_DEPOSIT_EULER.as_ref()
+                || t0 == TOPIC_REPAY_EULER.as_ref()
             {
                 entry.lend_supply = entry.lend_supply.saturating_add(1);
             } else if t0 == TOPIC_WITHDRAW_AAVE.as_ref()
@@ -1959,6 +2000,8 @@ impl ActivityBarState {
                 || t0 == TOPIC_WITHDRAW_MORPHO.as_ref()
                 || t0 == TOPIC_BORROW_MORPHO.as_ref()
                 || t0 == TOPIC_WITHDRAW_COLLATERAL_MORPHO.as_ref()
+                || t0 == TOPIC_WITHDRAW_EULER.as_ref()
+                || t0 == TOPIC_BORROW_EULER.as_ref()
             {
                 entry.lend_withdraw = entry.lend_withdraw.saturating_add(1);
             }
@@ -1991,7 +2034,7 @@ impl ActivityBarState {
                     if log.topics.len() >= 3 {
                         let from = &log.topics[1].as_slice()[12..];
                         let to = &log.topics[2].as_slice()[12..];
-                        if swap_pools.iter().any(|&p| p == from || p == to) {
+                        if swap_pools.contains(from) || swap_pools.contains(to) {
                             if is_usdc {
                                 entry.swap_volume = entry.swap_volume.saturating_add(amount);
                             } else {
@@ -2004,11 +2047,14 @@ impl ActivityBarState {
             }
         }
 
-        // Update per-group rolling maxima.
-        let totals = self.window_totals();
-        for (max, &total) in self.rolling_max.iter_mut().zip(totals.iter()) {
-            if total > *max {
-                *max = total;
+        // Update per-group rolling maxima from the entry we just modified.
+        // rolling_max only increases, so checking the current entry suffices.
+        if let Some(entry) = self.window.front() {
+            for (gi, group) in EVENT_GROUP_DEFS.iter().enumerate() {
+                let count = Self::group_count(entry, group, &self.active);
+                if count > self.rolling_max[gi] {
+                    self.rolling_max[gi] = count;
+                }
             }
         }
     }
@@ -2033,17 +2079,23 @@ impl ActivityBarState {
 
     /// Returns the net pool liquidity events across the window (adds - removes).
     pub(crate) fn pool_net_total(&self) -> i64 {
-        self.window.iter().map(|e| e.pool_adds as i64 - e.pool_removes as i64).sum()
+        self.window
+            .iter()
+            .fold(0i64, |acc, e| acc.saturating_add(e.pool_adds as i64 - e.pool_removes as i64))
     }
 
     /// Returns the net lending flow across the window (supply/repay - withdraw/borrow).
     pub(crate) fn lend_net_total(&self) -> i64 {
-        self.window.iter().map(|e| e.lend_supply as i64 - e.lend_withdraw as i64).sum()
+        self.window
+            .iter()
+            .fold(0i64, |acc, e| acc.saturating_add(e.lend_supply as i64 - e.lend_withdraw as i64))
     }
 
     /// Returns the net bridge flow across the window (inflows - outflows).
     pub(crate) fn bridge_net_total(&self) -> i64 {
-        self.window.iter().map(|e| e.bridge_in as i64 - e.bridge_out as i64).sum()
+        self.window
+            .iter()
+            .fold(0i64, |acc, e| acc.saturating_add(e.bridge_in as i64 - e.bridge_out as i64))
     }
 }
 
@@ -2417,8 +2469,6 @@ pub(crate) fn render_filter_menu(
     active: &[bool; SUB_FILTER_TOTAL],
     cursor: usize,
 ) {
-    use ratatui::widgets::Clear;
-
     let popup_width: u16 = 38;
     let popup_height: u16 = FILTER_MENU_ITEMS as u16 + 4;
 
