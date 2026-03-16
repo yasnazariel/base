@@ -11,6 +11,8 @@ pub enum ViewId {
     Flashblocks,
     /// Chain and system configuration viewer.
     Config,
+    /// Expanded `DeFi` event activity monitor.
+    DefiActivity,
 }
 
 /// Manages view navigation history and the current active view.

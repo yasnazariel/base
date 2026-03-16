@@ -7,6 +7,9 @@ pub(crate) use config::ConfigView;
 mod da_monitor;
 pub(crate) use da_monitor::DaMonitorView;
 
+mod defi_activity;
+pub(crate) use defi_activity::DefiActivityView;
+
 mod factory;
 pub(crate) use factory::create_view;
 

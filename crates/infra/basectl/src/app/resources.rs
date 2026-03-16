@@ -5,7 +5,7 @@ use base_consensus_genesis::SystemConfig;
 use tokio::sync::mpsc;
 
 use crate::{
-    commands::common::{DaTracker, FlashblockEntry, LoadingState},
+    commands::common::{ActivityBarState, DaTracker, FlashblockEntry, LoadingState},
     config::ChainConfig,
     rpc::{BacklogFetchResult, BlockDaInfo, L1BlockInfo, L1ConnectionMode, TimestampedFlashblock},
     tui::ToastState,
@@ -57,6 +57,8 @@ pub(crate) struct DaState {
 pub(crate) struct FlashState {
     /// Recent flashblock entries shown in the table.
     pub entries: VecDeque<FlashblockEntry>,
+    /// Rolling event-activity counts for the activity bar.
+    pub activity: ActivityBarState,
     /// Current block gas limit.
     pub current_gas_limit: u64,
     /// Current base fee per gas in wei.
@@ -302,6 +304,7 @@ impl FlashState {
     pub(crate) fn new() -> Self {
         Self {
             entries: VecDeque::with_capacity(MAX_FLASH_BLOCKS * 10),
+            activity: ActivityBarState::new(),
             current_gas_limit: 0,
             current_base_fee: None,
             message_count: 0,
@@ -351,6 +354,16 @@ impl FlashState {
         self.entries.truncate(keep);
     }
 
+    /// Returns the time span (in seconds) covered by the current entries window.
+    ///
+    /// Computed from the newest to oldest entry timestamps.
+    pub(crate) fn window_duration_secs(&self) -> Option<f64> {
+        let newest = self.entries.front()?;
+        let oldest = self.entries.back()?;
+        let diff = (newest.timestamp - oldest.timestamp).num_milliseconds() as f64 / 1000.0;
+        if diff > 0.0 { Some(diff) } else { None }
+    }
+
     /// Processes a received flashblock and updates tracking state.
     pub(crate) fn add_flashblock(&mut self, tsf: TimestampedFlashblock) {
         let TimestampedFlashblock { flashblock: fb, received_at } = tsf;
@@ -392,6 +405,9 @@ impl FlashState {
             timestamp: received_at,
             time_diff_ms,
         };
+
+        let logs = fb.metadata.collect_logs();
+        self.activity.record_logs(block_number, &logs);
 
         self.entries.push_front(entry);
         self.evict_old_blocks();

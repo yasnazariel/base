@@ -9,9 +9,10 @@ use ratatui::{
 use crate::{
     app::{Action, Resources, View},
     commands::common::{
-        COLOR_ACTIVE_BORDER, COLOR_ROW_HIGHLIGHTED, COLOR_ROW_SELECTED, block_color,
-        block_color_bright, build_gas_bar, format_gas, format_gwei, render_gas_usage_bar,
-        time_diff_color, truncate_block_number,
+        COLOR_ACTIVE_BORDER, COLOR_ROW_HIGHLIGHTED, COLOR_ROW_SELECTED, EVENT_GROUP_DEFS,
+        FILTER_MENU_ITEMS, activity_bar_height, block_color, block_color_bright, build_gas_bar,
+        cursor_to_filter, format_gas, format_gwei, render_activity_bar, render_filter_menu,
+        render_gas_usage_bar, time_diff_color, truncate_block_number,
     },
     tui::{Keybinding, Toast},
 };
@@ -29,6 +30,7 @@ const KEYBINDINGS: &[Keybinding] = &[
     Keybinding { key: "PgDn", description: "Page down" },
     Keybinding { key: "Home/g", description: "Top (auto-scroll)" },
     Keybinding { key: "y", description: "Copy block number" },
+    Keybinding { key: "f", description: "Event filters" },
 ];
 
 /// View for displaying the live flashblocks stream with gas usage.
@@ -36,6 +38,8 @@ const KEYBINDINGS: &[Keybinding] = &[
 pub(crate) struct FlashblocksView {
     table_state: TableState,
     auto_scroll: bool,
+    filter_menu_open: bool,
+    filter_menu_cursor: usize,
 }
 
 impl Default for FlashblocksView {
@@ -49,7 +53,7 @@ impl FlashblocksView {
     pub(crate) fn new() -> Self {
         let mut table_state = TableState::default();
         table_state.select(Some(0));
-        Self { table_state, auto_scroll: true }
+        Self { table_state, auto_scroll: true, filter_menu_open: false, filter_menu_cursor: 0 }
     }
 }
 
@@ -59,7 +63,42 @@ impl View for FlashblocksView {
     }
 
     fn handle_key(&mut self, key: KeyEvent, resources: &mut Resources) -> Action {
+        if self.filter_menu_open {
+            match key.code {
+                KeyCode::Up | KeyCode::Char('k') => {
+                    if self.filter_menu_cursor > 0 {
+                        self.filter_menu_cursor -= 1;
+                    }
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    if self.filter_menu_cursor + 1 < FILTER_MENU_ITEMS {
+                        self.filter_menu_cursor += 1;
+                    }
+                }
+                KeyCode::Char(' ') => {
+                    let (group_idx, sub_idx) = cursor_to_filter(self.filter_menu_cursor);
+                    match sub_idx {
+                        None => resources.flash.activity.toggle_group(group_idx),
+                        Some(si) => {
+                            let idx = EVENT_GROUP_DEFS[group_idx].sub_offset + si;
+                            let active = &mut resources.flash.activity.active;
+                            active[idx] = !active[idx];
+                        }
+                    }
+                }
+                KeyCode::Char('f') | KeyCode::Esc => {
+                    self.filter_menu_open = false;
+                }
+                _ => {}
+            }
+            return Action::None;
+        }
+
         match key.code {
+            KeyCode::Char('f') => {
+                self.filter_menu_open = true;
+                Action::None
+            }
             KeyCode::Char(' ') => {
                 resources.flash.paused = !resources.flash.paused;
                 Action::None
@@ -138,10 +177,15 @@ impl View for FlashblocksView {
 
     fn render(&mut self, frame: &mut Frame<'_>, area: Rect, resources: &Resources) {
         let flash = &resources.flash;
+        let activity_height = activity_bar_height(&flash.activity, area.width);
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(3), Constraint::Min(0)])
+            .constraints([
+                Constraint::Length(3),
+                Constraint::Min(0),
+                Constraint::Length(activity_height),
+            ])
             .split(area);
 
         let highlighted_block = self
@@ -295,5 +339,14 @@ impl View for FlashblocksView {
         let table = Table::new(rows, widths).header(header);
 
         frame.render_stateful_widget(table, inner, &mut self.table_state.clone());
+
+        if activity_height > 0 {
+            let window_secs = flash.window_duration_secs();
+            render_activity_bar(frame, chunks[2], &flash.activity, window_secs);
+        }
+
+        if self.filter_menu_open {
+            render_filter_menu(frame, area, &flash.activity.active, self.filter_menu_cursor);
+        }
     }
 }

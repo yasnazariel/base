@@ -3,6 +3,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+use base_alloy_flashblocks::ReceiptLog;
+
 use chrono::{DateTime, Local};
 use ratatui::{
     prelude::*,
@@ -805,14 +807,17 @@ pub(crate) fn render_l1_blocks_table<'a>(
         params;
     let border_color = if is_active { Color::Rgb(255, 100, 100) } else { Color::Red };
 
-    let filter_label = filter.label();
+    let filter_label = match filter {
+        L1BlockFilter::All => String::new(),
+        other => format!(" [{}]", other.label()),
+    };
     let mode_label = match connection_mode {
         Some(L1ConnectionMode::WebSocket) => " WS",
         Some(L1ConnectionMode::Polling) => " Poll",
         None => "",
     };
     let block = Block::default()
-        .title(format!(" {title} [{filter_label}]{mode_label} "))
+        .title(format!(" {title}{filter_label}{mode_label} "))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(border_color));
 
@@ -1151,4 +1156,1260 @@ pub(crate) fn time_diff_color(ms: i64) -> Color {
     } else {
         Color::Red
     }
+}
+
+// =============================================================================
+// Event Activity Bar — Filters and State
+// =============================================================================
+
+/// Number of top-level event groups.
+pub(crate) const EVENT_GROUP_COUNT: usize = 6;
+
+/// Total number of sub-filters across all groups.
+pub(crate) const SUB_FILTER_TOTAL: usize = 18;
+
+/// Total number of rows in the hierarchical filter menu (groups + sub-filters).
+pub(crate) const FILTER_MENU_ITEMS: usize = EVENT_GROUP_COUNT + SUB_FILTER_TOTAL;
+
+/// Maximum number of blocks retained in the activity bar rolling window.
+///
+/// Sized so sparklines fill most of a wide terminal (~5 minutes of 2 s blocks).
+pub(crate) const ACTIVITY_WINDOW_BLOCKS: usize = 150;
+
+// Event topic[0] hashes (keccak256 of the event ABI signature).
+
+/// `Transfer(address,address,uint256)` — ERC-20 token transfer.
+const TOPIC_ERC20_TRANSFER: [u8; 32] = [
+    0xdd, 0xf2, 0x52, 0xad, 0x1b, 0xe2, 0xc8, 0x9b, 0x69, 0xc2, 0xb0, 0x68, 0xfc, 0x37, 0x8d, 0xaa,
+    0x95, 0x2b, 0xa7, 0xf1, 0x63, 0xc4, 0xa1, 0x16, 0x28, 0xf5, 0x5a, 0x4d, 0xf5, 0x23, 0xb3, 0xef,
+];
+
+/// `Swap(address,uint256,uint256,uint256,uint256,address)` — Uniswap V2-style AMM swap
+/// (also emitted by Aerodrome, Velodrome, `SushiSwap` V2, and compatible forks).
+const TOPIC_SWAP_V2: [u8; 32] = [
+    0xd7, 0x8a, 0xd9, 0x5f, 0xa4, 0x6c, 0x99, 0x4b, 0x65, 0x51, 0xd0, 0xda, 0x85, 0xfc, 0x27, 0x5f,
+    0xe6, 0x13, 0xce, 0x37, 0x65, 0x7f, 0xb8, 0xd5, 0xe3, 0xd1, 0x30, 0x84, 0x01, 0x59, 0xd8, 0x22,
+];
+
+/// `Swap(address,address,int256,int256,uint160,uint128,int24)` — Uniswap V3 concentrated-liquidity swap.
+const TOPIC_SWAP_V3: [u8; 32] = [
+    0xc4, 0x20, 0x79, 0xf9, 0x4a, 0x63, 0x50, 0xd7, 0xe6, 0x23, 0x5f, 0x29, 0x17, 0x49, 0x24, 0xf9,
+    0x28, 0xcc, 0x2a, 0xc8, 0x18, 0xeb, 0x64, 0xfe, 0xd8, 0x00, 0x4e, 0x11, 0x5f, 0xbc, 0xca, 0x67,
+];
+
+/// `Swap(bytes32,address,int128,int128,uint160,uint128,int24,uint24)` — Uniswap V4 `PoolManager` swap.
+const TOPIC_SWAP_V4: [u8; 32] = [
+    0x40, 0xe9, 0xce, 0xcb, 0x9f, 0x5f, 0x1f, 0x1c, 0x5b, 0x9c, 0x97, 0xde, 0xc2, 0x91, 0x7b, 0x7e,
+    0xe9, 0x2e, 0x57, 0xba, 0x55, 0x63, 0x70, 0x8d, 0xac, 0xa9, 0x4d, 0xd8, 0x4a, 0xd7, 0x11, 0x2f,
+];
+
+// Pool liquidity event topics.
+
+/// `Mint(address,uint256,uint256)` — Uniswap V2 / Aerodrome add liquidity.
+const TOPIC_MINT_V2: [u8; 32] = [
+    0x4c, 0x20, 0x9b, 0x5f, 0xc8, 0xad, 0x50, 0x75, 0x8f, 0x13, 0xe2, 0xe1, 0x08, 0x8b, 0xa5, 0x6a,
+    0x56, 0x0d, 0xff, 0x69, 0x0a, 0x1c, 0x6f, 0xef, 0x26, 0x39, 0x4f, 0x4c, 0x03, 0x82, 0x1c, 0x4f,
+];
+
+/// `Burn(address,uint256,uint256,address)` — Uniswap V2 / Aerodrome remove liquidity.
+const TOPIC_BURN_V2: [u8; 32] = [
+    0xdc, 0xcd, 0x41, 0x2f, 0x0b, 0x12, 0x52, 0x81, 0x9c, 0xb1, 0xfd, 0x33, 0x0b, 0x93, 0x22, 0x4c,
+    0xa4, 0x26, 0x12, 0x89, 0x2b, 0xb3, 0xf4, 0xf7, 0x89, 0x97, 0x6e, 0x6d, 0x81, 0x93, 0x64, 0x96,
+];
+
+/// `Mint(address,address,int24,int24,uint128,uint256,uint256)` — Uniswap V3 add concentrated liquidity.
+const TOPIC_MINT_V3: [u8; 32] = [
+    0x7a, 0x53, 0x08, 0x0b, 0xa4, 0x14, 0x15, 0x8b, 0xe7, 0xec, 0x69, 0xb9, 0x87, 0xb5, 0xfb, 0x7d,
+    0x07, 0xde, 0xe1, 0x01, 0xfe, 0x85, 0x48, 0x8f, 0x08, 0x53, 0xae, 0x16, 0x23, 0x9d, 0x0b, 0xde,
+];
+
+/// `Burn(address,int24,int24,uint128,uint256,uint256)` — Uniswap V3 remove concentrated liquidity.
+const TOPIC_BURN_V3: [u8; 32] = [
+    0x0c, 0x39, 0x6c, 0xd9, 0x89, 0xa3, 0x9f, 0x44, 0x59, 0xb5, 0xfa, 0x1a, 0xed, 0x6a, 0x9a, 0x8d,
+    0xcd, 0xbc, 0x45, 0x90, 0x8a, 0xcf, 0xd6, 0x7e, 0x02, 0x8c, 0xd5, 0x68, 0xda, 0x98, 0x98, 0x2c,
+];
+
+/// `ModifyLiquidity(bytes32,address,int24,int24,int256,bytes32)` — Uniswap V4 add/remove liquidity.
+const TOPIC_MODIFY_LIQUIDITY_V4: [u8; 32] = [
+    0xf2, 0x08, 0xf4, 0x91, 0x27, 0x82, 0xfd, 0x25, 0xc7, 0xf1, 0x14, 0xca, 0x37, 0x23, 0xa2, 0xd5,
+    0xdd, 0x6f, 0x3b, 0xcc, 0x3a, 0xc8, 0xdb, 0x5a, 0xf6, 0x3b, 0xaa, 0x85, 0xf7, 0x11, 0xd5, 0xec,
+];
+
+// Lending protocol event topics.
+
+/// `Supply(address,address,address,uint256,uint16)` — Aave V3 / Seamless supply.
+const TOPIC_SUPPLY_AAVE: [u8; 32] = [
+    0x2b, 0x62, 0x77, 0x36, 0xbc, 0xa1, 0x5c, 0xd5, 0x38, 0x1d, 0xcf, 0x80, 0xb0, 0xbf, 0x11, 0xfd,
+    0x19, 0x7d, 0x01, 0xa0, 0x37, 0xc5, 0x2b, 0x92, 0x7a, 0x88, 0x1a, 0x10, 0xfb, 0x73, 0xba, 0x61,
+];
+
+/// `Withdraw(address,address,address,uint256)` — Aave V3 / Seamless withdraw.
+const TOPIC_WITHDRAW_AAVE: [u8; 32] = [
+    0x31, 0x15, 0xd1, 0x44, 0x9a, 0x7b, 0x73, 0x2c, 0x98, 0x6c, 0xba, 0x18, 0x24, 0x4e, 0x89, 0x7a,
+    0x45, 0x0f, 0x61, 0xe1, 0xbb, 0x8d, 0x58, 0x9c, 0xd2, 0xe6, 0x9e, 0x6c, 0x89, 0x24, 0xf9, 0xf7,
+];
+
+/// `Borrow(address,address,address,uint256,uint8,uint256,uint16)` — Aave V3 / Seamless borrow.
+const TOPIC_BORROW_AAVE: [u8; 32] = [
+    0xb3, 0xd0, 0x84, 0x82, 0x0f, 0xb1, 0xa9, 0xde, 0xcf, 0xfb, 0x17, 0x64, 0x36, 0xbd, 0x02, 0x55,
+    0x8d, 0x15, 0xfa, 0xc9, 0xb0, 0xdd, 0xfe, 0xd8, 0xc4, 0x65, 0xbc, 0x73, 0x59, 0xd7, 0xdc, 0xe0,
+];
+
+/// `Repay(address,address,address,uint256,bool)` — Aave V3 / Seamless repay.
+const TOPIC_REPAY_AAVE: [u8; 32] = [
+    0xa5, 0x34, 0xc8, 0xdb, 0xe7, 0x1f, 0x87, 0x1f, 0x9f, 0x35, 0x30, 0xe9, 0x7a, 0x74, 0x60, 0x1f,
+    0xea, 0x17, 0xb4, 0x26, 0xca, 0xe0, 0x2e, 0x1c, 0x5a, 0xee, 0x42, 0xc9, 0x6c, 0x78, 0x40, 0x51,
+];
+
+/// `Supply(address,address,uint256)` — Compound V3 / Moonwell supply.
+const TOPIC_SUPPLY_COMPOUND: [u8; 32] = [
+    0xd1, 0xcf, 0x3d, 0x15, 0x6d, 0x5f, 0x8f, 0x0d, 0x50, 0xf6, 0xc1, 0x22, 0xed, 0x60, 0x9c, 0xec,
+    0x09, 0xd3, 0x5c, 0x9b, 0x9f, 0xb3, 0xff, 0xf6, 0xea, 0x09, 0x59, 0x13, 0x4d, 0xae, 0x42, 0x4e,
+];
+
+/// `SupplyCollateral(address,address,address,uint256)` — Compound V3 / Moonwell supply collateral.
+const TOPIC_SUPPLY_COLLATERAL_COMPOUND: [u8; 32] = [
+    0xfa, 0x56, 0xf7, 0xb2, 0x4f, 0x17, 0x18, 0x3d, 0x81, 0x89, 0x4d, 0x3a, 0xc2, 0xee, 0x65, 0x4e,
+    0x3c, 0x26, 0x38, 0x8d, 0x17, 0xa2, 0x8d, 0xbd, 0x95, 0x49, 0xb8, 0x11, 0x43, 0x04, 0xe1, 0xf4,
+];
+
+/// `Withdraw(address,address,uint256)` — Compound V3 / Moonwell withdraw.
+const TOPIC_WITHDRAW_COMPOUND: [u8; 32] = [
+    0x9b, 0x1b, 0xfa, 0x7f, 0xa9, 0xee, 0x42, 0x0a, 0x16, 0xe1, 0x24, 0xf7, 0x94, 0xc3, 0x5a, 0xc9,
+    0xf9, 0x04, 0x72, 0xac, 0xc9, 0x91, 0x40, 0xeb, 0x2f, 0x64, 0x47, 0xc7, 0x14, 0xca, 0xd8, 0xeb,
+];
+
+/// `WithdrawCollateral(address,address,address,uint256)` — Compound V3 / Moonwell withdraw collateral.
+const TOPIC_WITHDRAW_COLLATERAL_COMPOUND: [u8; 32] = [
+    0xd6, 0xd4, 0x80, 0xd5, 0xb3, 0x06, 0x8d, 0xb0, 0x03, 0x53, 0x3b, 0x17, 0x0d, 0x67, 0x56, 0x14,
+    0x94, 0xd7, 0x2e, 0x3b, 0xf9, 0xfa, 0x40, 0xa2, 0x66, 0x47, 0x13, 0x51, 0xeb, 0xba, 0x9e, 0x16,
+];
+
+/// `Supply(bytes32,address,address,uint256,uint256)` — Morpho Blue supply.
+const TOPIC_SUPPLY_MORPHO: [u8; 32] = [
+    0xed, 0xf8, 0x87, 0x04, 0x33, 0xc8, 0x38, 0x23, 0xeb, 0x07, 0x1d, 0x3d, 0xf1, 0xca, 0xa8, 0xd0,
+    0x08, 0xf1, 0x2f, 0x64, 0x40, 0x91, 0x8c, 0x20, 0xd7, 0x5a, 0x36, 0x02, 0xcd, 0xa3, 0x0f, 0xe0,
+];
+
+/// `Withdraw(bytes32,address,address,address,uint256,uint256)` — Morpho Blue withdraw.
+const TOPIC_WITHDRAW_MORPHO: [u8; 32] = [
+    0xa5, 0x6f, 0xc0, 0xad, 0x57, 0x02, 0xec, 0x05, 0xce, 0x63, 0x66, 0x62, 0x21, 0xf7, 0x96, 0xfb,
+    0x62, 0x43, 0x7c, 0x32, 0xdb, 0x1a, 0xa1, 0xaa, 0x07, 0x5f, 0xc6, 0x48, 0x4c, 0xf5, 0x8f, 0xbf,
+];
+
+/// `Borrow(bytes32,address,address,address,uint256,uint256)` — Morpho Blue borrow.
+const TOPIC_BORROW_MORPHO: [u8; 32] = [
+    0x57, 0x09, 0x54, 0x54, 0x0b, 0xed, 0x6b, 0x13, 0x04, 0xa8, 0x7d, 0xfe, 0x81, 0x5a, 0x5e, 0xda,
+    0x4a, 0x64, 0x8f, 0x70, 0x97, 0xa1, 0x62, 0x40, 0xdc, 0xd8, 0x5c, 0x9b, 0x5f, 0xd4, 0x2a, 0x43,
+];
+
+/// `Repay(bytes32,address,address,uint256,uint256)` — Morpho Blue repay.
+const TOPIC_REPAY_MORPHO: [u8; 32] = [
+    0x52, 0xac, 0xb0, 0x5c, 0xeb, 0xbd, 0x3c, 0xd3, 0x97, 0x15, 0x46, 0x9f, 0x22, 0xaf, 0xbf, 0x5a,
+    0x17, 0x49, 0x62, 0x95, 0xef, 0x3b, 0xc9, 0xbb, 0x59, 0x44, 0x05, 0x6c, 0x63, 0xcc, 0xaa, 0x09,
+];
+
+/// `SupplyCollateral(bytes32,address,address,uint256)` — Morpho Blue supply collateral.
+const TOPIC_SUPPLY_COLLATERAL_MORPHO: [u8; 32] = [
+    0xa3, 0xb9, 0x47, 0x2a, 0x13, 0x99, 0xe1, 0x7e, 0x12, 0x3f, 0x3c, 0x2e, 0x65, 0x86, 0xc2, 0x3e,
+    0x50, 0x41, 0x84, 0xd5, 0x04, 0xde, 0x59, 0xcd, 0xaa, 0x2b, 0x37, 0x5e, 0x88, 0x0c, 0x61, 0x84,
+];
+
+/// `WithdrawCollateral(bytes32,address,address,address,uint256)` — Morpho Blue withdraw collateral.
+const TOPIC_WITHDRAW_COLLATERAL_MORPHO: [u8; 32] = [
+    0xe8, 0x0e, 0xbd, 0x7c, 0xc9, 0x22, 0x3d, 0x73, 0x82, 0xaa, 0xb2, 0xe0, 0xd1, 0xd6, 0x15, 0x5c,
+    0x65, 0x65, 0x1f, 0x83, 0xd5, 0x3c, 0x8b, 0x9b, 0x06, 0x90, 0x1d, 0x16, 0x7e, 0x32, 0x11, 0x42,
+];
+
+// Bridge event topics.
+
+/// `ETHBridgeInitiated(address,address,uint256,bytes)` — OP Stack ETH withdrawal (L2 → L1).
+const TOPIC_ETH_BRIDGE_INITIATED: [u8; 32] = [
+    0x28, 0x49, 0xb4, 0x30, 0x74, 0x09, 0x3a, 0x05, 0x39, 0x6b, 0x6f, 0x2a, 0x93, 0x7d, 0xee, 0x85,
+    0x65, 0xb1, 0x5a, 0x48, 0xa7, 0xb3, 0xd4, 0xbf, 0xfb, 0x73, 0x2a, 0x50, 0x17, 0x38, 0x0a, 0xf5,
+];
+
+/// `ETHBridgeFinalized(address,address,uint256,bytes)` — OP Stack ETH deposit (L1 → L2).
+const TOPIC_ETH_BRIDGE_FINALIZED: [u8; 32] = [
+    0x31, 0xb2, 0x16, 0x6f, 0xf6, 0x04, 0xfc, 0x56, 0x72, 0xea, 0x5d, 0xf0, 0x8a, 0x78, 0x08, 0x1d,
+    0x2b, 0xc6, 0xd7, 0x46, 0xca, 0xdc, 0xe8, 0x80, 0x74, 0x7f, 0x36, 0x43, 0xd8, 0x19, 0xe8, 0x3d,
+];
+
+/// `ERC20BridgeInitiated(address,address,address,address,uint256,bytes)` — OP Stack ERC-20 withdrawal.
+const TOPIC_ERC20_BRIDGE_INITIATED: [u8; 32] = [
+    0x7f, 0xf1, 0x26, 0xdb, 0x80, 0x24, 0x42, 0x4b, 0xbf, 0xd9, 0x82, 0x6e, 0x8a, 0xb8, 0x2f, 0xf5,
+    0x91, 0x36, 0x28, 0x9e, 0xa4, 0x40, 0xb0, 0x4b, 0x39, 0xa0, 0xdf, 0x1b, 0x03, 0xb9, 0xca, 0xbf,
+];
+
+/// `ERC20BridgeFinalized(address,address,address,address,uint256,bytes)` — OP Stack ERC-20 deposit.
+const TOPIC_ERC20_BRIDGE_FINALIZED: [u8; 32] = [
+    0xd5, 0x9c, 0x65, 0xb3, 0x54, 0x45, 0x22, 0x58, 0x35, 0xc8, 0x3f, 0x50, 0xb6, 0xed, 0xe0, 0x6a,
+    0x7b, 0xe0, 0x47, 0xd2, 0x2e, 0x35, 0x70, 0x73, 0xe2, 0x50, 0xd9, 0xaf, 0x53, 0x75, 0x18, 0xcd,
+];
+
+/// `LiquidationCall(address,address,address,uint256,uint256,address,bool)` — Aave V3 / Seamless.
+const TOPIC_LIQUIDATION_AAVE_V3: [u8; 32] = [
+    0xe4, 0x13, 0xa3, 0x21, 0xe8, 0x68, 0x1d, 0x83, 0x1f, 0x4d, 0xbc, 0xcb, 0xca, 0x79, 0x0d, 0x29,
+    0x52, 0xb5, 0x6f, 0x97, 0x79, 0x08, 0xe4, 0x5b, 0xe3, 0x73, 0x35, 0x53, 0x3e, 0x00, 0x52, 0x86,
+];
+
+/// `AbsorbCollateral(address,address,address,uint256,uint256)` — Compound V3 / Moonwell.
+const TOPIC_LIQUIDATION_COMPOUND_V3: [u8; 32] = [
+    0x98, 0x50, 0xab, 0x1a, 0xf7, 0x51, 0x77, 0xe4, 0xa9, 0x20, 0x1c, 0x65, 0xa2, 0xcf, 0x79, 0x76,
+    0xd5, 0xd2, 0x8e, 0x40, 0xef, 0x63, 0x49, 0x4b, 0x44, 0x36, 0x6f, 0x86, 0xb2, 0xf9, 0x41, 0x2e,
+];
+
+/// `Liquidate(bytes32,address,address,uint256,uint256,uint256,uint256)` — Morpho Blue.
+const TOPIC_LIQUIDATION_MORPHO: [u8; 32] = [
+    0x2a, 0x95, 0x6e, 0x32, 0xed, 0x87, 0x87, 0xca, 0xc0, 0x3e, 0x68, 0x01, 0x98, 0xb6, 0xce, 0x3d,
+    0xcf, 0xb8, 0x19, 0xaa, 0xd5, 0x78, 0xb3, 0xa5, 0x65, 0x8f, 0x2c, 0x11, 0x0a, 0x7d, 0x7c, 0x55,
+];
+
+/// `Liquidate(address,address,address,uint256,uint256)` — Euler V2.
+const TOPIC_LIQUIDATION_EULER_V2: [u8; 32] = [
+    0x82, 0x46, 0xcc, 0x71, 0xab, 0x01, 0x53, 0x3b, 0x5b, 0xeb, 0xc6, 0x72, 0xa6, 0x36, 0xdf, 0x81,
+    0x2f, 0x10, 0x63, 0x7a, 0xd7, 0x20, 0x79, 0x73, 0x19, 0xd5, 0x74, 0x1d, 0x5e, 0xbb, 0x39, 0x62,
+];
+
+// =============================================================================
+// Volume Tracking — Token Addresses
+// =============================================================================
+
+/// USDC contract on Base (6 decimals).
+const USDC_ADDRESS: [u8; 20] = [
+    0x83, 0x35, 0x89, 0xfc, 0xd6, 0xed, 0xb6, 0xe0, 0x8f, 0x4c, 0x7c, 0x32, 0xd4, 0xf7, 0x1b, 0x54,
+    0xbd, 0xa0, 0x29, 0x13,
+];
+
+/// WETH contract on Base (18 decimals).
+const WETH_ADDRESS: [u8; 20] = [
+    0x42, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x06,
+];
+
+/// Decodes a big-endian uint256 from the first 32 bytes of ABI-encoded data.
+///
+/// Returns the value as `u128`; values exceeding `u128::MAX` are clamped.
+fn decode_uint256(data: &[u8]) -> u128 {
+    if data.len() < 32 {
+        return 0;
+    }
+    // Top 16 bytes — if any are non-zero the value exceeds u128.
+    if data[..16].iter().any(|&b| b != 0) {
+        return u128::MAX;
+    }
+    u128::from_be_bytes(data[16..32].try_into().unwrap_or([0; 16]))
+}
+
+/// Static definition of a sub-filter within an event group.
+pub(crate) struct SubFilterDef {
+    /// Display label for this sub-filter.
+    pub label: &'static str,
+    /// Topic[0] hashes that route to this sub-filter (for topic-based matching).
+    pub topics: &'static [[u8; 32]],
+    /// Contract addresses that route to this sub-filter (for ERC20 address matching).
+    pub addresses: &'static [[u8; 20]],
+    /// If true, this is a negative/catch-all filter: matches when no sibling address matches.
+    pub catch_all: bool,
+}
+
+/// Static definition of a top-level event group for the activity bar.
+pub(crate) struct EventGroupDef {
+    /// Full label shown when space permits.
+    pub label: &'static str,
+    /// Short label (≤4 chars) for tight segments.
+    pub short_label: &'static str,
+    /// Bar fill color for this group.
+    pub color: Color,
+    /// All topics that match this group (union of sub-filter topics, used for fast first-pass).
+    pub topics: &'static [[u8; 32]],
+    /// Sub-filter definitions within this group.
+    pub sub_filters: &'static [SubFilterDef],
+    /// Index of the first sub-filter in the flat `counts`/`active` arrays.
+    pub sub_offset: usize,
+}
+
+/// Ordered list of all built-in event group definitions with hierarchical sub-filters.
+pub(crate) const EVENT_GROUP_DEFS: [EventGroupDef; EVENT_GROUP_COUNT] = [
+    // Group 0: ERC20 Transfers (sub_offset 0..3)
+    EventGroupDef {
+        label: "ERC20 Xfer",
+        short_label: "XFER",
+        color: Color::Rgb(0, 200, 150),
+        topics: &[TOPIC_ERC20_TRANSFER],
+        sub_filters: &[
+            SubFilterDef {
+                label: "USDC",
+                topics: &[TOPIC_ERC20_TRANSFER],
+                addresses: &[USDC_ADDRESS],
+                catch_all: false,
+            },
+            SubFilterDef {
+                label: "WETH",
+                topics: &[TOPIC_ERC20_TRANSFER],
+                addresses: &[WETH_ADDRESS],
+                catch_all: false,
+            },
+            SubFilterDef {
+                label: "Other",
+                topics: &[TOPIC_ERC20_TRANSFER],
+                addresses: &[],
+                catch_all: true,
+            },
+        ],
+        sub_offset: 0,
+    },
+    // Group 1: Swaps (sub_offset 3..6)
+    EventGroupDef {
+        label: "Swap",
+        short_label: "SWAP",
+        color: Color::Rgb(0, 150, 255),
+        topics: &[TOPIC_SWAP_V2, TOPIC_SWAP_V3, TOPIC_SWAP_V4],
+        sub_filters: &[
+            SubFilterDef {
+                label: "Uni+Aero V2",
+                topics: &[TOPIC_SWAP_V2],
+                addresses: &[],
+                catch_all: false,
+            },
+            SubFilterDef {
+                label: "Uni+Aero V3",
+                topics: &[TOPIC_SWAP_V3],
+                addresses: &[],
+                catch_all: false,
+            },
+            SubFilterDef {
+                label: "Uni V4",
+                topics: &[TOPIC_SWAP_V4],
+                addresses: &[],
+                catch_all: false,
+            },
+        ],
+        sub_offset: 3,
+    },
+    // Group 2: Pool Liquidity (sub_offset 6..9)
+    EventGroupDef {
+        label: "Pool Liquidity",
+        short_label: "POOL",
+        color: Color::Rgb(255, 200, 50),
+        topics: &[
+            TOPIC_MINT_V2,
+            TOPIC_BURN_V2,
+            TOPIC_MINT_V3,
+            TOPIC_BURN_V3,
+            TOPIC_MODIFY_LIQUIDITY_V4,
+        ],
+        sub_filters: &[
+            SubFilterDef {
+                label: "Uni+Aero V2",
+                topics: &[TOPIC_MINT_V2, TOPIC_BURN_V2],
+                addresses: &[],
+                catch_all: false,
+            },
+            SubFilterDef {
+                label: "Uni+Aero V3",
+                topics: &[TOPIC_MINT_V3, TOPIC_BURN_V3],
+                addresses: &[],
+                catch_all: false,
+            },
+            SubFilterDef {
+                label: "Uni V4",
+                topics: &[TOPIC_MODIFY_LIQUIDITY_V4],
+                addresses: &[],
+                catch_all: false,
+            },
+        ],
+        sub_offset: 6,
+    },
+    // Group 3: Lending (sub_offset 9..12)
+    EventGroupDef {
+        label: "Lending",
+        short_label: "LEND",
+        color: Color::Rgb(100, 200, 255),
+        topics: &[
+            TOPIC_SUPPLY_AAVE,
+            TOPIC_WITHDRAW_AAVE,
+            TOPIC_BORROW_AAVE,
+            TOPIC_REPAY_AAVE,
+            TOPIC_SUPPLY_COMPOUND,
+            TOPIC_SUPPLY_COLLATERAL_COMPOUND,
+            TOPIC_WITHDRAW_COMPOUND,
+            TOPIC_WITHDRAW_COLLATERAL_COMPOUND,
+            TOPIC_SUPPLY_MORPHO,
+            TOPIC_WITHDRAW_MORPHO,
+            TOPIC_BORROW_MORPHO,
+            TOPIC_REPAY_MORPHO,
+            TOPIC_SUPPLY_COLLATERAL_MORPHO,
+            TOPIC_WITHDRAW_COLLATERAL_MORPHO,
+        ],
+        sub_filters: &[
+            SubFilterDef {
+                label: "Aave",
+                topics: &[
+                    TOPIC_SUPPLY_AAVE,
+                    TOPIC_WITHDRAW_AAVE,
+                    TOPIC_BORROW_AAVE,
+                    TOPIC_REPAY_AAVE,
+                ],
+                addresses: &[],
+                catch_all: false,
+            },
+            SubFilterDef {
+                label: "Compound",
+                topics: &[
+                    TOPIC_SUPPLY_COMPOUND,
+                    TOPIC_SUPPLY_COLLATERAL_COMPOUND,
+                    TOPIC_WITHDRAW_COMPOUND,
+                    TOPIC_WITHDRAW_COLLATERAL_COMPOUND,
+                ],
+                addresses: &[],
+                catch_all: false,
+            },
+            SubFilterDef {
+                label: "Morpho",
+                topics: &[
+                    TOPIC_SUPPLY_MORPHO,
+                    TOPIC_WITHDRAW_MORPHO,
+                    TOPIC_BORROW_MORPHO,
+                    TOPIC_REPAY_MORPHO,
+                    TOPIC_SUPPLY_COLLATERAL_MORPHO,
+                    TOPIC_WITHDRAW_COLLATERAL_MORPHO,
+                ],
+                addresses: &[],
+                catch_all: false,
+            },
+        ],
+        sub_offset: 9,
+    },
+    // Group 4: Bridge (sub_offset 12..14)
+    EventGroupDef {
+        label: "Bridge",
+        short_label: "BRDG",
+        color: Color::Rgb(255, 150, 50),
+        topics: &[
+            TOPIC_ETH_BRIDGE_INITIATED,
+            TOPIC_ETH_BRIDGE_FINALIZED,
+            TOPIC_ERC20_BRIDGE_INITIATED,
+            TOPIC_ERC20_BRIDGE_FINALIZED,
+        ],
+        sub_filters: &[
+            SubFilterDef {
+                label: "Deposits",
+                topics: &[TOPIC_ETH_BRIDGE_FINALIZED, TOPIC_ERC20_BRIDGE_FINALIZED],
+                addresses: &[],
+                catch_all: false,
+            },
+            SubFilterDef {
+                label: "Withdrawals",
+                topics: &[TOPIC_ETH_BRIDGE_INITIATED, TOPIC_ERC20_BRIDGE_INITIATED],
+                addresses: &[],
+                catch_all: false,
+            },
+        ],
+        sub_offset: 12,
+    },
+    // Group 5: Liquidation (sub_offset 14..18)
+    EventGroupDef {
+        label: "Liquidation",
+        short_label: "LIQS",
+        color: Color::Rgb(255, 80, 80),
+        topics: &[
+            TOPIC_LIQUIDATION_AAVE_V3,
+            TOPIC_LIQUIDATION_COMPOUND_V3,
+            TOPIC_LIQUIDATION_MORPHO,
+            TOPIC_LIQUIDATION_EULER_V2,
+        ],
+        sub_filters: &[
+            SubFilterDef {
+                label: "Aave",
+                topics: &[TOPIC_LIQUIDATION_AAVE_V3],
+                addresses: &[],
+                catch_all: false,
+            },
+            SubFilterDef {
+                label: "Compound",
+                topics: &[TOPIC_LIQUIDATION_COMPOUND_V3],
+                addresses: &[],
+                catch_all: false,
+            },
+            SubFilterDef {
+                label: "Morpho",
+                topics: &[TOPIC_LIQUIDATION_MORPHO],
+                addresses: &[],
+                catch_all: false,
+            },
+            SubFilterDef {
+                label: "Euler",
+                topics: &[TOPIC_LIQUIDATION_EULER_V2],
+                addresses: &[],
+                catch_all: false,
+            },
+        ],
+        sub_offset: 14,
+    },
+];
+
+/// Per-block event counts across all filters.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct BlockEventCounts {
+    /// L2 block number this entry belongs to.
+    pub block_number: u64,
+    /// Event counts indexed by sub-filter ordinal.
+    pub counts: [u32; SUB_FILTER_TOTAL],
+    /// Total USDC transferred in this block (raw units, 6 decimals).
+    pub usdc_volume: u128,
+    /// USDC volume flowing through swap pools (raw units, 6 decimals).
+    /// A subset of `usdc_volume` — only USDC transfers where the sender or
+    /// receiver also emitted a Swap event in this flashblock.
+    pub swap_volume: u128,
+    /// WETH volume flowing through swap pools (raw units, 18 decimals).
+    pub weth_swap_volume: u128,
+    /// Number of pool liquidity add events (`Mint` V2/V3, positive `ModifyLiquidity` V4).
+    pub pool_adds: u32,
+    /// Number of pool liquidity remove events (`Burn` V2/V3, negative `ModifyLiquidity` V4).
+    pub pool_removes: u32,
+    /// Number of lending supply/repay events (capital flowing into protocols).
+    pub lend_supply: u32,
+    /// Number of lending withdraw/borrow events (capital flowing out of protocols).
+    pub lend_withdraw: u32,
+    /// Number of bridge inflow events (L1 → L2 finalized).
+    pub bridge_in: u32,
+    /// Number of bridge outflow events (L2 → L1 initiated).
+    pub bridge_out: u32,
+}
+
+/// Rolling-window state for the event activity bar.
+#[derive(Debug)]
+pub(crate) struct ActivityBarState {
+    /// Per-block event counts, newest first, capped at [`ACTIVITY_WINDOW_BLOCKS`].
+    pub window: VecDeque<BlockEventCounts>,
+    /// Per-group high-water mark of *window totals* for normalization.
+    /// Only increases; gives a "peak activity" reference for the fill ratio.
+    pub rolling_max: [u32; EVENT_GROUP_COUNT],
+    /// Which sub-filters are currently toggled on.
+    pub active: [bool; SUB_FILTER_TOTAL],
+}
+
+impl Default for ActivityBarState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ActivityBarState {
+    /// Creates a new state with all sub-filters active by default.
+    pub(crate) fn new() -> Self {
+        Self {
+            window: VecDeque::with_capacity(ACTIVITY_WINDOW_BLOCKS),
+            rolling_max: [0; EVENT_GROUP_COUNT],
+            active: [true; SUB_FILTER_TOTAL],
+        }
+    }
+
+    /// Returns true if any sub-filter is active.
+    pub(crate) fn any_active(&self) -> bool {
+        self.active.iter().any(|&a| a)
+    }
+
+    /// Returns true if any sub-filter in the given group is active.
+    pub(crate) fn group_active(&self, group: &EventGroupDef) -> bool {
+        let range = group.sub_offset..group.sub_offset + group.sub_filters.len();
+        self.active[range].iter().any(|&a| a)
+    }
+
+    /// Sums counts for a group across all its active sub-filters for one block entry.
+    pub(crate) fn group_count(
+        entry: &BlockEventCounts,
+        group: &EventGroupDef,
+        active: &[bool],
+    ) -> u32 {
+        let mut total = 0u32;
+        for (i, _sf) in group.sub_filters.iter().enumerate() {
+            let idx = group.sub_offset + i;
+            if active[idx] {
+                total = total.saturating_add(entry.counts[idx]);
+            }
+        }
+        total
+    }
+
+    /// Sums event counts per group across the entire window (only active sub-filters).
+    pub(crate) fn window_totals(&self) -> [u32; EVENT_GROUP_COUNT] {
+        let mut totals = [0u32; EVENT_GROUP_COUNT];
+        for entry in &self.window {
+            for (gi, group) in EVENT_GROUP_DEFS.iter().enumerate() {
+                totals[gi] =
+                    totals[gi].saturating_add(Self::group_count(entry, group, &self.active));
+            }
+        }
+        totals
+    }
+
+    /// Toggles all sub-filters in a group on or off.
+    ///
+    /// If any sub-filter is active, turns them all off. Otherwise, turns them all on.
+    pub(crate) fn toggle_group(&mut self, group_idx: usize) {
+        let group = &EVENT_GROUP_DEFS[group_idx];
+        let range = group.sub_offset..group.sub_offset + group.sub_filters.len();
+        let any_on = self.active[range.clone()].iter().any(|&a| a);
+        for idx in range {
+            self.active[idx] = !any_on;
+        }
+    }
+
+    /// Records logs from a flashblock into the rolling window.
+    ///
+    /// If the block already has an entry (from a previous flashblock for the same block),
+    /// counts are accumulated. If the window is full, the oldest block is evicted.
+    ///
+    /// Uses a two-pass approach: first collects addresses that emitted Swap events
+    /// (pool addresses), then processes Transfer events to identify swap-related USDC
+    /// volume separately from total USDC transfer volume.
+    pub(crate) fn record_logs(&mut self, block_number: u64, logs: &[&ReceiptLog]) {
+        if !self.any_active() {
+            return;
+        }
+
+        // Pass 1: collect addresses that emitted Swap events (these are pool contracts).
+        let swap_topics: &[&[u8; 32]] = &[&TOPIC_SWAP_V2, &TOPIC_SWAP_V3, &TOPIC_SWAP_V4];
+
+        let mut swap_pools: Vec<&[u8]> = Vec::new();
+        for log in logs {
+            if let Some(topic0) = log.topics.first() {
+                let t0 = topic0.as_slice();
+                if swap_topics.iter().any(|st| st.as_ref() == t0) {
+                    let addr = log.address.as_slice();
+                    if !swap_pools.contains(&addr) {
+                        swap_pools.push(addr);
+                    }
+                }
+            }
+        }
+
+        // Find or create the entry for this block.
+        if self.window.front().map(|e| e.block_number) != Some(block_number) {
+            self.window.push_front(BlockEventCounts { block_number, ..Default::default() });
+            if self.window.len() > ACTIVITY_WINDOW_BLOCKS {
+                self.window.pop_back();
+            }
+        }
+        let entry = self.window.front_mut().unwrap();
+
+        // Pass 2: count events and track volumes.
+        for log in logs {
+            let Some(topic0) = log.topics.first() else { continue };
+            let t0 = topic0.as_slice();
+
+            // Event filter counting — route to group then sub-filter.
+            for group in &EVENT_GROUP_DEFS {
+                if !group.topics.iter().any(|gt| gt.as_ref() == t0) {
+                    continue;
+                }
+                // ERC20 group: differentiate sub-filters by address.
+                if group.sub_offset == 0 {
+                    let addr = log.address.as_slice();
+                    let mut matched = false;
+                    for (si, sf) in group.sub_filters.iter().enumerate() {
+                        let idx = group.sub_offset + si;
+                        if !self.active[idx] {
+                            continue;
+                        }
+                        if sf.catch_all {
+                            continue; // handle catch-all after specific matches
+                        }
+                        if sf.addresses.iter().any(|a| a.as_ref() == addr) {
+                            entry.counts[idx] = entry.counts[idx].saturating_add(1);
+                            matched = true;
+                            break;
+                        }
+                    }
+                    if !matched {
+                        // Route to the catch-all sub-filter ("Other").
+                        for (si, sf) in group.sub_filters.iter().enumerate() {
+                            let idx = group.sub_offset + si;
+                            if self.active[idx] && sf.catch_all {
+                                entry.counts[idx] = entry.counts[idx].saturating_add(1);
+                                break;
+                            }
+                        }
+                    }
+                } else {
+                    // All other groups: match sub-filter by topic.
+                    for (si, sf) in group.sub_filters.iter().enumerate() {
+                        let idx = group.sub_offset + si;
+                        if self.active[idx] && sf.topics.iter().any(|ft| ft.as_ref() == t0) {
+                            entry.counts[idx] = entry.counts[idx].saturating_add(1);
+                            break;
+                        }
+                    }
+                }
+                break; // Only match one group per log.
+            }
+
+            // Pool liquidity direction tracking.
+            if t0 == TOPIC_MINT_V2.as_ref() || t0 == TOPIC_MINT_V3.as_ref() {
+                entry.pool_adds = entry.pool_adds.saturating_add(1);
+            } else if t0 == TOPIC_BURN_V2.as_ref() || t0 == TOPIC_BURN_V3.as_ref() {
+                entry.pool_removes = entry.pool_removes.saturating_add(1);
+            } else if t0 == TOPIC_MODIFY_LIQUIDITY_V4.as_ref() && log.data.len() >= 96 {
+                // liquidityDelta is the 3rd ABI word (int256 at bytes 64..96).
+                // Negative if the high bit (byte 64) is set.
+                if log.data[64] & 0x80 != 0 {
+                    entry.pool_removes = entry.pool_removes.saturating_add(1);
+                } else {
+                    entry.pool_adds = entry.pool_adds.saturating_add(1);
+                }
+            }
+
+            // Lending direction tracking: supply/repay = inflow, withdraw/borrow = outflow.
+            if t0 == TOPIC_SUPPLY_AAVE.as_ref()
+                || t0 == TOPIC_REPAY_AAVE.as_ref()
+                || t0 == TOPIC_SUPPLY_COMPOUND.as_ref()
+                || t0 == TOPIC_SUPPLY_COLLATERAL_COMPOUND.as_ref()
+                || t0 == TOPIC_SUPPLY_MORPHO.as_ref()
+                || t0 == TOPIC_REPAY_MORPHO.as_ref()
+                || t0 == TOPIC_SUPPLY_COLLATERAL_MORPHO.as_ref()
+            {
+                entry.lend_supply = entry.lend_supply.saturating_add(1);
+            } else if t0 == TOPIC_WITHDRAW_AAVE.as_ref()
+                || t0 == TOPIC_BORROW_AAVE.as_ref()
+                || t0 == TOPIC_WITHDRAW_COMPOUND.as_ref()
+                || t0 == TOPIC_WITHDRAW_COLLATERAL_COMPOUND.as_ref()
+                || t0 == TOPIC_WITHDRAW_MORPHO.as_ref()
+                || t0 == TOPIC_BORROW_MORPHO.as_ref()
+                || t0 == TOPIC_WITHDRAW_COLLATERAL_MORPHO.as_ref()
+            {
+                entry.lend_withdraw = entry.lend_withdraw.saturating_add(1);
+            }
+
+            // Bridge direction tracking: finalized = inflow, initiated = outflow.
+            if t0 == TOPIC_ETH_BRIDGE_FINALIZED.as_ref()
+                || t0 == TOPIC_ERC20_BRIDGE_FINALIZED.as_ref()
+            {
+                entry.bridge_in = entry.bridge_in.saturating_add(1);
+            } else if t0 == TOPIC_ETH_BRIDGE_INITIATED.as_ref()
+                || t0 == TOPIC_ERC20_BRIDGE_INITIATED.as_ref()
+            {
+                entry.bridge_out = entry.bridge_out.saturating_add(1);
+            }
+
+            // Volume tracking: USDC and WETH Transfer events through swap pools.
+            if t0 == TOPIC_ERC20_TRANSFER.as_ref() && log.data.len() >= 32 {
+                let addr = log.address.as_slice();
+                let is_usdc = addr == USDC_ADDRESS.as_ref();
+                let is_weth = addr == WETH_ADDRESS.as_ref();
+
+                if is_usdc || is_weth {
+                    let amount = decode_uint256(&log.data);
+
+                    if is_usdc {
+                        entry.usdc_volume = entry.usdc_volume.saturating_add(amount);
+                    }
+
+                    // Check if the sender or receiver is a swap pool.
+                    if log.topics.len() >= 3 {
+                        let from = &log.topics[1].as_slice()[12..];
+                        let to = &log.topics[2].as_slice()[12..];
+                        if swap_pools.iter().any(|&p| p == from || p == to) {
+                            if is_usdc {
+                                entry.swap_volume = entry.swap_volume.saturating_add(amount);
+                            } else {
+                                entry.weth_swap_volume =
+                                    entry.weth_swap_volume.saturating_add(amount);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Update per-group rolling maxima.
+        let totals = self.window_totals();
+        for (max, &total) in self.rolling_max.iter_mut().zip(totals.iter()) {
+            if total > *max {
+                *max = total;
+            }
+        }
+    }
+
+    /// Returns the total USDC transfer volume across the window in raw units (6 decimals).
+    pub(crate) fn usdc_window_total(&self) -> u128 {
+        self.window.iter().map(|e| e.usdc_volume).fold(0u128, u128::saturating_add)
+    }
+
+    /// Returns the USDC swap volume across the window in raw units (6 decimals).
+    ///
+    /// Only counts USDC transfers where the sender or receiver also emitted
+    /// a Swap event in the same flashblock.
+    pub(crate) fn swap_window_total(&self) -> u128 {
+        self.window.iter().map(|e| e.swap_volume).fold(0u128, u128::saturating_add)
+    }
+
+    /// Returns the WETH swap volume across the window in raw units (18 decimals).
+    pub(crate) fn weth_swap_window_total(&self) -> u128 {
+        self.window.iter().map(|e| e.weth_swap_volume).fold(0u128, u128::saturating_add)
+    }
+
+    /// Returns the net pool liquidity events across the window (adds - removes).
+    pub(crate) fn pool_net_total(&self) -> i64 {
+        self.window.iter().map(|e| e.pool_adds as i64 - e.pool_removes as i64).sum()
+    }
+
+    /// Returns the net lending flow across the window (supply/repay - withdraw/borrow).
+    pub(crate) fn lend_net_total(&self) -> i64 {
+        self.window.iter().map(|e| e.lend_supply as i64 - e.lend_withdraw as i64).sum()
+    }
+
+    /// Returns the net bridge flow across the window (inflows - outflows).
+    pub(crate) fn bridge_net_total(&self) -> i64 {
+        self.window.iter().map(|e| e.bridge_in as i64 - e.bridge_out as i64).sum()
+    }
+}
+
+// =============================================================================
+// Activity Bar Rendering
+// =============================================================================
+
+pub(crate) const ACTIVITY_LABEL_CHARS: usize = 5;
+pub(crate) const ACTIVITY_COUNT_CHARS: usize = 5;
+/// Block element characters ordered by ascending fill height (1/8 through 8/8).
+const SPARK_BLOCKS: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+
+/// Minimum sparkline width (chars) for a compact segment to be useful.
+const SPARKLINE_MIN_WIDTH: usize = 10;
+
+/// Minimum total segment width (label + sparkline + count).
+const SPARKLINE_MIN_SEGMENT: usize =
+    ACTIVITY_LABEL_CHARS + ACTIVITY_COUNT_CHARS + SPARKLINE_MIN_WIDTH;
+
+/// Formats a USDC rate (raw units / second) as a compact dollar-per-second string.
+fn format_usdc_rate(raw_per_sec: f64) -> String {
+    if raw_per_sec >= 1_000_000.0 {
+        format!("${:.1}M/s", raw_per_sec / 1_000_000.0)
+    } else if raw_per_sec >= 1_000.0 {
+        format!("${:.0}K/s", raw_per_sec / 1_000.0)
+    } else {
+        format!("${raw_per_sec:.0}/s")
+    }
+}
+
+/// Formats an ETH rate (raw 18-decimal units / second) as a compact string.
+fn format_eth_rate(raw_per_sec: f64) -> String {
+    if raw_per_sec >= 1_000.0 {
+        format!("{:.0}K/s", raw_per_sec / 1_000.0)
+    } else if raw_per_sec >= 1.0 {
+        format!("{raw_per_sec:.1}/s")
+    } else if raw_per_sec >= 0.001 {
+        format!("{raw_per_sec:.3}/s")
+    } else {
+        "0/s".to_string()
+    }
+}
+
+/// Formats a signed net rate as a colored string.
+fn format_net_rate(total: i64, secs: f64) -> (String, Color) {
+    let rate = total as f64 / secs;
+    if rate > 0.0 {
+        (format!("+{rate:.1}/s"), Color::Green)
+    } else if rate < 0.0 {
+        (format!("{rate:.1}/s"), Color::Red)
+    } else {
+        ("0/s".to_string(), Color::DarkGray)
+    }
+}
+
+/// Number of rows used by the volume/net stats header.
+pub(crate) const VOLUME_STATS_ROWS: u16 = 2;
+
+pub(crate) fn build_volume_lines(
+    state: &ActivityBarState,
+    window_secs: Option<f64>,
+) -> [Option<Line<'static>>; VOLUME_STATS_ROWS as usize] {
+    let Some(secs) = window_secs.filter(|&s| s > 0.0) else {
+        return [None, None];
+    };
+
+    let sep = Span::styled("  │  ", Style::default().fg(Color::DarkGray));
+
+    // Row 1: volume rates.
+    let usdc_total = state.usdc_window_total();
+    let swap_total = state.swap_window_total();
+    let weth_swap_total = state.weth_swap_window_total();
+
+    let vol_line = if usdc_total > 0 || swap_total > 0 || weth_swap_total > 0 {
+        let mut spans: Vec<Span<'static>> = Vec::new();
+
+        let usdc_dollars_per_sec = usdc_total as f64 / secs / 1_000_000.0;
+        spans.push(Span::styled(" USDC xfer: ", Style::default().fg(Color::DarkGray)));
+        spans.push(Span::styled(
+            format_usdc_rate(usdc_dollars_per_sec),
+            Style::default().fg(Color::Rgb(0, 200, 150)),
+        ));
+
+        spans.push(sep.clone());
+
+        let swap_dollars_per_sec = swap_total as f64 / secs / 1_000_000.0;
+        spans.push(Span::styled("Swap $: ", Style::default().fg(Color::DarkGray)));
+        spans.push(Span::styled(
+            format_usdc_rate(swap_dollars_per_sec),
+            Style::default().fg(Color::Rgb(0, 150, 255)),
+        ));
+
+        spans.push(sep.clone());
+
+        let weth_eth_per_sec = weth_swap_total as f64 / secs / 1e18;
+        spans.push(Span::styled("Swap ETH: ", Style::default().fg(Color::DarkGray)));
+        spans.push(Span::styled(
+            format_eth_rate(weth_eth_per_sec),
+            Style::default().fg(Color::Rgb(180, 100, 255)),
+        ));
+
+        Some(Line::from(spans))
+    } else {
+        None
+    };
+
+    // Row 2: net directional stats.
+    let pool_net = state.pool_net_total();
+    let lend_net = state.lend_net_total();
+    let bridge_net = state.bridge_net_total();
+
+    let net_line = if pool_net != 0 || lend_net != 0 || bridge_net != 0 {
+        let mut spans: Vec<Span<'static>> = Vec::new();
+
+        let (net_pool_str, net_pool_color) = format_net_rate(pool_net, secs);
+        spans.push(Span::styled(" Net Pool: ", Style::default().fg(Color::DarkGray)));
+        spans.push(Span::styled(net_pool_str, Style::default().fg(net_pool_color)));
+
+        spans.push(sep.clone());
+
+        let (net_lend_str, net_lend_color) = format_net_rate(lend_net, secs);
+        spans.push(Span::styled("Net Lend: ", Style::default().fg(Color::DarkGray)));
+        spans.push(Span::styled(net_lend_str, Style::default().fg(net_lend_color)));
+
+        spans.push(sep);
+
+        let (net_bridge_str, net_bridge_color) = format_net_rate(bridge_net, secs);
+        spans.push(Span::styled("Net Brdg: ", Style::default().fg(Color::DarkGray)));
+        spans.push(Span::styled(net_bridge_str, Style::default().fg(net_bridge_color)));
+
+        Some(Line::from(spans))
+    } else {
+        None
+    };
+
+    [vol_line, net_line]
+}
+
+/// Returns the maximum number of sparkline segments that fit in the given width.
+const fn max_sparklines_per_row(available_width: usize) -> usize {
+    if available_width < SPARKLINE_MIN_SEGMENT {
+        return 1;
+    }
+    // Each segment needs SPARKLINE_MIN_SEGMENT chars + 1 separator (except the first).
+    (available_width + 1) / (SPARKLINE_MIN_SEGMENT + 1)
+}
+
+/// Computes a balanced number of sparklines per row so rows are evenly filled.
+fn balanced_sparklines_per_row(active_count: usize, available_width: usize) -> usize {
+    let max_per = max_sparklines_per_row(available_width).max(1);
+    let num_rows = active_count.div_ceil(max_per);
+    active_count.div_ceil(num_rows)
+}
+
+/// Computes the total height needed for the compact activity bar.
+///
+/// Packs multiple sparkline segments per row. Returns 0 if no groups are active.
+pub(crate) fn activity_bar_height(state: &ActivityBarState, available_width: u16) -> u16 {
+    let active_group_count = EVENT_GROUP_DEFS.iter().filter(|g| state.group_active(g)).count();
+    if active_group_count == 0 {
+        return 0;
+    }
+    let inner_width = available_width.saturating_sub(2) as usize; // borders
+    let per_row = balanced_sparklines_per_row(active_group_count, inner_width);
+    let segment_rows = active_group_count.div_ceil(per_row);
+    // 2 (border) + VOLUME_STATS_ROWS + segment_rows
+    2 + VOLUME_STATS_ROWS + segment_rows as u16
+}
+
+/// Renders the compact event activity bar into `area`.
+///
+/// Layout (top to bottom inside the border):
+/// 1. Volume stats lines (USDC transfer rate, swap volume, net stats)
+/// 2. Sparkline segments packed multiple-per-row with `│` separators
+///
+/// `window_secs` is the time span (in seconds) covered by the current window,
+/// used to compute volume rates. Pass `None` if timestamps are unavailable.
+pub(crate) fn render_activity_bar(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    state: &ActivityBarState,
+    window_secs: Option<f64>,
+) {
+    let border_block = Block::default()
+        .title(" Activity [f] ")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(COLOR_ACTIVE_BORDER));
+
+    let inner = border_block.inner(area);
+    frame.render_widget(border_block, area);
+
+    if inner.width == 0 || inner.height == 0 {
+        return;
+    }
+
+    // Rows 0..1: volume/net stats lines.
+    let vol_lines = build_volume_lines(state, window_secs);
+    for (row, line) in vol_lines.iter().enumerate() {
+        let y = inner.y + row as u16;
+        if y >= inner.y + inner.height {
+            return;
+        }
+        if let Some(line) = line {
+            frame.render_widget(
+                Paragraph::new(line.clone()),
+                Rect { x: inner.x, y, width: inner.width, height: 1 },
+            );
+        }
+    }
+
+    let active_group_indices: Vec<usize> =
+        (0..EVENT_GROUP_COUNT).filter(|&i| state.group_active(&EVENT_GROUP_DEFS[i])).collect();
+
+    if active_group_indices.is_empty() {
+        return;
+    }
+
+    let totals = state.window_totals();
+    let available = inner.width as usize;
+    let per_row = balanced_sparklines_per_row(active_group_indices.len(), available);
+
+    for (row_idx, row_groups) in active_group_indices.chunks(per_row).enumerate() {
+        let y = inner.y + VOLUME_STATS_ROWS + row_idx as u16;
+        if y >= inner.y + inner.height {
+            break;
+        }
+
+        let n = row_groups.len();
+        let separators = n.saturating_sub(1);
+        let total_seg_space = available.saturating_sub(separators);
+        let seg_width = if n > 0 { total_seg_space / n } else { 0 };
+
+        let mut x = inner.x;
+        for (nth, &gi) in row_groups.iter().enumerate() {
+            if nth > 0 {
+                frame.render_widget(
+                    Paragraph::new("│").style(Style::default().fg(Color::DarkGray)),
+                    Rect { x, y, width: 1, height: 1 },
+                );
+                x += 1;
+            }
+
+            let this_seg_width = if nth == n - 1 {
+                available.saturating_sub((x - inner.x) as usize)
+            } else {
+                seg_width
+            };
+
+            if this_seg_width == 0 {
+                break;
+            }
+
+            let spark_width =
+                this_seg_width.saturating_sub(ACTIVITY_LABEL_CHARS + ACTIVITY_COUNT_CHARS);
+            let line = render_sparkline_row(
+                &EVENT_GROUP_DEFS[gi],
+                &state.window,
+                &state.active,
+                totals[gi],
+                spark_width,
+            );
+
+            frame.render_widget(
+                Paragraph::new(line),
+                Rect { x, y, width: this_seg_width as u16, height: 1 },
+            );
+            x += this_seg_width as u16;
+        }
+    }
+}
+
+/// Builds a single sparkline row for one event group.
+///
+/// Each character position maps to one block in the window (oldest left,
+/// newest right). The block element height represents the group-level count
+/// (sum of active sub-filters) relative to the per-group window maximum,
+/// and each character is colored with the corresponding block's palette color.
+pub(crate) fn render_sparkline_row(
+    group: &EventGroupDef,
+    window: &VecDeque<BlockEventCounts>,
+    active: &[bool; SUB_FILTER_TOTAL],
+    window_total: u32,
+    spark_width: usize,
+) -> Line<'static> {
+    let mut spans: Vec<Span<'static>> = Vec::new();
+
+    // Label (fixed width, right-padded).
+    spans.push(Span::styled(
+        format!("{:<ACTIVITY_LABEL_CHARS$}", group.short_label),
+        Style::default().fg(Color::DarkGray),
+    ));
+
+    // Per-group maximum count across the window for normalization.
+    let max_count =
+        window.iter().map(|e| ActivityBarState::group_count(e, group, active)).max().unwrap_or(0);
+
+    if spark_width > 0 {
+        // Window is stored newest-first; render oldest-left, newest-right.
+        let block_count = window.len();
+        let pad = spark_width.saturating_sub(block_count);
+
+        if pad > 0 {
+            spans.push(Span::raw(" ".repeat(pad)));
+        }
+
+        let visible = block_count.min(spark_width);
+        for entry in window.iter().take(visible).rev() {
+            let count = ActivityBarState::group_count(entry, group, active);
+            if count == 0 || max_count == 0 {
+                spans.push(Span::raw(" "));
+            } else {
+                let ratio = count as f64 / max_count as f64;
+                let level = (ratio * 8.0).ceil() as usize;
+                let ch = SPARK_BLOCKS[level.clamp(1, 8) - 1];
+                let brightness = 0.3 + ratio * 0.7;
+                let color = dim_color(block_color(entry.block_number), brightness);
+                spans.push(Span::styled(ch.to_string(), Style::default().fg(color)));
+            }
+        }
+
+        let rendered = pad + visible;
+        if rendered < spark_width {
+            spans.push(Span::raw(" ".repeat(spark_width - rendered)));
+        }
+    }
+
+    // Absolute count (fixed width).
+    let count_str = if window_total >= 1_000_000 {
+        format!("{:>4.1}m", window_total as f64 / 1_000_000.0)
+    } else if window_total >= 10_000 {
+        format!("{:>4}k", window_total / 1000)
+    } else {
+        format!("{window_total:>ACTIVITY_COUNT_CHARS$}")
+    };
+    spans.push(Span::styled(count_str, Style::default().fg(group.color)));
+
+    Line::from(spans)
+}
+
+// =============================================================================
+// Event Filter Menu
+// =============================================================================
+
+/// Maps a flat cursor position to a `(group_idx, Option<sub_idx>)` pair.
+///
+/// Group headers return `(group_idx, None)`. Sub-filter rows return `(group_idx, Some(sub_idx))`.
+pub(crate) fn cursor_to_filter(cursor: usize) -> (usize, Option<usize>) {
+    let mut pos = 0;
+    for (gi, group) in EVENT_GROUP_DEFS.iter().enumerate() {
+        if pos == cursor {
+            return (gi, None); // group header
+        }
+        pos += 1;
+        for si in 0..group.sub_filters.len() {
+            if pos == cursor {
+                return (gi, Some(si));
+            }
+            pos += 1;
+        }
+    }
+    // Fallback (should not happen with valid cursor)
+    (0, None)
+}
+
+/// Renders the hierarchical event filter selection popup centered in `area`.
+///
+/// Shows a tree of groups and sub-filters; the row at `cursor` is highlighted.
+pub(crate) fn render_filter_menu(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    active: &[bool; SUB_FILTER_TOTAL],
+    cursor: usize,
+) {
+    use ratatui::widgets::Clear;
+
+    let popup_width: u16 = 38;
+    let popup_height: u16 = FILTER_MENU_ITEMS as u16 + 4;
+
+    let x = area.x + area.width.saturating_sub(popup_width) / 2;
+    let y = area.y + area.height.saturating_sub(popup_height) / 2;
+    let popup_area = Rect { x, y, width: popup_width.min(area.width), height: popup_height };
+
+    frame.render_widget(Clear, popup_area);
+
+    let border_block = Block::default()
+        .title(" Event Filters ")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(COLOR_ACTIVE_BORDER));
+
+    let inner = border_block.inner(popup_area);
+    frame.render_widget(border_block, popup_area);
+
+    let mut row_idx = 0u16;
+    let mut flat_pos = 0usize;
+
+    for group in &EVENT_GROUP_DEFS {
+        let range = group.sub_offset..group.sub_offset + group.sub_filters.len();
+        let all_on = active[range.clone()].iter().all(|&a| a);
+        let any_on = active[range].iter().any(|&a| a);
+
+        // Group header row.
+        let row_area = Rect { x: inner.x, y: inner.y + row_idx, width: inner.width, height: 1 };
+        let check = if all_on {
+            "[x]"
+        } else if any_on {
+            "[-]"
+        } else {
+            "[ ]"
+        };
+        let row_style = if flat_pos == cursor {
+            Style::default().bg(COLOR_ROW_SELECTED)
+        } else {
+            Style::default()
+        };
+        let label_style = Style::default().fg(group.color).add_modifier(Modifier::BOLD);
+        let line = Line::from(vec![
+            Span::styled(format!("{check} "), row_style),
+            Span::styled(group.label, row_style.patch(label_style)),
+        ]);
+        frame.render_widget(Paragraph::new(line).style(row_style), row_area);
+        row_idx += 1;
+        flat_pos += 1;
+
+        // Sub-filter rows.
+        for (si, sf) in group.sub_filters.iter().enumerate() {
+            let idx = group.sub_offset + si;
+            let sf_area = Rect { x: inner.x, y: inner.y + row_idx, width: inner.width, height: 1 };
+            let sf_check = if active[idx] { "[x]" } else { "[ ]" };
+            let sf_row_style = if flat_pos == cursor {
+                Style::default().bg(COLOR_ROW_SELECTED)
+            } else {
+                Style::default()
+            };
+            let sf_label_style = Style::default().fg(group.color);
+            let sf_line = Line::from(vec![
+                Span::styled(format!("  {sf_check} "), sf_row_style),
+                Span::styled(sf.label, sf_row_style.patch(sf_label_style)),
+            ]);
+            frame.render_widget(Paragraph::new(sf_line).style(sf_row_style), sf_area);
+            row_idx += 1;
+            flat_pos += 1;
+        }
+    }
+
+    let footer_area =
+        Rect { x: inner.x, y: inner.y + FILTER_MENU_ITEMS as u16, width: inner.width, height: 1 };
+    let footer =
+        Paragraph::new("Space: toggle │ f/Esc: close").style(Style::default().fg(Color::DarkGray));
+    frame.render_widget(footer, footer_area);
 }

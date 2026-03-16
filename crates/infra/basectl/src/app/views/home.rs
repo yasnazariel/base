@@ -46,6 +46,12 @@ const MENU_ITEMS: &[MenuItem] = &[
         view_id: Some(ViewId::DaMonitor),
     },
     MenuItem {
+        key: 'e',
+        label: "DeFi Activity",
+        description: "Expanded DeFi event activity monitor",
+        view_id: Some(ViewId::DefiActivity),
+    },
+    MenuItem {
         key: 'f',
         label: "Flashblocks",
         description: "Subscribe to flashblocks stream",
@@ -58,6 +64,7 @@ const KEYBINDINGS: &[Keybinding] = &[
     Keybinding { key: "a", description: "Command Center" },
     Keybinding { key: "c", description: "Config" },
     Keybinding { key: "d", description: "DA Monitor" },
+    Keybinding { key: "e", description: "DeFi Activity" },
     Keybinding { key: "f", description: "Flashblocks" },
     Keybinding { key: "j/k", description: "Navigate" },
     Keybinding { key: "Enter", description: "Select" },
@@ -87,6 +94,7 @@ impl View for HomeView {
             KeyCode::Char('a') => Action::SwitchView(ViewId::CommandCenter),
             KeyCode::Char('c') => Action::SwitchView(ViewId::Config),
             KeyCode::Char('d') => Action::SwitchView(ViewId::DaMonitor),
+            KeyCode::Char('e') => Action::SwitchView(ViewId::DefiActivity),
             KeyCode::Char('f') => Action::SwitchView(ViewId::Flashblocks),
             KeyCode::Up | KeyCode::Char('k') => {
                 self.selected_index = self.selected_index.saturating_sub(1);

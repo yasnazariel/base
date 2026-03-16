@@ -12,10 +12,11 @@ use crate::{
     app::{Action, Resources, View},
     commands::common::{
         COLOR_BASE_BLUE, COLOR_BURN, COLOR_GROWTH, COLOR_ROW_HIGHLIGHTED, COLOR_ROW_SELECTED,
-        L1_BLOCK_WINDOW, L1BlockFilter, L1BlocksTableParams, RATE_WINDOW_2M, backlog_size_color,
-        block_color, block_color_bright, build_gas_bar, format_bytes, format_duration, format_gwei,
-        format_rate, render_da_backlog_bar, render_gas_usage_bar, render_l1_blocks_table,
-        target_usage_color, time_diff_color, truncate_block_number,
+        EVENT_GROUP_DEFS, FILTER_MENU_ITEMS, L1_BLOCK_WINDOW, L1BlockFilter, L1BlocksTableParams,
+        RATE_WINDOW_2M, activity_bar_height, backlog_size_color, block_color, block_color_bright,
+        build_gas_bar, cursor_to_filter, format_bytes, format_duration, format_gwei, format_rate,
+        render_activity_bar, render_da_backlog_bar, render_filter_menu, render_gas_usage_bar,
+        render_l1_blocks_table, target_usage_color, time_diff_color, truncate_block_number,
     },
     tui::{Keybinding, Toast},
 };
@@ -28,7 +29,7 @@ const KEYBINDINGS: &[Keybinding] = &[
     Keybinding { key: "g/G", description: "Top/Bottom" },
     Keybinding { key: "Space", description: "Pause flashblocks" },
     Keybinding { key: "y", description: "Copy block number" },
-    Keybinding { key: "f", description: "Filter L1 blocks" },
+    Keybinding { key: "f", description: "Event filters" },
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -46,7 +47,8 @@ pub(crate) struct CommandCenterView {
     flash_table_state: TableState,
     l1_table_state: TableState,
     highlighted_block: Option<u64>,
-    l1_filter: L1BlockFilter,
+    filter_menu_open: bool,
+    filter_menu_cursor: usize,
 }
 
 impl Default for CommandCenterView {
@@ -70,7 +72,8 @@ impl CommandCenterView {
             flash_table_state,
             l1_table_state,
             highlighted_block: None,
-            l1_filter: L1BlockFilter::All,
+            filter_menu_open: false,
+            filter_menu_cursor: 0,
         }
     }
 
@@ -130,7 +133,7 @@ impl CommandCenterView {
             Panel::L1Blocks => resources
                 .da
                 .tracker
-                .filtered_l1_blocks(self.l1_filter)
+                .filtered_l1_blocks(L1BlockFilter::All)
                 .nth(row)
                 .map(|b| b.block_number.to_string()),
         }
@@ -143,7 +146,42 @@ impl View for CommandCenterView {
     }
 
     fn handle_key(&mut self, key: KeyEvent, resources: &mut Resources) -> Action {
+        if self.filter_menu_open {
+            match key.code {
+                KeyCode::Up | KeyCode::Char('k') => {
+                    if self.filter_menu_cursor > 0 {
+                        self.filter_menu_cursor -= 1;
+                    }
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    if self.filter_menu_cursor + 1 < FILTER_MENU_ITEMS {
+                        self.filter_menu_cursor += 1;
+                    }
+                }
+                KeyCode::Char(' ') => {
+                    let (group_idx, sub_idx) = cursor_to_filter(self.filter_menu_cursor);
+                    match sub_idx {
+                        None => resources.flash.activity.toggle_group(group_idx),
+                        Some(si) => {
+                            let idx = EVENT_GROUP_DEFS[group_idx].sub_offset + si;
+                            let active = &mut resources.flash.activity.active;
+                            active[idx] = !active[idx];
+                        }
+                    }
+                }
+                KeyCode::Char('f') | KeyCode::Esc => {
+                    self.filter_menu_open = false;
+                }
+                _ => {}
+            }
+            return Action::None;
+        }
+
         match key.code {
+            KeyCode::Char('f') => {
+                self.filter_menu_open = true;
+                Action::None
+            }
             KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') => {
                 self.next_panel();
                 self.update_highlighted_block(resources);
@@ -167,11 +205,6 @@ impl View for CommandCenterView {
             KeyCode::Char('3') => {
                 self.focused_panel = Panel::L1Blocks;
                 self.update_highlighted_block(resources);
-                Action::None
-            }
-            KeyCode::Char('f') => {
-                self.l1_filter = self.l1_filter.next();
-                self.l1_table_state.select(Some(0));
                 Action::None
             }
             KeyCode::Char(' ') => {
@@ -207,7 +240,7 @@ impl View for CommandCenterView {
                         resources
                             .da
                             .tracker
-                            .filtered_l1_blocks(self.l1_filter)
+                            .filtered_l1_blocks(L1BlockFilter::All)
                             .count()
                             .saturating_sub(1),
                     ),
@@ -230,7 +263,7 @@ impl View for CommandCenterView {
                     Panel::Flashblocks => resources.flash.entries.len(),
                     Panel::Da => resources.da.tracker.block_contributions.len(),
                     Panel::L1Blocks => {
-                        resources.da.tracker.filtered_l1_blocks(self.l1_filter).count()
+                        resources.da.tracker.filtered_l1_blocks(L1BlockFilter::All).count()
                     }
                 }
                 .saturating_sub(1);
@@ -260,6 +293,8 @@ impl View for CommandCenterView {
     }
 
     fn render(&mut self, frame: &mut Frame<'_>, area: Rect, resources: &Resources) {
+        let activity_height = activity_bar_height(&resources.flash.activity, area.width);
+
         let main_chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -267,6 +302,7 @@ impl View for CommandCenterView {
                 Constraint::Length(3),
                 Constraint::Length(5),
                 Constraint::Min(0),
+                Constraint::Length(activity_height),
             ])
             .split(area);
 
@@ -326,14 +362,28 @@ impl View for CommandCenterView {
             frame,
             panel_chunks[2],
             L1BlocksTableParams {
-                l1_blocks: resources.da.tracker.filtered_l1_blocks(self.l1_filter),
+                l1_blocks: resources.da.tracker.filtered_l1_blocks(L1BlockFilter::All),
                 is_active: self.focused_panel == Panel::L1Blocks,
                 table_state: &mut self.l1_table_state,
-                filter: self.l1_filter,
+                filter: L1BlockFilter::All,
                 title: "L1 Blocks",
                 connection_mode: resources.da.l1_connection_mode,
             },
         );
+
+        if activity_height > 0 {
+            let window_secs = resources.flash.window_duration_secs();
+            render_activity_bar(frame, main_chunks[4], &resources.flash.activity, window_secs);
+        }
+
+        if self.filter_menu_open {
+            render_filter_menu(
+                frame,
+                area,
+                &resources.flash.activity.active,
+                self.filter_menu_cursor,
+            );
+        }
     }
 }
 
