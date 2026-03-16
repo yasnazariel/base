@@ -19,7 +19,7 @@ pub struct OpTxResult<H> {
 
 impl<H: Clone> OpTxResult<H> {
     /// Returns a reference to the [`ResultAndState`].
-    pub fn result(&self) -> &ResultAndState<H> {
+    pub const fn result(&self) -> &ResultAndState<H> {
         &self.result
     }
 }

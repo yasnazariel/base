@@ -3,7 +3,7 @@ use alloc::{borrow::Cow, boxed::Box, vec::Vec};
 use alloy_consensus::{Eip658Value, Header, Transaction, TxReceipt};
 use alloy_eips::{Encodable2718, Typed2718};
 use alloy_evm::{
-    Database, Evm, FromRecoveredTx, FromTxWithEncoded, RecoveredTx,
+    Database, Evm, FromRecoveredTx, FromTxWithEncoded,
     block::{
         BlockExecutionError, BlockExecutionResult, BlockExecutor, BlockValidationError,
         ExecutableTx, OnStateHook, StateChangePostBlockSource, StateChangeSource, StateDB,
@@ -88,11 +88,14 @@ where
         tx: &impl ExecutableTx<Self>,
     ) -> Result<u64, BlockExecutionError> {
         // Try to use the enveloped tx if it exists, otherwise use the encoded 2718 bytes
-        let encoded = match tx.to_tx_env().encoded_bytes() {
-            Some(encoded) => estimate_tx_compressed_size(encoded),
-            None => estimate_tx_compressed_size(tx.tx().encoded_2718().as_ref()),
-        }
-        .saturating_div(1_000_000);
+        let encoded = tx
+            .to_tx_env()
+            .encoded_bytes()
+            .map_or_else(
+                || estimate_tx_compressed_size(tx.tx().encoded_2718().as_ref()),
+                |encoded| estimate_tx_compressed_size(encoded),
+            )
+            .saturating_div(1_000_000);
 
         // Load the L1 block contract into the cache. If the L1 block contract is not pre-loaded the
         // database will panic when trying to fetch the DA footprint gas scalar.
@@ -227,6 +230,7 @@ where
             }) {
                 Ok(receipt) => receipt,
                 Err(ctx) => {
+                    let ctx = *ctx;
                     let receipt = alloy_consensus::Receipt {
                         // Success flag was added in `EIP-658: Embedding transaction status code
                         // in receipts`.

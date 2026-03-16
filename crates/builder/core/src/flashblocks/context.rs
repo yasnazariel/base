@@ -338,6 +338,7 @@ impl OpPayloadBuilderCtx {
         match receipt_builder.build_receipt(ctx) {
             Ok(receipt) => receipt,
             Err(ctx) => {
+                let ctx = *ctx;
                 let receipt = alloy_consensus::Receipt {
                     // Success flag was added in `EIP-658: Embedding transaction status code
                     // in receipts`.

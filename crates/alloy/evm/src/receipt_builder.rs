@@ -1,6 +1,7 @@
 //! Abstraction over receipt building logic to allow plugging different primitive types into
 //! [`super::OpBlockExecutor`].
 
+use alloc::boxed::Box;
 use core::fmt::Debug;
 
 use alloy_consensus::Eip658Value;
@@ -22,7 +23,7 @@ pub trait OpReceiptBuilder: Debug {
     fn build_receipt<'a, E: Evm>(
         &self,
         ctx: ReceiptBuilderCtx<'a, Self::Transaction, E>,
-    ) -> Result<Self::Receipt, ReceiptBuilderCtx<'a, Self::Transaction, E>>;
+    ) -> Result<Self::Receipt, Box<ReceiptBuilderCtx<'a, Self::Transaction, E>>>;
 
     /// Builds receipt for a deposit transaction.
     fn build_deposit_receipt(&self, inner: OpDepositReceipt) -> Self::Receipt;
@@ -40,9 +41,9 @@ impl OpReceiptBuilder for OpAlloyReceiptBuilder {
     fn build_receipt<'a, E: Evm>(
         &self,
         ctx: ReceiptBuilderCtx<'a, OpTxEnvelope, E>,
-    ) -> Result<Self::Receipt, ReceiptBuilderCtx<'a, OpTxEnvelope, E>> {
+    ) -> Result<Self::Receipt, Box<ReceiptBuilderCtx<'a, OpTxEnvelope, E>>> {
         match ctx.tx.tx_type() {
-            OpTxType::Deposit => Err(ctx),
+            OpTxType::Deposit => Err(Box::new(ctx)),
             ty => {
                 let receipt = alloy_consensus::Receipt {
                     status: Eip658Value::Eip658(ctx.result.is_success()),
