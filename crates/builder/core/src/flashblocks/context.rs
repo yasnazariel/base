@@ -78,48 +78,16 @@ pub struct FlashblocksExtraCtx {
     pub flashblock_index: u64,
     /// Target flashblock count per block
     pub target_flashblock_count: u64,
-    /// Total gas left for the current flashblock
-    pub target_gas_for_batch: u64,
-    /// Total DA bytes left for the current flashblock
-    pub target_da_for_batch: Option<u64>,
-    /// Total DA footprint left for the current flashblock
-    pub target_da_footprint_for_batch: Option<u64>,
     /// Target execution time for the current flashblock in microseconds
     pub target_execution_time_for_batch_us: Option<u128>,
-    /// Target state root time for the current flashblock in microseconds
-    pub target_state_root_time_for_batch_us: Option<u128>,
-    /// Gas limit per flashblock
-    pub gas_per_batch: u64,
-    /// DA bytes limit per flashblock
-    pub da_per_batch: Option<u64>,
-    /// DA footprint limit per flashblock
-    pub da_footprint_per_batch: Option<u64>,
-    /// Execution time limit per flashblock in microseconds
-    pub execution_time_per_batch_us: Option<u128>,
-    /// State root time limit per flashblock in microseconds
-    pub state_root_time_per_batch_us: Option<u128>,
 }
 
 impl FlashblocksExtraCtx {
-    /// Creates the next flashblock context with updated gas and DA targets.
-    ///
-    /// Increments the flashblock index and sets new target limits for the
-    /// next flashblock batch iteration.
-    pub const fn next(
-        self,
-        target_gas_for_batch: u64,
-        target_da_for_batch: Option<u64>,
-        target_da_footprint_for_batch: Option<u64>,
-        target_execution_time_for_batch_us: Option<u128>,
-        target_state_root_time_for_batch_us: Option<u128>,
-    ) -> Self {
+    /// Creates the next flashblock context with an incremented index.
+    pub const fn next(self, target_execution_time_for_batch_us: Option<u128>) -> Self {
         Self {
             flashblock_index: self.flashblock_index + 1,
-            target_gas_for_batch,
-            target_da_for_batch,
-            target_da_footprint_for_batch,
             target_execution_time_for_batch_us,
-            target_state_root_time_for_batch_us,
             ..self
         }
     }

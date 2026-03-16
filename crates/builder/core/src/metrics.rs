@@ -88,8 +88,6 @@ pub struct BuilderMetrics {
     pub reduced_flashblocks_number: Histogram,
     /// How much less flashblocks we issued in reality, comparing to calculated number for block
     pub missing_flashblocks_count: Histogram,
-    /// How much time we have deducted from block building time
-    pub flashblocks_time_drift: Histogram,
     /// Time offset we used for first flashblock
     pub first_flashblock_time_offset: Histogram,
     /// Count of the number of times transactions had metering information

@@ -1,8 +1,7 @@
 use core::time::Duration;
 use std::{
-    ops::{Div, Rem},
     sync::Arc,
-    time::Instant,
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 use alloy_consensus::{
@@ -49,12 +48,11 @@ use tracing::{debug, error, info, metadata::Level, span, warn};
 use crate::{
     BuilderConfig, ExecutionInfo, PayloadBuilder, ResourceLimits,
     flashblocks::{
-        FlashblocksExtraCtx,
+        FlashblockSchedule, FlashblocksExtraCtx,
         best_txs::BestFlashblocksTxs,
         context::OpPayloadBuilderCtx,
         generator::{BlockCell, BuildArguments},
     },
-    metrics::BuilderMetrics,
     traits::{ClientBounds, PoolBounds},
 };
 
@@ -70,6 +68,8 @@ type NextBestFlashblocksTxs<Pool> = BestFlashblocksTxs<
             >,
     >,
 >;
+
+const SPAN_SAMPLING_RATIO: u64 = 100;
 
 /// Execution information specific to flashblocks.
 ///
@@ -101,8 +101,6 @@ pub(super) struct OpPayloadBuilder<Pool, Client> {
     pub ws_pub: Arc<WebSocketPublisher>,
     /// System configuration for the builder
     pub config: BuilderConfig,
-    /// The metrics for the builder
-    pub metrics: Arc<BuilderMetrics>,
 }
 
 impl<Pool, Client> OpPayloadBuilder<Pool, Client> {
@@ -114,9 +112,8 @@ impl<Pool, Client> OpPayloadBuilder<Pool, Client> {
         config: BuilderConfig,
         payload_tx: mpsc::Sender<OpBuiltPayload>,
         ws_pub: Arc<WebSocketPublisher>,
-        metrics: Arc<BuilderMetrics>,
     ) -> Self {
-        Self { evm_config, pool, client, payload_tx, ws_pub, config, metrics }
+        Self { evm_config, pool, client, payload_tx, ws_pub, config }
     }
 }
 
@@ -230,8 +227,7 @@ where
             publish_guard,
         } = args;
 
-        // We log only every Nth block based on sampling ratio to reduce usage
-        let span = if config.parent_header.number.is_multiple_of(self.config.sampling_ratio) {
+        let span = if config.parent_header.number.is_multiple_of(SPAN_SAMPLING_RATIO) {
             span!(Level::INFO, "build_payload")
         } else {
             tracing::Span::none()
@@ -239,7 +235,6 @@ where
         let _entered = span.enter();
         span.record("payload_id", config.attributes.payload_attributes.id.to_string());
 
-        let timestamp = config.attributes.timestamp();
         let mut ctx = self
             .get_op_payload_builder_ctx(
                 config,
@@ -264,9 +259,19 @@ where
         ctx.metrics.sequencer_tx_duration.record(sequencer_tx_time);
         ctx.metrics.sequencer_tx_gauge.set(sequencer_tx_time);
 
-        // We adjust our flashblocks timings based on time_drift if dynamic adjustment enable
-        let (flashblocks_per_block, first_flashblock_offset) =
-            self.calculate_flashblocks(timestamp);
+        // Compute flashblock schedule from target block timestamp.
+        // Capture the deadline as a single Instant so the same schedule is
+        // used for both the early-exit gate and the main build loop.
+        let timestamp = ctx.attributes().timestamp();
+        let target_time = UNIX_EPOCH + Duration::from_secs(timestamp);
+        let available_time = target_time
+            .duration_since(SystemTime::now())
+            .map_or(Duration::ZERO, |duration| duration.min(self.config.block_time));
+        let deadline = Instant::now() + available_time;
+        let schedule = FlashblockSchedule::new(deadline, self.config.flashblocks_interval);
+        let now = Instant::now();
+        let flashblocks_per_block =
+            if schedule.should_build_next(now) { schedule.remaining_count(now) } else { 0 };
 
         let skip_flashblocks_building = ctx.attributes().no_tx_pool || flashblocks_per_block == 0;
 
@@ -291,13 +296,6 @@ where
             let flashblock_byte_size =
                 self.ws_pub.publish(&fb_payload).map_err(PayloadBuilderError::other)?;
             ctx.metrics.flashblock_byte_size_histogram.record(flashblock_byte_size as f64);
-            ctx.metrics
-                .first_flashblock_time_offset
-                .record(first_flashblock_offset.as_millis() as f64);
-            ctx.metrics
-                .reduced_flashblocks_number
-                .record(self.config.flashblocks_per_block().saturating_sub(flashblocks_per_block)
-                    as f64);
         } else {
             info!(
                 target: "payload_builder",
@@ -332,7 +330,10 @@ where
 
             return Ok(());
         }
-
+        let now = Instant::now();
+        let flashblocks_per_block =
+            if schedule.should_build_next(now) { schedule.remaining_count(now) } else { 0 };
+        let first_flashblock_offset = schedule.interval();
         info!(
             target: "payload_builder",
             message = "Performed flashblocks timing derivation",
@@ -340,34 +341,35 @@ where
             first_flashblock_offset = first_flashblock_offset.as_millis(),
             flashblocks_interval = self.config.flashblocks_interval.as_millis(),
         );
+        ctx.metrics.reduced_flashblocks_number.record(
+            self.config.flashblocks_per_block().saturating_sub(flashblocks_per_block) as f64,
+        );
+        ctx.metrics.first_flashblock_time_offset.record(first_flashblock_offset.as_millis() as f64);
 
-        let gas_per_batch = ctx.block_gas_limit() / flashblocks_per_block;
-        let da_per_batch = ctx
-            .builder_config
-            .da_config
-            .max_da_block_size()
-            .map(|da_limit| da_limit / flashblocks_per_block);
-        let da_footprint_per_batch =
-            info.da_footprint_scalar.map(|_| ctx.block_gas_limit() / flashblocks_per_block);
-        let execution_time_per_batch_us = ctx.builder_config.flashblock_execution_time_budget_us;
-        let state_root_time_per_batch_us = ctx
-            .builder_config
-            .block_state_root_time_budget_us
-            .map(|budget| budget / flashblocks_per_block as u128);
+        // Time may have expired during fallback block build; skip flashblock loop.
+        if flashblocks_per_block == 0 {
+            self.record_flashblocks_metrics(
+                &ctx,
+                &info,
+                flashblocks_per_block,
+                &span,
+                "Time expired during fallback block build, building 0 flashblocks",
+            );
+
+            finalized_cell.set(payload);
+            let total_block_building_time = block_build_start_time.elapsed();
+            ctx.metrics.total_block_built_duration.record(total_block_building_time);
+            ctx.metrics.total_block_built_gauge.set(total_block_building_time);
+
+            return Ok(());
+        }
 
         let extra = FlashblocksExtraCtx {
             flashblock_index: 1,
             target_flashblock_count: flashblocks_per_block,
-            target_gas_for_batch: gas_per_batch,
-            target_da_for_batch: da_per_batch,
-            target_da_footprint_for_batch: da_footprint_per_batch,
-            target_execution_time_for_batch_us: execution_time_per_batch_us,
-            target_state_root_time_for_batch_us: state_root_time_per_batch_us,
-            gas_per_batch,
-            da_per_batch,
-            da_footprint_per_batch,
-            execution_time_per_batch_us,
-            state_root_time_per_batch_us,
+            target_execution_time_for_batch_us: ctx
+                .builder_config
+                .flashblock_execution_time_budget_us,
         };
 
         let mut fb_cancel = block_cancel.child_token();
@@ -455,6 +457,7 @@ where
                     &publish_guard,
                     &fb_span,
                     &mut executed_sender_nonces,
+                    &schedule,
                 )
                 .await
             {
@@ -516,13 +519,30 @@ where
         publish_guard: &parking_lot::Mutex<()>,
         span: &tracing::Span,
         executed_sender_nonces: &mut HashMap<Address, u64>,
+        schedule: &FlashblockSchedule,
     ) -> eyre::Result<Option<FlashblocksExtraCtx>> {
         let flashblock_index = ctx.flashblock_index();
-        let target_gas_for_batch = ctx.extra.target_gas_for_batch;
-        let mut target_da_for_batch = ctx.extra.target_da_for_batch;
-        let mut target_da_footprint_for_batch = ctx.extra.target_da_footprint_for_batch;
-        let mut target_state_root_time_for_batch_us = ctx.extra.target_state_root_time_for_batch_us;
-        let flashblock_execution_time_limit_us = ctx.extra.execution_time_per_batch_us;
+        let now = Instant::now();
+        let remaining_flashblocks = schedule.remaining_count(now).max(1);
+        let remaining_gas = ctx.block_gas_limit().saturating_sub(info.cumulative_gas_used);
+        let target_gas_for_batch =
+            info.cumulative_gas_used + (remaining_gas / remaining_flashblocks);
+        let target_da_for_batch = ctx.builder_config.da_config.max_da_block_size().map(|max| {
+            let remaining_da = max.saturating_sub(info.cumulative_da_bytes_used);
+            info.cumulative_da_bytes_used + (remaining_da / remaining_flashblocks)
+        });
+        let target_da_footprint_for_batch = info.da_footprint_scalar.map(|_| {
+            let remaining_footprint =
+                ctx.block_gas_limit().saturating_sub(info.cumulative_gas_used);
+            info.cumulative_gas_used + (remaining_footprint / remaining_flashblocks)
+        });
+        let target_state_root_time_for_batch_us =
+            ctx.builder_config.block_state_root_time_budget_us.map(|budget| {
+                let remaining_time = budget.saturating_sub(info.cumulative_state_root_time_us);
+                info.cumulative_state_root_time_us
+                    + (remaining_time / remaining_flashblocks as u128)
+            });
+        let flashblock_execution_time_limit_us = ctx.extra.target_execution_time_for_batch_us;
         let block_state_root_time_limit_us = target_state_root_time_for_batch_us;
 
         info!(
@@ -689,39 +709,8 @@ where
                     .flashblock_num_tx_histogram
                     .record(info.executed_transactions.len() as f64);
 
-                // Update bundle_state for next iteration
-                if let Some(da_limit) = ctx.extra.da_per_batch {
-                    if let Some(da) = target_da_for_batch.as_mut() {
-                        *da += da_limit;
-                    } else {
-                        error!(
-                            "Builder end up in faulty invariant, if da_per_batch is set then total_da_per_batch must be set"
-                        );
-                    }
-                }
-
-                let target_gas_for_batch = ctx.extra.target_gas_for_batch + ctx.extra.gas_per_batch;
-
-                if let (Some(footprint), Some(da_footprint_limit)) =
-                    (target_da_footprint_for_batch.as_mut(), ctx.extra.da_footprint_per_batch)
-                {
-                    *footprint += da_footprint_limit;
-                }
-
-                if let (Some(time), Some(time_per_batch)) = (
-                    target_state_root_time_for_batch_us.as_mut(),
-                    ctx.extra.state_root_time_per_batch_us,
-                ) {
-                    *time += time_per_batch;
-                }
-
-                let next_extra = ctx.extra.clone().next(
-                    target_gas_for_batch,
-                    target_da_for_batch,
-                    target_da_footprint_for_batch,
-                    ctx.extra.execution_time_per_batch_us,
-                    target_state_root_time_for_batch_us,
-                );
+                let next_extra =
+                    ctx.extra.clone().next(ctx.extra.target_execution_time_for_batch_us);
 
                 info!(
                     target: "payload_builder",
@@ -803,48 +792,6 @@ where
         finalized_cell.set(final_payload);
 
         Ok(())
-    }
-
-    /// Calculate number of flashblocks, taking time drift into account.
-    pub(super) fn calculate_flashblocks(&self, timestamp: u64) -> (u64, Duration) {
-        // We use this system time to determine remaining time to build a block
-        // Things to consider:
-        // FCU(a) - FCU with attributes
-        // FCU(a) could arrive with `block_time - fb_time < delay`. In this case we could only produce 1 flashblock
-        // FCU(a) could arrive with `delay < fb_time` - in this case we will shrink first flashblock
-        // FCU(a) could arrive with `fb_time < delay < block_time - fb_time` - in this case we will issue less flashblocks
-        let target_time = std::time::SystemTime::UNIX_EPOCH + Duration::from_secs(timestamp)
-            - self.config.flashblocks_leeway_time;
-        let now = std::time::SystemTime::now();
-        let Some(time_drift) =
-            target_time.duration_since(now).ok().filter(|duration| duration.as_millis() > 0)
-        else {
-            // in this case, we have no time to produce any flashblocks
-            return (0, Duration::ZERO);
-        };
-
-        self.metrics.flashblocks_time_drift.record(
-            self.config.block_time.as_millis().saturating_sub(time_drift.as_millis()) as f64,
-        );
-        debug!(
-            target: "payload_builder",
-            message = "Time drift for building round",
-            ?target_time,
-            time_drift = self.config.block_time.as_millis().saturating_sub(time_drift.as_millis()),
-            ?timestamp
-        );
-        // This is extra check to ensure that we would account at least for block time in case we have any timer discrepancies.
-        let time_drift = time_drift.min(self.config.block_time);
-        let interval = self.config.flashblocks_interval.as_millis() as u64;
-        let time_drift = time_drift.as_millis() as u64;
-        let first_flashblock_offset = time_drift.rem(interval);
-        if first_flashblock_offset == 0 {
-            // We have perfect division, so we use interval as first fb offset
-            (time_drift.div(interval), Duration::from_millis(interval))
-        } else {
-            // Non-perfect division, so we account for it.
-            (time_drift.div(interval) + 1, Duration::from_millis(first_flashblock_offset))
-        }
     }
 }
 

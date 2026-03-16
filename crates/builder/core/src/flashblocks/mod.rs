@@ -18,6 +18,9 @@ pub use handler::PayloadHandler;
 mod context;
 pub use context::{FlashblocksExtraCtx, OpPayloadBuilderCtx};
 
+mod schedule;
+pub use schedule::FlashblockSchedule;
+
 mod payload;
 pub use payload::FlashblocksExecutionInfo;
 

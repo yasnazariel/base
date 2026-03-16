@@ -25,13 +25,6 @@ pub struct FlashblocksArgs {
     /// flashblock block time in milliseconds
     #[arg(long = "flashblocks.block-time", default_value = "250", env = "FLASHBLOCK_BLOCK_TIME")]
     pub flashblocks_block_time: u64,
-
-    /// Time by which blocks would be completed earlier in milliseconds.
-    ///
-    /// This time is used to account for latencies and would be deducted from total block
-    /// building time before calculating number of fbs.
-    #[arg(long = "flashblocks.leeway-time", default_value = "75", env = "FLASHBLOCK_LEEWAY_TIME")]
-    pub flashblocks_leeway_time: u64,
 }
 
 impl Default for FlashblocksArgs {
@@ -40,7 +33,6 @@ impl Default for FlashblocksArgs {
             flashblocks_port: 1111,
             flashblocks_addr: "127.0.0.1".to_string(),
             flashblocks_block_time: 250,
-            flashblocks_leeway_time: 75,
         }
     }
 }
@@ -81,10 +73,6 @@ pub struct Args {
     #[arg(long = "builder.execution-metering-mode", value_enum, default_value = "off")]
     pub execution_metering_mode: ExecutionMeteringMode,
 
-    /// How much extra time to wait for the block building job to complete and not get garbage collected
-    #[arg(long = "builder.extra-block-deadline-secs", default_value = "20")]
-    pub extra_block_deadline_secs: u64,
-
     /// Whether to enable TIPS Resource Metering
     #[arg(long = "builder.enable-resource-metering", default_value = "false")]
     pub enable_resource_metering: bool,
@@ -96,10 +84,6 @@ pub struct Args {
     /// Buffer size for tx data store (LRU eviction when full)
     #[arg(long = "builder.tx-data-store-buffer-size", default_value = "10000")]
     pub tx_data_store_buffer_size: usize,
-
-    /// Inverted sampling frequency in blocks. 1 - each block, 100 - every 100th block.
-    #[arg(long = "telemetry.sampling-ratio", env = "SAMPLING_RATIO", default_value = "100")]
-    pub sampling_ratio: u64,
 
     /// Flashblocks configuration
     #[command(flatten)]
@@ -127,11 +111,9 @@ impl Default for Args {
             flashblock_execution_time_budget_us: None,
             block_state_root_time_budget_us: None,
             execution_metering_mode: ExecutionMeteringMode::Off,
-            extra_block_deadline_secs: 20,
             enable_resource_metering: false,
             max_uncompressed_block_size: None,
             tx_data_store_buffer_size: 10000,
-            sampling_ratio: 100,
             flashblocks: FlashblocksArgs::default(),
         }
     }
@@ -152,15 +134,10 @@ impl Args {
 
         Ok(BuilderConfig {
             block_time: Duration::from_millis(self.chain_block_time),
-            block_time_leeway: Duration::from_secs(self.extra_block_deadline_secs),
             da_config: Default::default(),
             gas_limit_config: Default::default(),
-            sampling_ratio: self.sampling_ratio,
             flashblocks_ws_addr,
             flashblocks_interval: Duration::from_millis(self.flashblocks.flashblocks_block_time),
-            flashblocks_leeway_time: Duration::from_millis(
-                self.flashblocks.flashblocks_leeway_time,
-            ),
             max_gas_per_txn: self.max_gas_per_txn,
             max_execution_time_per_tx_us: self.max_execution_time_per_tx_us,
             max_state_root_time_per_tx_us: self.max_state_root_time_per_tx_us,
@@ -215,16 +192,6 @@ mod tests {
     }
 
     #[rstest]
-    #[case::leeway_30s(30, 30)]
-    #[case::leeway_10s(10, 10)]
-    #[case::leeway_0s(0, 0)]
-    fn extra_block_deadline_maps_to_leeway(#[case] input_secs: u64, #[case] expected_secs: u64) {
-        let args = Args { extra_block_deadline_secs: input_secs, ..Default::default() };
-        let config = convert(args);
-        assert_eq!(config.block_time_leeway, Duration::from_secs(expected_secs));
-    }
-
-    #[rstest]
     #[case::interval_500ms(500, 500)]
     #[case::interval_200ms(200, 200)]
     #[case::interval_250ms(250, 250)]
@@ -275,20 +242,13 @@ mod tests {
         let args = Args {
             chain_block_time: 2000,
             max_gas_per_txn: Some(100000),
-            extra_block_deadline_secs: 10,
-            flashblocks: FlashblocksArgs {
-                flashblocks_block_time: 200,
-                flashblocks_leeway_time: 50,
-                ..Default::default()
-            },
+            flashblocks: FlashblocksArgs { flashblocks_block_time: 200, ..Default::default() },
             ..Default::default()
         };
         let config = convert(args);
 
         assert_eq!(config.block_time, Duration::from_millis(2000));
         assert_eq!(config.max_gas_per_txn, Some(100000));
-        assert_eq!(config.block_time_leeway, Duration::from_secs(10));
         assert_eq!(config.flashblocks_interval, Duration::from_millis(200));
-        assert_eq!(config.flashblocks_leeway_time, Duration::from_millis(50));
     }
 }

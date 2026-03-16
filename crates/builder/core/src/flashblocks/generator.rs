@@ -6,9 +6,7 @@ use std::{
 use alloy_primitives::B256;
 use futures::{Future, FutureExt};
 use parking_lot::Mutex;
-use reth_basic_payload_builder::{
-    BasicPayloadJobGeneratorConfig, HeaderForPayload, PayloadConfig, PrecachedState,
-};
+use reth_basic_payload_builder::{HeaderForPayload, PayloadConfig, PrecachedState};
 use reth_node_api::{NodePrimitives, PayloadBuilderAttributes, PayloadKind};
 use reth_payload_builder::{
     KeepPayloadJobAlive, PayloadBuilderError, PayloadJob, PayloadJobGenerator,
@@ -34,8 +32,6 @@ pub struct BlockPayloadJobGenerator<Client, Tasks, Builder> {
     client: Client,
     /// How to spawn building tasks
     executor: Tasks,
-    /// The configuration for the job generator.
-    _config: BasicPayloadJobGeneratorConfig,
     /// The type responsible for building payloads.
     ///
     /// See [`PayloadBuilder`]
@@ -44,8 +40,7 @@ pub struct BlockPayloadJobGenerator<Client, Tasks, Builder> {
     ensure_only_one_payload: bool,
     /// The last payload being processed
     last_payload: Arc<Mutex<CancellationToken>>,
-    /// The extra block deadline in seconds
-    extra_block_deadline: std::time::Duration,
+    block_time: std::time::Duration,
     /// Stored `cached_reads` for new payload jobs.
     pre_cached: Option<PrecachedState>,
 }
@@ -58,19 +53,17 @@ impl<Client, Tasks, Builder> BlockPayloadJobGenerator<Client, Tasks, Builder> {
     pub fn with_builder(
         client: Client,
         executor: Tasks,
-        config: BasicPayloadJobGeneratorConfig,
         builder: Builder,
         ensure_only_one_payload: bool,
-        extra_block_deadline: std::time::Duration,
+        block_time: std::time::Duration,
     ) -> Self {
         Self {
             client,
             executor,
-            _config: config,
             builder,
             ensure_only_one_payload,
             last_payload: Arc::new(Mutex::new(CancellationToken::new())),
-            extra_block_deadline,
+            block_time,
             pre_cached: None,
         }
     }
@@ -146,11 +139,19 @@ where
         // sequencer would send an avalanche of FCUs/getBlockByNumber on
         // each batcher update (with 10m channel it's ~800 FCUs at once).
         // At such moment it can happen that the time b/w FCU and ensuing
-        // getPayload would be on the scale of ~2.5s. Therefore we should
-        // "remember" the payloads long enough to accommodate this corner-case
-        // (without it we are losing blocks). Postponing the deadline for 5s
-        // (not just 0.5s) because of that.
-        let deadline = job_deadline(attributes.timestamp()) + self.extra_block_deadline;
+        // getPayload would be on the scale of ~2.5s. We add `block_time`
+        // (typically 2s) beyond the target timestamp to accommodate this
+        // corner-case without losing blocks.
+        let deadline = match SystemTime::now().duration_since(UNIX_EPOCH) {
+            Ok(d) => {
+                let duration_until = attributes.timestamp().saturating_sub(d.as_secs()).max(1);
+                Duration::from_secs(duration_until) + self.block_time
+            }
+            Err(e) => {
+                warn!(error = %e, "System clock went backward, using block-time deadline");
+                self.block_time
+            }
+        };
 
         let deadline = Box::pin(tokio::time::sleep(deadline));
 
@@ -451,26 +452,6 @@ impl<T: Clone> Default for BlockCell<T> {
     }
 }
 
-fn job_deadline(unix_timestamp_secs: u64) -> std::time::Duration {
-    let unix_now = match SystemTime::now().duration_since(UNIX_EPOCH) {
-        Ok(d) => d.as_secs(),
-        Err(e) => {
-            warn!(error = %e, "System clock went backward, returning zero deadline");
-            return Duration::ZERO;
-        }
-    };
-
-    // Safe subtraction that handles the case where timestamp is in the past
-    let duration_until = unix_timestamp_secs.saturating_sub(unix_now);
-
-    if duration_until == 0 {
-        // Enforce a minimum block time of 1 second by rounding up any duration less than 1 second
-        Duration::from_secs(1)
-    } else {
-        Duration::from_secs(duration_until)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use alloy_eips::eip7685::Requests;
@@ -645,34 +626,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_job_deadline() {
-        // Test future deadline
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-        let future_timestamp = now + Duration::from_secs(2);
-        // 2 seconds from now
-        let deadline = job_deadline(future_timestamp.as_secs());
-        assert!(deadline <= Duration::from_secs(2));
-        assert!(deadline > Duration::from_secs(0));
-
-        // Test past deadline
-        let past_timestamp = now - Duration::from_secs(10);
-        let deadline = job_deadline(past_timestamp.as_secs());
-        // Should default to 1 second when timestamp is in the past
-        assert_eq!(deadline, Duration::from_secs(1));
-
-        // Test current timestamp
-        let deadline = job_deadline(now.as_secs());
-        // Should use 1 second when timestamp is current
-        assert_eq!(deadline, Duration::from_secs(1));
-    }
-
-    #[tokio::test]
     async fn test_payload_generator() -> eyre::Result<()> {
         let mut rng = rng();
 
         let client = MockEthProvider::default();
         let executor = TokioTaskExecutor::default();
-        let config = BasicPayloadJobGeneratorConfig::default();
         let builder = MockBuilder::<OpPrimitives>::new();
 
         let (start, count) = (1, 10);
@@ -687,7 +645,6 @@ mod tests {
         let generator = BlockPayloadJobGenerator::with_builder(
             client.clone(),
             executor,
-            config,
             builder.clone(),
             false,
             std::time::Duration::from_secs(1),
