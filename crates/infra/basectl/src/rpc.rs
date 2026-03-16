@@ -5,14 +5,14 @@ use alloy_primitives::Address;
 use alloy_provider::{Provider, ProviderBuilder};
 use alloy_rpc_types_eth::{BlockNumberOrTag, TransactionTrait};
 use anyhow::Result;
-use base_alloy_flashblocks::Flashblock;
+use base_alloy_flashblocks::{Flashblock, Metadata};
 use base_alloy_network::Base;
 use futures::{StreamExt, stream};
 use tokio::sync::mpsc;
 use tokio_tungstenite::connect_async;
 use tracing::warn;
 
-use crate::tui::Toast;
+use crate::{commands::common::FlashblocksMetadata, tui::Toast};
 
 const CONCURRENT_BLOCK_FETCHES: usize = 16;
 const WS_RECONNECT_INITIAL_DELAY: Duration = Duration::from_secs(1);
@@ -83,7 +83,7 @@ async fn run_flashblock_ws_inner<T: Send + 'static>(
     url: &str,
     tx: &mpsc::Sender<T>,
     toast_tx: &mpsc::Sender<Toast>,
-    map_fb: impl Fn(Flashblock) -> T,
+    decode: impl Fn(Vec<u8>) -> Option<T>,
 ) {
     let mut delay = WS_RECONNECT_INITIAL_DELAY;
 
@@ -105,11 +105,10 @@ async fn run_flashblock_ws_inner<T: Send + 'static>(
                     if !msg.is_binary() && !msg.is_text() {
                         continue;
                     }
-                    let fb = match Flashblock::try_decode_message(msg.into_data()) {
-                        Ok(fb) => fb,
-                        Err(_) => continue,
+                    let Some(item) = decode(msg.into_data().to_vec()) else {
+                        continue;
                     };
-                    if tx.send(map_fb(fb)).await.is_err() {
+                    if tx.send(item).await.is_err() {
                         return;
                     }
                 }
@@ -134,27 +133,49 @@ pub(crate) async fn run_flashblock_ws(
     tx: mpsc::Sender<Flashblock>,
     toast_tx: mpsc::Sender<Toast>,
 ) {
-    run_flashblock_ws_inner(&url, &tx, &toast_tx, |fb| fb).await;
+    run_flashblock_ws_inner(&url, &tx, &toast_tx, |data| Flashblock::try_decode_message(data).ok())
+        .await;
 }
 
-/// A flashblock paired with its local receive timestamp.
+/// A flashblock paired with its local receive timestamp and parsed receipt metadata.
 #[derive(Debug)]
 pub(crate) struct TimestampedFlashblock {
     /// The decoded flashblock.
     pub flashblock: Flashblock,
     /// Local time when this flashblock was received.
     pub received_at: chrono::DateTime<chrono::Local>,
+    /// Parsed receipt metadata for event log filtering.
+    pub metadata: FlashblocksMetadata,
 }
 
-/// Subscribes to flashblocks via WebSocket and forwards timestamped flashblocks.
+/// Subscribes to flashblocks via WebSocket and forwards timestamped flashblocks
+/// with parsed receipt metadata for event activity tracking.
+///
+/// Uses `Flashblock::try_decode_payload` to handle decompression and parse the
+/// full `FlashblocksPayloadV1`, then extracts receipt metadata from the raw
+/// `metadata` Value.
 pub(crate) async fn run_flashblock_ws_timestamped(
     url: String,
     tx: mpsc::Sender<TimestampedFlashblock>,
     toast_tx: mpsc::Sender<Toast>,
 ) {
-    run_flashblock_ws_inner(&url, &tx, &toast_tx, |fb| TimestampedFlashblock {
-        flashblock: fb,
-        received_at: chrono::Local::now(),
+    run_flashblock_ws_inner(&url, &tx, &toast_tx, |data| {
+        let payload = Flashblock::try_decode_payload(data).ok()?;
+        let metadata: Metadata = serde_json::from_value(payload.metadata.clone()).ok()?;
+        let receipt_metadata: FlashblocksMetadata =
+            serde_json::from_value(payload.metadata).unwrap_or_default();
+
+        Some(TimestampedFlashblock {
+            flashblock: Flashblock {
+                payload_id: payload.payload_id,
+                index: payload.index,
+                base: payload.base,
+                diff: payload.diff,
+                metadata,
+            },
+            received_at: chrono::Local::now(),
+            metadata: receipt_metadata,
+        })
     })
     .await;
 }

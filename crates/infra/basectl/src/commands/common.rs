@@ -1,15 +1,15 @@
 use std::{
-    collections::VecDeque,
+    collections::{HashMap, VecDeque},
     time::{Duration, Instant},
 };
 
-use base_alloy_flashblocks::ReceiptLog;
-
+use alloy_primitives::{Address, B256, Bytes};
 use chrono::{DateTime, Local};
 use ratatui::{
     prelude::*,
     widgets::{Block, Borders, Cell, Paragraph, Row, Table, TableState},
 };
+use serde::Deserialize;
 
 use crate::rpc::{L1BlockInfo, L1ConnectionMode};
 
@@ -1159,6 +1159,87 @@ pub(crate) fn time_diff_color(ms: i64) -> Color {
 }
 
 // =============================================================================
+// Flashblock Receipt Metadata
+// =============================================================================
+
+// TODO: unify with `FlashblocksMetadata` in `base-builder-core` once receipts
+// are added to the shared `Metadata` type.
+
+/// Local metadata type that mirrors `FlashblocksMetadata` from `base-builder-core`.
+///
+/// Only the `receipts` field is used; other fields (`new_account_balances`,
+/// `access_list`, `block_number`) are ignored. Receipt values are kept as raw
+/// JSON to avoid redefining the receipt envelope types — we only need the
+/// embedded `logs` arrays.
+#[derive(Debug, Deserialize, Clone, Default)]
+pub(crate) struct FlashblocksMetadata {
+    /// Per-transaction receipts keyed by tx hash string.
+    ///
+    /// Values are raw JSON because the wire format varies (externally-tagged
+    /// envelope in production, flat object in older versions). We walk the
+    /// JSON tree to extract log entries rather than fully deserializing.
+    #[serde(default)]
+    pub receipts: HashMap<String, serde_json::Value>,
+}
+
+impl FlashblocksMetadata {
+    /// Extracts all log entries from the raw receipt JSON values.
+    ///
+    /// Walks each receipt value looking for `"logs"` arrays at any nesting
+    /// depth (handles both tagged `{"Eip1559": {"logs": [...]}}` and flat
+    /// `{"logs": [...]}` wire formats).
+    pub(crate) fn collect_logs(&self) -> Vec<ReceiptLog> {
+        let mut logs = Vec::new();
+        for receipt in self.receipts.values() {
+            Self::extract_logs(receipt, &mut logs);
+        }
+        logs
+    }
+
+    /// Recursively searches a JSON value for `"logs"` arrays and deserializes
+    /// each element as a [`ReceiptLog`].
+    fn extract_logs(value: &serde_json::Value, out: &mut Vec<ReceiptLog>) {
+        match value {
+            serde_json::Value::Object(map) => {
+                if let Some(logs_val) = map.get("logs") {
+                    if let Some(arr) = logs_val.as_array() {
+                        for entry in arr {
+                            if let Ok(log) = serde_json::from_value::<ReceiptLog>(entry.clone()) {
+                                out.push(log);
+                            }
+                        }
+                    }
+                } else {
+                    // Tagged envelope: recurse into inner objects.
+                    for v in map.values() {
+                        Self::extract_logs(v, out);
+                    }
+                }
+            }
+            serde_json::Value::Array(arr) => {
+                for v in arr {
+                    Self::extract_logs(v, out);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// A single log entry from a transaction receipt.
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq, Default)]
+pub(crate) struct ReceiptLog {
+    /// The contract address that emitted this log.
+    pub address: Address,
+    /// Indexed log topics. `topics[0]` is the event signature hash.
+    #[serde(default)]
+    pub topics: Vec<B256>,
+    /// Non-indexed ABI-encoded event data.
+    #[serde(default)]
+    pub data: Bytes,
+}
+
+// =============================================================================
 // Event Activity Bar — Filters and State
 // =============================================================================
 
@@ -1765,7 +1846,7 @@ impl ActivityBarState {
     /// Uses a two-pass approach: first collects addresses that emitted Swap events
     /// (pool addresses), then processes Transfer events to identify swap-related USDC
     /// volume separately from total USDC transfer volume.
-    pub(crate) fn record_logs(&mut self, block_number: u64, logs: &[&ReceiptLog]) {
+    pub(crate) fn record_logs(&mut self, block_number: u64, logs: &[ReceiptLog]) {
         if !self.any_active() {
             return;
         }

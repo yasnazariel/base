@@ -366,7 +366,7 @@ impl FlashState {
 
     /// Processes a received flashblock and updates tracking state.
     pub(crate) fn add_flashblock(&mut self, tsf: TimestampedFlashblock) {
-        let TimestampedFlashblock { flashblock: fb, received_at } = tsf;
+        let TimestampedFlashblock { flashblock: fb, received_at, metadata: receipt_metadata } = tsf;
 
         self.message_count += 1;
 
@@ -406,8 +406,7 @@ impl FlashState {
             time_diff_ms,
         };
 
-        let logs = fb.metadata.collect_logs();
-        self.activity.record_logs(block_number, &logs);
+        self.activity.record_logs(block_number, &receipt_metadata.collect_logs());
 
         self.entries.push_front(entry);
         self.evict_old_blocks();

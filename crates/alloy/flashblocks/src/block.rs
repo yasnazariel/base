@@ -29,10 +29,7 @@ pub struct Flashblock {
 impl Flashblock {
     /// Attempts to decode a flashblock from bytes that may be plain JSON or brotli-compressed JSON.
     pub fn try_decode_message(bytes: impl Into<Bytes>) -> Result<Self, FlashblockDecodeError> {
-        let text = Self::try_parse_message(bytes.into())?;
-
-        let payload: FlashblocksPayloadV1 =
-            serde_json::from_str(&text).map_err(FlashblockDecodeError::PayloadParse)?;
+        let payload = Self::try_decode_payload(bytes)?;
 
         let metadata: Metadata = serde_json::from_value(payload.metadata.clone())
             .map_err(FlashblockDecodeError::MetadataParse)?;
@@ -44,6 +41,16 @@ impl Flashblock {
             diff: payload.diff,
             metadata,
         })
+    }
+
+    /// Decodes bytes (plain JSON or brotli-compressed) into the raw
+    /// [`FlashblocksPayloadV1`], preserving the full `metadata` [`Value`](serde_json::Value)
+    /// for callers that need fields beyond [`Metadata`].
+    pub fn try_decode_payload(
+        bytes: impl Into<Bytes>,
+    ) -> Result<FlashblocksPayloadV1, FlashblockDecodeError> {
+        let text = Self::try_parse_message(bytes.into())?;
+        serde_json::from_str(&text).map_err(FlashblockDecodeError::PayloadParse)
     }
 
     fn try_parse_message(bytes: Bytes) -> Result<String, FlashblockDecodeError> {

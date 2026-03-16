@@ -14,7 +14,7 @@ mod error;
 pub use error::FlashblockDecodeError;
 
 mod metadata;
-pub use metadata::{Metadata, ReceiptData, ReceiptEnvelope, ReceiptLog};
+pub use metadata::Metadata;
 
 mod payload;
 pub use payload::{
