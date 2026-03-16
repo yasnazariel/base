@@ -82,7 +82,7 @@ use crate::cached_execution::{
 /// This type satisfies [`EngineValidator`] and is responsible for executing blocks/payloads.
 ///
 /// This type contains common validation, execution, and state root computation logic that can be
-/// used by network-specific payload validators. It is not meant to be
+/// used by network-specific payload validators (e.g., Ethereum, Optimism). It is not meant to be
 /// used as a standalone component, but rather as a building block for concrete implementations.
 #[derive(derive_more::Debug)]
 pub struct BaseEngineValidator<P, Evm, V, C>
@@ -385,7 +385,7 @@ where
 
         trace!(target: "engine::tree::payload_validator", "Fetching block state provider");
         let _enter =
-            debug_span!(target: "engine::tree::payload_validator", "state_provider").entered();
+            debug_span!(target: "engine::tree::payload_validator", "state provider").entered();
         let Some(provider_builder) =
             ensure_ok!(self.state_provider_builder(parent_hash, ctx.state()))
         else {
@@ -410,7 +410,7 @@ where
             .into());
         };
 
-        let evm_env = debug_span!(target: "engine::tree::payload_validator", "evm_env")
+        let evm_env = debug_span!(target: "engine::tree::payload_validator", "evm env")
             .in_scope(|| self.evm_env_for(&input))
             .map_err(NewPayloadError::other)?;
 
@@ -543,6 +543,16 @@ where
                     Ok(StateRootComputeOutcome { state_root, trie_updates }) => {
                         let elapsed = root_time.elapsed();
                         info!(target: "engine::tree::payload_validator", ?state_root, ?elapsed, "State root task finished");
+
+                        // Base diff: this just does some debug logging, and isn't pub
+                        // Compare trie updates with serial computation if configured
+                        // if self.config.always_compare_trie_updates() {
+                        //     self.compare_trie_updates_with_serial(
+                        //         overlay_factory.clone(),
+                        //         &hashed_state,
+                        //         trie_updates.clone(),
+                        //     );
+                        // }
 
                         // we double check the state root here for good measure
                         if state_root == block.header().state_root() {
@@ -714,38 +724,31 @@ where
     {
         debug!(target: "engine::tree::payload_validator", "Executing block");
 
-        let mut db = debug_span!(target: "engine::tree", "build_state_db").in_scope(|| {
-            State::builder()
-                .with_database(StateProviderDatabase::new(state_provider))
-                .with_bundle_update()
-                .without_state_clear()
-                .build()
-        });
+        let mut db = State::builder()
+            .with_database(StateProviderDatabase::new(state_provider))
+            .with_bundle_update()
+            .without_state_clear()
+            .build();
 
-        let (spec_id, mut executor) = {
-            let _span = debug_span!(target: "engine::tree", "create_evm").entered();
-            let spec_id = *env.evm_env.spec_id();
-            let evm: OpEvm<
-                &mut State<StateProviderDatabase<S>>,
-                revm::inspector::NoOpInspector,
-                reth_evm::precompiles::PrecompilesMap,
-            > = self.evm_config.evm_with_env(&mut db, env.evm_env);
-            let ctx =
-                self.execution_ctx_for(input).map_err(|e: <Evm as ConfigureEvm>::Error| {
-                    InsertBlockErrorKind::Other(Box::new(e))
-                })?;
+        let spec_id = *env.evm_env.spec_id();
+        let evm: OpEvm<
+            &mut State<StateProviderDatabase<S>>,
+            revm::inspector::NoOpInspector,
+            reth_evm::precompiles::PrecompilesMap,
+        > = self.evm_config.evm_with_env(&mut db, env.evm_env);
+        let ctx = self
+            .execution_ctx_for(input)
+            .map_err(|e: <Evm as ConfigureEvm>::Error| InsertBlockErrorKind::Other(Box::new(e)))?;
 
-            let executor = OpBlockExecutor::new(
-                evm,
-                ctx,
-                self.provider.chain_spec(),
-                *self.evm_config.block_executor_factory().receipt_builder(),
-            );
-            (spec_id, executor)
-        };
+        let mut executor = OpBlockExecutor::new(
+            evm,
+            ctx,
+            self.provider.chain_spec(),
+            *self.evm_config.block_executor_factory().receipt_builder(),
+        );
 
         if !self.config.precompile_cache_disabled() {
-            let _span = debug_span!(target: "engine::tree", "setup_precompile_cache").entered();
+            // Only cache pure precompiles to avoid issues with stateful precompiles
             executor.evm_mut().precompiles_mut().map_pure_precompiles(|address, precompile| {
                 let metrics = self
                     .precompile_cache_metrics
@@ -810,7 +813,7 @@ where
         self.metrics.record_post_execution(post_exec_start.elapsed());
 
         // Merge transitions into bundle state
-        debug_span!(target: "engine::tree", "merge_transitions")
+        debug_span!(target: "engine::tree", "merge transitions")
             .in_scope(|| db.merge_transitions(BundleRetention::Reverts));
 
         let output = BlockExecutionOutput { result, state: db.take_bundle() };
@@ -848,7 +851,7 @@ where
 
         // Apply pre-execution changes (e.g., beacon root update)
         let pre_exec_start = Instant::now();
-        debug_span!(target: "engine::tree", "pre_execution")
+        debug_span!(target: "engine::tree", "pre execution")
             .in_scope(|| executor.apply_pre_execution_changes())?;
         self.metrics.record_pre_execution(pre_exec_start.elapsed());
 
@@ -1140,7 +1143,7 @@ where
         level = "debug",
         target = "engine::tree::payload_validator",
         skip_all,
-        fields(?strategy)
+        fields(strategy)
     )]
     fn spawn_payload_processor<T: ExecutableTxIterator<Evm>>(
         &mut self,
@@ -1283,17 +1286,16 @@ where
             return (None, anchor_hash);
         }
 
-        // TODO(base): re-enable this when we have a way to fetch the cached overlay
-        // // Try to use the cached overlay if it matches both parent hash and anchor
-        // if let Some(cached) = state.tree_state().get_cached_overlay(parent_hash, anchor_hash) {
-        //     debug!(
-        //     target: "engine::tree::payload_validator",
-        //         %parent_hash,
-        //         %anchor_hash,
-        //         "Using cached canonical overlay"
-        //     );
-        //     return (Some(cached.overlay.clone()), cached.anchor_hash);
-        // }
+        // Try to use the cached overlay if it matches both parent hash and anchor
+        if let Some(cached) = state.tree_state().get_cached_overlay(parent_hash, anchor_hash) {
+            debug!(
+                target: "engine::tree::payload_validator",
+                %parent_hash,
+                %anchor_hash,
+                "Using cached canonical overlay"
+            );
+            return (Some(cached.overlay.clone()), cached.anchor_hash);
+        }
 
         debug!(
             target: "engine::tree::payload_validator",
