@@ -171,22 +171,26 @@ pub(crate) struct BlockLogs {
     pub logs: Vec<ReceiptLog>,
 }
 
-/// Fetches L2 logs, preferring WebSocket subscription with HTTP polling fallback.
+/// Subscribes to L2 logs via WebSocket with exponential-backoff reconnection.
 ///
 /// Only fetches logs matching the `DeFi` event signatures tracked by the activity
 /// bar (swaps, transfers, lending, bridges, etc.) to avoid overwhelming public RPCs.
 ///
-/// Tries `eth_subscribe("logs")` over WebSocket first. If the WS connection or
-/// subscription fails, falls back to polling `eth_getLogs` over HTTP.
+/// Reconnects automatically on disconnect or stream end, matching the resilience of
+/// the flashblock subscriber. Exits only when the result channel is closed.
 pub(crate) async fn run_log_subscriber(
     l2_rpc: String,
     result_tx: mpsc::Sender<BlockLogs>,
     toast_tx: mpsc::Sender<Toast>,
 ) {
     let ws_url = http_to_ws(&l2_rpc);
+    let mut delay = WS_RECONNECT_INITIAL_DELAY;
 
-    if run_log_subscriber_ws(&ws_url, &result_tx, &toast_tx).await.is_err() {
-        run_log_subscriber_poll(&l2_rpc, &result_tx, &toast_tx).await;
+    loop {
+        if let Ok(()) = run_log_subscriber_ws(&ws_url, &result_tx, &toast_tx).await { return }
+
+        tokio::time::sleep(delay).await;
+        delay = (delay * 2).min(WS_RECONNECT_MAX_DELAY);
     }
 }
 
@@ -211,14 +215,13 @@ async fn run_log_subscriber_ws(
 ) -> Result<(), ()> {
     let provider = ProviderBuilder::new().connect(ws_url).await.map_err(|e| {
         warn!(error = %e, "Failed to connect to L2 WebSocket for log subscription");
-        let _ = toast_tx.try_send(Toast::warning("L2 log WS failed, falling back to polling"));
+        let _ = toast_tx.try_send(Toast::warning("L2 log WS connection failed, retrying"));
     })?;
 
     let filter = defi_log_filter();
     let sub = provider.subscribe_logs(&filter).await.map_err(|e| {
         warn!(error = %e, "Failed to subscribe to logs");
-        let _ =
-            toast_tx.try_send(Toast::warning("L2 log subscribe failed, falling back to polling"));
+        let _ = toast_tx.try_send(Toast::warning("L2 log subscribe failed, retrying"));
     })?;
 
     let mut stream = sub.into_stream();
@@ -262,69 +265,6 @@ async fn run_log_subscriber_ws(
     let _ = toast_tx.try_send(Toast::warning("L2 log subscription disconnected"));
 
     Err(())
-}
-
-async fn run_log_subscriber_poll(
-    l2_rpc: &str,
-    result_tx: &mpsc::Sender<BlockLogs>,
-    toast_tx: &mpsc::Sender<Toast>,
-) {
-    let provider = match ProviderBuilder::new().connect(l2_rpc).await {
-        Ok(p) => p,
-        Err(e) => {
-            warn!(error = %e, "Failed to connect to L2 RPC for log polling");
-            let _ = toast_tx.try_send(Toast::warning("Log poller connection failed"));
-            return;
-        }
-    };
-
-    let mut last_block: Option<u64> = None;
-
-    loop {
-        let latest = match provider.get_block_number().await {
-            Ok(n) => n,
-            Err(e) => {
-                warn!(error = %e, "Failed to fetch latest block number during log polling");
-                tokio::time::sleep(Duration::from_secs(1)).await;
-                continue;
-            }
-        };
-
-        let from_block = last_block.map_or(latest, |b| b + 1);
-        if from_block > latest {
-            tokio::time::sleep(Duration::from_secs(1)).await;
-            continue;
-        }
-
-        // Fetch one block at a time to keep responses small and latency low.
-        // When behind, processes blocks back-to-back without sleeping to catch up.
-        for block_num in from_block..=latest {
-            let filter = defi_log_filter().from_block(block_num).to_block(block_num);
-
-            match provider.get_logs(&filter).await {
-                Ok(logs) => {
-                    if !logs.is_empty() {
-                        let receipt_logs = logs.iter().map(log_to_receipt).collect();
-
-                        if result_tx
-                            .send(BlockLogs { block_number: block_num, logs: receipt_logs })
-                            .await
-                            .is_err()
-                        {
-                            return;
-                        }
-                    }
-                    last_block = Some(block_num);
-                }
-                Err(e) => {
-                    warn!(error = %e, block = block_num, "Failed to fetch logs for block");
-                    break;
-                }
-            }
-        }
-
-        tokio::time::sleep(Duration::from_secs(1)).await;
-    }
 }
 
 /// Summary of the initial DA backlog between safe and latest blocks.

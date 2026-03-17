@@ -10,8 +10,8 @@ use crate::{
     app::{Action, Resources, View},
     commands::common::{
         COLOR_ACTIVE_BORDER, COLOR_ROW_HIGHLIGHTED, COLOR_ROW_SELECTED, FilterMenuState,
-        activity_bar_height, block_color, block_color_bright, build_gas_bar,
-        format_gas, format_gwei, render_activity_bar, render_filter_menu, render_gas_usage_bar,
+        activity_bar_height, block_color, block_color_bright, build_gas_bar, format_gas,
+        format_gwei, render_activity_bar, render_filter_menu, render_gas_usage_bar,
         time_diff_color, truncate_block_number,
     },
     tui::{Keybinding, Toast},

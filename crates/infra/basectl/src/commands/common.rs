@@ -9,6 +9,7 @@ use ratatui::{
     prelude::*,
     widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table, TableState},
 };
+
 use crate::rpc::{L1BlockInfo, L1ConnectionMode};
 
 /// Size of a single blob in bytes (128 `KiB`).

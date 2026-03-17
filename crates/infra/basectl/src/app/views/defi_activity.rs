@@ -147,7 +147,7 @@ impl View for DefiActivityView {
 
         render_volume_section(frame, chunks[0], activity, window_secs, border_color);
         render_sparkline_section(frame, chunks[1], activity, paused, border_color);
-        render_block_table(frame, chunks[2], activity, border_color, &mut self.table_state.clone());
+        render_block_table(frame, chunks[2], activity, border_color, &mut self.table_state);
 
         if self.filter_menu.open {
             render_filter_menu(frame, area, &activity.active, self.filter_menu.cursor);

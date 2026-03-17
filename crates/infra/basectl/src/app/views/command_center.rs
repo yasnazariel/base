@@ -12,11 +12,11 @@ use crate::{
     app::{Action, Resources, View},
     commands::common::{
         COLOR_BASE_BLUE, COLOR_BURN, COLOR_GROWTH, COLOR_ROW_HIGHLIGHTED, COLOR_ROW_SELECTED,
-        FilterMenuState, L1_BLOCK_WINDOW, L1BlockFilter, L1BlocksTableParams,
-        RATE_WINDOW_2M, activity_bar_height, backlog_size_color, block_color, block_color_bright,
-        build_gas_bar, format_bytes, format_duration, format_gwei, format_rate,
-        render_activity_bar, render_da_backlog_bar, render_filter_menu, render_gas_usage_bar,
-        render_l1_blocks_table, target_usage_color, time_diff_color, truncate_block_number,
+        FilterMenuState, L1_BLOCK_WINDOW, L1BlockFilter, L1BlocksTableParams, RATE_WINDOW_2M,
+        activity_bar_height, backlog_size_color, block_color, block_color_bright, build_gas_bar,
+        format_bytes, format_duration, format_gwei, format_rate, render_activity_bar,
+        render_da_backlog_bar, render_filter_menu, render_gas_usage_bar, render_l1_blocks_table,
+        target_usage_color, time_diff_color, truncate_block_number,
     },
     tui::{Keybinding, Toast},
 };
@@ -323,7 +323,7 @@ impl View for CommandCenterView {
             panel_chunks[0],
             resources,
             self.focused_panel == Panel::Flashblocks,
-            &self.flash_table_state,
+            &mut self.flash_table_state,
             self.highlighted_block,
         );
 
@@ -332,7 +332,7 @@ impl View for CommandCenterView {
             panel_chunks[1],
             resources,
             self.focused_panel == Panel::Da,
-            &self.da_table_state,
+            &mut self.da_table_state,
             self.highlighted_block,
         );
 
@@ -502,7 +502,7 @@ fn render_da_panel(
     area: Rect,
     resources: &Resources,
     is_active: bool,
-    table_state: &TableState,
+    table_state: &mut TableState,
     highlighted_block: Option<u64>,
 ) {
     let tracker = &resources.da.tracker;
@@ -563,7 +563,7 @@ fn render_da_panel(
 
     let widths = [Constraint::Max(10), Constraint::Length(8), Constraint::Min(6)];
     let table = Table::new(rows, widths).header(header);
-    f.render_stateful_widget(table, inner, &mut table_state.clone());
+    f.render_stateful_widget(table, inner, table_state);
 }
 
 const GAS_BAR_CHARS: usize = 20;
@@ -574,7 +574,7 @@ fn render_flash_panel(
     area: Rect,
     resources: &Resources,
     is_active: bool,
-    table_state: &TableState,
+    table_state: &mut TableState,
     highlighted_block: Option<u64>,
 ) {
     let flash = &resources.flash;
@@ -672,5 +672,5 @@ fn render_flash_panel(
     ];
 
     let table = Table::new(rows, widths).header(header);
-    f.render_stateful_widget(table, inner, &mut table_state.clone());
+    f.render_stateful_widget(table, inner, table_state);
 }
