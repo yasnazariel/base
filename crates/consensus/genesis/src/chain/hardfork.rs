@@ -15,6 +15,13 @@ pub struct BaseHardforkConfig {
     pub v1: Option<u64>,
 }
 
+impl BaseHardforkConfig {
+    /// Returns true if no Base-specific hardforks are configured.
+    pub const fn is_empty(&self) -> bool {
+        self.v1.is_none()
+    }
+}
+
 /// Hardfork configuration.
 ///
 /// See: <https://github.com/ethereum-optimism/superchain-registry/blob/8ff62ada16e14dd59d0fb94ffb47761c7fa96e01/ops/internal/config/chain.go#L102-L110>
@@ -80,8 +87,11 @@ pub struct HardForkConfig {
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub jovian_time: Option<u64>,
     /// `base` contains Base-specific hardfork activation times.
-    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
-    pub base: Option<BaseHardforkConfig>,
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "BaseHardforkConfig::is_empty")
+    )]
+    pub base: BaseHardforkConfig,
 }
 
 impl Display for HardForkConfig {
@@ -113,9 +123,17 @@ impl HardForkConfig {
             ("Pectra Blob Schedule", self.pectra_blob_schedule_time),
             ("Isthmus", self.isthmus_time),
             ("Jovian", self.jovian_time),
-            ("Base V1", self.base.and_then(|b| b.v1)),
+            ("Base V1", self.base.v1),
         ]
         .into_iter()
+    }
+
+    /// Returns an iterator over hardforks scheduled to activate at the given timestamp.
+    pub fn activations_at_timestamp(
+        &self,
+        timestamp: u64,
+    ) -> impl Iterator<Item = &'static str> + '_ {
+        self.iter().filter_map(move |(name, time)| (time == Some(timestamp)).then_some(name))
     }
 }
 
@@ -148,7 +166,7 @@ mod tests {
             pectra_blob_schedule_time: None,
             isthmus_time: None,
             jovian_time: None,
-            base: None,
+            base: BaseHardforkConfig::default(),
         };
 
         let deserialized: HardForkConfig = serde_json::from_str(raw).unwrap();
@@ -195,7 +213,7 @@ mod tests {
             pectra_blob_schedule_time: None,
             isthmus_time: None,
             jovian_time: None,
-            base: None,
+            base: BaseHardforkConfig::default(),
         };
 
         let deserialized: HardForkConfig = toml::from_str(raw).unwrap();
@@ -229,7 +247,7 @@ mod tests {
             pectra_blob_schedule_time: Some(8),
             isthmus_time: Some(9),
             jovian_time: Some(10),
-            base: Some(BaseHardforkConfig { v1: Some(11) }),
+            base: BaseHardforkConfig { v1: Some(11) },
         };
 
         let mut iter = hardforks.iter();
@@ -245,5 +263,34 @@ mod tests {
         assert_eq!(iter.next(), Some(("Jovian", Some(10))));
         assert_eq!(iter.next(), Some(("Base V1", Some(11))));
         assert_eq!(iter.next(), None);
+    }
+
+    #[test]
+    fn test_hardforks_activations_at_timestamp() {
+        let hardforks = HardForkConfig {
+            canyon_time: Some(10),
+            jovian_time: Some(12),
+            base: BaseHardforkConfig { v1: Some(12) },
+            ..Default::default()
+        };
+
+        assert!(hardforks.activations_at_timestamp(11).next().is_none());
+        assert_eq!(
+            hardforks.activations_at_timestamp(12).collect::<Vec<_>>(),
+            vec!["Jovian", "Base V1"]
+        );
+    }
+
+    #[test]
+    fn test_hardforks_serialize_omits_empty_base() {
+        let hardforks = HardForkConfig {
+            canyon_time: Some(10),
+            base: BaseHardforkConfig::default(),
+            ..Default::default()
+        };
+        let serialized = serde_json::to_value(hardforks).unwrap();
+
+        assert_eq!(serialized.get("canyon_time").and_then(serde_json::Value::as_u64), Some(10));
+        assert!(serialized.get("base").is_none());
     }
 }

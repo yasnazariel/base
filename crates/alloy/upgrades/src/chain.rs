@@ -74,6 +74,7 @@ impl EthereumHardforks for BaseChainUpgrades {
             Shanghai if forks_len <= Canyon.idx() => ForkCondition::Never,
             Cancun if forks_len <= Ecotone.idx() => ForkCondition::Never,
             Prague if forks_len <= Isthmus.idx() => ForkCondition::Never,
+            Osaka if forks_len <= V1.idx() => ForkCondition::Never,
             _ => self[fork],
         }
     }
@@ -114,7 +115,7 @@ impl Index<EthereumHardfork> for BaseChainUpgrades {
     fn index(&self, hf: EthereumHardfork) -> &Self::Output {
         match hf {
             // Dao Hardfork is not needed for BaseChainUpgrades
-            Dao | Osaka | Bpo1 | Bpo2 | Bpo3 | Bpo4 | Bpo5 | Amsterdam => &ForkCondition::Never,
+            Dao | Bpo1 | Bpo2 | Bpo3 | Bpo4 | Bpo5 | Amsterdam => &ForkCondition::Never,
             Frontier | Homestead | Tangerine | SpuriousDragon | Byzantium | Constantinople
             | Petersburg | Istanbul | MuirGlacier | Berlin => &ForkCondition::ZERO_BLOCK,
             London | ArrowGlacier | GrayGlacier => &self[Bedrock],
@@ -126,6 +127,7 @@ impl Index<EthereumHardfork> for BaseChainUpgrades {
             Shanghai => &self[Canyon],
             Cancun => &self[Ecotone],
             Prague => &self[Isthmus],
+            Osaka => &self[V1],
             _ => unreachable!(),
         }
     }
@@ -140,8 +142,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        BASE_DEVNET_0_SEPOLIA_DEV_0_JOVIAN_TIMESTAMP, BASE_MAINNET_BEDROCK_BLOCK,
-        BASE_MAINNET_CANYON_TIMESTAMP, BASE_MAINNET_ECOTONE_TIMESTAMP,
+        BASE_MAINNET_BEDROCK_BLOCK, BASE_MAINNET_CANYON_TIMESTAMP, BASE_MAINNET_ECOTONE_TIMESTAMP,
         BASE_MAINNET_FJORD_TIMESTAMP, BASE_MAINNET_GRANITE_TIMESTAMP,
         BASE_MAINNET_HOLOCENE_TIMESTAMP, BASE_MAINNET_ISTHMUS_TIMESTAMP,
         BASE_MAINNET_JOVIAN_TIMESTAMP, BASE_MAINNET_REGOLITH_TIMESTAMP, BASE_SEPOLIA_BEDROCK_BLOCK,
@@ -265,15 +266,30 @@ mod tests {
         let devnet_forks = BaseChainUpgrades::devnet();
         assert!(devnet_forks.is_base_v1_active_at_timestamp(0));
 
-        // V1 activates alongside Jovian on devnet-0-sepolia-dev-0
+        // V1 is not scheduled on devnet-0-sepolia-dev-0 yet
         let devnet0_forks = BaseChainUpgrades::base_devnet_0_sepolia_dev_0();
-        assert!(
-            !devnet0_forks
-                .is_base_v1_active_at_timestamp(BASE_DEVNET_0_SEPOLIA_DEV_0_JOVIAN_TIMESTAMP - 1)
+        assert!(!devnet0_forks.is_base_v1_active_at_timestamp(0));
+        assert!(!devnet0_forks.is_base_v1_active_at_timestamp(u64::MAX));
+    }
+
+    #[test]
+    fn osaka_tracks_base_v1_activation() {
+        let base_mainnet_forks = BaseChainUpgrades::mainnet();
+        assert_eq!(
+            base_mainnet_forks.ethereum_fork_activation(EthereumHardfork::Osaka),
+            ForkCondition::Never
         );
-        assert!(
-            devnet0_forks
-                .is_base_v1_active_at_timestamp(BASE_DEVNET_0_SEPOLIA_DEV_0_JOVIAN_TIMESTAMP)
+
+        let devnet_forks = BaseChainUpgrades::devnet();
+        assert_eq!(
+            devnet_forks.ethereum_fork_activation(EthereumHardfork::Osaka),
+            ForkCondition::ZERO_TIMESTAMP
+        );
+
+        let devnet0_forks = BaseChainUpgrades::base_devnet_0_sepolia_dev_0();
+        assert_eq!(
+            devnet0_forks.ethereum_fork_activation(EthereumHardfork::Osaka),
+            ForkCondition::Never
         );
     }
 

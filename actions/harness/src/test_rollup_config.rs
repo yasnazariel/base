@@ -1,5 +1,5 @@
 use alloy_primitives::Address;
-use base_consensus_genesis::{BaseHardforkConfig, HardForkConfig, RollupConfig};
+use base_consensus_genesis::{HardForkConfig, RollupConfig};
 use base_consensus_registry::Registry;
 
 use crate::BatcherConfig;
@@ -156,7 +156,7 @@ impl TestRollupConfigBuilder {
         self.config.hardforks.pectra_blob_schedule_time = Some(0);
         self.config.hardforks.isthmus_time = Some(0);
         self.config.hardforks.jovian_time = Some(0);
-        self.config.hardforks.base.get_or_insert_with(BaseHardforkConfig::default).v1 = Some(0);
+        self.config.hardforks.base.v1 = Some(0);
         self
     }
 
