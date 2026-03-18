@@ -6,7 +6,7 @@
 
 use std::sync::LazyLock;
 
-use alloy_primitives::{Address, B256, Bytes, U256};
+use alloy_primitives::{Address, B256, Bytes};
 use async_trait::async_trait;
 use base_enclave::ProofEncoder;
 use base_proof_contracts::{
@@ -73,18 +73,12 @@ pub struct ProposalSubmitter<T> {
     tx_manager: T,
     factory_address: Address,
     game_type: u32,
-    init_bond: U256,
 }
 
 impl<T: TxManager> ProposalSubmitter<T> {
     /// Creates a new [`ProposalSubmitter`] backed by the given transaction manager.
-    pub const fn new(
-        tx_manager: T,
-        factory_address: Address,
-        game_type: u32,
-        init_bond: U256,
-    ) -> Self {
-        Self { tx_manager, factory_address, game_type, init_bond }
+    pub const fn new(tx_manager: T, factory_address: Address, game_type: u32) -> Self {
+        Self { tx_manager, factory_address, game_type }
     }
 }
 
@@ -110,12 +104,8 @@ impl<T: TxManager + 'static> OutputProposer for ProposalSubmitter<T> {
             "Creating dispute game"
         );
 
-        let candidate = TxCandidate {
-            tx_data: calldata,
-            to: Some(self.factory_address),
-            value: self.init_bond,
-            ..Default::default()
-        };
+        let candidate =
+            TxCandidate { tx_data: calldata, to: Some(self.factory_address), ..Default::default() };
 
         let receipt = self.tx_manager.send(candidate).await.map_err(classify_tx_manager_error)?;
 
@@ -138,7 +128,7 @@ impl<T: TxManager + 'static> OutputProposer for ProposalSubmitter<T> {
 #[cfg(test)]
 mod tests {
     use alloy_consensus::{Eip658Value, Receipt, ReceiptEnvelope, ReceiptWithBloom};
-    use alloy_primitives::{Address, Bloom};
+    use alloy_primitives::{Address, Bloom, U256};
     use alloy_rpc_types_eth::TransactionReceipt;
     use base_enclave::PROOF_TYPE_TEE;
     use base_tx_manager::{SendHandle, SendResponse, TxManagerError};
@@ -274,8 +264,7 @@ mod tests {
     async fn propose_output_success() {
         let tx_hash = B256::repeat_byte(0xAA);
         let mock = MockTxManager::new(Ok(receipt_with_status(true, tx_hash)));
-        let submitter =
-            ProposalSubmitter::new(mock, Address::repeat_byte(0x01), 1, U256::from(100));
+        let submitter = ProposalSubmitter::new(mock, Address::repeat_byte(0x01), 1);
 
         let proposal = test_proposal();
         let result = submitter.propose_output(&proposal, 200, 0, &[]).await;
@@ -286,8 +275,7 @@ mod tests {
     async fn propose_output_reverted() {
         let tx_hash = B256::repeat_byte(0xBB);
         let mock = MockTxManager::new(Ok(receipt_with_status(false, tx_hash)));
-        let submitter =
-            ProposalSubmitter::new(mock, Address::repeat_byte(0x01), 1, U256::from(100));
+        let submitter = ProposalSubmitter::new(mock, Address::repeat_byte(0x01), 1);
 
         let proposal = test_proposal();
         let err = submitter.propose_output(&proposal, 200, 0, &[]).await.unwrap_err();
@@ -297,8 +285,7 @@ mod tests {
     #[tokio::test]
     async fn propose_output_tx_manager_error() {
         let mock = MockTxManager::new(Err(TxManagerError::NonceTooLow));
-        let submitter =
-            ProposalSubmitter::new(mock, Address::repeat_byte(0x01), 1, U256::from(100));
+        let submitter = ProposalSubmitter::new(mock, Address::repeat_byte(0x01), 1);
 
         let proposal = test_proposal();
         let err = submitter.propose_output(&proposal, 200, 0, &[]).await.unwrap_err();

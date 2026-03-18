@@ -154,9 +154,6 @@ pub async fn run(config: ProposerConfig) -> Result<()> {
         "Read BLOCK_INTERVAL and INTERMEDIATE_BLOCK_INTERVAL from AggregateVerifier"
     );
 
-    let init_bond = factory_client.init_bonds(config.game_type).await?;
-    info!(init_bond = %init_bond, game_type = config.game_type, "Read initBond from DisputeGameFactory");
-
     // Wrap in Arc for shared ownership.
     let factory_client = Arc::new(factory_client);
     let verifier_client: Arc<dyn AggregateVerifierClient> = Arc::new(verifier_client);
@@ -188,7 +185,6 @@ pub async fn run(config: ProposerConfig) -> Result<()> {
         tx_manager,
         config.dispute_game_factory_addr,
         config.game_type,
-        init_bond,
     ));
     info!("Output proposer initialized");
 
@@ -197,7 +193,6 @@ pub async fn run(config: ProposerConfig) -> Result<()> {
         poll_interval: config.poll_interval,
         block_interval,
         intermediate_block_interval,
-        init_bond,
         game_type: config.game_type,
         allow_non_finalized: config.allow_non_finalized,
     };
