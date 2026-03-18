@@ -5,10 +5,17 @@ import { fileURLToPath } from 'node:url'
 import { remarkMermaid } from './lib/remarkMermaid'
 import rehypeKatex from 'rehype-katex'
 import remarkMath from 'remark-math'
-import { defineConfig, type SidebarItem } from 'vocs'
+import { defineConfig } from 'vocs/config'
 
 const docsDir = fileURLToPath(new URL('./', import.meta.url))
 const pagesDir = fileURLToPath(new URL('./pages', import.meta.url))
+
+type SidebarItem = {
+  text: string
+  link?: string
+  items?: SidebarItem[]
+  collapsed?: boolean
+}
 
 type NodeInfo = {
   hasIndex: boolean
@@ -181,9 +188,17 @@ const sidebar: SidebarItem[] = [
 export default defineConfig({
   banner: '⚠️ This specification is under active development and subject to change.',
   title: 'Base Chain Specification',
+  titleTemplate: '%s · Base Chain Specification',
   description: 'Base Chain protocol specification, upgrades, and reference documentation.',
   logoUrl: '/assets/base/logo.svg',
   iconUrl: '/assets/base/favicon.png',
+  socials: [
+    { icon: 'github', link: 'https://github.com/base/base' },
+  ],
+  editLink: {
+    pattern: 'https://github.com/base/base/edit/main/docs/specs/pages/:path',
+    text: 'Suggest changes to this page',
+  },
   topNav: [
     { text: 'Docs', link: 'https://docs.base.org/base-chain/' },
     { text: 'Blog', link: 'https://blog.base.dev/' },
@@ -193,6 +208,7 @@ export default defineConfig({
     rehypePlugins: [rehypeKatex],
   },
   rootDir: '.',
+  srcDir: '.',
   vite: {
     server: {
       fs: {
@@ -201,5 +217,5 @@ export default defineConfig({
     },
   },
   sidebar,
-  checkDeadlinks: 'error',
+  checkDeadlinks: true,
 })

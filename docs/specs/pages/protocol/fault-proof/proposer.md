@@ -60,7 +60,7 @@ and specifying the index of the first output to delete, this will also delete al
 
 The `output_root` is a 32 byte string, which is derived based on the a versioned scheme:
 
-```pseudocode
+```text
 output_root = keccak256(version_byte || payload)
 ```
 
@@ -74,7 +74,7 @@ where:
 In the initial version of the output commitment construction, the version is `bytes32(0)`, and the payload is defined
 as:
 
-```pseudocode
+```text
 payload = state_root || withdrawal_storage_root || latest_block_hash
 ```
 

@@ -6,22 +6,21 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "vocs dev",
+    "dev": "NODE_OPTIONS='--import tsx' vocs dev",
     "build": "vocs build",
     "preview": "vocs preview"
+  },
+  "dependencies": {
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "vite": "^7.3.1",
+    "waku": "1.0.0-alpha.2"
   },
   "devDependencies": {
     "mermaid": "^11.12.3",
     "rehype-katex": "^7.0.1",
     "remark-math": "^6.0.0",
-    "vocs": "^1.4.1"
-  },
-  "overrides": {
-    "@hono/node-server": "1.19.9",
-    "dompurify": "3.3.1",
-    "hono": "4.12.3",
-    "katex": "0.16.33",
-    "mlly": "1.8.0",
-    "node-releases": "2.0.27"
+    "tsx": "^4.21.0",
+    "vocs": "https://pkg.pr.new/wevm/vocs@e5ad67e"
   }
 }

@@ -9,7 +9,7 @@
 Fjord updates the L1 cost calculation function to use a FastLZ-based compression estimator.
 The L1 cost is computed as:
 
-```pseudocode
+```text
 l1FeeScaled = l1BaseFeeScalar*l1BaseFee*16 + l1BlobFeeScalar*l1BlobBaseFee
 estimatedSizeScaled = max(minTransactionSize * 1e6, intercept + fastlzCoef*fastlzSize)
 l1Fee = estimatedSizeScaled * l1FeeScaled / 1e12
