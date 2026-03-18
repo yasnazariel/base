@@ -13,7 +13,6 @@ pub const DEFAULT_RESEND_AFTER_MS: u64 = 4000;
 pub const DEFAULT_MAX_BATCH_SIZE: usize = 100;
 /// Default maximum RPC requests per second per forwarder.
 pub const DEFAULT_MAX_RPS: u32 = 200;
-
 /// Full configuration for the transaction forwarding extension.
 #[derive(Debug, Clone)]
 pub struct TxForwardingConfig {
