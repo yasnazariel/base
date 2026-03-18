@@ -94,9 +94,9 @@ mod tests {
 
     #[test]
     fn base_v1_expands_to_osaka() {
-        let hardforks = BaseChainUpgrades::base_devnet_0_sepolia_dev_0().to_chain_hardforks();
+        let hardforks = BaseChainUpgrades::devnet().to_chain_hardforks();
 
-        assert_eq!(hardforks.get(EthereumHardfork::Osaka), None);
+        assert_eq!(hardforks.get(BaseUpgrade::V1), Some(ForkCondition::ZERO_TIMESTAMP));
         assert_eq!(hardforks.get(EthereumHardfork::Osaka), hardforks.get(BaseUpgrade::V1));
     }
 }

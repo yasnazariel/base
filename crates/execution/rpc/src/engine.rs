@@ -187,8 +187,9 @@ pub trait OpEngineApi<Engine: EngineTypes> {
     /// Note:
     /// > Provider software MAY stop the corresponding build process after serving this call.
     ///
-    /// Returns the [`OpExecutionPayloadEnvelopeV5`], which drops `blobsBundle` and
-    /// `executionRequests` compared to V4.
+    /// Returns the [`OpExecutionPayloadEnvelopeV5`], which uses
+    /// [`OpExecutionPayloadV4`](base_alloy_rpc_types_engine::OpExecutionPayloadV4) for the
+    /// execution payload and otherwise follows the V5 envelope shape.
     #[method(name = "getPayloadV5")]
     async fn get_payload_v5(
         &self,

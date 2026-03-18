@@ -143,8 +143,9 @@ pub trait OpEngineApi<N, T> {
     /// See also <https://github.com/ethereum/execution-apis/blob/main/src/engine/osaka.md#engine_getpayloadv5>
     ///
     /// OP modifications:
-    /// - the response type is [`OpExecutionPayloadEnvelopeV5`], which drops `blobsBundle` and
-    ///   `executionRequests` compared to V4.
+    /// - the response type is [`OpExecutionPayloadEnvelopeV5`], which uses
+    ///   [`OpExecutionPayloadV4`](base_alloy_rpc_types_engine::OpExecutionPayloadV4) for the
+    ///   execution payload and otherwise follows the V5 envelope shape.
     async fn get_payload_v5(
         &self,
         payload_id: PayloadId,
