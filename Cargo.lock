@@ -2871,6 +2871,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "base-bundle-extension"
+version = "0.0.0"
+dependencies = [
+ "base-node-runner",
+ "base-txpool",
+ "reth-chain-state",
+ "reth-provider",
+ "tokio",
+ "tokio-stream",
+ "tracing",
+]
+
+[[package]]
 name = "base-bundles"
 version = "0.7.0"
 dependencies = [
@@ -4627,6 +4640,7 @@ dependencies = [
 name = "base-reth-node"
 version = "0.7.0"
 dependencies = [
+ "base-bundle-extension",
  "base-cli-utils",
  "base-execution-cli",
  "base-flashblocks",
@@ -6789,6 +6803,7 @@ dependencies = [
  "base-alloy-rpc-types",
  "base-batcher-service",
  "base-builder-core",
+ "base-bundle-extension",
  "base-consensus-disc",
  "base-consensus-genesis",
  "base-consensus-gossip",
