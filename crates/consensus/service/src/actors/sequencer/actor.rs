@@ -266,7 +266,12 @@ where
             .await
         {
             Ok(attrs) => attrs,
-            Err(PipelineErrorKind::Temporary(_)) => {
+            Err(PipelineErrorKind::Temporary(err)) => {
+                warn!(
+                    target: "sequencer",
+                    ?err,
+                    "temporary error, retrying on next tick"
+                );
                 // Temporary error - retry on next tick.
                 return Ok(None);
             }
