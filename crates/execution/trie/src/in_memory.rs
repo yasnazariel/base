@@ -293,7 +293,8 @@ impl TrieCursor for InMemoryTrieCursor {
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
         self.ensure_entries_populated()?;
 
-        if let Some(pos) = self.entries.iter().position(|(p, _)| *p == path) {
+        let pos = self.entries.partition_point(|(p, _)| *p < path);
+        if pos < self.entries.len() && self.entries[pos].0 == path {
             self.position = pos as isize;
             Ok(Some(self.entries[pos].clone()))
         } else {
@@ -307,7 +308,8 @@ impl TrieCursor for InMemoryTrieCursor {
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
         self.ensure_entries_populated()?;
 
-        if let Some(pos) = self.entries.iter().position(|(p, _)| *p >= path) {
+        let pos = self.entries.partition_point(|(p, _)| *p < path);
+        if pos < self.entries.len() {
             self.position = pos as isize;
             Ok(Some(self.entries[pos].clone()))
         } else {
@@ -431,7 +433,8 @@ impl HashedCursor for InMemoryStorageCursor {
     fn seek(&mut self, key: B256) -> Result<Option<(B256, Self::Value)>, DatabaseError> {
         self.ensure_entries_populated()?;
 
-        if let Some(pos) = self.entries.iter().position(|(k, _)| *k >= key) {
+        let pos = self.entries.partition_point(|(k, _)| *k < key);
+        if pos < self.entries.len() {
             self.position = pos as isize;
             Ok(Some(self.entries[pos]))
         } else {
@@ -510,7 +513,8 @@ impl HashedCursor for InMemoryAccountCursor {
     type Value = Account;
 
     fn seek(&mut self, key: B256) -> Result<Option<(B256, Self::Value)>, DatabaseError> {
-        if let Some(pos) = self.entries.iter().position(|(k, _)| *k >= key) {
+        let pos = self.entries.partition_point(|(k, _)| *k < key);
+        if pos < self.entries.len() {
             self.position = pos as isize;
             Ok(Some(self.entries[pos]))
         } else {
