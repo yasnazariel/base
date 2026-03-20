@@ -1,5 +1,6 @@
 use std::{
     sync::Arc,
+    task::Waker,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -19,7 +20,7 @@ use reth_provider::{BlockReaderIdExt, CanonStateNotification, StateProviderFacto
 use reth_revm::cached::CachedReads;
 use reth_tasks::TaskSpawner;
 use tokio::{
-    sync::{Notify, oneshot},
+    sync::oneshot,
     time::{Duration, Sleep},
 };
 use tokio_util::sync::CancellationToken;
@@ -388,29 +389,46 @@ impl<T: Clone> Future for ResolvePayload<T> {
     }
 }
 
+/// Shared interior of [`BlockCell`].
+struct BlockCellInner<T> {
+    value: Option<T>,
+    wakers: Vec<Waker>,
+}
+
 /// A cell that holds a value and allows waiting for it to be set.
 ///
 /// Values can be overwritten by calling [`BlockCell::set`] multiple times.
-#[derive(Clone, Debug)]
+/// Callers waiting via [`BlockCell::wait_for_value`] are parked until `set`
+/// is called; the executor is not polled again until the value is ready.
+#[derive(Clone)]
 pub struct BlockCell<T> {
-    inner: Arc<Mutex<Option<T>>>,
-    notify: Arc<Notify>,
+    inner: Arc<Mutex<BlockCellInner<T>>>,
+}
+
+impl<T> std::fmt::Debug for BlockCell<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BlockCell").finish_non_exhaustive()
+    }
 }
 
 impl<T: Clone> BlockCell<T> {
     pub fn new() -> Self {
-        Self { inner: Arc::new(Mutex::new(None)), notify: Arc::new(Notify::new()) }
+        Self { inner: Arc::new(Mutex::new(BlockCellInner { value: None, wakers: Vec::new() })) }
     }
 
     pub fn set(&self, value: T) {
-        let mut inner = self.inner.lock();
-        *inner = Some(value);
-        self.notify.notify_one();
+        let wakers = {
+            let mut inner = self.inner.lock();
+            inner.value = Some(value);
+            std::mem::take(&mut inner.wakers)
+        };
+        for waker in wakers {
+            waker.wake();
+        }
     }
 
     pub fn get(&self) -> Option<T> {
-        let inner = self.inner.lock();
-        inner.clone()
+        self.inner.lock().value.clone()
     }
 
     /// Return a future that resolves when a value is set.
@@ -435,13 +453,13 @@ impl<T: Clone> Future for WaitForValue<T> {
     type Output = T;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        self.cell.get().map_or_else(
-            || {
-                cx.waker().wake_by_ref();
-                Poll::Pending
-            },
-            Poll::Ready,
-        )
+        let mut inner = self.cell.inner.lock();
+        if let Some(value) = inner.value.clone() {
+            return Poll::Ready(value);
+        }
+        // Park this waker; `BlockCell::set` will wake it when the value arrives.
+        inner.wakers.push(cx.waker().clone());
+        Poll::Pending
     }
 }
 
