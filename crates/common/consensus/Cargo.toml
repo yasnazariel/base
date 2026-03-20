@@ -18,6 +18,7 @@ workspace = true
 alloy-rlp.workspace = true
 alloy-eips.workspace = true
 alloy-consensus.workspace = true
+alloy-sol-types.workspace = true
 alloy-primitives = { workspace = true, features = ["rlp"] }
 
 # compat
@@ -39,6 +40,10 @@ serde = { workspace = true, features = ["derive"], optional = true }
 revm = { workspace = true, optional = true }
 base-revm = { workspace = true, optional = true }
 alloy-evm = { workspace = true, optional = true }
+
+# native verifier crypto
+k256 = { workspace = true, optional = true }
+p256 = { workspace = true, optional = true }
 
 # reth
 bytes = { workspace = true, optional = true }
@@ -108,6 +113,7 @@ serde = [
 ]
 serde-bincode-compat = [ "alloy-consensus/serde-bincode-compat", "serde_with" ]
 evm = [ "dep:alloy-evm", "dep:base-revm", "dep:revm" ]
+native-verifier = [ "dep:k256", "dep:p256" ]
 reth = [
 	"dep:bytes",
 	"dep:modular-bitfield",

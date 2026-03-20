@@ -1,0 +1,195 @@
+//! EIP-8130 signature hash computation and auth parsing.
+
+use alloc::vec::Vec;
+
+use alloy_primitives::{Address, B256, Bytes, keccak256};
+
+use super::{
+    TxAa,
+    constants::{VERIFIER_CUSTOM, VERIFIER_DELEGATE, VERIFIER_K1, VERIFIER_P256_RAW, VERIFIER_P256_WEBAUTHN},
+};
+
+/// Computed sender signature hash.
+pub fn sender_signature_hash(tx: &TxAa) -> B256 {
+    let mut buf = Vec::with_capacity(512);
+    tx.encode_for_sender_signing(&mut buf);
+    keccak256(&buf)
+}
+
+/// Computed payer signature hash.
+pub fn payer_signature_hash(tx: &TxAa) -> B256 {
+    let mut buf = Vec::with_capacity(512);
+    tx.encode_for_payer_signing(&mut buf);
+    keccak256(&buf)
+}
+
+/// Parsed sender authentication data.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ParsedSenderAuth {
+    /// EOA mode: raw 65-byte ECDSA signature `(r || s || v)`.
+    Eoa {
+        /// The raw 65-byte ECDSA signature.
+        signature: [u8; 65],
+    },
+    /// Configured owner mode: verifier type byte + verifier-specific data.
+    Configured {
+        /// The verifier type byte.
+        verifier_type: u8,
+        /// For native verifiers (0x01-0x04): the data after the type byte.
+        /// For custom (0x00): the verifier address (20 bytes) + remaining data.
+        data: Bytes,
+    },
+}
+
+/// Identifies the verifier for a configured owner.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum VerifierTarget {
+    /// One of the native verifiers (K1, P256_RAW, P256_WEBAUTHN, DELEGATE).
+    Native {
+        /// The verifier type byte (0x01-0x04).
+        verifier_type: u8,
+        /// Verifier-specific authentication data.
+        data: Bytes,
+    },
+    /// A custom verifier contract.
+    Custom {
+        /// The address of the custom verifier contract.
+        verifier_address: Address,
+        /// Verifier-specific authentication data.
+        data: Bytes,
+    },
+}
+
+/// Parse `sender_auth` based on the transaction's `from` field.
+///
+/// - If `from == Address::ZERO` (EOA mode): expect exactly 65 bytes (raw ECDSA).
+/// - Otherwise (configured owner): first byte is the verifier type.
+pub fn parse_sender_auth(tx: &TxAa) -> Result<ParsedSenderAuth, &'static str> {
+    if tx.is_eoa() {
+        if tx.sender_auth.len() != 65 {
+            return Err("EOA sender_auth must be exactly 65 bytes");
+        }
+        let mut sig = [0u8; 65];
+        sig.copy_from_slice(&tx.sender_auth);
+        return Ok(ParsedSenderAuth::Eoa { signature: sig });
+    }
+
+    if tx.sender_auth.is_empty() {
+        return Err("configured sender_auth must not be empty");
+    }
+
+    let verifier_type = tx.sender_auth[0];
+    let data = Bytes::copy_from_slice(&tx.sender_auth[1..]);
+    Ok(ParsedSenderAuth::Configured { verifier_type, data })
+}
+
+/// Resolve a configured auth's verifier type + data into a concrete target.
+pub fn resolve_verifier(verifier_type: u8, data: &Bytes) -> Result<VerifierTarget, &'static str> {
+    match verifier_type {
+        VERIFIER_K1 | VERIFIER_P256_RAW | VERIFIER_P256_WEBAUTHN | VERIFIER_DELEGATE => {
+            Ok(VerifierTarget::Native { verifier_type, data: data.clone() })
+        }
+        VERIFIER_CUSTOM => {
+            if data.len() < 20 {
+                return Err("custom verifier auth must contain at least 20-byte address");
+            }
+            let verifier_address = Address::from_slice(&data[..20]);
+            let remaining = Bytes::copy_from_slice(&data[20..]);
+            Ok(VerifierTarget::Custom { verifier_address, data: remaining })
+        }
+        _ => Err("unknown verifier type byte"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::TxAa;
+
+    #[test]
+    fn parse_eoa_auth() {
+        let tx = TxAa {
+            from: Address::ZERO,
+            sender_auth: Bytes::from([0xABu8; 65].as_slice()),
+            ..Default::default()
+        };
+        let parsed = parse_sender_auth(&tx).unwrap();
+        assert!(matches!(parsed, ParsedSenderAuth::Eoa { .. }));
+    }
+
+    #[test]
+    fn parse_eoa_wrong_length() {
+        let tx = TxAa {
+            from: Address::ZERO,
+            sender_auth: Bytes::from_static(&[0x01; 64]),
+            ..Default::default()
+        };
+        assert!(parse_sender_auth(&tx).is_err());
+    }
+
+    #[test]
+    fn parse_configured_k1() {
+        let mut auth = vec![VERIFIER_K1];
+        auth.extend_from_slice(&[0xAB; 65]);
+        let tx = TxAa {
+            from: Address::repeat_byte(0x01),
+            sender_auth: Bytes::from(auth),
+            ..Default::default()
+        };
+        let parsed = parse_sender_auth(&tx).unwrap();
+        match parsed {
+            ParsedSenderAuth::Configured { verifier_type, data } => {
+                assert_eq!(verifier_type, VERIFIER_K1);
+                assert_eq!(data.len(), 65);
+            }
+            _ => panic!("expected Configured"),
+        }
+    }
+
+    #[test]
+    fn parse_configured_custom() {
+        let mut auth = vec![VERIFIER_CUSTOM];
+        auth.extend_from_slice(&[0xCC; 20]); // verifier address
+        auth.extend_from_slice(&[0xDD; 32]); // data
+        let tx = TxAa {
+            from: Address::repeat_byte(0x01),
+            sender_auth: Bytes::from(auth),
+            ..Default::default()
+        };
+        let parsed = parse_sender_auth(&tx).unwrap();
+        match parsed {
+            ParsedSenderAuth::Configured { verifier_type, data } => {
+                assert_eq!(verifier_type, VERIFIER_CUSTOM);
+                let target = resolve_verifier(verifier_type, &data).unwrap();
+                match target {
+                    VerifierTarget::Custom { verifier_address, data } => {
+                        assert_eq!(verifier_address, Address::repeat_byte(0xCC));
+                        assert_eq!(data.len(), 32);
+                    }
+                    _ => panic!("expected Custom"),
+                }
+            }
+            _ => panic!("expected Configured"),
+        }
+    }
+
+    #[test]
+    fn sender_payer_hashes_are_deterministic() {
+        let tx = TxAa {
+            chain_id: 1,
+            from: Address::repeat_byte(0x01),
+            nonce_key: alloy_primitives::U256::ZERO,
+            nonce_sequence: 1,
+            ..Default::default()
+        };
+        let h1 = sender_signature_hash(&tx);
+        let h2 = sender_signature_hash(&tx);
+        assert_eq!(h1, h2);
+
+        let p1 = payer_signature_hash(&tx);
+        let p2 = payer_signature_hash(&tx);
+        assert_eq!(p1, p2);
+
+        assert_ne!(h1, p1, "sender and payer hashes must differ");
+    }
+}

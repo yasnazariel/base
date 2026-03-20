@@ -20,6 +20,8 @@ use reth_transaction_pool::{
     TransactionValidator,
 };
 
+use base_alloy_consensus::AA_TX_TYPE_ID;
+
 use crate::OpPooledTx;
 
 /// Tracks additional infos for the current block.
@@ -166,6 +168,15 @@ where
         state: &mut Option<Box<dyn AccountInfoReader + Send>>,
     ) -> TransactionValidationOutcome<Tx> {
         if transaction.is_eip4844() {
+            return TransactionValidationOutcome::Invalid(
+                transaction,
+                InvalidTransactionError::TxTypeNotSupported.into(),
+            );
+        }
+
+        if transaction.ty() == AA_TX_TYPE_ID
+            && !self.chain_spec().is_base_v1_active_at_timestamp(self.block_timestamp())
+        {
             return TransactionValidationOutcome::Invalid(
                 transaction,
                 InvalidTransactionError::TxTypeNotSupported.into(),

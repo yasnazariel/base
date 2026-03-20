@@ -304,6 +304,7 @@ impl OpReceiptBuilder {
                 OpReceipt::Eip2930(receipt) => OpReceipt::Eip2930(map_logs(receipt)),
                 OpReceipt::Eip1559(receipt) => OpReceipt::Eip1559(map_logs(receipt)),
                 OpReceipt::Eip7702(receipt) => OpReceipt::Eip7702(map_logs(receipt)),
+                OpReceipt::Aa(receipt) => OpReceipt::Aa(map_logs(receipt)),
                 OpReceipt::Deposit(receipt) => OpReceipt::Deposit(receipt.map_inner(map_logs)),
             };
             mapped_receipt.into_with_bloom()
@@ -338,7 +339,7 @@ impl OpReceiptBuilder {
 
         let OpTransactionReceiptFields { l1_block_info, .. } = op_receipt_fields;
 
-        OpTransactionReceipt { inner, l1_block_info }
+        OpTransactionReceipt { inner, l1_block_info, aa_fields: None }
     }
 }
 

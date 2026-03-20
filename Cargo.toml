@@ -457,7 +457,9 @@ risc0-zkvm = { version = "^3.0", default-features = false }
 # crypto
 sha3 = "0.10"
 k256 = "0.13"
+p256 = "0.13"
 p384 = "0.13"
+blst = "0.3"
 zeroize = "1"
 ciborium = "0.2"
 x509-cert = "0.2"

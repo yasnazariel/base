@@ -7,6 +7,11 @@
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+mod aa_invalidation;
+pub use aa_invalidation::{
+    AaInvalidationIndex, InvalidationKey, compute_invalidation_keys, process_fal,
+};
+
 mod validator;
 pub use validator::{OpL1BlockInfo, OpTransactionValidator};
 

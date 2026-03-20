@@ -2,7 +2,7 @@ use alloy_consensus::InMemorySize;
 
 use crate::{
     OpDepositReceipt, OpPooledTransaction, OpReceipt, OpTxEnvelope, OpTxType, OpTypedTransaction,
-    TxDeposit,
+    TxAa, TxDeposit,
 };
 
 impl InMemorySize for OpTxType {
@@ -33,9 +33,17 @@ impl InMemorySize for OpReceipt {
             Self::Legacy(receipt)
             | Self::Eip2930(receipt)
             | Self::Eip1559(receipt)
-            | Self::Eip7702(receipt) => receipt.size(),
+            | Self::Eip7702(receipt)
+            | Self::Aa(receipt) => receipt.size(),
             Self::Deposit(receipt) => receipt.size(),
         }
+    }
+}
+
+impl InMemorySize for TxAa {
+    #[inline]
+    fn size(&self) -> usize {
+        core::mem::size_of::<Self>()
     }
 }
 
@@ -46,6 +54,7 @@ impl InMemorySize for OpTypedTransaction {
             Self::Eip2930(tx) => tx.size(),
             Self::Eip1559(tx) => tx.size(),
             Self::Eip7702(tx) => tx.size(),
+            Self::Aa(tx) => tx.size(),
             Self::Deposit(tx) => tx.size(),
         }
     }
@@ -69,6 +78,7 @@ impl InMemorySize for OpTxEnvelope {
             Self::Eip2930(tx) => tx.size(),
             Self::Eip1559(tx) => tx.size(),
             Self::Eip7702(tx) => tx.size(),
+            Self::Aa(tx) => tx.size(),
             Self::Deposit(tx) => tx.size(),
         }
     }

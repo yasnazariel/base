@@ -1,6 +1,7 @@
 use alloy_consensus::{Transaction, transaction::Recovered};
 use alloy_eips::Encodable2718;
 use alloy_primitives::U256;
+use base_alloy_consensus::{AA_TX_TYPE_ID, TxAa};
 use base_revm::{L1BlockInfo, OpSpecId};
 use derive_more::Display;
 use reth_primitives_traits::Account;
@@ -14,6 +15,61 @@ pub enum TxValidationError {
     /// Insufficient funds for L1 gas
     #[display("Insufficient funds for L1 gas: {_0}, account balance: {_1}")]
     InsufficientFundsForL1Gas(U256, U256),
+    /// AA transaction structural error
+    #[display("AA structural error: {_0}")]
+    AaStructuralError(String),
+    /// AA transaction expired
+    #[display("AA transaction expired: expiry={_0}, block_timestamp={_1}")]
+    AaExpired(u64, u64),
+}
+
+/// Returns `true` if the transaction is an EIP-8130 AA transaction.
+pub fn is_aa_tx<T: Transaction>(tx: &T) -> bool {
+    tx.ty() == AA_TX_TYPE_ID
+}
+
+/// Validates an EIP-8130 Account Abstraction transaction.
+///
+/// Checks structural validity, payer balance coverage, nonce sanity, and expiry.
+/// This is a lightweight pre-check suitable for metering-layer acceptance; full
+/// EVM-level validation (verifier STATICCALL, owner_config) happens later.
+pub fn validate_aa_tx(
+    tx: &TxAa,
+    payer_account: Account,
+    block_timestamp: u64,
+    l1_block_info: &mut L1BlockInfo,
+) -> Result<(), TxValidationError> {
+    if tx.gas_limit == 0 {
+        return Err(TxValidationError::AaStructuralError("zero gas limit".into()));
+    }
+    if tx.max_fee_per_gas == 0 {
+        return Err(TxValidationError::AaStructuralError("zero max fee per gas".into()));
+    }
+    if tx.sender_auth.is_empty() {
+        return Err(TxValidationError::AaStructuralError("empty sender_auth".into()));
+    }
+
+    if tx.expiry != 0 && tx.expiry < block_timestamp {
+        return Err(TxValidationError::AaExpired(tx.expiry, block_timestamp));
+    }
+
+    let max_gas_cost =
+        U256::from(tx.max_fee_per_gas).saturating_mul(U256::from(tx.gas_limit));
+    if max_gas_cost > payer_account.balance {
+        return Err(TxValidationError::InsufficientFundsForTransfer(
+            max_gas_cost,
+            payer_account.balance,
+        ));
+    }
+
+    let encoded = alloy_eips::Encodable2718::encoded_2718(tx);
+    let l1_cost = l1_block_info.calculate_tx_l1_cost(&encoded, OpSpecId::ISTHMUS);
+    let total = max_gas_cost.saturating_add(l1_cost);
+    if total > payer_account.balance {
+        return Err(TxValidationError::InsufficientFundsForL1Gas(total, payer_account.balance));
+    }
+
+    Ok(())
 }
 
 /// Helper function to validate a transaction. A valid transaction must satisfy the following criteria:

@@ -34,6 +34,7 @@ impl OpReceiptBuilder for OpRethReceiptBuilder {
                     OpTxType::Eip1559 => OpReceipt::Eip1559(receipt),
                     OpTxType::Eip2930 => OpReceipt::Eip2930(receipt),
                     OpTxType::Eip7702 => OpReceipt::Eip7702(receipt),
+                    OpTxType::Aa => OpReceipt::Aa(receipt),
                     OpTxType::Deposit => unreachable!(),
                 })
             }

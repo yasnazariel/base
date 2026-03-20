@@ -22,6 +22,19 @@ impl FromRecoveredTx<OpTxEnvelope> for TxEnv {
             OpTxEnvelope::Eip1559(tx) => Self::from_recovered_tx(tx.tx(), caller),
             OpTxEnvelope::Eip2930(tx) => Self::from_recovered_tx(tx.tx(), caller),
             OpTxEnvelope::Eip7702(tx) => Self::from_recovered_tx(tx.tx(), caller),
+            OpTxEnvelope::Aa(tx) => {
+                let inner = tx.inner();
+                Self {
+                    tx_type: inner.ty(),
+                    caller,
+                    gas_limit: inner.gas_limit,
+                    value: alloy_primitives::U256::ZERO,
+                    data: alloy_primitives::Bytes::default(),
+                    gas_price: inner.max_fee_per_gas,
+                    gas_priority_fee: Some(inner.max_priority_fee_per_gas),
+                    ..Default::default()
+                }
+            }
             OpTxEnvelope::Deposit(tx) => Self::from_recovered_tx(tx.inner(), caller),
         }
     }
@@ -88,6 +101,11 @@ impl FromTxWithEncoded<OpTxEnvelope> for OpTransaction<TxEnv> {
             },
             OpTxEnvelope::Eip7702(tx) => Self {
                 base: TxEnv::from_recovered_tx(tx.tx(), caller),
+                enveloped_tx: Some(encoded),
+                deposit: Default::default(),
+            },
+            OpTxEnvelope::Aa(tx) => Self {
+                base: TxEnv::from_recovered_tx(&OpTxEnvelope::Aa(tx.clone()), caller),
                 enveloped_tx: Some(encoded),
                 deposit: Default::default(),
             },
