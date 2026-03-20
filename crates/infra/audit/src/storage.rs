@@ -15,7 +15,7 @@ use tracing::info;
 use crate::{
     metrics::Metrics,
     reader::Event,
-    types::{BundleEvent, BundleId, DropReason, TransactionId},
+    types::{BundleEvent, BundleId, DropReason, RejectedTransaction, TransactionId},
 };
 
 /// S3 key types for storing different event types.
@@ -25,6 +25,8 @@ pub enum S3Key {
     Bundle(BundleId),
     /// Key for transaction lookups by hash.
     TransactionByHash(TxHash),
+    /// Key for rejected transaction storage.
+    Rejected(u64, TxHash),
 }
 
 impl fmt::Display for S3Key {
@@ -32,6 +34,9 @@ impl fmt::Display for S3Key {
         match self {
             Self::Bundle(bundle_id) => write!(f, "bundles/{bundle_id}"),
             Self::TransactionByHash(hash) => write!(f, "transactions/by_hash/{hash}"),
+            Self::Rejected(block_number, tx_hash) => {
+                write!(f, "rejected/{block_number}/{tx_hash}")
+            }
         }
     }
 }
@@ -224,6 +229,35 @@ impl S3EventReaderWriter {
     /// Creates a new S3 event reader/writer.
     pub const fn new(s3_client: S3Client, bucket: String) -> Self {
         Self { s3_client, bucket }
+    }
+
+    /// Stores a rejected transaction to S3.
+    pub async fn store_rejected_transaction(
+        &self,
+        rejected_tx: &RejectedTransaction,
+    ) -> Result<()> {
+        let s3_key = S3Key::Rejected(rejected_tx.block_number, rejected_tx.tx_hash).to_string();
+        let content = serde_json::to_string(rejected_tx)?;
+        self.s3_client
+            .put_object()
+            .bucket(&self.bucket)
+            .key(&s3_key)
+            .body(ByteStream::from(content.into_bytes()))
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to store rejected transaction: {e}"))?;
+        Ok(())
+    }
+
+    /// Retrieves a rejected transaction from S3.
+    pub async fn get_rejected_transaction(
+        &self,
+        block_number: u64,
+        tx_hash: TxHash,
+    ) -> Result<Option<RejectedTransaction>> {
+        let s3_key = S3Key::Rejected(block_number, tx_hash).to_string();
+        let (rejected_tx, _) = self.get_object_with_etag::<RejectedTransaction>(&s3_key).await?;
+        Ok(rejected_tx)
     }
 
     async fn update_bundle_history(&self, event: Event) -> Result<()> {
