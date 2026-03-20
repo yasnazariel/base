@@ -107,6 +107,7 @@ pub(super) struct OpPayloadBuilder<Pool, Client> {
 
 impl<Pool, Client> OpPayloadBuilder<Pool, Client> {
     /// `OpPayloadBuilder` constructor.
+    #[allow(clippy::too_many_arguments)]
     pub(super) const fn new(
         evm_config: BaseEvmConfig,
         pool: Pool,
