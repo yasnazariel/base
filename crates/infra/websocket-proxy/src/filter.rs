@@ -1,4 +1,4 @@
-use std::{collections::HashSet, io::Write};
+use std::{collections::HashSet, io::Write, sync::Arc};
 
 use brotli::DecompressorWriter;
 use serde_json::{self, Value};
@@ -83,6 +83,9 @@ impl FilterType {
     }
 
     /// Returns `true` if the payload matches this filter's criteria.
+    ///
+    /// Decompresses and parses the payload independently. Prefer [`FilterType::matches_parsed`]
+    /// when a pre-parsed [`Value`] is available so the JSON work is shared across subscribers.
     pub fn matches(&self, payload: &[u8], enable_compression: bool) -> bool {
         if let Self::None = self {
             return true;
@@ -124,6 +127,43 @@ impl FilterType {
                 );
                 false
             }
+        }
+    }
+
+    /// Returns `true` if the pre-parsed JSON value matches this filter's criteria.
+    ///
+    /// Use this instead of [`FilterType::matches`] when the JSON has already been parsed,
+    /// to avoid redundant work per subscriber. [`FilterType::None`] short-circuits without
+    /// inspecting the value.
+    pub fn matches_parsed(&self, json: &Value) -> bool {
+        if let Self::None = self {
+            return true;
+        }
+        let result = self.json_matches(json);
+        trace!(result = result, filter_type = ?self, "Filter result");
+        result
+    }
+
+    /// Checks whether the filter matches against a shared pre-parsed JSON value.
+    ///
+    /// `cached_json` should be an `OnceLock`-backed `Arc<Value>` that is initialised
+    /// at most once per broadcast message regardless of how many subscribers call this.
+    /// Returns `true` for [`FilterType::None`] without touching `cached_json`.
+    pub fn matches_with_cache(
+        &self,
+        payload: &[u8],
+        enable_compression: bool,
+        cached_json: &std::sync::OnceLock<Option<Arc<Value>>>,
+    ) -> bool {
+        if let Self::None = self {
+            return true;
+        }
+
+        let parsed = cached_json.get_or_init(|| parse_payload(payload, enable_compression));
+
+        match parsed {
+            Some(json) => self.matches_parsed(json),
+            None => false,
         }
     }
 
@@ -243,6 +283,42 @@ impl FilterType {
             }
         }
         false
+    }
+}
+
+/// Decompresses (if needed) and JSON-parses `payload`, returning `None` on any error.
+fn parse_payload(payload: &[u8], enable_compression: bool) -> Option<Arc<Value>> {
+    let uncompressed_data = if enable_compression {
+        let mut uncompressed_bytes = Vec::new();
+        {
+            let mut decoder = DecompressorWriter::new(&mut uncompressed_bytes, 4096);
+            match decoder.write_all(payload) {
+                Ok(_) => (),
+                Err(e) => {
+                    info!(error = %e, "error while decoding payload");
+                    return None;
+                }
+            }
+        }
+        uncompressed_bytes
+    } else {
+        payload.to_owned()
+    };
+
+    let text = match String::from_utf8(uncompressed_data) {
+        Ok(s) => s,
+        Err(_) => return None,
+    };
+
+    match serde_json::from_str::<Value>(&text) {
+        Ok(json) => Some(Arc::new(json)),
+        Err(e) => {
+            warn!(
+                message = "Failed to parse JSON payload for filtering",
+                error = e.to_string()
+            );
+            None
+        }
     }
 }
 
@@ -440,5 +516,59 @@ mod tests {
             "0x1111111111111111111111111111111111111111111111111111111111111111".to_string(),
         ]);
         assert!(!filter.matches(&payload, false));
+    }
+
+    #[test]
+    fn test_matches_with_cache_shares_parse() {
+        use std::sync::OnceLock;
+
+        let payload = get_test_payload();
+        let cache: OnceLock<Option<Arc<Value>>> = OnceLock::new();
+
+        let filter_a = FilterType::new_addresses(vec![
+            "0x4200000000000000000000000000000000000010".to_string(),
+        ]);
+        let filter_b = FilterType::new_topics(vec![
+            "0xb0444523268717a02698be47d0803aa7468c00acbed2f8bd93a0459cde61dd89".to_string(),
+        ]);
+        let filter_none = FilterType::None;
+
+        // None filter short-circuits without populating the cache
+        assert!(filter_none.matches_with_cache(&payload, false, &cache));
+        assert!(cache.get().is_none(), "None filter must not populate the cache");
+
+        // First non-None filter initialises the cache
+        assert!(filter_a.matches_with_cache(&payload, false, &cache));
+        assert!(cache.get().is_some(), "Cache should be populated after first non-None filter");
+
+        // Second non-None filter reuses the cached value (same OnceLock)
+        assert!(filter_b.matches_with_cache(&payload, false, &cache));
+    }
+
+    #[test]
+    fn test_matches_parsed_equivalent_to_matches() {
+        let payload = get_test_payload();
+        let json: Value = serde_json::from_slice(&payload).unwrap();
+
+        let filters = vec![
+            FilterType::new_addresses(vec![
+                "0x4200000000000000000000000000000000000010".to_string(),
+            ]),
+            FilterType::new_addresses(vec![
+                "0x1111111111111111111111111111111111111111".to_string(),
+            ]),
+            FilterType::new_topics(vec![
+                "0xb0444523268717a02698be47d0803aa7468c00acbed2f8bd93a0459cde61dd89".to_string(),
+            ]),
+            FilterType::None,
+        ];
+
+        for filter in &filters {
+            assert_eq!(
+                filter.matches(&payload, false),
+                filter.matches_parsed(&json),
+                "matches and matches_parsed disagree for filter {filter:?}"
+            );
+        }
     }
 }

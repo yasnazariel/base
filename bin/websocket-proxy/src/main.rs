@@ -15,8 +15,8 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, trace, warn};
 use websocket_proxy::{
-    Authentication, InMemoryRateLimit, Metrics, RateLimit, Registry, Server, SubscriberOptions,
-    WebsocketSubscriber,
+    Authentication, BroadcastMessage, InMemoryRateLimit, Metrics, RateLimit, Registry, Server,
+    SubscriberOptions, WebsocketSubscriber,
 };
 
 base_cli_utils::define_log_args!("WEBSOCKET_PROXY");
@@ -200,7 +200,7 @@ async fn main() {
     let metrics = Arc::new(Metrics::default());
     let metrics_clone = Arc::clone(&metrics);
 
-    let (send, _rec) = broadcast::channel(args.message_buffer_size);
+    let (send, _rec) = broadcast::channel::<Arc<BroadcastMessage>>(args.message_buffer_size);
     let sender = send.clone();
 
     let listener = move |data: String| {
@@ -222,7 +222,7 @@ async fn main() {
             data.into_bytes()
         };
 
-        match send.send(message_data.into()) {
+        match send.send(BroadcastMessage::new(Message::Binary(message_data.into()))) {
             Ok(_) => {
                 metrics_clone.broadcast_queue_size.set(send.len() as f64);
             }
@@ -271,7 +271,7 @@ async fn main() {
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
-                        match ping_sender.send(Message::Ping(vec![].into())) {
+                        match ping_sender.send(BroadcastMessage::new(Message::Ping(vec![].into()))) {
                             Ok(_) => {
                                 trace!(message = "sent ping to all clients");
                                 ping_metrics.broadcast_queue_size.set(ping_sender.len() as f64);

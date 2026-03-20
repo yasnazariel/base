@@ -18,7 +18,7 @@ use tokio::{
 use tokio_tungstenite::connect_async;
 use tokio_util::sync::CancellationToken;
 use tracing::error;
-use websocket_proxy::{Authentication, InMemoryRateLimit, Metrics, Registry, Server};
+use websocket_proxy::{Authentication, BroadcastMessage, InMemoryRateLimit, Metrics, Registry, Server};
 
 struct TestHarness {
     received_messages: Arc<Mutex<HashMap<usize, Vec<String>>>>,
@@ -28,7 +28,7 @@ struct TestHarness {
     server: Server,
     server_addr: SocketAddr,
     client_id_to_handle: HashMap<usize, JoinHandle<()>>,
-    sender: Sender<Message>,
+    sender: Sender<Arc<BroadcastMessage>>,
 }
 
 impl TestHarness {
@@ -42,7 +42,7 @@ impl TestHarness {
     }
 
     fn new_with_auth(addr: SocketAddr, auth: Option<Authentication>) -> Self {
-        let (sender, _) = broadcast::channel(5);
+        let (sender, _) = broadcast::channel::<Arc<BroadcastMessage>>(5);
         let metrics = Arc::new(Metrics::default());
         let registry = Registry::new(
             sender.clone(),
@@ -187,7 +187,9 @@ impl TestHarness {
 
     fn send_messages(&self, messages: Vec<&str>) {
         for message_str in &messages {
-            let message = Message::Binary(message_str.as_bytes().to_vec().into());
+            let message = BroadcastMessage::new(
+                Message::Binary(message_str.as_bytes().to_vec().into()),
+            );
             match self.sender.send(message) {
                 Ok(_) => {}
                 Err(_) => {
@@ -372,7 +374,7 @@ async fn test_authentication_allows_known_api_keys() {
 async fn test_ping_timeout_disconnects_client() {
     let addr = TestHarness::alloc_port().await;
 
-    let (sender, _) = broadcast::channel(5);
+    let (sender, _) = broadcast::channel::<Arc<BroadcastMessage>>(5);
     let metrics = Arc::new(Metrics::default());
     let registry = Registry::new(
         sender.clone(),
@@ -410,7 +412,7 @@ async fn test_ping_timeout_disconnects_client() {
 
     assert_eq!(harness.sender.receiver_count(), 1);
 
-    harness.sender.send(Message::Ping(vec![].into())).unwrap();
+    harness.sender.send(BroadcastMessage::new(Message::Ping(vec![].into()))).unwrap();
     tokio::time::sleep(Duration::from_millis(1500)).await;
 
     assert_eq!(harness.sender.receiver_count(), 0);

@@ -1,7 +1,11 @@
-use std::{sync::Arc, time::Instant};
+use std::{
+    sync::{Arc, OnceLock},
+    time::Instant,
+};
 
 use axum::extract::ws::Message;
 use futures::{SinkExt, stream::StreamExt};
+use serde_json::Value;
 use tokio::{
     sync::broadcast::{Sender, error::RecvError},
     time::{Duration, interval, timeout},
@@ -9,6 +13,33 @@ use tokio::{
 use tracing::{debug, info, trace, warn};
 
 use crate::{client::ClientConnection, metrics::Metrics};
+
+/// A broadcast message that lazily caches the decompressed, parsed JSON representation.
+///
+/// The `OnceLock` ensures that decompression and JSON parsing happen at most once per
+/// broadcast message, regardless of how many subscriber tasks race to filter it. All
+/// subscribers that need the parsed form share the same `Arc<Value>` via the lock.
+#[derive(Debug)]
+pub struct BroadcastMessage {
+    /// The raw WebSocket message as received from the upstream source.
+    pub message: Message,
+    /// Lazily initialised parsed JSON. `None` inside the `OnceLock` means the payload
+    /// could not be decompressed or parsed. Uninitialised means no subscriber has needed
+    /// it yet (or the subscriber has a [`FilterType::None`] filter).
+    cached_json: OnceLock<Option<Arc<Value>>>,
+}
+
+impl BroadcastMessage {
+    /// Wraps a raw [`Message`] in a broadcast envelope with an empty JSON cache.
+    pub fn new(message: Message) -> Arc<Self> {
+        Arc::new(Self { message, cached_json: OnceLock::new() })
+    }
+
+    /// Returns a reference to the shared JSON cache used by [`FilterType::matches_with_cache`].
+    pub fn cached_json(&self) -> &OnceLock<Option<Arc<Value>>> {
+        &self.cached_json
+    }
+}
 
 fn get_message_size(msg: &Message) -> u64 {
     match msg {
@@ -21,7 +52,7 @@ fn get_message_size(msg: &Message) -> u64 {
 /// Manages broadcast subscriptions for connected WebSocket clients.
 #[derive(Clone, Debug)]
 pub struct Registry {
-    sender: Sender<Message>,
+    sender: Sender<Arc<BroadcastMessage>>,
     metrics: Arc<Metrics>,
     compressed: bool,
     ping_enabled: bool,
@@ -32,7 +63,7 @@ pub struct Registry {
 impl Registry {
     /// Creates a new registry with the given broadcast sender and configuration.
     pub const fn new(
-        sender: Sender<Message>,
+        sender: Sender<Arc<BroadcastMessage>>,
         metrics: Arc<Metrics>,
         compressed: bool,
         ping_enabled: bool,
@@ -62,17 +93,31 @@ impl Registry {
             tokio::select! {
                 broadcast_result = receiver.recv() => {
                     match broadcast_result {
-                        Ok(msg) => {
-                            let msg_bytes = match &msg {
+                        Ok(broadcast_msg) => {
+                            let msg_bytes = match &broadcast_msg.message {
                                 Message::Binary(data) => data.as_ref(),
                                 _ => &[],
                             };
-                            if filter.matches(msg_bytes, compressed) {
-                                trace!(message = "filter matched for client", client = client_id, filter = ?filter);
+
+                            // matches_with_cache decompresses and parses the JSON at most once
+                            // across all concurrent subscribers for this message. FilterType::None
+                            // short-circuits without touching the cache.
+                            if filter.matches_with_cache(
+                                msg_bytes,
+                                compressed,
+                                broadcast_msg.cached_json(),
+                            ) {
+                                trace!(
+                                    message = "filter matched for client",
+                                    client = client_id,
+                                    filter = ?filter
+                                );
 
                                 let send_start = Instant::now();
-                                let msg_size = get_message_size(&msg);
-                                let send_result = timeout(self.send_timeout_ms, ws_sender.send(msg)).await;
+                                let msg_size = get_message_size(&broadcast_msg.message);
+                                let msg_clone = broadcast_msg.message.clone();
+                                let send_result =
+                                    timeout(self.send_timeout_ms, ws_sender.send(msg_clone)).await;
                                 let send_duration = send_start.elapsed();
 
                                 metrics.message_send_duration.record(send_duration);
@@ -80,7 +125,10 @@ impl Registry {
                                 match send_result {
                                     Ok(Ok(())) => {
                                         // Success - message sent
-                                        trace!(message = "message sent to client", client = client_id);
+                                        trace!(
+                                            message = "message sent to client",
+                                            client = client_id
+                                        );
                                         metrics.sent_messages.increment(1);
                                         metrics.bytes_broadcasted.increment(msg_size);
                                     }
@@ -156,12 +204,18 @@ impl Registry {
                         match msg {
                             Some(Ok(Message::Pong(_))) => {
                                 if ping_enabled {
-                                    trace!(message = "received pong from client", client = client_id);
+                                    trace!(
+                                        message = "received pong from client",
+                                        client = client_id
+                                    );
                                     last_pong = Instant::now();
                                 }
                             }
                             Some(Ok(Message::Close(_))) => {
-                                trace!(message = "received close from client", client = client_id);
+                                trace!(
+                                    message = "received close from client",
+                                    client = client_id
+                                );
                                 let _ = pong_error_tx.send(());
                                 return;
                             }
