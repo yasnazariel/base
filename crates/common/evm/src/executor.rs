@@ -23,7 +23,9 @@ use revm::{
     database::DatabaseCommitExt,
 };
 
-use crate::{BaseBlockExecutionCtx, BaseBlockExecutionError, OpReceiptBuilder, OpTxEnv, canyon};
+use crate::{
+    BaseBlockExecutionCtx, BaseBlockExecutionError, BasePreExecution, OpReceiptBuilder, OpTxEnv,
+};
 
 /// The result of executing an OP transaction.
 #[derive(Debug)]
@@ -143,27 +145,17 @@ where
     type Result = OpTxResult<E::HaltReason, <R::Transaction as TransactionEnvelope>::TxType>;
 
     fn apply_pre_execution_changes(&mut self) -> Result<(), BlockExecutionError> {
-        // Set state clear flag if the block is after the Spurious Dragon hardfork.
-        let state_clear_flag =
-            self.spec.is_spurious_dragon_active_at_block(self.evm.block().number().saturating_to());
-        self.evm.db_mut().set_state_clear_flag(state_clear_flag);
-
-        self.system_caller.apply_blockhashes_contract_call(self.ctx.parent_hash, &mut self.evm)?;
-        self.system_caller
-            .apply_beacon_root_contract_call(self.ctx.parent_beacon_block_root, &mut self.evm)?;
-
-        // Ensure that the create2deployer is force-deployed at the canyon transition. Base
-        // blocks will always have at least a single transaction in them (the L1 info transaction),
-        // so we can safely assume that this will always be triggered upon the transition and that
-        // the above check for empty blocks will never be hit on Base chains.
-        canyon::ensure_create2_deployer(
+        let block_number = self.evm.block().number().saturating_to();
+        let timestamp = self.evm.block().timestamp().saturating_to();
+        BasePreExecution::apply(
             &self.spec,
-            self.evm.block().timestamp().saturating_to(),
-            self.evm.db_mut(),
+            &mut self.system_caller,
+            &mut self.evm,
+            block_number,
+            timestamp,
+            self.ctx.parent_hash,
+            self.ctx.parent_beacon_block_root,
         )
-        .map_err(BlockExecutionError::other)?;
-
-        Ok(())
     }
 
     fn execute_transaction_without_commit(
