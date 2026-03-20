@@ -313,10 +313,7 @@ fn parse_payload(payload: &[u8], enable_compression: bool) -> Option<Arc<Value>>
     match serde_json::from_str::<Value>(&text) {
         Ok(json) => Some(Arc::new(json)),
         Err(e) => {
-            warn!(
-                message = "Failed to parse JSON payload for filtering",
-                error = e.to_string()
-            );
+            warn!(message = "Failed to parse JSON payload for filtering", error = e.to_string());
             None
         }
     }

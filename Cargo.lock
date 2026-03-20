@@ -20662,6 +20662,7 @@ dependencies = [
  "axum",
  "backoff",
  "brotli",
+ "criterion",
  "futures",
  "http 1.4.0",
  "metrics",

@@ -18,7 +18,9 @@ use tokio::{
 use tokio_tungstenite::connect_async;
 use tokio_util::sync::CancellationToken;
 use tracing::error;
-use websocket_proxy::{Authentication, BroadcastMessage, InMemoryRateLimit, Metrics, Registry, Server};
+use websocket_proxy::{
+    Authentication, BroadcastMessage, InMemoryRateLimit, Metrics, Registry, Server,
+};
 
 struct TestHarness {
     received_messages: Arc<Mutex<HashMap<usize, Vec<String>>>>,
@@ -187,9 +189,8 @@ impl TestHarness {
 
     fn send_messages(&self, messages: Vec<&str>) {
         for message_str in &messages {
-            let message = BroadcastMessage::new(
-                Message::Binary(message_str.as_bytes().to_vec().into()),
-            );
+            let message =
+                BroadcastMessage::new(Message::Binary(message_str.as_bytes().to_vec().into()));
             match self.sender.send(message) {
                 Ok(_) => {}
                 Err(_) => {

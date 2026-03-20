@@ -36,7 +36,7 @@ impl BroadcastMessage {
     }
 
     /// Returns a reference to the shared JSON cache used by [`FilterType::matches_with_cache`].
-    pub fn cached_json(&self) -> &OnceLock<Option<Arc<Value>>> {
+    pub const fn cached_json(&self) -> &OnceLock<Option<Arc<Value>>> {
         &self.cached_json
     }
 }
