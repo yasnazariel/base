@@ -140,12 +140,13 @@ inherits = "release"
 lto = "fat"
 codegen-units = 1
 
+# TODO: add `rustflags = ["-Cforce-frame-pointers=yes"]` here once
+# `profile-rustflags` is stabilized (tracking: rust-lang/cargo#10271)
 [profile.profiling]
 inherits = "release"
 lto = false
 debug = "line-tables-only"
 strip = "none"
-rustflags = ["-Cforce-frame-pointers=yes"]
 
 # CI profile: optimized for fast GHA builds and minimal disk usage
 [profile.ci]
