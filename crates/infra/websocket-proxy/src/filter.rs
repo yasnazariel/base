@@ -1,4 +1,8 @@
-use std::{collections::HashSet, io::Write, sync::Arc};
+use std::{
+    collections::HashSet,
+    io::Write,
+    sync::{Arc, OnceLock},
+};
 
 use brotli::DecompressorWriter;
 use serde_json::{self, Value};
@@ -90,43 +94,9 @@ impl FilterType {
         if let Self::None = self {
             return true;
         }
-
-        let uncompressed_data = if enable_compression {
-            let mut uncompressed_bytes = Vec::new();
-            {
-                let mut decoder = DecompressorWriter::new(&mut uncompressed_bytes, 4096);
-                match decoder.write_all(payload) {
-                    Ok(_) => (),
-                    Err(e) => {
-                        info!(error = %e, "error while decoding payload");
-                        return false;
-                    }
-                }
-            }
-            uncompressed_bytes
-        } else {
-            payload.to_owned()
-        };
-
-        let value = String::from_utf8(uncompressed_data);
-        if value.is_err() {
-            return false;
-        }
-
-        let json_result: Result<Value, _> = serde_json::from_str(value.unwrap().as_str());
-        match json_result {
-            Ok(json) => {
-                let result = self.json_matches(&json);
-                trace!(result = result, filter_type = ?self, "Filter result");
-                result
-            }
-            Err(e) => {
-                warn!(
-                    message = "Failed to parse JSON payload for filtering",
-                    error = e.to_string()
-                );
-                false
-            }
+        match parse_payload(payload, enable_compression) {
+            Some(json) => self.matches_parsed(&json),
+            None => false,
         }
     }
 
@@ -153,7 +123,7 @@ impl FilterType {
         &self,
         payload: &[u8],
         enable_compression: bool,
-        cached_json: &std::sync::OnceLock<Option<Arc<Value>>>,
+        cached_json: &OnceLock<Option<Arc<Value>>>,
     ) -> bool {
         if let Self::None = self {
             return true;
@@ -517,8 +487,6 @@ mod tests {
 
     #[test]
     fn test_matches_with_cache_shares_parse() {
-        use std::sync::OnceLock;
-
         let payload = get_test_payload();
         let cache: OnceLock<Option<Arc<Value>>> = OnceLock::new();
 
