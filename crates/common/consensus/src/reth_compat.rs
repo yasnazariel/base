@@ -93,6 +93,7 @@ impl reth_primitives_traits::InMemorySize for OpPooledTransaction {
             Self::Eip2930(tx) => tx.size(),
             Self::Eip1559(tx) => tx.size(),
             Self::Eip7702(tx) => tx.size(),
+            Self::Aa(tx) => reth_primitives_traits::InMemorySize::size(tx.inner()),
         }
     }
 }

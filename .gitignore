@@ -5,6 +5,9 @@ target/
 .sisyphus/
 eif*.bin
 docs/specs/node_modules/
+node_modules/
+etc/scripts/devnet/package.json
+etc/scripts/devnet/package-lock.json
 docs/specs/dist/
 docs/specs/.vocs/
 *.log

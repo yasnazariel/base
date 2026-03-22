@@ -17,7 +17,7 @@ use reth_primitives_traits::{
 use reth_storage_api::{AccountInfoReader, BlockReaderIdExt, StateProviderFactory};
 use reth_transaction_pool::{
     EthPoolTransaction, EthTransactionValidator, TransactionOrigin, TransactionValidationOutcome,
-    TransactionValidator,
+    TransactionValidator, validate::ValidTransaction,
 };
 
 use base_alloy_consensus::AA_TX_TYPE_ID;
@@ -174,13 +174,35 @@ where
             );
         }
 
-        if transaction.ty() == AA_TX_TYPE_ID
-            && !self.chain_spec().is_base_v1_active_at_timestamp(self.block_timestamp())
-        {
-            return TransactionValidationOutcome::Invalid(
-                transaction,
-                InvalidTransactionError::TxTypeNotSupported.into(),
-            );
+        if transaction.ty() == AA_TX_TYPE_ID {
+            if !self.chain_spec().is_base_v1_active_at_timestamp(self.block_timestamp()) {
+                return TransactionValidationOutcome::Invalid(
+                    transaction,
+                    InvalidTransactionError::TxTypeNotSupported.into(),
+                );
+            }
+
+            return match crate::validate_aa_transaction(
+                &transaction,
+                self.block_timestamp(),
+                self.client(),
+            ) {
+                Ok(outcome) => TransactionValidationOutcome::Valid {
+                    balance: outcome.balance,
+                    state_nonce: outcome.state_nonce,
+                    transaction: ValidTransaction::Valid(transaction),
+                    propagate: true,
+                    bytecode_hash: None,
+                    authorities: None,
+                },
+                Err(e) => {
+                    tracing::debug!(target: "txpool", error = %e, "AA transaction validation failed");
+                    TransactionValidationOutcome::Invalid(
+                        transaction,
+                        reth_transaction_pool::error::InvalidPoolTransactionError::other(e),
+                    )
+                }
+            };
         }
 
         let outcome = self.inner.validate_one_with_state(origin, transaction, state);

@@ -280,9 +280,7 @@ impl OpTxEnvelope {
             Self::Eip2930(tx) => Ok(tx.into()),
             Self::Eip1559(tx) => Ok(tx.into()),
             Self::Eip7702(tx) => Ok(tx.into()),
-            Self::Aa(_) => {
-                Err(ValueError::new(self, "AA transactions use custom pooling"))
-            }
+            Self::Aa(tx) => Ok(OpPooledTransaction::Aa(tx)),
             Self::Deposit(tx) => {
                 Err(ValueError::new(tx.into(), "Deposit transactions cannot be pooled"))
             }

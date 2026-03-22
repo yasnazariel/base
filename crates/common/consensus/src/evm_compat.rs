@@ -28,6 +28,8 @@ impl FromRecoveredTx<OpTxEnvelope> for TxEnv {
                     tx_type: inner.ty(),
                     caller,
                     gas_limit: inner.gas_limit,
+                    nonce: inner.nonce_sequence,
+                    kind: revm::primitives::TxKind::Call(caller),
                     value: alloy_primitives::U256::ZERO,
                     data: alloy_primitives::Bytes::default(),
                     gas_price: inner.max_fee_per_gas,

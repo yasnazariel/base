@@ -31,20 +31,29 @@ use super::{
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct TxAa {
     /// Chain ID this transaction targets.
+    #[cfg_attr(feature = "serde", serde(with = "alloy_serde::quantity"))]
     pub chain_id: u64,
     /// Sender address. `Address::ZERO` means the sender is derived via ecrecover.
     pub from: Address,
     /// 2D nonce channel selector (uint192 in the spec, validated at acceptance time).
     pub nonce_key: U256,
     /// Sequence number within the nonce channel.
+    #[cfg_attr(feature = "serde", serde(with = "alloy_serde::quantity"))]
     pub nonce_sequence: u64,
     /// Block timestamp after which this transaction is invalid. `0` = no expiry.
+    #[cfg_attr(feature = "serde", serde(with = "alloy_serde::quantity"))]
     pub expiry: u64,
     /// EIP-1559 priority fee.
+    #[cfg_attr(feature = "serde", serde(with = "alloy_serde::quantity"))]
     pub max_priority_fee_per_gas: u128,
     /// EIP-1559 max fee.
+    #[cfg_attr(feature = "serde", serde(with = "alloy_serde::quantity"))]
     pub max_fee_per_gas: u128,
     /// Execution gas budget (excludes intrinsic cost).
+    #[cfg_attr(
+        feature = "serde",
+        serde(with = "alloy_serde::quantity", rename = "gas", alias = "gasLimit")
+    )]
     pub gas_limit: u64,
     /// EIP-7702 authorization list.
     pub authorization_list: Vec<SignedAuthorization>,

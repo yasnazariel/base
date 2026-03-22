@@ -54,4 +54,4 @@ pub use types::{
 };
 
 mod transaction;
-pub use transaction::{TxValidationError, validate_tx};
+pub use transaction::{TxValidationError, is_aa_tx, validate_aa_tx, validate_tx};

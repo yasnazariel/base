@@ -21,7 +21,7 @@ use revm::{
     },
     inspector::{Inspector, InspectorEvmTr, InspectorHandler},
     interpreter::{Gas, interpreter::EthInterpreter, interpreter_action::FrameInit},
-    primitives::{U256, hardfork::SpecId},
+    primitives::{Address, U256, hardfork::SpecId, keccak256},
 };
 
 use crate::{
@@ -29,6 +29,36 @@ use crate::{
     constants::{BASE_FEE_RECIPIENT, L1_FEE_RECIPIENT, OPERATOR_FEE_RECIPIENT},
     transaction::{DEPOSIT_TRANSACTION_TYPE, OpTransactionError, OpTxTr},
 };
+
+/// EIP-8130 AA transaction type byte.
+const AA_TX_TYPE: u8 = 0x05;
+
+/// NonceManager system contract address (0x…aa02).
+const NONCE_MANAGER_ADDRESS: Address = Address::new([
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xaa, 0x02,
+]);
+
+/// Base storage slot for the nonce mapping in NonceManager (slot index 1).
+const NONCE_BASE_SLOT: U256 = U256::from_limbs([1, 0, 0, 0]);
+
+/// Computes the NonceManager storage slot for `nonce[account][nonce_key]`.
+///
+/// `keccak256(nonce_key . keccak256(account . NONCE_BASE_SLOT))`
+///
+/// Mirrors [`base_alloy_consensus::nonce_slot`] to avoid a cyclic dependency.
+fn aa_nonce_slot(account: Address, nonce_key: U256) -> U256 {
+    let inner = {
+        let mut buf = [0u8; 64];
+        buf[12..32].copy_from_slice(account.as_slice());
+        let base_bytes = NONCE_BASE_SLOT.to_be_bytes::<32>();
+        buf[32..64].copy_from_slice(&base_bytes);
+        keccak256(buf)
+    };
+    let mut buf = [0u8; 64];
+    buf[..32].copy_from_slice(&nonce_key.to_be_bytes::<32>());
+    buf[32..64].copy_from_slice(inner.as_slice());
+    U256::from_be_bytes(keccak256(buf).0)
+}
 
 /// Base handler extends the [`Handler`] with Base-specific logic.
 #[derive(Debug, Clone)]
@@ -97,6 +127,13 @@ where
             return Err(OpTransactionError::MissingEnvelopedTx.into());
         }
 
+        // AA transactions skip mainnet env validation (different intrinsic gas
+        // model, no legacy nonce/code checks). Structural + signature validation
+        // already happened in the mempool.
+        if tx_type == AA_TX_TYPE {
+            return Ok(());
+        }
+
         self.mainnet.validate_env(evm)
     }
 
@@ -144,6 +181,61 @@ where
         // and it will be reloaded from the database if it is not for the current block.
         if chain.l2_block != Some(block.number()) {
             *chain = L1BlockInfo::try_fetch(journal.db_mut(), block.number(), spec)?;
+        }
+
+        // AA transactions: deduct gas from payer (= caller for self-pay),
+        // skip account nonce/code validation, increment NonceManager nonce
+        // instead of bumping the account nonce.
+        if tx.tx_type() == AA_TX_TYPE {
+            let sender = tx.caller();
+            let nonce_sequence = tx.nonce();
+
+            let mut payer_account = journal.load_account_with_code_mut(sender)?.data;
+            let mut balance = payer_account.account().info.balance;
+
+            if !cfg.is_fee_charge_disabled() {
+                let Some(additional_cost) = chain.tx_cost_with_tx(tx, spec) else {
+                    return Err(ERROR::from_string(
+                        "[OPTIMISM] Failed to load enveloped transaction.".into(),
+                    ));
+                };
+                let Some(new_balance) = balance.checked_sub(additional_cost) else {
+                    return Err(InvalidTransaction::LackOfFundForMaxFee {
+                        fee: Box::new(additional_cost),
+                        balance: Box::new(balance),
+                    }
+                    .into());
+                };
+                balance = new_balance;
+            }
+
+            let balance = calculate_caller_fee(balance, tx, block, cfg)?;
+            payer_account.set_balance(balance);
+
+            // Drop the account borrow before sstore.
+            drop(payer_account);
+
+            // Increment the 2D nonce in NonceManager storage.
+            // TODO(eip-8130): support non-zero nonce_key (requires extending
+            // OpTxTr or parsing enveloped_tx). For now nonce_key=0 covers the
+            // standard single-channel case.
+            let nonce_key = U256::ZERO;
+            let slot = aa_nonce_slot(sender, nonce_key);
+            let new_nonce = U256::from(nonce_sequence + 1);
+
+            // Load the NonceManager account so we can write storage.
+            // If the predeploy has no code yet (devnet without genesis
+            // predeploys), bump its account nonce so EIP-161 cleanup
+            // doesn't delete the account and erase our storage writes.
+            // TODO(eip-8130): remove once AA predeploys are in genesis.
+            let mut nm = journal.load_account_with_code_mut(NONCE_MANAGER_ADDRESS)?.data;
+            if nm.account().info.is_empty() {
+                nm.bump_nonce();
+            }
+            drop(nm);
+            journal.sstore(NONCE_MANAGER_ADDRESS, slot, new_nonce)?;
+
+            return Ok(());
         }
 
         let mut caller_account = journal.load_account_with_code_mut(tx.caller())?.data;

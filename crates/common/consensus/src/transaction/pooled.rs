@@ -4,14 +4,14 @@
 use core::hash::Hash;
 
 use alloy_consensus::{
-    Extended, SignableTransaction, Signed, TransactionEnvelope, TxEip7702, TxEnvelope,
+    Extended, Sealed, SignableTransaction, Signed, TransactionEnvelope, TxEip7702, TxEnvelope,
     error::ValueError,
     transaction::{TxEip1559, TxEip2930, TxHashRef, TxLegacy},
 };
 use alloy_eips::eip2718::Encodable2718;
 use alloy_primitives::{B256, Signature, TxHash, bytes};
 
-use crate::OpTxEnvelope;
+use crate::{OpTxEnvelope, TxAa};
 
 /// All possible transactions that can be included in a response to `GetPooledTransactions`.
 /// A response to `GetPooledTransactions`. This can include a typed signed transaction, but cannot
@@ -34,6 +34,9 @@ pub enum OpPooledTransaction {
     /// A [`TxEip7702`] transaction tagged with type 4.
     #[envelope(ty = 4)]
     Eip7702(Signed<TxEip7702>),
+    /// A [`TxAa`] transaction tagged with type 0x05 (EIP-8130).
+    #[envelope(ty = 5)]
+    Aa(Sealed<TxAa>),
 }
 
 impl OpPooledTransaction {
@@ -45,6 +48,7 @@ impl OpPooledTransaction {
             Self::Eip2930(tx) => tx.signature_hash(),
             Self::Eip1559(tx) => tx.signature_hash(),
             Self::Eip7702(tx) => tx.signature_hash(),
+            Self::Aa(tx) => tx.seal(),
         }
     }
 
@@ -55,16 +59,23 @@ impl OpPooledTransaction {
             Self::Eip2930(tx) => tx.hash(),
             Self::Eip1559(tx) => tx.hash(),
             Self::Eip7702(tx) => tx.hash(),
+            Self::Aa(tx) => tx.hash_ref(),
         }
     }
 
     /// Returns the signature of the transaction.
-    pub const fn signature(&self) -> &Signature {
+    pub fn signature(&self) -> &Signature {
+        static AA_DUMMY_SIG: Signature = Signature::new(
+            alloy_primitives::U256::ZERO,
+            alloy_primitives::U256::ZERO,
+            false,
+        );
         match self {
             Self::Legacy(tx) => tx.signature(),
             Self::Eip2930(tx) => tx.signature(),
             Self::Eip1559(tx) => tx.signature(),
             Self::Eip7702(tx) => tx.signature(),
+            Self::Aa(_) => &AA_DUMMY_SIG,
         }
     }
 
@@ -76,6 +87,7 @@ impl OpPooledTransaction {
             Self::Eip2930(tx) => tx.tx().encode_for_signing(out),
             Self::Eip1559(tx) => tx.tx().encode_for_signing(out),
             Self::Eip7702(tx) => tx.tx().encode_for_signing(out),
+            Self::Aa(tx) => tx.inner().encode_2718(out),
         }
     }
 
@@ -86,6 +98,7 @@ impl OpPooledTransaction {
             Self::Eip2930(tx) => tx.into(),
             Self::Eip1559(tx) => tx.into(),
             Self::Eip7702(tx) => tx.into(),
+            Self::Aa(_) => panic!("AA transactions cannot be converted to ethereum TxEnvelope"),
         }
     }
 
@@ -96,6 +109,7 @@ impl OpPooledTransaction {
             Self::Eip2930(tx) => tx.into(),
             Self::Eip1559(tx) => tx.into(),
             Self::Eip7702(tx) => tx.into(),
+            Self::Aa(tx) => OpTxEnvelope::Aa(tx),
         }
     }
 
@@ -156,6 +170,12 @@ impl From<Signed<TxEip7702>> for OpPooledTransaction {
     }
 }
 
+impl From<Sealed<TxAa>> for OpPooledTransaction {
+    fn from(v: Sealed<TxAa>) -> Self {
+        Self::Aa(v)
+    }
+}
+
 impl From<OpPooledTransaction> for alloy_consensus::transaction::PooledTransaction {
     fn from(value: OpPooledTransaction) -> Self {
         match value {
@@ -163,6 +183,9 @@ impl From<OpPooledTransaction> for alloy_consensus::transaction::PooledTransacti
             OpPooledTransaction::Eip2930(tx) => tx.into(),
             OpPooledTransaction::Eip1559(tx) => tx.into(),
             OpPooledTransaction::Eip7702(tx) => tx.into(),
+            OpPooledTransaction::Aa(_) => {
+                panic!("AA transactions cannot be converted to ethereum PooledTransaction")
+            }
         }
     }
 }
@@ -178,6 +201,9 @@ impl alloy_consensus::transaction::SignerRecoverable for OpPooledTransaction {
     fn recover_signer(
         &self,
     ) -> Result<alloy_primitives::Address, alloy_consensus::crypto::RecoveryError> {
+        if let Self::Aa(tx) = self {
+            return Ok(tx.inner().from);
+        }
         let signature_hash = self.signature_hash();
         alloy_consensus::crypto::secp256k1::recover_signer(self.signature(), signature_hash)
     }
@@ -185,6 +211,9 @@ impl alloy_consensus::transaction::SignerRecoverable for OpPooledTransaction {
     fn recover_signer_unchecked(
         &self,
     ) -> Result<alloy_primitives::Address, alloy_consensus::crypto::RecoveryError> {
+        if let Self::Aa(tx) = self {
+            return Ok(tx.inner().from);
+        }
         let signature_hash = self.signature_hash();
         alloy_consensus::crypto::secp256k1::recover_signer_unchecked(
             self.signature(),
@@ -209,13 +238,8 @@ impl alloy_consensus::transaction::SignerRecoverable for OpPooledTransaction {
             Self::Eip7702(tx) => {
                 alloy_consensus::transaction::SignerRecoverable::recover_unchecked_with_buf(tx, buf)
             }
+            Self::Aa(tx) => Ok(tx.inner().from),
         }
-    }
-}
-
-impl From<OpPooledTransaction> for TxEnvelope {
-    fn from(tx: OpPooledTransaction) -> Self {
-        tx.into_envelope()
     }
 }
 
@@ -229,7 +253,16 @@ impl TryFrom<OpTxEnvelope> for OpPooledTransaction {
     type Error = ValueError<OpTxEnvelope>;
 
     fn try_from(value: OpTxEnvelope) -> Result<Self, Self::Error> {
-        value.try_into_pooled()
+        match value {
+            OpTxEnvelope::Legacy(tx) => Ok(tx.into()),
+            OpTxEnvelope::Eip2930(tx) => Ok(tx.into()),
+            OpTxEnvelope::Eip1559(tx) => Ok(tx.into()),
+            OpTxEnvelope::Eip7702(tx) => Ok(tx.into()),
+            OpTxEnvelope::Aa(tx) => Ok(Self::Aa(tx)),
+            OpTxEnvelope::Deposit(tx) => {
+                Err(ValueError::new(tx.into(), "Deposit transactions cannot be pooled"))
+            }
+        }
     }
 }
 

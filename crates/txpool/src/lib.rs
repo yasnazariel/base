@@ -12,6 +12,9 @@ pub use aa_invalidation::{
     AaInvalidationIndex, InvalidationKey, compute_invalidation_keys, process_fal,
 };
 
+mod aa_validate;
+pub use aa_validate::{AaValidationError, AaValidationOutcome, validate_aa_transaction};
+
 mod validator;
 pub use validator::{OpL1BlockInfo, OpTransactionValidator};
 
