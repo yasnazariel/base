@@ -425,8 +425,14 @@ mod tests {
     use alloy_consensus::transaction::Recovered;
     use alloy_eips::eip2718::Encodable2718;
     use alloy_primitives::{TxKind, U256};
+    use base_alloy_chains::BaseChainConfig;
     use base_alloy_consensus::TxDeposit;
-    use base_execution_chainspec::BASE_MAINNET;
+    use base_execution_chainspec::OpChainSpec;
+
+    static BASE_MAINNET: std::sync::LazyLock<std::sync::Arc<OpChainSpec>> =
+        std::sync::LazyLock::new(|| {
+            std::sync::Arc::new(OpChainSpec::from(BaseChainConfig::mainnet()))
+        });
     use base_execution_evm::OpEvmConfig;
     use base_execution_primitives::{OpPrimitives, OpTransactionSigned};
     use reth_provider::test_utils::MockEthProvider;

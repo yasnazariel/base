@@ -10,23 +10,11 @@
 
 extern crate alloc;
 
-mod base;
-pub use base::BASE_MAINNET;
-
-mod base_devnet_0_sepolia_dev_0;
-pub use base_devnet_0_sepolia_dev_0::BASE_DEVNET_0_SEPOLIA_DEV_0;
-
-mod base_sepolia;
-pub use base_sepolia::BASE_SEPOLIA;
-
 mod basefee;
 pub use basefee::*;
 
 mod builder;
 pub use builder::OpChainSpecBuilder;
 
-mod dev;
-pub use dev::OP_DEV;
-
 mod spec;
-pub use spec::{OpChainSpec, OpGenesisInfo, SUPPORTED_CHAINS};
+pub use spec::{OpChainSpec, OpGenesisInfo};

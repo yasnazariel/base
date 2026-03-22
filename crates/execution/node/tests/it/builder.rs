@@ -4,9 +4,15 @@ use core::marker::PhantomData;
 use std::sync::OnceLock;
 
 use alloy_primitives::{Bytes, address};
+use base_alloy_chains::BaseChainConfig;
 use base_alloy_evm::{OpBlockExecutorFactory, OpEvm, OpEvmFactory};
-use base_execution_chainspec::{BASE_MAINNET, BASE_SEPOLIA, OpChainSpec};
+use base_execution_chainspec::OpChainSpec;
 use base_execution_evm::{OpEvmConfig, OpRethReceiptBuilder};
+
+static BASE_MAINNET: std::sync::LazyLock<std::sync::Arc<OpChainSpec>> =
+    std::sync::LazyLock::new(|| std::sync::Arc::new(OpChainSpec::from(BaseChainConfig::mainnet())));
+static BASE_SEPOLIA: std::sync::LazyLock<std::sync::Arc<OpChainSpec>> =
+    std::sync::LazyLock::new(|| std::sync::Arc::new(OpChainSpec::from(BaseChainConfig::sepolia())));
 use base_execution_primitives::OpPrimitives;
 use base_node_core::{OpExecutorBuilder, OpNode, args::RollupArgs};
 use base_revm::{

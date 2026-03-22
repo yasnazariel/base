@@ -6,7 +6,7 @@
 extern crate alloc;
 
 mod config;
-pub use config::BaseChainConfig;
+pub use config::{BaseChainConfig, SUPPORTED_CHAINS};
 
 mod hardfork;
 pub use hardfork::BaseUpgrade;

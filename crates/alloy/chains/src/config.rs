@@ -2,12 +2,18 @@
 
 use alloy_primitives::{Address, B256, U256, address, b256, uint};
 
+/// All supported chain names for the CLI.
+pub const SUPPORTED_CHAINS: &[&str] =
+    &["base", "base_sepolia", "base-sepolia", "base-devnet-0-sepolia-dev-0", "dev"];
+
 /// Complete configuration for a Base chain
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BaseChainConfig {
     // Identity
     /// L2 chain ID.
     pub chain_id: u64,
+    /// CLI names used to select this chain (e.g. `&["base"]`).
+    pub cli_names: &'static [&'static str],
     /// L1 chain ID.
     pub l1_chain_id: u64,
 
@@ -97,6 +103,10 @@ pub struct BaseChainConfig {
     /// Raw bootnode strings (ENR or enode format) for consensus discovery.
     pub bootnodes: &'static [&'static str],
 
+    // Pruning
+    /// Delete limit for pruning operations (0 = use reth default).
+    pub prune_delete_limit: usize,
+
     // Execution genesis
     /// Embedded genesis JSON for reth alloc tables.
     pub genesis_json: &'static str,
@@ -129,18 +139,19 @@ impl BaseChainConfig {
     }
 
     /// Looks up a chain config by L2 chain ID.
-    pub const fn by_chain_id(id: u64) -> Option<&'static Self> {
-        match id {
-            8453 => Some(&MAINNET),
-            84532 => Some(&SEPOLIA),
-            11763072 => Some(&ALPHA),
-            _ => None,
-        }
+    pub fn by_chain_id(id: u64) -> Option<&'static Self> {
+        Self::all().into_iter().find(|cfg| cfg.chain_id == id)
+    }
+
+    /// Looks up a chain config by CLI name.
+    pub fn by_name(name: &str) -> Option<&'static Self> {
+        Self::all().into_iter().find(|cfg| cfg.cli_names.contains(&name))
     }
 }
 
 const MAINNET: BaseChainConfig = BaseChainConfig {
     chain_id: 8453,
+    cli_names: &["base"],
     l1_chain_id: 1,
 
     block_time: 2,
@@ -197,11 +208,14 @@ const MAINNET: BaseChainConfig = BaseChainConfig {
         "enode://cdadbe835308ad3557f9a1de8db411da1a260a98f8421d62da90e71da66e55e98aaa8e90aa7ce01b408a54e4bd2253d701218081ded3dbe5efbbc7b41d7cef79@54.198.153.150:30301",
     ],
 
+    prune_delete_limit: 0,
+
     genesis_json: include_str!("../res/genesis/base.json"),
 };
 
 const SEPOLIA: BaseChainConfig = BaseChainConfig {
     chain_id: 84532,
+    cli_names: &["base_sepolia", "base-sepolia"],
     l1_chain_id: 11155111,
 
     block_time: 2,
@@ -250,11 +264,14 @@ const SEPOLIA: BaseChainConfig = BaseChainConfig {
         "enode://6f10052847a966a725c9f4adf6716f9141155b99a0fb487fea3f51498f4c2a2cb8d534e680ee678f9447db85b93ff7c74562762c3714783a7233ac448603b25f@107.21.251.55:30301",
     ],
 
+    prune_delete_limit: 10000,
+
     genesis_json: include_str!("../res/genesis/sepolia_base.json"),
 };
 
 const ALPHA: BaseChainConfig = BaseChainConfig {
     chain_id: 11763072,
+    cli_names: &["base-devnet-0-sepolia-dev-0"],
     l1_chain_id: 11155111,
 
     block_time: 2,
@@ -300,11 +317,14 @@ const ALPHA: BaseChainConfig = BaseChainConfig {
 
     bootnodes: &[],
 
+    prune_delete_limit: 10000,
+
     genesis_json: include_str!("../res/genesis/devnet_0_sepolia_dev_0_base.json"),
 };
 
 const DEVNET: BaseChainConfig = BaseChainConfig {
     chain_id: 1337,
+    cli_names: &["dev"],
     l1_chain_id: 900,
 
     block_time: 2,
@@ -350,5 +370,26 @@ const DEVNET: BaseChainConfig = BaseChainConfig {
 
     bootnodes: &[],
 
+    prune_delete_limit: 0,
+
     genesis_json: include_str!("../res/genesis/dev.json"),
 };
+
+#[cfg(test)]
+mod tests {
+    use alloc::vec::Vec;
+
+    use super::*;
+
+    #[test]
+    fn supported_chains_matches_cli_names() {
+        let mut from_configs: Vec<&str> =
+            BaseChainConfig::all().iter().flat_map(|cfg| cfg.cli_names.iter().copied()).collect();
+        from_configs.sort();
+
+        let mut from_const: Vec<&str> = SUPPORTED_CHAINS.to_vec();
+        from_const.sort();
+
+        assert_eq!(from_configs, from_const, "SUPPORTED_CHAINS is out of sync with cli_names");
+    }
+}

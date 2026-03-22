@@ -122,7 +122,13 @@ where
 
 #[cfg(test)]
 mod test {
-    use base_execution_chainspec::{BASE_MAINNET, OP_DEV};
+    use base_alloy_chains::BaseChainConfig;
+    use base_execution_chainspec::OpChainSpec;
+
+    static BASE_MAINNET: std::sync::LazyLock<OpChainSpec> =
+        std::sync::LazyLock::new(|| OpChainSpec::from(BaseChainConfig::mainnet()));
+    static OP_DEV: std::sync::LazyLock<OpChainSpec> =
+        std::sync::LazyLock::new(|| OpChainSpec::from(BaseChainConfig::devnet()));
     use base_node_core::args::RollupArgs;
     use clap::Parser;
     use reth_cli_commands::{NodeCommand, node::NoArgs};
@@ -192,7 +198,7 @@ mod test {
 
         match cmd.command {
             Commands::Node(command) => {
-                assert_eq!(command.chain.as_ref(), BASE_MAINNET.as_ref());
+                assert_eq!(command.chain.as_ref(), &*BASE_MAINNET);
             }
             _ => panic!("unexpected command"),
         }

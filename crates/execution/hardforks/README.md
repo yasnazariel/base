@@ -5,9 +5,9 @@ Hardfork definitions for Base.
 ## Overview
 
 Provides execution-layer hardfork utilities by re-exporting and extending the base hardfork
-definitions from `base-alloy-upgrades`. Exposes pre-configured hardfork activation schedules
-for Base Mainnet (`BASE_MAINNET_HARDFORKS`), Base Sepolia (`BASE_SEPOLIA_HARDFORKS`), and local
-devnets (`DEV_HARDFORKS`), along with extension traits for querying activation status.
+definitions from `base-alloy-upgrades`. Exposes the pre-configured hardfork activation schedule
+for Base Mainnet (`BASE_MAINNET_HARDFORKS`), along with `BaseChainUpgradesExt` for converting
+any `BaseChainUpgrades` into a full `ChainHardforks`.
 
 ## Usage
 

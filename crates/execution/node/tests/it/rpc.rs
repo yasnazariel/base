@@ -1,6 +1,10 @@
 //! RPC integration tests.
 
-use base_execution_chainspec::BASE_MAINNET;
+use base_alloy_chains::BaseChainConfig;
+use base_execution_chainspec::OpChainSpec;
+
+static BASE_MAINNET: std::sync::LazyLock<std::sync::Arc<OpChainSpec>> =
+    std::sync::LazyLock::new(|| std::sync::Arc::new(OpChainSpec::from(BaseChainConfig::mainnet())));
 use base_node_core::OpNode;
 use reth_network::types::NatResolver;
 use reth_node_builder::{NodeBuilder, NodeHandle};

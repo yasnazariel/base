@@ -1,7 +1,7 @@
 use alloy_chains::Chain;
 use alloy_genesis::Genesis;
 use alloy_hardforks::Hardfork;
-use base_alloy_chains::BaseUpgrade;
+use base_alloy_chains::{BaseChainConfig, BaseUpgrade};
 use derive_more::From;
 use reth_chainspec::ChainSpecBuilder;
 use reth_ethereum_forks::{ChainHardforks, EthereumHardfork, ForkCondition};
@@ -19,11 +19,10 @@ pub struct OpChainSpecBuilder {
 impl OpChainSpecBuilder {
     /// Construct a new builder from the Base Mainnet chain spec.
     pub fn base_mainnet() -> Self {
-        let mut inner = ChainSpecBuilder::default()
-            .chain(crate::BASE_MAINNET.chain)
-            .genesis(crate::BASE_MAINNET.genesis.clone());
-        let forks = crate::BASE_MAINNET.hardforks.clone();
-        inner = inner.with_forks(forks);
+        let mainnet = OpChainSpec::from(BaseChainConfig::mainnet());
+        let mut inner =
+            ChainSpecBuilder::default().chain(mainnet.chain).genesis(mainnet.genesis.clone());
+        inner = inner.with_forks(mainnet.hardforks.clone());
         Self { inner }
     }
 

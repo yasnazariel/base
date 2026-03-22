@@ -6,8 +6,8 @@ use alloy_eips::eip7840::BlobParams;
 use alloy_genesis::Genesis;
 use alloy_hardforks::Hardfork;
 use alloy_primitives::{B256, U256};
-use base_alloy_chains::{BaseUpgrade, BaseUpgrades};
-use base_execution_forks::BASE_MAINNET_HARDFORKS;
+use base_alloy_chains::{BaseChainConfig, BaseChainUpgrades, BaseUpgrade, BaseUpgrades};
+use base_execution_forks::{BASE_MAINNET_HARDFORKS, BaseChainUpgradesExt};
 use base_protocol::Predeploys;
 use derive_more::{Constructor, Deref, Into};
 use reth_chainspec::{
@@ -18,14 +18,7 @@ use reth_ethereum_forks::{ChainHardforks, EthereumHardfork, ForkCondition};
 use reth_network_peers::NodeRecord;
 use reth_primitives_traits::SealedHeader;
 
-use crate::{
-    BASE_DEVNET_0_SEPOLIA_DEV_0, BASE_MAINNET, BASE_SEPOLIA, OP_DEV, compute_jovian_base_fee,
-    decode_holocene_base_fee,
-};
-
-/// All supported chain names for the CLI.
-pub const SUPPORTED_CHAINS: &[&str] =
-    &["base", "base_sepolia", "base-sepolia", "base-devnet-0-sepolia-dev-0", "dev"];
+use crate::{compute_jovian_base_fee, decode_holocene_base_fee};
 
 /// Genesis info extracted from a Base genesis config.
 #[derive(Default, Debug)]
@@ -114,13 +107,7 @@ impl OpChainSpec {
 
     /// Parses a chain name into an [`OpChainSpec`], if recognized.
     pub fn parse_chain(s: &str) -> Option<Arc<Self>> {
-        match s {
-            "dev" => Some(OP_DEV.clone()),
-            "base" => Some(BASE_MAINNET.clone()),
-            "base_sepolia" | "base-sepolia" => Some(BASE_SEPOLIA.clone()),
-            "base-devnet-0-sepolia-dev-0" => Some(BASE_DEVNET_0_SEPOLIA_DEV_0.clone()),
-            _ => None,
-        }
+        BaseChainConfig::by_name(s).map(|cfg| Arc::new(Self::from(cfg)))
     }
 }
 
@@ -320,6 +307,60 @@ impl From<Genesis> for OpChainSpec {
     }
 }
 
+impl From<&BaseChainConfig> for OpChainSpec {
+    fn from(cfg: &BaseChainConfig) -> Self {
+        let genesis: Genesis =
+            serde_json::from_str(cfg.genesis_json).expect("invalid genesis json");
+        let hardforks = BaseChainUpgrades::new(BaseUpgrade::forks_for(cfg)).to_chain_hardforks();
+        let header = Self::make_genesis_header(&genesis, &hardforks);
+        let genesis_header = if cfg.genesis_l2_hash.is_zero() {
+            SealedHeader::seal_slow(header)
+        } else {
+            SealedHeader::new(header, cfg.genesis_l2_hash)
+        };
+
+        let base_fee_params = if cfg.eip1559_denominator_canyon != cfg.eip1559_denominator {
+            BaseFeeParamsKind::Variable(
+                vec![
+                    (
+                        EthereumHardfork::London.boxed(),
+                        BaseFeeParams::new(
+                            cfg.eip1559_denominator as u128,
+                            cfg.eip1559_elasticity as u128,
+                        ),
+                    ),
+                    (
+                        BaseUpgrade::Canyon.boxed(),
+                        BaseFeeParams::new(
+                            cfg.eip1559_denominator_canyon as u128,
+                            cfg.eip1559_elasticity as u128,
+                        ),
+                    ),
+                ]
+                .into(),
+            )
+        } else {
+            BaseFeeParamsKind::Constant(BaseFeeParams::new(
+                cfg.eip1559_denominator as u128,
+                cfg.eip1559_elasticity as u128,
+            ))
+        };
+
+        Self {
+            inner: ChainSpec {
+                chain: Chain::from_id(cfg.chain_id),
+                genesis_header,
+                genesis,
+                paris_block_and_final_difficulty: Some((0, U256::ZERO)),
+                hardforks,
+                base_fee_params,
+                prune_delete_limit: cfg.prune_delete_limit,
+                ..Default::default()
+            },
+        }
+    }
+}
+
 impl From<ChainSpec> for OpChainSpec {
     fn from(value: ChainSpec) -> Self {
         Self { inner: value }
@@ -346,7 +387,14 @@ mod tests {
     };
     use reth_ethereum_forks::{EthereumHardfork, ForkCondition, ForkHash, ForkId, Head};
 
-    use crate::{BASE_MAINNET, BASE_SEPOLIA, OpChainSpec, OpChainSpecBuilder};
+    use std::sync::LazyLock;
+
+    use crate::{OpChainSpec, OpChainSpecBuilder};
+
+    static BASE_MAINNET: LazyLock<OpChainSpec> =
+        LazyLock::new(|| OpChainSpec::from(BaseChainConfig::mainnet()));
+    static BASE_SEPOLIA: LazyLock<OpChainSpec> =
+        LazyLock::new(|| OpChainSpec::from(BaseChainConfig::sepolia()));
 
     #[test]
     fn test_storage_root_consistency() {

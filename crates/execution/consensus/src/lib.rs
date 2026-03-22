@@ -236,8 +236,12 @@ mod tests {
     use alloy_consensus::{BlockBody, Eip658Value, Header, Receipt, TxEip7702, TxReceipt};
     use alloy_eips::{eip4895::Withdrawals, eip7685::Requests};
     use alloy_primitives::{Address, Bytes, Log, Signature, U256};
+    use base_alloy_chains::BaseChainConfig;
     use base_alloy_consensus::{HoloceneExtraData, JovianExtraData, OpReceipt, OpTypedTransaction};
-    use base_execution_chainspec::{BASE_MAINNET, OpChainSpec, OpChainSpecBuilder};
+    use base_execution_chainspec::{OpChainSpec, OpChainSpecBuilder};
+
+    static BASE_MAINNET: std::sync::LazyLock<OpChainSpec> =
+        std::sync::LazyLock::new(|| OpChainSpec::from(BaseChainConfig::mainnet()));
     use base_execution_primitives::{OpPrimitives, OpTransactionSigned};
     use reth_chainspec::BaseFeeParams;
     use reth_consensus::{Consensus, ConsensusError, FullConsensus, HeaderValidator};

@@ -55,6 +55,7 @@ jsonrpsee = { workspace = true, features = ["http-client", "server", "macros"] }
 
 [dev-dependencies]
 alloy-eips.workspace = true
+base-alloy-chains.workspace = true
 base-test-utils.workspace = true
 base-execution-chainspec.workspace = true
 reth-primitives-traits.workspace = true

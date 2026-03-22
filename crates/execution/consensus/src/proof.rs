@@ -81,8 +81,12 @@ pub fn calculate_receipt_root_no_memo_optimism<R: DepositReceipt>(
 mod tests {
     use alloy_consensus::{Receipt, ReceiptWithBloom, TxReceipt};
     use alloy_primitives::{Address, Bytes, Log, LogData, b256, bloom, hex};
+    use base_alloy_chains::BaseChainConfig;
     use base_alloy_consensus::{OpDepositReceipt, OpReceipt};
-    use base_execution_chainspec::BASE_SEPOLIA;
+    use base_execution_chainspec::OpChainSpec;
+
+    static BASE_SEPOLIA: std::sync::LazyLock<OpChainSpec> =
+        std::sync::LazyLock::new(|| OpChainSpec::from(BaseChainConfig::sepolia()));
 
     use super::*;
 
@@ -465,7 +469,7 @@ mod tests {
             ];
             let root = calculate_receipt_root_optimism(
                 &receipts.iter().map(TxReceipt::with_bloom_ref).collect::<Vec<_>>(),
-                BASE_SEPOLIA.as_ref(),
+                &*BASE_SEPOLIA,
                 case.1,
             );
             assert_eq!(root, case.2);
@@ -485,7 +489,7 @@ mod tests {
             OpReceipt::Eip2930(Receipt { status: true.into(), cumulative_gas_used: 102068, logs });
         let receipt = ReceiptWithBloom { receipt: &inner, logs_bloom };
         let receipt = vec![receipt];
-        let root = calculate_receipt_root_optimism(&receipt, BASE_SEPOLIA.as_ref(), 0);
+        let root = calculate_receipt_root_optimism(&receipt, &*BASE_SEPOLIA, 0);
         assert_eq!(
             root,
             b256!("0xfe70ae4a136d98944951b2123859698d59ad251a381abc9960fa81cae3d0d4a0")

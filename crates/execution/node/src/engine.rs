@@ -307,7 +307,12 @@ mod test {
     use alloy_primitives::{Address, B64, B256, b64};
     use alloy_rpc_types_engine::PayloadAttributes;
     use base_alloy_chains::BaseChainConfig;
-    use base_execution_chainspec::BASE_SEPOLIA;
+    use base_execution_chainspec::OpChainSpec;
+
+    static BASE_SEPOLIA: std::sync::LazyLock<std::sync::Arc<OpChainSpec>> =
+        std::sync::LazyLock::new(|| {
+            std::sync::Arc::new(OpChainSpec::from(BaseChainConfig::sepolia()))
+        });
     use reth_provider::noop::NoopProvider;
     use reth_trie_common::KeccakKeyHasher;
 

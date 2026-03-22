@@ -23,6 +23,7 @@ reth-db = { workspace = true, features = ["mdbx"] }
 reth-node-metrics.workspace = true
 
 ## optimism
+base-alloy-chains.workspace = true
 base-execution-evm.workspace = true
 base-execution-trie.workspace = true
 base-execution-primitives.workspace = true

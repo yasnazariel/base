@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use base_execution_chainspec::{OpChainSpec, SUPPORTED_CHAINS};
+use base_alloy_chains::SUPPORTED_CHAINS;
+use base_execution_chainspec::OpChainSpec;
 use reth_cli::chainspec::{ChainSpecParser, parse_genesis};
 
 /// Base chain specification parser.

@@ -82,8 +82,13 @@ mod tests {
     use base_alloy_consensus::JovianExtraData;
     use reth_chainspec::{ChainSpec, ForkCondition, Hardfork};
 
+    use base_alloy_chains::BaseChainConfig;
+
     use super::*;
-    use crate::{BASE_SEPOLIA, OpChainSpec};
+    use crate::OpChainSpec;
+
+    static BASE_SEPOLIA: std::sync::LazyLock<OpChainSpec> =
+        std::sync::LazyLock::new(|| OpChainSpec::from(BaseChainConfig::sepolia()));
 
     const JOVIAN_TIMESTAMP: u64 = 1900000000;
 

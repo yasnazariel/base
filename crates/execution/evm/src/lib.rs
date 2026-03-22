@@ -348,8 +348,12 @@ mod tests {
         Address, B256, LogData, bytes,
         map::{AddressMap, B256Map, HashMap},
     };
+    use base_alloy_chains::BaseChainConfig;
     use base_alloy_consensus::{OpBlock, OpReceipt};
-    use base_execution_chainspec::{BASE_MAINNET, OpChainSpec, OpChainSpecBuilder};
+    use base_execution_chainspec::{OpChainSpec, OpChainSpecBuilder};
+
+    static BASE_MAINNET: std::sync::LazyLock<Arc<OpChainSpec>> =
+        std::sync::LazyLock::new(|| Arc::new(OpChainSpec::from(BaseChainConfig::mainnet())));
     use base_execution_primitives::OpPrimitives;
     use base_revm::OpSpecId;
     use reth_chainspec::ChainSpec;

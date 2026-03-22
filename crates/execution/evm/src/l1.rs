@@ -381,8 +381,11 @@ mod tests {
     use alloy_consensus::{Block, BlockBody, Header};
     use alloy_eips::eip2718::Decodable2718;
     use alloy_primitives::{Bytes, hex_literal::hex, keccak256};
-    use base_alloy_chains::BaseUpgrades;
-    use base_execution_chainspec::BASE_MAINNET;
+    use base_alloy_chains::{BaseChainConfig, BaseUpgrades};
+    use base_execution_chainspec::OpChainSpec;
+
+    static BASE_MAINNET: std::sync::LazyLock<OpChainSpec> =
+        std::sync::LazyLock::new(|| OpChainSpec::from(BaseChainConfig::mainnet()));
     use base_execution_primitives::OpTransactionSigned;
 
     use super::*;

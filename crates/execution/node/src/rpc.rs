@@ -15,7 +15,8 @@
 //!     hooks::OnComponentInitializedHook,
 //!     rpc::{EthApiBuilder, EthApiCtx},
 //! };
-//! use base_execution_chainspec::BASE_SEPOLIA;
+//! use base_alloy_chains::BaseChainConfig;
+//! use base_execution_chainspec::OpChainSpec;
 //! use base_execution_evm::OpEvmConfig;
 //! use base_node_core::{OpExecutorBuilder, OpNetworkPrimitives, OpNode};
 //! use base_execution_rpc::OpEthApiBuilder;
@@ -30,7 +31,7 @@
 //! #[tokio::main]
 //! async fn main() {
 //!     // build core node with all components disabled except EVM and state
-//!     let sepolia = NodeConfig::new(BASE_SEPOLIA.clone());
+//!     let sepolia = NodeConfig::new(Arc::new(OpChainSpec::from(BaseChainConfig::sepolia())));
 //!     let db = create_test_rw_db_with_path(sepolia.datadir());
 //!     let runtime = Runtime::with_existing_handle(tokio::runtime::Handle::current()).unwrap();
 //!     let launch_ctx = LaunchContext::new(runtime, sepolia.datadir());

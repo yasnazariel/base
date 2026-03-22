@@ -35,6 +35,7 @@ futures.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+base-alloy-chains.workspace = true
 base-node-core.workspace = true
 reth-node-builder.workspace = true
 reth-primitives-traits.workspace = true

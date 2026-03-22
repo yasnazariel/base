@@ -101,11 +101,14 @@ impl BaseNode {
     /// [`ReadOnlyConfig`](reth_provider::providers::ReadOnlyConfig).
     ///
     /// ```no_run
-    /// use base_execution_chainspec::BASE_MAINNET;
+    /// use std::sync::Arc;
+    /// use base_alloy_chains::BaseChainConfig;
+    /// use base_execution_chainspec::OpChainSpec;
     /// use base_node_runner::BaseNode;
     ///
+    /// let chain_spec = Arc::new(OpChainSpec::from(BaseChainConfig::mainnet()));
     /// let factory =
-    ///     BaseNode::provider_factory_builder().open_read_only(BASE_MAINNET.clone(), "datadir").unwrap();
+    ///     BaseNode::provider_factory_builder().open_read_only(chain_spec, "datadir").unwrap();
     /// ```
     ///
     /// # Open a Providerfactory manually with all required components

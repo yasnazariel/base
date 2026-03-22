@@ -213,10 +213,13 @@ mod tests {
     use alloy_consensus::Header;
     use alloy_eips::eip7685::Requests;
     use alloy_primitives::{Bytes, U256, b256, hex};
-    use base_alloy_chains::BaseUpgrade;
+    use base_alloy_chains::{BaseChainConfig, BaseUpgrade};
     use base_alloy_consensus::{OpReceipt, OpTxEnvelope};
-    use base_execution_chainspec::{BASE_SEPOLIA, OpChainSpec};
-    use base_execution_forks::BASE_SEPOLIA_HARDFORKS;
+    use base_execution_chainspec::OpChainSpec;
+
+    static BASE_SEPOLIA: std::sync::LazyLock<OpChainSpec> =
+        std::sync::LazyLock::new(|| OpChainSpec::from(BaseChainConfig::sepolia()));
+    use base_execution_forks::{BaseChainUpgrades, BaseChainUpgradesExt};
     use reth_chainspec::{BaseFeeParams, ChainSpec, EthChainSpec, ForkCondition, Hardfork};
 
     use super::*;
@@ -227,7 +230,7 @@ mod tests {
     const BLOCK_TIME_SECONDS: u64 = 2;
 
     fn holocene_chainspec() -> Arc<OpChainSpec> {
-        let mut hardforks = BASE_SEPOLIA_HARDFORKS.clone();
+        let mut hardforks = BaseChainUpgrades::sepolia().to_chain_hardforks();
         hardforks
             .insert(BaseUpgrade::Holocene.boxed(), ForkCondition::Timestamp(HOLOCENE_TIMESTAMP));
         Arc::new(OpChainSpec {
@@ -245,7 +248,7 @@ mod tests {
     }
 
     fn isthmus_chainspec() -> OpChainSpec {
-        let mut chainspec = BASE_SEPOLIA.as_ref().clone();
+        let mut chainspec = BASE_SEPOLIA.clone();
         chainspec
             .inner
             .hardforks
@@ -254,7 +257,7 @@ mod tests {
     }
 
     fn jovian_chainspec() -> OpChainSpec {
-        let mut chainspec = BASE_SEPOLIA.as_ref().clone();
+        let mut chainspec = BASE_SEPOLIA.clone();
         chainspec
             .inner
             .hardforks
