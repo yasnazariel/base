@@ -12,7 +12,7 @@ use eyre::Result as EyreResult;
 use reth_provider::StateProvider;
 use revm_database::states::BundleState;
 
-use crate::{PendingTrieInput, meter::compute_pending_trie_input, metrics::Metrics};
+use crate::{PendingTrieInput, meter::compute_pending_trie_input};
 
 /// Internal cache entry for a single flashblock's pending trie input.
 #[derive(Debug, Clone)]
@@ -34,13 +34,12 @@ struct CachedEntry {
 #[derive(Debug, Clone)]
 pub struct PendingTrieCache {
     cache: Arc<ArcSwap<Option<CachedEntry>>>,
-    metrics: Metrics,
 }
 
 impl PendingTrieCache {
     /// Creates a new empty pending trie cache.
     pub fn new() -> Self {
-        Self { cache: Arc::new(ArcSwap::from_pointee(None)), metrics: Metrics::default() }
+        Self { cache: Arc::new(ArcSwap::from_pointee(None)) }
     }
 
     /// Ensures the trie input for the given flashblock is cached and returns it.
@@ -60,14 +59,14 @@ impl PendingTrieCache {
             && cached.payload_id == payload_id
             && cached.flashblock_index == flashblock_index
         {
-            self.metrics.pending_trie_cache_hits.increment(1);
+            crate::metrics::Metrics::pending_trie_cache_hits().increment(1);
             return Ok(cached.trie_input.clone());
         }
 
         // Cache miss - compute the trie input with metrics
         let hashed = canonical_state_provider.hashed_post_state(bundle_state);
         let trie_input =
-            compute_pending_trie_input(canonical_state_provider, hashed, &self.metrics)?;
+            compute_pending_trie_input(canonical_state_provider, hashed)?;
 
         // Store the new entry, replacing any previous cached entry
         self.cache.store(Arc::new(Some(CachedEntry {
@@ -160,7 +159,6 @@ mod tests {
         let expected = crate::meter::compute_pending_trie_input(
             &*state_provider,
             hashed_b,
-            &Metrics::default(),
         )?;
 
         let cache = PendingTrieCache::new();

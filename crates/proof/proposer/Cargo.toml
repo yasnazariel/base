@@ -70,7 +70,8 @@ clap.workspace = true
 base-cli-utils.workspace = true
 
 # Metrics
-metrics.workspace = true
+base-macros.workspace = true
+metrics = { workspace = true, optional = true }
 metrics-exporter-prometheus.workspace = true
 
 # TLS
@@ -91,3 +92,7 @@ axum = { workspace = true, features = ["http1", "json", "tokio"] }
 [dev-dependencies]
 reqwest = { workspace = true, features = ["json"] }
 tokio = { workspace = true, features = ["test-util"] }
+
+[features]
+default = ["metrics"]
+metrics = ["dep:metrics"]

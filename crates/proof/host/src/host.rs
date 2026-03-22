@@ -132,7 +132,7 @@ impl Host {
 
         witness.finalize()?;
         let preimage_count = witness.preimage_count()?;
-        base_macros::set!(gauge, crate::Metrics::PREIMAGE_COUNT, preimage_count as f64);
+        crate::Metrics::preimage_count().set(preimage_count as f64);
         info!(preimage_count, "witness capture complete");
 
         Arc::try_unwrap(witness).map_err(|arc| {
@@ -157,7 +157,7 @@ impl Host {
         H: base_proof_preimage::HintWriterClient + Send + Sync + Clone + std::fmt::Debug + 'static,
         W: WitnessOracle + std::fmt::Debug + 'static,
     {
-        let _timer = timed!(crate::Metrics::REPLAY_DURATION_SECONDS);
+        let _timer = timed!(crate::Metrics::replay_duration_seconds());
         let driver =
             Prologue::new(recording.clone(), recording, OpEvmFactory::default()).load().await?;
         let epilogue = driver.execute().await?;

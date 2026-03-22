@@ -66,7 +66,7 @@ impl<F: ChainProvider> IndexedTraversal<F> {
     fn update_origin(&mut self, block: BlockInfo) {
         self.done = false;
         self.block = Some(block);
-        base_macros::set!(gauge, crate::metrics::Metrics::PIPELINE_ORIGIN, block.number as f64);
+        crate::metrics::Metrics::pipeline_origin().set(block.number as f64);
     }
 
     /// Update the origin block in the traversal stage.

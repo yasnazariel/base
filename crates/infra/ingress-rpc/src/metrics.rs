@@ -1,66 +1,52 @@
-use metrics::{Counter, Gauge, Histogram};
-use metrics_derive::Metrics;
-use tokio::time::Duration;
+//! Prometheus metrics for the tips ingress RPC service.
 
 /// Records an RPC latency histogram sample for the given method name.
-pub fn record_histogram(rpc_latency: Duration, rpc: String) {
+pub fn record_histogram(rpc_latency: std::time::Duration, rpc: String) {
+    #[cfg(feature = "metrics")]
     metrics::histogram!("tips_ingress_rpc_rpc_latency", "rpc" => rpc)
         .record(rpc_latency.as_secs_f64());
 }
 
-/// Prometheus metrics for the tips ingress RPC service.
-#[derive(Metrics, Clone)]
-#[metrics(scope = "tips_ingress_rpc")]
-pub struct Metrics {
-    /// Number of valid transactions received.
-    #[metric(describe = "Number of valid transactions received")]
-    pub transactions_received: Counter,
+base_macros::define_metrics! {
+    #[scope("tips_ingress_rpc")]
+    pub struct Metrics {
+        #[describe("Number of valid transactions received")]
+        transactions_received: counter,
 
-    /// Number of valid bundles parsed.
-    #[metric(describe = "Number of valid bundles parsed")]
-    pub bundles_parsed: Counter,
+        #[describe("Number of valid bundles parsed")]
+        bundles_parsed: counter,
 
-    /// Number of bundles successfully simulated.
-    #[metric(describe = "Number of bundles simulated")]
-    pub successful_simulations: Counter,
+        #[describe("Number of bundles simulated")]
+        successful_simulations: counter,
 
-    /// Number of bundles that failed simulation.
-    #[metric(describe = "Number of bundles that failed simulation")]
-    pub failed_simulations: Counter,
+        #[describe("Number of bundles that failed simulation")]
+        failed_simulations: counter,
 
-    /// Number of bundles sent to Kafka.
-    #[metric(describe = "Number of bundles sent to kafka")]
-    pub sent_to_kafka: Counter,
+        #[describe("Number of bundles sent to kafka")]
+        sent_to_kafka: counter,
 
-    /// Number of transactions sent to the mempool.
-    #[metric(describe = "Number of transactions sent to mempool")]
-    pub sent_to_mempool: Counter,
+        #[describe("Number of transactions sent to mempool")]
+        sent_to_mempool: counter,
 
-    /// Duration of transaction validation.
-    #[metric(describe = "Duration of validate_tx")]
-    pub validate_tx_duration: Histogram,
+        #[describe("Duration of validate_tx")]
+        validate_tx_duration: histogram,
 
-    /// Duration of bundle validation.
-    #[metric(describe = "Duration of validate_bundle")]
-    pub validate_bundle_duration: Histogram,
+        #[describe("Duration of validate_bundle")]
+        validate_bundle_duration: histogram,
 
-    /// Duration of bundle metering.
-    #[metric(describe = "Duration of meter_bundle")]
-    pub meter_bundle_duration: Histogram,
+        #[describe("Duration of meter_bundle")]
+        meter_bundle_duration: histogram,
 
-    /// Duration of send raw transaction.
-    #[metric(describe = "Duration of send_raw_transaction")]
-    pub send_raw_transaction_duration: Histogram,
+        #[describe("Duration of send_raw_transaction")]
+        send_raw_transaction_duration: histogram,
 
-    /// Total raw transactions forwarded to additional endpoint.
-    #[metric(describe = "Total raw transactions forwarded to additional endpoint")]
-    pub raw_tx_forwards_total: Counter,
+        #[describe("Total raw transactions forwarded to additional endpoint")]
+        raw_tx_forwards_total: counter,
 
-    /// Number of bundles that exceeded the metering time.
-    #[metric(describe = "Number of bundles that exceeded the metering time")]
-    pub bundles_exceeded_metering_time: Counter,
+        #[describe("Number of bundles that exceeded the metering time")]
+        bundles_exceeded_metering_time: counter,
 
-    /// Size of the buffered `MeterBundleResponse` channel.
-    #[metric(describe = "Size of buffered meter bundle responses")]
-    pub buffered_meter_bundle_responses_size: Gauge,
+        #[describe("Size of buffered meter bundle responses")]
+        buffered_meter_bundle_responses_size: gauge,
+    }
 }

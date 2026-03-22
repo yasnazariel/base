@@ -65,11 +65,8 @@ where
     type Item = OpAttributesWithParent;
 
     fn next(&mut self) -> Option<Self::Item> {
-        base_macros::set!(
-            gauge,
-            crate::metrics::Metrics::PIPELINE_PAYLOAD_ATTRIBUTES_BUFFER,
-            self.prepared.len().saturating_sub(1) as f64
-        );
+        crate::metrics::Metrics::payload_attributes_buffer()
+            .set(self.prepared.len().saturating_sub(1) as f64);
         self.prepared.pop_front()
     }
 }
@@ -122,11 +119,8 @@ where
                 self.attributes.signal(signal).await?;
             }
         }
-        base_macros::inc!(
-            gauge,
-            crate::metrics::Metrics::PIPELINE_SIGNALS,
-            "type" => signal.to_string(),
-        );
+        #[cfg(feature = "metrics")]
+        crate::metrics::Metrics::pipeline_signals(&signal.to_string()).increment(1);
         Ok(())
     }
 }
@@ -171,35 +165,22 @@ where
     ///
     /// [`PipelineError`]: crate::errors::PipelineError
     async fn step(&mut self, cursor: L2BlockInfo) -> StepResult {
-        base_macros::inc!(gauge, crate::metrics::Metrics::PIPELINE_STEPS);
-        base_macros::set!(
-            gauge,
-            crate::metrics::Metrics::PIPELINE_STEP_BLOCK,
-            cursor.block_info.number as f64
-        );
+        crate::metrics::Metrics::pipeline_steps().increment(1);
+        crate::metrics::Metrics::pipeline_step_block().set(cursor.block_info.number as f64);
         match self.attributes.next_attributes(cursor).await {
             Ok(a) => {
                 trace!(target: "pipeline", attributes = ?a, "Prepared L2 attributes");
-                base_macros::inc!(
-                    gauge,
-                    crate::metrics::Metrics::PIPELINE_PAYLOAD_ATTRIBUTES_BUFFER
-                );
-                base_macros::set!(
-                    gauge,
-                    crate::metrics::Metrics::PIPELINE_LATEST_PAYLOAD_TX_COUNT,
-                    a.attributes.transactions.as_ref().map_or(0.0, |txs| txs.len() as f64)
+                crate::metrics::Metrics::payload_attributes_buffer().increment(1);
+                crate::metrics::Metrics::payload_tx_count().set(
+                    a.attributes.transactions.as_ref().map_or(0.0, |txs| txs.len() as f64),
                 );
                 if !a.is_last_in_span {
-                    base_macros::inc!(gauge, crate::metrics::Metrics::PIPELINE_DERIVED_SPAN_SIZE);
+                    crate::metrics::Metrics::span_size().increment(1);
                 } else {
-                    base_macros::set!(
-                        gauge,
-                        crate::metrics::Metrics::PIPELINE_DERIVED_SPAN_SIZE,
-                        0
-                    );
+                    crate::metrics::Metrics::span_size().set(0);
                 }
                 self.prepared.push_back(a);
-                base_macros::inc!(gauge, crate::metrics::Metrics::PIPELINE_PREPARED_ATTRIBUTES);
+                crate::metrics::Metrics::prepared_attributes().increment(1);
                 StepResult::PreparedAttributes
             }
             Err(err) => match err {

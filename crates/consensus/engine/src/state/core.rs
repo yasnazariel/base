@@ -121,16 +121,10 @@ impl EngineSyncState {
     }
 
     /// Updates a block label metric, keyed by the label.
-    #[cfg(feature = "metrics")]
     #[inline]
     fn update_block_label_metric(label: &'static str, number: u64) {
-        base_macros::set!(gauge, Metrics::BLOCK_LABELS, "label", label, number as f64);
+        Metrics::block_labels(label).set(number as f64);
     }
-
-    /// Updates a block label metric, keyed by the label.
-    #[cfg(not(feature = "metrics"))]
-    #[inline]
-    const fn update_block_label_metric(_label: &'static str, _number: u64) {}
 }
 
 /// Specifies how to update the sync state of the engine.
@@ -250,7 +244,7 @@ mod tests {
         #[case] number: u64,
     ) {
         let handle = PrometheusBuilder::new().install_recorder().unwrap();
-        crate::Metrics::init();
+        crate::Metrics::describe();
 
         let mut state = EngineState::default();
         set_fn(

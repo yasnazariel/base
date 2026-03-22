@@ -189,11 +189,8 @@ impl P2pRpcRequest {
             // Record the duration of the peer connection.
             if let Some(start_time) = gossip.peer_connection_start.remove(&peer_id) {
                 let _peer_duration = start_time.elapsed();
-                base_macros::record!(
-                    histogram,
-                    crate::Metrics::GOSSIP_PEER_CONNECTION_DURATION_SECONDS,
-                    _peer_duration.as_secs_f64()
-                );
+                crate::Metrics::gossip_peer_connection_duration_seconds()
+                    .record(_peer_duration.as_secs_f64());
             }
         }
     }

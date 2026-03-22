@@ -21,7 +21,7 @@ dotenvy.workspace = true
 hostname.workspace = true
 tokio-util.workspace = true
 base-cli-utils.workspace = true
-websocket-proxy.workspace = true
+websocket-proxy = { workspace = true, features = ["metrics"] }
 tracing = { workspace = true, features = ["std"] }
 axum = { workspace = true, features = ["ws"] }
 brotli = { workspace = true, features = ["std"] }

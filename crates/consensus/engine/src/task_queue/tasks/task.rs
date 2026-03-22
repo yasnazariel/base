@@ -127,7 +127,6 @@ impl<EngineClient_: EngineClient> EngineTask<EngineClient_> {
         Ok(())
     }
 
-    #[cfg(feature = "metrics")]
     const fn task_metrics_label(&self) -> &'static str {
         match self {
             Self::Insert(_) => crate::Metrics::INSERT_TASK_LABEL,
@@ -220,11 +219,7 @@ impl<EngineClient_: EngineClient> EngineTaskExt for EngineTask<EngineClient_> {
         while let Err(e) = self.execute_inner(state).await {
             let severity = e.severity();
 
-            base_macros::inc!(
-                counter,
-                crate::Metrics::ENGINE_TASK_FAILURE,
-                self.task_metrics_label() => severity.to_string()
-            );
+            crate::Metrics::engine_task_failure(self.task_metrics_label()).increment(1);
 
             match severity {
                 EngineTaskErrorSeverity::Temporary => {
@@ -250,7 +245,7 @@ impl<EngineClient_: EngineClient> EngineTaskExt for EngineTask<EngineClient_> {
             }
         }
 
-        base_macros::inc!(counter, crate::Metrics::ENGINE_TASK_SUCCESS, self.task_metrics_label());
+        crate::Metrics::engine_task_count(self.task_metrics_label()).increment(1);
 
         Ok(())
     }

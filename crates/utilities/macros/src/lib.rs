@@ -9,3 +9,4 @@
 #![no_std]
 
 mod metrics;
+pub use metrics::NoopMetric;

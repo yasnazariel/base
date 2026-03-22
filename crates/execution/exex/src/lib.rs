@@ -299,10 +299,7 @@ where
         // can show outdated info. When metrics are disabled, this is a no-op.
         #[cfg(feature = "metrics")]
         {
-            self.storage
-                .metrics()
-                .block_metrics()
-                .earliest_number
+            base_execution_trie::metrics::BlockMetrics::earliest_number()
                 .set(earliest_block_number as f64);
         }
 

@@ -54,13 +54,7 @@ impl NetworkHandler {
                     self.gossip.swarm.behaviour().gossipsub.peer_score(peer_id).unwrap_or_default();
 
                 // Record the peer score in the metrics.
-                base_macros::record!(
-                    histogram,
-                    base_consensus_gossip::Metrics::PEER_SCORES,
-                    "peer",
-                    peer_id.to_string(),
-                    score
-                );
+                base_consensus_gossip::Metrics::peer_scores().record(score);
 
                 if score < ban_peers.ban_threshold {
                     return Some(*peer_id);
@@ -83,18 +77,15 @@ impl NetworkHandler {
 
                         // Record the duration of the peer connection.
                         if let Some(start_time) = self.gossip.peer_connection_start.remove(&peer_to_remove) {
-                            let _peer_duration = start_time.elapsed();
-                            base_macros::record!(
-                                histogram,
-                                base_consensus_gossip::Metrics::GOSSIP_PEER_CONNECTION_DURATION_SECONDS,
-                                _peer_duration.as_secs_f64()
-                            );
+                            let peer_duration = start_time.elapsed();
+                            base_consensus_gossip::Metrics::gossip_peer_connection_duration_seconds()
+                                .record(peer_duration.as_secs_f64());
                         }
 
                 if let Some(info) = self.gossip.peerstore.remove(&peer_to_remove) {
                     self.gossip.connection_gate.remove_dial(&peer_to_remove);
                     let _score = self.gossip.swarm.behaviour().gossipsub.peer_score(&peer_to_remove).unwrap_or_default();
-                    base_macros::inc!(gauge, base_consensus_gossip::Metrics::BANNED_PEERS, "peer_id" => peer_to_remove.to_string(), "score" => _score.to_string());
+                    base_consensus_gossip::Metrics::banned_peers().increment(1);
                     return Some(info.listen_addrs);
                 }
 

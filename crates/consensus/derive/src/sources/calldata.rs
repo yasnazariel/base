@@ -78,11 +78,7 @@ impl<CP: ChainProvider + Send> CalldataSource<CP> {
             .collect::<VecDeque<_>>();
 
         #[cfg(feature = "metrics")]
-        metrics::gauge!(
-            crate::metrics::Metrics::PIPELINE_DATA_AVAILABILITY_PROVIDER,
-            "source" => "calldata",
-        )
-        .increment(self.calldata.len() as f64);
+        crate::metrics::Metrics::dap_sources("calldata").increment(self.calldata.len() as f64);
 
         self.open = true;
 

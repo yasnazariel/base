@@ -34,9 +34,6 @@ pub struct RollupRpc<EngineRpcClient_> {
 }
 
 impl<EngineRpcClient_: EngineRpcClient> RollupRpc<EngineRpcClient_> {
-    /// The identifier for the Metric that tracks rollup RPC calls.
-    pub const RPC_IDENT: &'static str = "rollup_rpc";
-
     /// Constructs a new [`RollupRpc`] given a sender channel.
     pub fn new(
         engine_client: EngineRpcClient_,
@@ -72,7 +69,7 @@ impl<EngineRpcClient_: EngineRpcClient + 'static> RollupNodeApiServer
     for RollupRpc<EngineRpcClient_>
 {
     async fn op_output_at_block(&self, block_num: BlockNumberOrTag) -> RpcResult<OutputResponse> {
-        base_macros::inc!(gauge, Self::RPC_IDENT, "method" => "op_outputAtBlock");
+        crate::Metrics::rpc("op_outputAtBlock").increment(1);
 
         let (l1_sync_status_send, l1_sync_status_recv) = tokio::sync::oneshot::channel();
 
@@ -95,7 +92,7 @@ impl<EngineRpcClient_: EngineRpcClient + 'static> RollupNodeApiServer
         &self,
         block_num: BlockNumberOrTag,
     ) -> RpcResult<SafeHeadResponse> {
-        base_macros::inc!(gauge, Self::RPC_IDENT, "method" => "op_safeHeadAtL1Block");
+        crate::Metrics::rpc("op_safeHeadAtL1Block").increment(1);
 
         let number = match block_num {
             BlockNumberOrTag::Number(n) => n,
@@ -123,7 +120,7 @@ impl<EngineRpcClient_: EngineRpcClient + 'static> RollupNodeApiServer
     }
 
     async fn op_sync_status(&self) -> RpcResult<SyncStatus> {
-        base_macros::inc!(gauge, Self::RPC_IDENT, "method" => "op_syncStatus");
+        crate::Metrics::rpc("op_syncStatus").increment(1);
 
         let (l1_sync_status_send, l1_sync_status_recv) = tokio::sync::oneshot::channel();
 
@@ -143,13 +140,13 @@ impl<EngineRpcClient_: EngineRpcClient + 'static> RollupNodeApiServer
     }
 
     async fn op_rollup_config(&self) -> RpcResult<RollupConfig> {
-        base_macros::inc!(gauge, Self::RPC_IDENT, "method" => "op_rollupConfig");
+        crate::Metrics::rpc("op_rollupConfig").increment(1);
 
         self.engine_client.get_config().await
     }
 
     async fn op_version(&self) -> RpcResult<String> {
-        base_macros::inc!(gauge, Self::RPC_IDENT, "method" => "op_version");
+        crate::Metrics::rpc("op_version").increment(1);
 
         const RPC_VERSION: &str = env!("CARGO_PKG_VERSION");
 

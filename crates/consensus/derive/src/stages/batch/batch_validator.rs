@@ -116,17 +116,9 @@ where
         #[cfg(feature = "metrics")]
         {
             if let Some(origin) = self.l1_blocks.first() {
-                base_macros::set!(
-                    gauge,
-                    crate::metrics::Metrics::PIPELINE_L1_BLOCKS_START,
-                    origin.number as f64
-                );
+                crate::metrics::Metrics::l1_blocks_start().set(origin.number as f64);
                 let last = self.l1_blocks.last().unwrap_or(origin);
-                base_macros::set!(
-                    gauge,
-                    crate::metrics::Metrics::PIPELINE_L1_BLOCKS_END,
-                    last.number as f64
-                );
+                crate::metrics::Metrics::l1_blocks_end().set(last.number as f64);
             }
         }
 

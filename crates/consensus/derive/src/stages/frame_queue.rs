@@ -138,15 +138,11 @@ where
         self.prune(origin);
 
         // Update metrics with the post-prune queue state.
-        base_macros::set!(
-            gauge,
-            crate::metrics::Metrics::PIPELINE_FRAME_QUEUE_BUFFER,
-            self.queue.len() as f64
-        );
+        crate::metrics::Metrics::frame_queue_buffer().set(self.queue.len() as f64);
         #[cfg(feature = "metrics")]
         {
             let queue_size = self.queue.iter().map(|f| f.size()).sum::<usize>() as f64;
-            base_macros::set!(gauge, crate::metrics::Metrics::PIPELINE_FRAME_QUEUE_MEM, queue_size);
+            crate::metrics::Metrics::frame_queue_mem().set(queue_size);
         }
 
         Ok(())

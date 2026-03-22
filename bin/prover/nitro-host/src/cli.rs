@@ -101,7 +101,7 @@ impl Cli {
         let Self { command, logging, metrics } = self;
         LogConfig::from(logging).init_tracing_subscriber()?;
         base_cli_utils::MetricsConfig::from(metrics).init_with(|| {
-            base_proof_host::Metrics::init();
+            base_proof_host::Metrics::describe();
             base_cli_utils::register_version_metrics!();
         })?;
         RuntimeManager::run_until_ctrl_c(async move {

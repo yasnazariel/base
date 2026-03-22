@@ -12,11 +12,11 @@ workspace = true
 
 [dependencies]
 url.workspace = true
-metrics.workspace = true
+base-macros.workspace = true
 base-revm.workspace = true
 base-bundles.workspace = true
 async-trait.workspace = true
-metrics-derive.workspace = true
+metrics = { workspace = true, optional = true }
 alloy-signer-local.workspace = true
 base-execution-evm.workspace = true
 base-alloy-network.workspace = true
@@ -44,3 +44,6 @@ wiremock.workspace = true
 alloy-eips.workspace = true
 alloy-network.workspace = true
 base-bundles = { workspace = true, features = ["test-utils"] }
+
+[features]
+metrics = ["dep:metrics"]

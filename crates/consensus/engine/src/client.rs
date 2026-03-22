@@ -385,19 +385,8 @@ async fn record_call_time<T, Err>(
     let result = f.await?;
 
     // Record the call duration.
-    #[cfg(feature = "metrics")]
-    {
-        let duration = start.elapsed();
-        base_macros::record!(
-            histogram,
-            Metrics::ENGINE_METHOD_REQUEST_DURATION,
-            "method",
-            metric_label,
-            duration.as_secs_f64()
-        );
-    }
-    #[cfg(not(feature = "metrics"))]
-    let _ = (start, metric_label);
+    let duration = start.elapsed();
+    Metrics::engine_method_request_duration(metric_label).record(duration.as_secs_f64());
 
     Ok(result)
 }

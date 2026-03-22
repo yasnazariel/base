@@ -36,6 +36,9 @@ pub use jsonrpsee::{
 mod l1_watcher;
 pub use l1_watcher::{L1State, L1WatcherQueries, L1WatcherQuerySender};
 
+mod metrics;
+pub use metrics::Metrics;
+
 mod net;
 pub use net::P2pRpc;
 

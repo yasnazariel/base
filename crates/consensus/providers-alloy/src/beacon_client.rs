@@ -10,7 +10,6 @@ use async_trait::async_trait;
 use c_kzg::Blob;
 use thiserror::Error;
 
-#[cfg(feature = "metrics")]
 use crate::Metrics;
 use crate::blobs::BoxedBlob;
 
@@ -221,7 +220,7 @@ impl BeaconClient for OnlineBeaconClient {
     }
 
     async fn slot_interval(&self) -> Result<APIConfigResponse, Self::Error> {
-        base_macros::inc!(gauge, Metrics::BEACON_CLIENT_REQUESTS, "method" => "spec");
+        Metrics::beacon_requests("spec").increment(1);
 
         // Use the l1 slot duration if provided
         if let Some(l1_slot_duration) = self.l1_slot_duration {
@@ -235,14 +234,14 @@ impl BeaconClient for OnlineBeaconClient {
         .await;
 
         if result.is_err() {
-            base_macros::inc!(gauge, Metrics::BEACON_CLIENT_ERRORS, "method" => "spec");
+            Metrics::beacon_errors("spec").increment(1);
         }
 
         Ok(result?)
     }
 
     async fn genesis_time(&self) -> Result<APIGenesisResponse, Self::Error> {
-        base_macros::inc!(gauge, Metrics::BEACON_CLIENT_REQUESTS, "method" => "genesis");
+        Metrics::beacon_requests("genesis").increment(1);
 
         let result = async {
             let first = self.inner.get(format!("{}/{}", self.base, GENESIS_METHOD)).send().await?;
@@ -251,7 +250,7 @@ impl BeaconClient for OnlineBeaconClient {
         .await;
 
         if result.is_err() {
-            base_macros::inc!(gauge, Metrics::BEACON_CLIENT_ERRORS, "method" => "genesis");
+            Metrics::beacon_errors("genesis").increment(1);
         }
 
         Ok(result?)
@@ -262,13 +261,13 @@ impl BeaconClient for OnlineBeaconClient {
         slot: u64,
         blob_hashes: &[B256],
     ) -> Result<Vec<BoxedBlob>, BeaconClientError> {
-        base_macros::inc!(gauge, Metrics::BEACON_CLIENT_REQUESTS, "method" => "blobs");
+        Metrics::beacon_requests("blobs").increment(1);
 
         // Try to get the blobs from the blobs endpoint.
         let result = self.filtered_beacon_blobs(slot, blob_hashes).await;
 
         if result.is_err() {
-            base_macros::inc!(gauge, Metrics::BEACON_CLIENT_ERRORS, "method" => "blobs");
+            Metrics::beacon_errors("blobs").increment(1);
         }
 
         result

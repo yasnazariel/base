@@ -24,6 +24,6 @@ rdkafka.workspace = true
 aws-config.workspace = true
 aws-sdk-s3.workspace = true
 base-cli-utils.workspace = true
-audit-archiver-lib.workspace = true
+audit-archiver-lib = { workspace = true, features = ["metrics"] }
 aws-credential-types.workspace = true
 tracing = { workspace = true, features = ["std"] }

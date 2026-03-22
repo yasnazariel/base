@@ -18,7 +18,7 @@ use tokio::{
 use tokio_tungstenite::connect_async;
 use tokio_util::sync::CancellationToken;
 use tracing::error;
-use websocket_proxy::{Authentication, InMemoryRateLimit, Metrics, Registry, Server};
+use websocket_proxy::{Authentication, InMemoryRateLimit, Registry, Server};
 
 struct TestHarness {
     received_messages: Arc<Mutex<HashMap<usize, Vec<String>>>>,
@@ -43,10 +43,8 @@ impl TestHarness {
 
     fn new_with_auth(addr: SocketAddr, auth: Option<Authentication>) -> Self {
         let (sender, _) = broadcast::channel(5);
-        let metrics = Arc::new(Metrics::default());
         let registry = Registry::new(
             sender.clone(),
-            Arc::clone(&metrics),
             false,
             false,
             120000,
@@ -62,7 +60,6 @@ impl TestHarness {
             server: Server::new(
                 addr,
                 registry,
-                metrics,
                 rate_limited,
                 auth,
                 "header".to_string(),
@@ -373,10 +370,8 @@ async fn test_ping_timeout_disconnects_client() {
     let addr = TestHarness::alloc_port().await;
 
     let (sender, _) = broadcast::channel(5);
-    let metrics = Arc::new(Metrics::default());
     let registry = Registry::new(
         sender.clone(),
-        Arc::clone(&metrics),
         false,
         true,
         1000,
@@ -392,7 +387,6 @@ async fn test_ping_timeout_disconnects_client() {
         server: Server::new(
             addr,
             registry,
-            metrics,
             rate_limited,
             None,
             "header".to_string(),

@@ -113,9 +113,8 @@ where
 
         #[cfg(feature = "metrics")]
         {
-            let block_metrics = self.storage.metrics().block_metrics();
-            block_metrics.record_operation_durations(&operation_durations);
-            block_metrics.increment_write_counts(&update_result);
+            crate::metrics::record_block_operation_durations(&operation_durations);
+            crate::metrics::increment_block_write_counts(&update_result);
         }
 
         info!(
@@ -148,9 +147,8 @@ where
 
         #[cfg(feature = "metrics")]
         {
-            let block_metrics = self.storage.metrics().block_metrics();
-            block_metrics.record_operation_durations(&operation_durations);
-            block_metrics.increment_write_counts(&storage_result);
+            crate::metrics::record_block_operation_durations(&operation_durations);
+            crate::metrics::increment_block_write_counts(&storage_result);
         }
 
         info!(
@@ -206,8 +204,7 @@ where
 
         #[cfg(feature = "metrics")]
         {
-            let block_metrics = self.storage.metrics().block_metrics();
-            block_metrics.record_operation_durations(&operation_durations);
+            crate::metrics::record_block_operation_durations(&operation_durations);
         }
 
         info!(

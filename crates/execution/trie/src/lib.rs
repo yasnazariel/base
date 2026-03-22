@@ -30,7 +30,6 @@ pub mod metrics;
 #[cfg(feature = "metrics")]
 pub use metrics::{
     OpProofsHashedAccountCursor, OpProofsHashedStorageCursor, OpProofsStorage, OpProofsTrieCursor,
-    StorageMetrics,
 };
 
 #[cfg(not(feature = "metrics"))]

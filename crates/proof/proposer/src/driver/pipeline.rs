@@ -820,7 +820,7 @@ where
                     // this proof so the pipeline re-proves with a (potentially
                     // different, registered) enclave on the next attempt.
                     warn!(target_block, "TEE signer is not valid on-chain, discarding proof");
-                    metrics::counter!(proposer_metrics::TEE_SIGNER_INVALID_TOTAL).increment(1);
+                    proposer_metrics::Metrics::tee_signer_invalid_total().increment(1);
                     return Err(SubmitAction::Discard(ProposerError::Internal(
                         "TEE signer not registered on-chain".into(),
                     )));
@@ -860,7 +860,7 @@ where
         {
             Ok(Ok(())) => {
                 info!(target_block, "Dispute game created successfully");
-                metrics::counter!(proposer_metrics::L2_OUTPUT_PROPOSALS_TOTAL).increment(1);
+                proposer_metrics::Metrics::l2_output_proposals_total().increment(1);
                 Ok(())
             }
             Ok(Err(e)) => {

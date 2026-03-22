@@ -138,10 +138,11 @@ impl Follow {
 
         // Initialize unified metrics for the follow-node subsystems.
         base_cli_utils::MetricsConfig::from(self.metrics.clone()).init_with(|| {
-            base_consensus_engine::Metrics::init();
-            base_consensus_node::Metrics::init();
-            base_consensus_derive::Metrics::init();
-            base_consensus_providers::Metrics::init();
+            base_consensus_engine::Metrics::describe();
+            base_consensus_node::Metrics::describe();
+            base_consensus_derive::Metrics::describe();
+            base_consensus_derive::GenesisMetrics::describe();
+            base_consensus_providers::Metrics::describe();
             base_cli_utils::register_version_metrics!();
         })?;
 
@@ -302,12 +303,13 @@ impl Node {
 
         // Initialize unified metrics
         base_cli_utils::MetricsConfig::from(self.metrics.clone()).init_with(|| {
-            base_consensus_gossip::Metrics::init();
-            base_consensus_disc::Metrics::init();
-            base_consensus_engine::Metrics::init();
-            base_consensus_node::Metrics::init();
-            base_consensus_derive::Metrics::init();
-            base_consensus_providers::Metrics::init();
+            base_consensus_gossip::Metrics::describe();
+            base_consensus_disc::Metrics::describe();
+            base_consensus_engine::Metrics::describe();
+            base_consensus_node::Metrics::describe();
+            base_consensus_derive::Metrics::describe();
+            base_consensus_derive::GenesisMetrics::describe();
+            base_consensus_providers::Metrics::describe();
             base_cli_utils::register_version_metrics!();
         })?;
 

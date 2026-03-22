@@ -72,7 +72,7 @@ where
 
             self.next_batch =
                 Some(BatchReader::new(&channel[..], max_rlp_bytes_per_channel as usize));
-            base_macros::set!(gauge, crate::metrics::Metrics::PIPELINE_BATCH_READER_SET, 1);
+            crate::metrics::Metrics::batch_reader_set().set(1);
         }
         Ok(())
     }
@@ -81,7 +81,7 @@ where
     /// decoding / decompression state to a fresh start.
     pub fn next_channel(&mut self) {
         self.next_batch = None;
-        base_macros::set!(gauge, crate::metrics::Metrics::PIPELINE_BATCH_READER_SET, 0);
+        crate::metrics::Metrics::batch_reader_set().set(0);
     }
 }
 
@@ -131,16 +131,8 @@ where
                     } else {
                         BatchReader::ZLIB_DEFLATE_COMPRESSION_METHOD
                     };
-                    base_macros::set!(
-                        gauge,
-                        crate::metrics::Metrics::PIPELINE_LATEST_DECOMPRESSED_BATCH_SIZE,
-                        size
-                    );
-                    base_macros::set!(
-                        gauge,
-                        crate::metrics::Metrics::PIPELINE_LATEST_DECOMPRESSED_BATCH_TYPE,
-                        ty as f64
-                    );
+                    crate::metrics::Metrics::latest_decompressed_batch_size().set(size);
+                    crate::metrics::Metrics::latest_decompressed_batch_type().set(ty as f64);
                 }
             }
             Err(err) => {
@@ -153,11 +145,8 @@ where
         // Read the next batch from the reader's decompressed data
         match next_batch.next_batch(self.cfg.as_ref()).ok_or(PipelineError::NotEnoughData.temp()) {
             Ok(batch) => {
-                base_macros::inc!(
-                    gauge,
-                    crate::metrics::Metrics::PIPELINE_READ_BATCHES,
-                    "type" => batch.to_string(),
-                );
+                #[cfg(feature = "metrics")]
+                crate::metrics::Metrics::read_batches(&batch.to_string()).increment(1);
                 Ok(batch)
             }
             Err(e) => {
@@ -188,7 +177,7 @@ where
                 // Drop the current in-progress channel.
                 warn!(target: "channel_reader", "Flushed channel");
                 self.next_batch = None;
-                base_macros::set!(gauge, crate::metrics::Metrics::PIPELINE_BATCH_READER_SET, 0);
+                crate::metrics::Metrics::batch_reader_set().set(0);
             }
             s => {
                 self.prev.signal(s).await?;

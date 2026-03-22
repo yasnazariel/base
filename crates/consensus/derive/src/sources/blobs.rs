@@ -100,11 +100,7 @@ where
             }
         }
         #[cfg(feature = "metrics")]
-        metrics::gauge!(
-            crate::metrics::Metrics::PIPELINE_DATA_AVAILABILITY_PROVIDER,
-            "source" => "blobs",
-        )
-        .increment(data.len() as f64);
+        crate::metrics::Metrics::dap_sources("blobs").increment(data.len() as f64);
         (data, hashes)
     }
 

@@ -98,8 +98,8 @@ where
 
     /// Handles a [`Signal`] received over the derivation signal receiver channel.
     async fn signal(&mut self, signal: Signal) {
-        if let Signal::Reset(ResetSignal { l1_origin: _l1_origin, .. }) = signal {
-            base_macros::set!(counter, Metrics::DERIVATION_L1_ORIGIN, _l1_origin.number);
+        if let Signal::Reset(ResetSignal { l1_origin, .. }) = signal {
+            Metrics::derivation_l1_origin().absolute(l1_origin.number);
             // Clear the finalization queue on reset.
             self.finalizer.clear();
             // Discard any in-flight derived_from so that a stale pre-reset L1 inclusion
@@ -146,7 +146,7 @@ where
                     let origin =
                         self.pipeline.origin().ok_or(PipelineError::MissingOrigin.crit())?.number;
 
-                    base_macros::set!(counter, Metrics::DERIVATION_L1_ORIGIN, origin);
+                    Metrics::derivation_l1_origin().absolute(origin);
                     debug!(target: "derivation", l1_block = origin, "Advanced L1 origin");
                 }
                 StepResult::OriginAdvanceErr(e) | StepResult::StepFailed(e) => {
@@ -202,7 +202,7 @@ where
                                         "L1 reorg detected! Expected: {expected} | New: {new}"
                                     );
 
-                                    base_macros::inc!(counter, Metrics::L1_REORG_COUNT);
+                                    Metrics::l1_reorg_count().increment(1);
                                 }
                                 self.engine_client.reset_engine_forkchoice().await.map_err(|e| {
                                     error!(target: "derivation", ?e, "Failed to send reset request");
@@ -215,7 +215,7 @@ where
                         }
                         PipelineErrorKind::Critical(_) => {
                             error!(target: "derivation", error = %e, "Critical derivation error");
-                            base_macros::inc!(counter, Metrics::DERIVATION_CRITICAL_ERROR);
+                            Metrics::derivation_critical_errors().increment(1);
                             return Err(e.into());
                         }
                     }

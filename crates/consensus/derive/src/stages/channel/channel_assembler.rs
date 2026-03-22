@@ -99,7 +99,7 @@ where
         #[cfg(feature = "metrics")]
         {
             let count = if self.channel.is_some() { 1 } else { 0 };
-            base_macros::set!(gauge, crate::metrics::Metrics::PIPELINE_CHANNEL_BUFFER, count);
+            crate::metrics::Metrics::channel_buffer().set(count);
         }
 
         if let Some(channel) = self.channel.as_mut() {
@@ -109,7 +109,7 @@ where
                 let timeout =
                     channel.open_block_number() + self.cfg.channel_timeout(origin.timestamp);
                 let margin = timeout.saturating_sub(origin.number) as f64;
-                base_macros::set!(gauge, crate::metrics::Metrics::PIPELINE_CHANNEL_TIMEOUT, margin);
+                crate::metrics::Metrics::blocks_until_channel_timeout().set(margin);
             }
 
             // Add the frame to the channel. If this fails, return NotEnoughData and discard the
@@ -134,7 +134,7 @@ where
             #[cfg(feature = "metrics")]
             {
                 let size = channel.size() as f64;
-                base_macros::set!(gauge, crate::metrics::Metrics::PIPELINE_CHANNEL_MEM, size);
+                crate::metrics::Metrics::channel_mem().set(size);
             }
 
             let max_rlp_bytes_per_channel = if self.cfg.is_fjord_active(origin.timestamp) {
@@ -142,11 +142,7 @@ where
             } else {
                 MAX_RLP_BYTES_PER_CHANNEL_BEDROCK
             };
-            base_macros::set!(
-                gauge,
-                crate::metrics::Metrics::PIPELINE_MAX_RLP_BYTES,
-                max_rlp_bytes_per_channel as f64
-            );
+            crate::metrics::Metrics::max_rlp_bytes().set(max_rlp_bytes_per_channel as f64);
             if channel.size() > max_rlp_bytes_per_channel as usize {
                 warn!(
                     target: "channel_assembler",
@@ -175,7 +171,7 @@ where
             }
         }
 
-        base_macros::set!(gauge, crate::metrics::Metrics::PIPELINE_CHANNEL_MEM, 0);
+        crate::metrics::Metrics::channel_mem().set(0);
 
         Err(PipelineError::NotEnoughData.temp())
     }

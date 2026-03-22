@@ -66,7 +66,7 @@ impl<F: ChainProvider> PollingTraversal<F> {
     fn update_origin(&mut self, block: BlockInfo) {
         self.done = false;
         self.block = Some(block);
-        base_macros::set!(gauge, crate::metrics::Metrics::PIPELINE_ORIGIN, block.number as f64);
+        crate::metrics::Metrics::pipeline_origin().set(block.number as f64);
     }
 
     /// Update the origin block in the traversal stage.
@@ -126,11 +126,7 @@ impl<F: ChainProvider + Send> OriginAdvancer for PollingTraversal<F> {
         #[cfg(feature = "metrics")]
         {
             let duration = start_time.elapsed();
-            base_macros::record!(
-                histogram,
-                crate::metrics::Metrics::PIPELINE_ORIGIN_ADVANCE,
-                duration.as_secs_f64()
-            );
+            crate::metrics::Metrics::pipeline_origin_advance().record(duration.as_secs_f64());
         }
 
         // If the prev block is not holocene, but the next is, we need to flag this
