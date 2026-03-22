@@ -58,7 +58,7 @@ const currentNonceHex = await client.getStorageAt({
   address: NONCE_MANAGER,
   slot: nonceSlot,
 });
-const currentNonce = BigInt(currentNonceHex) - 1n;
+const currentNonce = BigInt(currentNonceHex);
 console.log(`AA nonce (key=0): ${currentNonce} (slot: ${nonceSlot})`);
 
 // RLP helpers

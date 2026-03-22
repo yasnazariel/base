@@ -14,7 +14,7 @@ use alloy_rpc_types::TransactionTrait;
 use alloy_rpc_types_eth::state::StateOverride;
 use base_alloy_chains::BaseUpgrades;
 use base_alloy_consensus::{OpPrimitives, OpReceipt, OpTxEnvelope};
-use base_alloy_evm::ensure_create2_deployer;
+use base_alloy_evm::{ensure_aa_predeploys, ensure_create2_deployer};
 use base_alloy_flz::tx_estimated_size_fjord as estimate_tx_compressed_size;
 use base_alloy_rpc_types::{OpTransactionReceipt, Transaction};
 use base_execution_rpc::OpReceiptBuilder as OpRpcReceiptBuilder;
@@ -177,7 +177,10 @@ where
             .apply_beacon_root_contract_call(parent_beacon_block_root, &mut self.evm)
             .map_err(|e| ExecutionError::EvmEnv(e.to_string()))?;
 
-        ensure_create2_deployer(spec, self.pending_block.timestamp, self.evm.db_mut())
+        ensure_create2_deployer(spec.clone(), self.pending_block.timestamp, self.evm.db_mut())
+            .map_err(|e| ExecutionError::EvmEnv(e.to_string()))?;
+
+        ensure_aa_predeploys(spec, self.pending_block.timestamp, self.evm.db_mut())
             .map_err(|e| ExecutionError::EvmEnv(e.to_string()))?;
 
         Ok(())

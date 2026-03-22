@@ -16,6 +16,8 @@ use alloy_primitives::Address;
 use base_alloy_chains::BaseUpgrades;
 use base_alloy_consensus::OpDepositReceipt;
 use base_alloy_flz::tx_estimated_size_fjord as estimate_tx_compressed_size;
+
+use crate::base_v1;
 use base_revm::{DEPOSIT_TRANSACTION_TYPE, L1_BLOCK_CONTRACT, L1BlockInfo};
 use revm::{
     Database as _, DatabaseCommit,
@@ -157,6 +159,13 @@ where
         // so we can safely assume that this will always be triggered upon the transition and that
         // the above check for empty blocks will never be hit on Base chains.
         canyon::ensure_create2_deployer(
+            &self.spec,
+            self.evm.block().timestamp().saturating_to(),
+            self.evm.db_mut(),
+        )
+        .map_err(BlockExecutionError::other)?;
+
+        base_v1::ensure_aa_predeploys(
             &self.spec,
             self.evm.block().timestamp().saturating_to(),
             self.evm.db_mut(),

@@ -223,16 +223,7 @@ where
             let slot = aa_nonce_slot(sender, nonce_key);
             let new_nonce = U256::from(nonce_sequence + 1);
 
-            // Load the NonceManager account so we can write storage.
-            // If the predeploy has no code yet (devnet without genesis
-            // predeploys), bump its account nonce so EIP-161 cleanup
-            // doesn't delete the account and erase our storage writes.
-            // TODO(eip-8130): remove once AA predeploys are in genesis.
-            let mut nm = journal.load_account_with_code_mut(NONCE_MANAGER_ADDRESS)?.data;
-            if nm.account().info.is_empty() {
-                nm.bump_nonce();
-            }
-            drop(nm);
+            journal.load_account(NONCE_MANAGER_ADDRESS)?;
             journal.sstore(NONCE_MANAGER_ADDRESS, slot, new_nonce)?;
 
             return Ok(());

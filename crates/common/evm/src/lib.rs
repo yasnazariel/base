@@ -29,6 +29,9 @@ pub use receipt_builder::{OpAlloyReceiptBuilder, OpReceiptBuilder};
 mod canyon;
 pub use canyon::ensure_create2_deployer;
 
+mod base_v1;
+pub use base_v1::ensure_aa_predeploys;
+
 mod executor;
 pub use executor::{BaseBlockExecutor, OpTxResult};
 
