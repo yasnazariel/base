@@ -78,22 +78,17 @@ where
 mod tests {
     use alloc::sync::Arc;
 
-    use base_alloy_chains::BaseUpgrade;
+    use base_alloy_chains::{BaseChainConfig, BaseUpgrade};
     use base_alloy_consensus::JovianExtraData;
     use reth_chainspec::{ChainSpec, ForkCondition, Hardfork};
-
-    use base_alloy_chains::BaseChainConfig;
 
     use super::*;
     use crate::OpChainSpec;
 
-    static BASE_SEPOLIA: std::sync::LazyLock<OpChainSpec> =
-        std::sync::LazyLock::new(|| OpChainSpec::from(BaseChainConfig::sepolia()));
-
     const JOVIAN_TIMESTAMP: u64 = 1900000000;
 
     fn get_chainspec() -> Arc<OpChainSpec> {
-        let mut base_sepolia_spec = BASE_SEPOLIA.inner.clone();
+        let mut base_sepolia_spec = OpChainSpec::from(BaseChainConfig::sepolia()).inner;
         base_sepolia_spec
             .hardforks
             .insert(BaseUpgrade::Jovian.boxed(), ForkCondition::Timestamp(JOVIAN_TIMESTAMP));

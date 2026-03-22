@@ -239,9 +239,6 @@ mod tests {
     use base_alloy_chains::BaseChainConfig;
     use base_alloy_consensus::{HoloceneExtraData, JovianExtraData, OpReceipt, OpTypedTransaction};
     use base_execution_chainspec::{OpChainSpec, OpChainSpecBuilder};
-
-    static BASE_MAINNET: std::sync::LazyLock<OpChainSpec> =
-        std::sync::LazyLock::new(|| OpChainSpec::from(BaseChainConfig::mainnet()));
     use base_execution_primitives::{OpPrimitives, OpTransactionSigned};
     use reth_chainspec::BaseFeeParams;
     use reth_consensus::{Consensus, ConsensusError, FullConsensus, HeaderValidator};
@@ -271,10 +268,11 @@ mod tests {
 
     #[test]
     fn test_block_blob_gas_used_validation_isthmus() {
+        let base_mainnet = OpChainSpec::from(BaseChainConfig::mainnet());
         let chain_spec = OpChainSpecBuilder::default()
             .isthmus_activated()
-            .genesis(BASE_MAINNET.genesis.clone())
-            .chain(BASE_MAINNET.chain)
+            .genesis(base_mainnet.genesis.clone())
+            .chain(base_mainnet.chain)
             .build();
 
         // create a tx
@@ -308,10 +306,11 @@ mod tests {
 
     #[test]
     fn test_block_blob_gas_used_validation_failure_isthmus() {
+        let base_mainnet = OpChainSpec::from(BaseChainConfig::mainnet());
         let chain_spec = OpChainSpecBuilder::default()
             .isthmus_activated()
-            .genesis(BASE_MAINNET.genesis.clone())
-            .chain(BASE_MAINNET.chain)
+            .genesis(base_mainnet.genesis.clone())
+            .chain(base_mainnet.chain)
             .build();
 
         // create a tx
@@ -351,10 +350,11 @@ mod tests {
         const BLOB_GAS_USED: u64 = 1000;
         const GAS_USED: u64 = 10;
 
+        let base_mainnet = OpChainSpec::from(BaseChainConfig::mainnet());
         let chain_spec = OpChainSpecBuilder::default()
             .jovian_activated()
-            .genesis(BASE_MAINNET.genesis.clone())
-            .chain(BASE_MAINNET.chain)
+            .genesis(base_mainnet.genesis.clone())
+            .chain(base_mainnet.chain)
             .build();
 
         // create a tx
@@ -421,10 +421,11 @@ mod tests {
         const BLOB_GAS_USED: u64 = 1000;
         const GAS_USED: u64 = 10;
 
+        let base_mainnet = OpChainSpec::from(BaseChainConfig::mainnet());
         let chain_spec = OpChainSpecBuilder::default()
             .jovian_activated()
-            .genesis(BASE_MAINNET.genesis.clone())
-            .chain(BASE_MAINNET.chain)
+            .genesis(base_mainnet.genesis.clone())
+            .chain(base_mainnet.chain)
             .build();
 
         // create a tx
@@ -494,10 +495,11 @@ mod tests {
     fn test_header_min_base_fee_validation() {
         const MIN_BASE_FEE: u64 = 1000;
 
+        let base_mainnet = OpChainSpec::from(BaseChainConfig::mainnet());
         let chain_spec = OpChainSpecBuilder::default()
             .jovian_activated()
-            .genesis(BASE_MAINNET.genesis.clone())
-            .chain(BASE_MAINNET.chain)
+            .genesis(base_mainnet.genesis.clone())
+            .chain(base_mainnet.chain)
             .build();
 
         // create a tx
@@ -565,10 +567,11 @@ mod tests {
     fn test_header_min_base_fee_validation_failure() {
         const MIN_BASE_FEE: u64 = 1000;
 
+        let base_mainnet = OpChainSpec::from(BaseChainConfig::mainnet());
         let chain_spec = OpChainSpecBuilder::default()
             .jovian_activated()
-            .genesis(BASE_MAINNET.genesis.clone())
-            .chain(BASE_MAINNET.chain)
+            .genesis(base_mainnet.genesis.clone())
+            .chain(base_mainnet.chain)
             .build();
 
         // create a tx
@@ -642,10 +645,11 @@ mod tests {
         const DA_FOOTPRINT: u64 = GAS_LIMIT - 1;
         const GAS_LIMIT: u64 = 100_000_000;
 
+        let base_mainnet = OpChainSpec::from(BaseChainConfig::mainnet());
         let chain_spec = OpChainSpecBuilder::default()
             .jovian_activated()
-            .genesis(BASE_MAINNET.genesis.clone())
-            .chain(BASE_MAINNET.chain)
+            .genesis(base_mainnet.genesis.clone())
+            .chain(base_mainnet.chain)
             .build();
 
         // create a tx
@@ -716,10 +720,11 @@ mod tests {
         const DA_FOOTPRINT: u64 = GAS_LIMIT - 1;
         const GAS_LIMIT: u64 = 100_000_000;
 
+        let base_mainnet = OpChainSpec::from(BaseChainConfig::mainnet());
         let chain_spec = OpChainSpecBuilder::default()
             .isthmus_activated()
-            .genesis(BASE_MAINNET.genesis.clone())
-            .chain(BASE_MAINNET.chain)
+            .genesis(base_mainnet.genesis.clone())
+            .chain(base_mainnet.chain)
             .build();
 
         // create a tx

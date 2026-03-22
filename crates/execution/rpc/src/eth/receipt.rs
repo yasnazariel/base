@@ -350,9 +350,6 @@ mod test {
     use base_alloy_chains::BaseChainConfig;
     use base_alloy_consensus::OpTypedTransaction;
     use base_execution_chainspec::OpChainSpec;
-
-    static BASE_MAINNET: std::sync::LazyLock<OpChainSpec> =
-        std::sync::LazyLock::new(|| OpChainSpec::from(BaseChainConfig::mainnet()));
     use base_execution_primitives::{OpPrimitives, OpTransactionSigned};
     use reth_primitives_traits::Recovered;
 
@@ -400,6 +397,8 @@ mod test {
 
     #[test]
     fn op_receipt_fields_from_block_and_tx() {
+        let base_mainnet = OpChainSpec::from(BaseChainConfig::mainnet());
+
         // rig
         let tx_0 = OpTransactionSigned::decode_2718(
             &mut TX_SET_L1_BLOCK_BASE_MAINNET_BLOCK_124665056.as_slice(),
@@ -420,12 +419,12 @@ mod test {
 
         // test
         assert!(BaseUpgrades::is_fjord_active_at_timestamp(
-            &*BASE_MAINNET,
+            &base_mainnet,
             BLOCK_124665056_TIMESTAMP
         ));
 
         let receipt_meta = OpReceiptFieldsBuilder::new(BLOCK_124665056_TIMESTAMP, 124665056)
-            .l1_block_info(&*BASE_MAINNET, &tx_1, &mut l1_block_info)
+            .l1_block_info(&base_mainnet, &tx_1, &mut l1_block_info)
             .expect("should parse revm l1 info")
             .build();
 
@@ -492,6 +491,8 @@ mod test {
 
     #[test]
     fn op_non_zero_operator_fee_params_included_in_receipt() {
+        let base_mainnet = OpChainSpec::from(BaseChainConfig::mainnet());
+
         let tx_1 =
             OpTransactionSigned::decode_2718(&mut TX_1_BASE_MAINNET_BLOCK_124665056.as_slice())
                 .unwrap();
@@ -503,7 +504,7 @@ mod test {
         };
 
         let receipt_meta = OpReceiptFieldsBuilder::new(BLOCK_124665056_TIMESTAMP, 124665056)
-            .l1_block_info(&*BASE_MAINNET, &tx_1, &mut l1_block_info)
+            .l1_block_info(&base_mainnet, &tx_1, &mut l1_block_info)
             .expect("should parse revm l1 info")
             .build();
 
@@ -516,6 +517,8 @@ mod test {
 
     #[test]
     fn op_zero_operator_fee_params_not_included_in_receipt() {
+        let base_mainnet = OpChainSpec::from(BaseChainConfig::mainnet());
+
         let tx_1 =
             OpTransactionSigned::decode_2718(&mut TX_1_BASE_MAINNET_BLOCK_124665056.as_slice())
                 .unwrap();
@@ -527,7 +530,7 @@ mod test {
         };
 
         let receipt_meta = OpReceiptFieldsBuilder::new(BLOCK_124665056_TIMESTAMP, 124665056)
-            .l1_block_info(&*BASE_MAINNET, &tx_1, &mut l1_block_info)
+            .l1_block_info(&base_mainnet, &tx_1, &mut l1_block_info)
             .expect("should parse revm l1 info")
             .build();
 
@@ -541,6 +544,8 @@ mod test {
     // <https://github.com/paradigmxyz/reth/issues/12177>
     #[test]
     fn base_receipt_gas_fields() {
+        let base_mainnet = OpChainSpec::from(BaseChainConfig::mainnet());
+
         // https://basescan.org/tx/0x510fd4c47d78ba9f97c91b0f2ace954d5384c169c9545a77a373cf3ef8254e6e
         let system = hex!(
             "7ef8f8a0389e292420bcbf9330741f72074e39562a09ff5a00fd22e4e9eee7e34b81bca494deaddeaddeaddeaddeaddeaddeaddeaddead00019442000000000000000000000000000000000000158080830f424080b8a4440a5e20000008dd00101c120000000000000004000000006721035b00000000014189960000000000000000000000000000000000000000000000000000000349b4dcdc000000000000000000000000000000000000000000000000000000004ef9325cc5991ce750960f636ca2ffbb6e209bb3ba91412f21dd78c14ff154d1930f1f9a0000000000000000000000005050f69a9786f081509234f1a7f4684b5e5b76c9"
@@ -561,7 +566,7 @@ mod test {
         let tx_1 = OpTransactionSigned::decode_2718(&mut &tx[..]).unwrap();
 
         let receipt_meta = OpReceiptFieldsBuilder::new(1730216981, 21713817)
-            .l1_block_info(&*BASE_MAINNET, &tx_1, &mut l1_block_info)
+            .l1_block_info(&base_mainnet, &tx_1, &mut l1_block_info)
             .expect("should parse revm l1 info")
             .build();
 
@@ -592,6 +597,8 @@ mod test {
 
     #[test]
     fn da_footprint_gas_scalar_included_in_receipt_post_jovian() {
+        let base_mainnet = OpChainSpec::from(BaseChainConfig::mainnet());
+
         const DA_FOOTPRINT_GAS_SCALAR: u16 = 10;
 
         let tx = TxEip7702 {
@@ -616,11 +623,9 @@ mod test {
             ..Default::default()
         };
 
-        let op_hardforks = &*BASE_MAINNET;
-
         let receipt =
             OpReceiptFieldsBuilder::new(BaseChainConfig::mainnet().jovian_timestamp, u64::MAX)
-                .l1_block_info(&op_hardforks, &tx, &mut l1_block_info)
+                .l1_block_info(&base_mainnet, &tx, &mut l1_block_info)
                 .expect("should parse revm l1 info")
                 .build();
 
@@ -629,6 +634,8 @@ mod test {
 
     #[test]
     fn blob_gas_used_included_in_receipt_post_jovian() {
+        let base_mainnet = OpChainSpec::from(BaseChainConfig::mainnet());
+
         const DA_FOOTPRINT_GAS_SCALAR: u16 = 100;
         let tx = TxEip7702 {
             chain_id: 1u64,
@@ -652,10 +659,8 @@ mod test {
             ..Default::default()
         };
 
-        let op_hardforks = &*BASE_MAINNET;
-
         let op_receipt = OpReceiptBuilder::new(
-            &op_hardforks,
+            &base_mainnet,
             ConvertReceiptInput::<OpPrimitives> {
                 tx: Recovered::new_unchecked(&tx, Address::default()),
                 receipt: OpReceipt::Eip7702(Receipt {
@@ -683,6 +688,8 @@ mod test {
 
     #[test]
     fn blob_gas_used_not_included_in_receipt_post_isthmus() {
+        let base_mainnet = OpChainSpec::from(BaseChainConfig::mainnet());
+
         const DA_FOOTPRINT_GAS_SCALAR: u16 = 100;
         let tx = TxEip7702 {
             chain_id: 1u64,
@@ -706,10 +713,8 @@ mod test {
             ..Default::default()
         };
 
-        let op_hardforks = &*BASE_MAINNET;
-
         let op_receipt = OpReceiptBuilder::new(
-            &op_hardforks,
+            &base_mainnet,
             ConvertReceiptInput::<OpPrimitives> {
                 tx: Recovered::new_unchecked(&tx, Address::default()),
                 receipt: OpReceipt::Eip7702(Receipt {

@@ -216,9 +216,6 @@ mod tests {
     use base_alloy_chains::{BaseChainConfig, BaseUpgrade};
     use base_alloy_consensus::{OpReceipt, OpTxEnvelope};
     use base_execution_chainspec::OpChainSpec;
-
-    static BASE_SEPOLIA: std::sync::LazyLock<OpChainSpec> =
-        std::sync::LazyLock::new(|| OpChainSpec::from(BaseChainConfig::sepolia()));
     use base_execution_forks::{BaseChainUpgrades, BaseChainUpgradesExt};
     use reth_chainspec::{BaseFeeParams, ChainSpec, EthChainSpec, ForkCondition, Hardfork};
 
@@ -230,17 +227,18 @@ mod tests {
     const BLOCK_TIME_SECONDS: u64 = 2;
 
     fn holocene_chainspec() -> Arc<OpChainSpec> {
+        let base_sepolia = OpChainSpec::from(BaseChainConfig::sepolia());
         let mut hardforks = BaseChainUpgrades::sepolia().to_chain_hardforks();
         hardforks
             .insert(BaseUpgrade::Holocene.boxed(), ForkCondition::Timestamp(HOLOCENE_TIMESTAMP));
         Arc::new(OpChainSpec {
             inner: ChainSpec {
-                chain: BASE_SEPOLIA.inner.chain,
-                genesis: BASE_SEPOLIA.inner.genesis.clone(),
-                genesis_header: BASE_SEPOLIA.inner.genesis_header.clone(),
+                chain: base_sepolia.inner.chain,
+                genesis: base_sepolia.inner.genesis.clone(),
+                genesis_header: base_sepolia.inner.genesis_header.clone(),
                 paris_block_and_final_difficulty: Some((0, U256::from(0))),
                 hardforks,
-                base_fee_params: BASE_SEPOLIA.inner.base_fee_params.clone(),
+                base_fee_params: base_sepolia.inner.base_fee_params,
                 prune_delete_limit: 10000,
                 ..Default::default()
             },
@@ -248,7 +246,7 @@ mod tests {
     }
 
     fn isthmus_chainspec() -> OpChainSpec {
-        let mut chainspec = BASE_SEPOLIA.clone();
+        let mut chainspec = OpChainSpec::from(BaseChainConfig::sepolia());
         chainspec
             .inner
             .hardforks
@@ -257,7 +255,7 @@ mod tests {
     }
 
     fn jovian_chainspec() -> OpChainSpec {
-        let mut chainspec = BASE_SEPOLIA.clone();
+        let mut chainspec = OpChainSpec::from(BaseChainConfig::sepolia());
         chainspec
             .inner
             .hardforks
@@ -267,7 +265,7 @@ mod tests {
 
     #[test]
     fn test_get_base_fee_pre_holocene() {
-        let op_chain_spec = BASE_SEPOLIA.clone();
+        let op_chain_spec = OpChainSpec::from(BaseChainConfig::sepolia());
         let parent = Header {
             base_fee_per_gas: Some(1),
             gas_used: 15763614,
@@ -340,8 +338,9 @@ mod tests {
             ..Default::default()
         };
 
+        let base_sepolia = OpChainSpec::from(BaseChainConfig::sepolia());
         let base_fee = base_execution_chainspec::OpChainSpec::next_block_base_fee(
-            &*BASE_SEPOLIA,
+            &base_sepolia,
             &parent,
             1735315546,
         )
@@ -369,8 +368,9 @@ mod tests {
             ..Default::default()
         };
 
+        let base_sepolia = OpChainSpec::from(BaseChainConfig::sepolia());
         let base_fee = base_execution_chainspec::OpChainSpec::next_block_base_fee(
-            &*BASE_SEPOLIA,
+            &base_sepolia,
             &parent,
             1735315546,
         );

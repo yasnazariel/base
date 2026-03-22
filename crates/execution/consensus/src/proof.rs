@@ -85,9 +85,6 @@ mod tests {
     use base_alloy_consensus::{OpDepositReceipt, OpReceipt};
     use base_execution_chainspec::OpChainSpec;
 
-    static BASE_SEPOLIA: std::sync::LazyLock<OpChainSpec> =
-        std::sync::LazyLock::new(|| OpChainSpec::from(BaseChainConfig::sepolia()));
-
     use super::*;
 
     /// Tests that the receipt root is computed correctly for the regolith block.
@@ -121,6 +118,8 @@ mod tests {
                 b256!("0x6eefbb5efb95235476654a8bfbf8cb64a4f5f0b0c80b700b0c5964550beee6d7"),
             ),
         ];
+
+        let base_sepolia = OpChainSpec::from(BaseChainConfig::sepolia());
 
         for case in cases {
             let receipts = [
@@ -469,7 +468,7 @@ mod tests {
             ];
             let root = calculate_receipt_root_optimism(
                 &receipts.iter().map(TxReceipt::with_bloom_ref).collect::<Vec<_>>(),
-                &*BASE_SEPOLIA,
+                &base_sepolia,
                 case.1,
             );
             assert_eq!(root, case.2);
@@ -478,6 +477,8 @@ mod tests {
 
     #[test]
     fn check_receipt_root_optimism() {
+        let base_sepolia = OpChainSpec::from(BaseChainConfig::sepolia());
+
         let logs = vec![Log {
             address: Address::ZERO,
             data: LogData::new_unchecked(vec![], Default::default()),
@@ -489,7 +490,7 @@ mod tests {
             OpReceipt::Eip2930(Receipt { status: true.into(), cumulative_gas_used: 102068, logs });
         let receipt = ReceiptWithBloom { receipt: &inner, logs_bloom };
         let receipt = vec![receipt];
-        let root = calculate_receipt_root_optimism(&receipt, &*BASE_SEPOLIA, 0);
+        let root = calculate_receipt_root_optimism(&receipt, &base_sepolia, 0);
         assert_eq!(
             root,
             b256!("0xfe70ae4a136d98944951b2123859698d59ad251a381abc9960fa81cae3d0d4a0")

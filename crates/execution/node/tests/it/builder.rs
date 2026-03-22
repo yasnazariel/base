@@ -1,18 +1,13 @@
 //! Node builder setup tests.
 
 use core::marker::PhantomData;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 use alloy_primitives::{Bytes, address};
 use base_alloy_chains::BaseChainConfig;
 use base_alloy_evm::{OpBlockExecutorFactory, OpEvm, OpEvmFactory};
 use base_execution_chainspec::OpChainSpec;
 use base_execution_evm::{OpEvmConfig, OpRethReceiptBuilder};
-
-static BASE_MAINNET: std::sync::LazyLock<std::sync::Arc<OpChainSpec>> =
-    std::sync::LazyLock::new(|| std::sync::Arc::new(OpChainSpec::from(BaseChainConfig::mainnet())));
-static BASE_SEPOLIA: std::sync::LazyLock<std::sync::Arc<OpChainSpec>> =
-    std::sync::LazyLock::new(|| std::sync::Arc::new(OpChainSpec::from(BaseChainConfig::sepolia())));
 use base_execution_primitives::OpPrimitives;
 use base_node_core::{OpExecutorBuilder, OpNode, args::RollupArgs};
 use base_revm::{
@@ -38,7 +33,7 @@ use revm::{
 #[test]
 fn test_basic_setup() {
     // parse CLI -> config
-    let config = NodeConfig::new(BASE_MAINNET.clone());
+    let config = NodeConfig::new(Arc::new(OpChainSpec::from(BaseChainConfig::mainnet())));
     let db = create_test_rw_db();
     let args = RollupArgs::default();
     let op_node = OpNode::new(args);
@@ -163,7 +158,7 @@ fn test_setup_custom_precompiles() {
         }
     }
 
-    NodeBuilder::new(NodeConfig::new(BASE_SEPOLIA.clone()))
+    NodeBuilder::new(NodeConfig::new(Arc::new(OpChainSpec::from(BaseChainConfig::sepolia()))))
         .with_database(create_test_rw_db())
         .with_types::<OpNode>()
         .with_components(

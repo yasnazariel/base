@@ -387,14 +387,7 @@ mod tests {
     };
     use reth_ethereum_forks::{EthereumHardfork, ForkCondition, ForkHash, ForkId, Head};
 
-    use std::sync::LazyLock;
-
     use crate::{OpChainSpec, OpChainSpecBuilder};
-
-    static BASE_MAINNET: LazyLock<OpChainSpec> =
-        LazyLock::new(|| OpChainSpec::from(BaseChainConfig::mainnet()));
-    static BASE_SEPOLIA: LazyLock<OpChainSpec> =
-        LazyLock::new(|| OpChainSpec::from(BaseChainConfig::sepolia()));
 
     #[test]
     fn test_storage_root_consistency() {
@@ -434,10 +427,9 @@ mod tests {
 
     #[test]
     fn base_mainnet_forkids() {
-        let mut base_mainnet = OpChainSpecBuilder::base_mainnet().build();
-        base_mainnet.inner.genesis_header.set_hash(BASE_MAINNET.genesis_hash());
+        let base_mainnet = OpChainSpec::from(BaseChainConfig::mainnet());
         test_fork_ids(
-            &BASE_MAINNET,
+            &base_mainnet,
             &[
                 (
                     Head { number: 0, ..Default::default() },
@@ -488,7 +480,7 @@ mod tests {
                         timestamp: BaseChainConfig::mainnet().jovian_timestamp,
                         ..Default::default()
                     },
-                    BASE_MAINNET.hardfork_fork_id(BaseUpgrade::Jovian).unwrap(),
+                    base_mainnet.hardfork_fork_id(BaseUpgrade::Jovian).unwrap(),
                 ),
             ],
         );
@@ -496,8 +488,9 @@ mod tests {
 
     #[test]
     fn base_sepolia_forkids() {
+        let base_sepolia = OpChainSpec::from(BaseChainConfig::sepolia());
         test_fork_ids(
-            &BASE_SEPOLIA,
+            &base_sepolia,
             &[
                 (
                     Head { number: 0, ..Default::default() },
@@ -552,7 +545,7 @@ mod tests {
                         timestamp: BaseChainConfig::sepolia().jovian_timestamp,
                         ..Default::default()
                     },
-                    BASE_SEPOLIA.hardfork_fork_id(BaseUpgrade::Jovian).unwrap(),
+                    base_sepolia.hardfork_fork_id(BaseUpgrade::Jovian).unwrap(),
                 ),
             ],
         );
@@ -560,31 +553,34 @@ mod tests {
 
     #[test]
     fn base_mainnet_genesis() {
-        let genesis = BASE_MAINNET.genesis_header();
+        let base_mainnet = OpChainSpec::from(BaseChainConfig::mainnet());
+        let genesis = base_mainnet.genesis_header();
         assert_eq!(
             genesis.hash_slow(),
             b256!("0xf712aa9241cc24369b143cf6dce85f0902a9731e70d66818a3a5845b296c73dd")
         );
-        let base_fee = BASE_MAINNET.next_block_base_fee(genesis, genesis.timestamp).unwrap();
+        let base_fee = base_mainnet.next_block_base_fee(genesis, genesis.timestamp).unwrap();
         assert_eq!(base_fee, 980000000);
     }
 
     #[test]
     fn base_sepolia_genesis() {
-        let genesis = BASE_SEPOLIA.genesis_header();
+        let base_sepolia = OpChainSpec::from(BaseChainConfig::sepolia());
+        let genesis = base_sepolia.genesis_header();
         assert_eq!(
             genesis.hash_slow(),
             b256!("0x0dcc9e089e30b90ddfc55be9a37dd15bc551aeee999d2e2b51414c54eaf934e4")
         );
-        let base_fee = BASE_SEPOLIA.next_block_base_fee(genesis, genesis.timestamp).unwrap();
+        let base_fee = base_sepolia.next_block_base_fee(genesis, genesis.timestamp).unwrap();
         assert_eq!(base_fee, 980000000);
     }
 
     #[test]
     fn latest_base_mainnet_fork_id() {
+        let base_mainnet = OpChainSpec::from(BaseChainConfig::mainnet());
         assert_eq!(
             ForkId { hash: ForkHash(hex!("1cfeafc9")), next: 0 },
-            BASE_MAINNET.latest_fork_id()
+            base_mainnet.latest_fork_id()
         )
     }
 
@@ -1018,7 +1014,8 @@ mod tests {
 
     #[test]
     fn display_hardorks() {
-        let content = BASE_MAINNET.display_hardforks().to_string();
+        let base_mainnet = OpChainSpec::from(BaseChainConfig::mainnet());
+        let content = base_mainnet.display_hardforks().to_string();
         for eth_hf in EthereumHardfork::VARIANTS {
             assert!(!content.contains(eth_hf.name()));
         }

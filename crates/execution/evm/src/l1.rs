@@ -383,9 +383,6 @@ mod tests {
     use alloy_primitives::{Bytes, hex_literal::hex, keccak256};
     use base_alloy_chains::{BaseChainConfig, BaseUpgrades};
     use base_execution_chainspec::OpChainSpec;
-
-    static BASE_MAINNET: std::sync::LazyLock<OpChainSpec> =
-        std::sync::LazyLock::new(|| OpChainSpec::from(BaseChainConfig::mainnet()));
     use base_execution_primitives::OpTransactionSigned;
 
     use super::*;
@@ -422,7 +419,8 @@ mod tests {
         // OP mainnet ecotone block 118024092
         // <https://optimistic.etherscan.io/block/118024092>
         const TIMESTAMP: u64 = 1711603765;
-        assert!(BASE_MAINNET.is_ecotone_active_at_timestamp(TIMESTAMP));
+        let base_mainnet = OpChainSpec::from(BaseChainConfig::mainnet());
+        assert!(base_mainnet.is_ecotone_active_at_timestamp(TIMESTAMP));
 
         // First transaction in OP mainnet block 118024092
         //

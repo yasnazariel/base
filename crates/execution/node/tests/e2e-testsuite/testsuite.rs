@@ -4,9 +4,6 @@ use alloy_primitives::{Address, B64, B256};
 use base_alloy_chains::BaseChainConfig;
 use base_alloy_rpc_types_engine::OpPayloadAttributes;
 use base_execution_chainspec::{OpChainSpec, OpChainSpecBuilder};
-
-static BASE_MAINNET: std::sync::LazyLock<OpChainSpec> =
-    std::sync::LazyLock::new(|| OpChainSpec::from(BaseChainConfig::mainnet()));
 use base_node_core::{OpEngineTypes, OpNode};
 use eyre::Result;
 use reth_e2e_test_utils::testsuite::{
@@ -22,7 +19,7 @@ async fn test_testsuite_op_assert_mine_block() -> Result<()> {
     let setup = Setup::default()
         .with_chain_spec(Arc::new(
             OpChainSpecBuilder::default()
-                .chain(BASE_MAINNET.chain)
+                .chain(OpChainSpec::from(BaseChainConfig::mainnet()).chain)
                 .genesis(serde_json::from_str(include_str!("../assets/genesis.json")).unwrap())
                 .build()
                 .into(),
@@ -66,7 +63,7 @@ async fn test_testsuite_op_assert_mine_block_isthmus_activated() -> Result<()> {
     let setup = Setup::default()
         .with_chain_spec(Arc::new(
             OpChainSpecBuilder::default()
-                .chain(BASE_MAINNET.chain)
+                .chain(OpChainSpec::from(BaseChainConfig::mainnet()).chain)
                 .genesis(serde_json::from_str(include_str!("../assets/genesis.json")).unwrap())
                 .isthmus_activated()
                 .build()

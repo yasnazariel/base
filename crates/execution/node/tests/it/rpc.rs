@@ -1,10 +1,9 @@
 //! RPC integration tests.
 
+use std::sync::Arc;
+
 use base_alloy_chains::BaseChainConfig;
 use base_execution_chainspec::OpChainSpec;
-
-static BASE_MAINNET: std::sync::LazyLock<std::sync::Arc<OpChainSpec>> =
-    std::sync::LazyLock::new(|| std::sync::Arc::new(OpChainSpec::from(BaseChainConfig::mainnet())));
 use base_node_core::OpNode;
 use reth_network::types::NatResolver;
 use reth_node_builder::{NodeBuilder, NodeHandle};
@@ -30,7 +29,7 @@ async fn test_admin_external_ip() -> eyre::Result<()> {
     network_args.discovery.discv5_port = 0;
     network_args.discovery.discv5_port_ipv6 = 0;
     let node_config = NodeConfig::test()
-        .map_chain(BASE_MAINNET.clone())
+        .map_chain(Arc::new(OpChainSpec::from(BaseChainConfig::mainnet())))
         .with_network(network_args)
         .with_rpc(RpcServerArgs::default().with_unused_ports().with_http());
 
