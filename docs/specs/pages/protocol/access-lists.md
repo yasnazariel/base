@@ -45,7 +45,7 @@ FAL adapts the BAL specification for chains that produce flashblocks—increment
 
 ### Flashblock Structure Modification
 
-We introduce a new field to the flashblock metadata, `flashblock_access_list`, which contains the complete flashblock access list structure including transaction index bounds and the hash.
+We introduce a new field to the flashblock metadata, `access_list`, which contains the complete flashblock access list structure including transaction index bounds and the hash.
 
 ```rust
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -54,10 +54,10 @@ pub struct FlashblocksPayloadV1 {
     pub index: u64,
     pub base: Option<ExecutionPayloadBaseV1>,
     pub diff: ExecutionPayloadFlashblockDeltaV1,
-    pub metadata: Value, // Contains "flashblock_access_list"
+    pub metadata: Value, // Contains "access_list"
 }
 
-// The flashblock_access_list field in metadata contains:
+// The access_list field in metadata contains:
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct FlashblockAccessList {
     pub min_tx_index: u64,      // Inclusive starting transaction index in the overall block
@@ -267,7 +267,7 @@ The state transition function must validate that the provided FAL matches the ac
 def validate_flashblock(flashblock):
     # 1. Extract FAL from metadata
     import rlp
-    fal = flashblock.metadata['flashblock_access_list']
+    fal = flashblock.metadata['access_list']
     min_tx_index = fal['min_tx_index']
     max_tx_index = fal['max_tx_index']
     provided_account_changes = fal['account_changes']
