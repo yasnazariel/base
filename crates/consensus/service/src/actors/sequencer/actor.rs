@@ -110,16 +110,11 @@ where
 {
     /// Updates the metrics for the sequencer actor.
     pub(super) fn update_metrics(&self) {
-        #[cfg(feature = "metrics")]
-        {
-            let state_flags: [(&str, String); 2] = [
-                ("active", self.is_active.to_string()),
-                ("recovery", self.recovery_mode.get().to_string()),
-            ];
-
-            let gauge = metrics::gauge!(Metrics::SEQUENCER_STATE, &state_flags);
-            gauge.set(1);
-        }
+        Metrics::sequencer_state(
+            &self.is_active.to_string(),
+            &self.recovery_mode.get().to_string(),
+        )
+        .set(1);
     }
 
     /// Fetches the sealed payload envelope from the engine for the given unsealed handle.

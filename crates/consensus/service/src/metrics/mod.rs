@@ -51,9 +51,9 @@ base_metrics::define_metrics! {
 
     #[describe("Empty blocks produced due to sequencer drift threshold")]
     sequencer_drift_empty_blocks_total: counter,
-}
 
-impl Metrics {
-    /// Identifier for the counter that tracks sequencer state flags.
-    pub const SEQUENCER_STATE: &str = "base_node_sequencer_state";
+    #[describe("Sequencer state flags")]
+    #[label("active", active)]
+    #[label("recovery", recovery)]
+    sequencer_state: gauge,
 }
