@@ -10,7 +10,7 @@ use async_trait::async_trait;
 use tokio::time::{interval, timeout};
 use tracing::{debug, error, info};
 
-use crate::metrics::HealthcheckMetrics;
+use crate::HealthcheckMetrics;
 
 /// Alloy-based Ethereum client implementation.
 pub mod alloy_client;

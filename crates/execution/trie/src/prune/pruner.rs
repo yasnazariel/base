@@ -5,6 +5,7 @@ use reth_provider::BlockHashReader;
 use tokio::time::Instant;
 use tracing::{error, info, trace};
 
+use super::PrunerMetrics;
 use crate::{
     OpProofsStorage, OpProofsStore,
     prune::error::{OpProofStoragePrunerResult, PrunerError, PrunerOutput},
@@ -141,7 +142,7 @@ where
         let duration = batch_start_time.elapsed();
         let batch_output = PrunerOutput { duration, start_block, end_block, write_counts };
 
-        crate::prune::metrics::PrunerMetrics::record_prune_result(batch_output.clone());
+        PrunerMetrics::record_prune_result(batch_output.clone());
 
         info!(
             target: "trie::pruner",

@@ -7,7 +7,7 @@ use base_proof_rpc::L1Provider;
 use tokio_util::sync::CancellationToken;
 use tracing::debug;
 
-use crate::metrics::Metrics;
+use crate::Metrics;
 
 /// Balance polling interval.
 pub const BALANCE_POLL_INTERVAL: Duration = Duration::from_secs(30);

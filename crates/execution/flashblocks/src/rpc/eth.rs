@@ -78,7 +78,7 @@ use tokio::{sync::broadcast::error::RecvError, time};
 use tokio_stream::{StreamExt, wrappers::BroadcastStream};
 use tracing::{debug, trace, warn};
 
-use crate::{FlashblocksAPI, PendingBlocksAPI};
+use crate::{FlashblocksAPI, Metrics, PendingBlocksAPI};
 
 /// Max configured timeout for `eth_sendRawTransactionSync` in milliseconds.
 const MAX_TIMEOUT_SEND_RAW_TX_SYNC_MS: u64 = 6_000;
@@ -198,7 +198,7 @@ where
         );
 
         if number.is_pending() {
-            crate::Metrics::rpc_get_block_by_number().increment(1);
+            Metrics::rpc_get_block_by_number().increment(1);
             let pending_blocks = self.flashblocks_state.get_pending_blocks();
             if pending_blocks.as_ref().is_some() {
                 return Ok(pending_blocks.get_block(full));
@@ -232,7 +232,7 @@ where
         // Fall back to flashblocks for pending transactions
         let pending_blocks = self.flashblocks_state.get_pending_blocks();
         if let Some(fb_receipt) = pending_blocks.get_transaction_receipt(tx_hash) {
-            crate::Metrics::rpc_get_transaction_receipt().increment(1);
+            Metrics::rpc_get_transaction_receipt().increment(1);
             return Ok(Some(fb_receipt));
         }
 
@@ -250,7 +250,7 @@ where
         );
         let block_id = block_number.unwrap_or_default();
         if block_id.is_pending() {
-            crate::Metrics::rpc_get_balance().increment(1);
+            Metrics::rpc_get_balance().increment(1);
             let pending_blocks = self.flashblocks_state.get_pending_blocks();
             if let Some(balance) = pending_blocks.get_balance(address) {
                 return Ok(balance);
@@ -272,7 +272,7 @@ where
 
         let block_id = block_number.unwrap_or_default();
         if block_id.is_pending() {
-            crate::Metrics::rpc_get_transaction_count().increment(1);
+            Metrics::rpc_get_transaction_count().increment(1);
             let pending_blocks = self.flashblocks_state.get_pending_blocks();
             let canon_block = pending_blocks.get_canonical_block_number();
             let fb_count = pending_blocks.get_transaction_count(address);
@@ -311,7 +311,7 @@ where
         // Fall back to flashblocks for pending transactions
         let pending_blocks = self.flashblocks_state.get_pending_blocks();
         if let Some(fb_transaction) = pending_blocks.get_transaction_by_hash(tx_hash) {
-            crate::Metrics::rpc_get_transaction_by_hash().increment(1);
+            Metrics::rpc_get_transaction_by_hash().increment(1);
             return Ok(Some(fb_transaction));
         }
 
@@ -393,7 +393,7 @@ where
         let mut pending_overrides = EvmOverrides::default();
         // If the call is to pending block use cached override (if it exists)
         if block_id.is_pending() {
-            crate::Metrics::rpc_call().increment(1);
+            Metrics::rpc_call().increment(1);
             let pending_blocks = self.flashblocks_state.get_pending_blocks();
             block_id = pending_blocks.get_canonical_block_number().into();
             pending_overrides.state = pending_blocks.get_state_overrides();
@@ -434,7 +434,7 @@ where
         let mut pending_overrides = EvmOverrides::default();
         // If the call is to pending block use cached override (if it exists)
         if block_id.is_pending() {
-            crate::Metrics::rpc_estimate_gas().increment(1);
+            Metrics::rpc_estimate_gas().increment(1);
             let pending_blocks = self.flashblocks_state.get_pending_blocks();
             block_id = pending_blocks.get_canonical_block_number().into();
             pending_overrides.state = pending_blocks.get_state_overrides();
@@ -465,7 +465,7 @@ where
 
         // If the call is to pending block use cached override (if it exists)
         if block_id.is_pending() {
-            crate::Metrics::rpc_simulate_v1().increment(1);
+            Metrics::rpc_simulate_v1().increment(1);
             let pending_blocks = self.flashblocks_state.get_pending_blocks();
             block_id = pending_blocks.get_canonical_block_number().into();
             pending_overrides.state = pending_blocks.get_state_overrides();
@@ -512,7 +512,7 @@ where
         }
 
         // Mixed query: toBlock is pending, so we need to combine historical + pending logs
-        crate::Metrics::rpc_get_logs().increment(1);
+        Metrics::rpc_get_logs().increment(1);
         let mut all_logs = Vec::new();
 
         let pending_blocks = self.flashblocks_state.get_pending_blocks();
@@ -558,7 +558,7 @@ where
         );
 
         if number.is_pending() {
-            crate::Metrics::rpc_get_block_transaction_count_by_number().increment(1);
+            Metrics::rpc_get_block_transaction_count_by_number().increment(1);
             let pending_blocks = self.flashblocks_state.get_pending_blocks();
             if let Some(block) = pending_blocks.get_block(false) {
                 let count = block.transactions.len();

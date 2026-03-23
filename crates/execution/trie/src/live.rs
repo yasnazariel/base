@@ -15,8 +15,8 @@ use reth_trie_common::{HashedPostStateSorted, updates::TrieUpdatesSorted};
 use tracing::info;
 
 use crate::{
-    BlockStateDiff, OpProofsStorage, OpProofsStorageError, OpProofsStore, api::OperationDurations,
-    provider::OpProofsStateProviderRef,
+    BlockMetrics, BlockStateDiff, OpProofsStorage, OpProofsStorageError, OpProofsStore,
+    api::OperationDurations, provider::OpProofsStateProviderRef,
 };
 
 /// Live trie collector for external proofs storage.
@@ -111,11 +111,8 @@ where
             - operation_durations.state_root_duration_seconds
             - operation_durations.execution_duration_seconds;
 
-        #[cfg(feature = "metrics")]
-        {
-            crate::metrics::record_block_operation_durations(&operation_durations);
-            crate::metrics::increment_block_write_counts(&update_result);
-        }
+        BlockMetrics::record_operation_durations(&operation_durations);
+        BlockMetrics::increment_write_counts(&update_result);
 
         info!(
             block_number = block.number(),
@@ -145,11 +142,8 @@ where
         operation_durations.total_duration_seconds = write_duration;
         operation_durations.write_duration_seconds = write_duration;
 
-        #[cfg(feature = "metrics")]
-        {
-            crate::metrics::record_block_operation_durations(&operation_durations);
-            crate::metrics::increment_block_write_counts(&storage_result);
-        }
+        BlockMetrics::record_operation_durations(&operation_durations);
+        BlockMetrics::increment_write_counts(&storage_result);
 
         info!(
             block_number = block.block.number,
@@ -202,10 +196,7 @@ where
         operation_durations.total_duration_seconds = write_duration;
         operation_durations.write_duration_seconds = write_duration;
 
-        #[cfg(feature = "metrics")]
-        {
-            crate::metrics::record_block_operation_durations(&operation_durations);
-        }
+        BlockMetrics::record_operation_durations(&operation_durations);
 
         info!(
             start_block_number = block_updates.first().map(|(b, _, _)| b.block.number),

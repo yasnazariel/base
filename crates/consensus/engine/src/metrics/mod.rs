@@ -4,30 +4,29 @@
 //! task execution, and block progression through safety levels.
 
 base_macros::define_metrics! {
-    #[scope("base_node")]
-    pub struct Metrics {
-        #[describe("Blockchain head labels")]
-        #[label("label", label)]
-        block_labels: gauge,
+    base_node
 
-        #[describe("Engine tasks successfully executed")]
-        #[label("type", task)]
-        engine_task_count: counter,
+    #[describe("Blockchain head labels")]
+    #[label("label", label)]
+    block_labels: gauge,
 
-        #[describe("Engine tasks failed")]
-        #[label("type", task)]
-        engine_task_failure: counter,
+    #[describe("Engine tasks successfully executed")]
+    #[label("type", task)]
+    engine_task_count: counter,
 
-        #[describe("Engine method request duration")]
-        #[label("method", method)]
-        engine_method_request_duration: histogram,
+    #[describe("Engine tasks failed")]
+    #[label("type", task)]
+    engine_task_failure: counter,
 
-        #[describe("Engine reset count")]
-        engine_reset_count: counter,
+    #[describe("Engine method request duration")]
+    #[label("method", method)]
+    engine_method_request_duration: histogram,
 
-        #[describe("Payloads dropped because unsafe head changed between build and seal")]
-        sequencer_unsafe_head_changed_total: counter,
-    }
+    #[describe("Engine reset count")]
+    engine_reset_count: counter,
+
+    #[describe("Payloads dropped because unsafe head changed between build and seal")]
+    sequencer_unsafe_head_changed_total: counter,
 }
 
 impl Metrics {

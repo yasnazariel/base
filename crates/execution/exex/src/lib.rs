@@ -12,7 +12,7 @@ use std::{sync::Arc, time::Duration};
 use alloy_consensus::BlockHeader;
 use alloy_eips::eip1898::BlockWithParent;
 use base_execution_trie::{
-    OpProofStoragePrunerTask, OpProofsStorage, OpProofsStore, live::LiveTrieCollector,
+    BlockMetrics, OpProofStoragePrunerTask, OpProofsStorage, OpProofsStore, live::LiveTrieCollector,
 };
 use futures::TryStreamExt;
 use reth_execution_types::Chain;
@@ -297,11 +297,7 @@ where
 
         // Need to update the earliest block metric on startup as this is not called frequently and
         // can show outdated info. When metrics are disabled, this is a no-op.
-        #[cfg(feature = "metrics")]
-        {
-            base_execution_trie::metrics::BlockMetrics::earliest_number()
-                .set(earliest_block_number as f64);
-        }
+        BlockMetrics::earliest_number().set(earliest_block_number as f64);
 
         Ok(())
     }

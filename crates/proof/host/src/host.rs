@@ -19,7 +19,7 @@ use tracing::{Instrument, info, info_span};
 #[cfg(feature = "disk")]
 use crate::DiskKeyValueStore;
 use crate::{
-    BootKeyValueStore, HostConfig, HostError, HostProviders, MemoryKeyValueStore,
+    BootKeyValueStore, HostConfig, HostError, HostProviders, MemoryKeyValueStore, Metrics,
     OfflineHostBackend, OnlineHostBackend, PreimageServer, RecordingOracle, Result,
     SharedKeyValueStore, SplitKeyValueStore, metrics::timed,
 };
@@ -132,7 +132,7 @@ impl Host {
 
         witness.finalize()?;
         let preimage_count = witness.preimage_count()?;
-        crate::Metrics::preimage_count().set(preimage_count as f64);
+        Metrics::preimage_count().set(preimage_count as f64);
         info!(preimage_count, "witness capture complete");
 
         Arc::try_unwrap(witness).map_err(|arc| {
@@ -157,7 +157,7 @@ impl Host {
         H: base_proof_preimage::HintWriterClient + Send + Sync + Clone + std::fmt::Debug + 'static,
         W: WitnessOracle + std::fmt::Debug + 'static,
     {
-        let _timer = timed!(crate::Metrics::replay_duration_seconds());
+        let _timer = timed!(Metrics::replay_duration_seconds());
         let driver =
             Prologue::new(recording.clone(), recording, OpEvmFactory::default()).load().await?;
         let epilogue = driver.execute().await?;

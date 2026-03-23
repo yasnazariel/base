@@ -25,6 +25,9 @@ pub use in_memory::{
 pub mod db;
 pub use db::{MdbxAccountCursor, MdbxProofsStorage, MdbxStorageCursor, MdbxTrieCursor};
 
+mod block_metrics;
+pub use block_metrics::BlockMetrics;
+
 #[cfg(feature = "metrics")]
 pub mod metrics;
 #[cfg(feature = "metrics")]

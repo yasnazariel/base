@@ -24,7 +24,7 @@ use tokio::sync::Mutex;
 
 use crate::{
     Behaviour, BlockHandler, ConnectionGate, ConnectionGater, Event, GossipDriverBuilder, Handler,
-    PublishError,
+    Metrics, PublishError,
 };
 
 /// A driver for a [`Swarm`] instance.
@@ -125,7 +125,7 @@ where
         let topic_hash = topic.hash();
         let data = self.handler.encode(topic, payload)?;
         let id = self.swarm.behaviour_mut().gossipsub.publish(topic_hash, data)?;
-        crate::Metrics::unsafe_block_published().increment(1);
+        Metrics::unsafe_block_published().increment(1);
         Ok(Some(id))
     }
 
@@ -239,7 +239,7 @@ where
         }
         let Some(multiaddr) = enr_to_multiaddr(&enr) else {
             debug!(target: "gossip", enr = ?enr, "Failed to extract tcp socket from enr");
-            crate::Metrics::dial_peer_error("no_tcp_socket").increment(1);
+            Metrics::dial_peer_error("no_tcp_socket").increment(1);
             return;
         };
         self.dial_multiaddr(multiaddr);
@@ -261,7 +261,7 @@ where
 
         if self.swarm.connected_peers().any(|p| p == &peer_id) {
             debug!(target: "gossip", peer=?addr, "Already connected to peer, not dialing");
-            crate::Metrics::dial_peer_error("already_connected").increment(1);
+            Metrics::dial_peer_error("already_connected").increment(1);
             return;
         }
 
@@ -274,12 +274,12 @@ where
             Ok(_) => {
                 trace!(target: "gossip", peer=?addr, "Dialed peer");
                 self.connection_gate.dialed(&addr);
-                crate::Metrics::dial_peer().increment(1);
+                Metrics::dial_peer().increment(1);
             }
             Err(e) => {
                 error!(target: "gossip", error = ?e, "Failed to connect to peer");
                 self.connection_gate.remove_dial(&peer_id);
-                crate::Metrics::dial_peer_error("dial_failed").increment(1);
+                Metrics::dial_peer_error("dial_failed").increment(1);
             }
         }
     }
@@ -293,13 +293,13 @@ where
                 // If the peer is connected to gossip, record the connection duration.
                 if let Some(start_time) = self.peer_connection_start.get(&peer) {
                     let ping_duration = start_time.elapsed();
-                    crate::Metrics::gossip_peer_connection_duration_seconds()
+                    Metrics::gossip_peer_connection_duration_seconds()
                         .record(ping_duration.as_secs_f64());
                 }
 
                 // Record the peer score in the metrics if available.
                 if let Some(peer_score) = self.behaviour_mut().gossipsub.peer_score(&peer) {
-                    crate::Metrics::peer_scores().record(peer_score);
+                    Metrics::peer_scores().record(peer_score);
                 }
 
                 let pings = Arc::clone(&self.ping);
@@ -349,7 +349,7 @@ where
                 message,
             } => {
                 trace!(target: "gossip", topic = %message.topic, "Received message");
-                crate::Metrics::gossip_events("message").increment(1);
+                Metrics::gossip_events("message").increment(1);
                 if self.handler.topics().contains(&message.topic) {
                     let (status, payload) = self.handler.handle(message);
                     _ = self
@@ -362,19 +362,19 @@ where
             }
             libp2p::gossipsub::Event::Subscribed { peer_id, topic } => {
                 trace!(target: "gossip", peer_id = %peer_id, topic = ?topic, "Peer subscribed");
-                crate::Metrics::gossip_events("subscribed").increment(1);
+                Metrics::gossip_events("subscribed").increment(1);
             }
             libp2p::gossipsub::Event::Unsubscribed { peer_id, topic } => {
                 trace!(target: "gossip", peer_id = %peer_id, topic = ?topic, "Peer unsubscribed");
-                crate::Metrics::gossip_events("unsubscribed").increment(1);
+                Metrics::gossip_events("unsubscribed").increment(1);
             }
             libp2p::gossipsub::Event::SlowPeer { peer_id, .. } => {
                 trace!(target: "gossip", peer_id = %peer_id, "Slow peer");
-                crate::Metrics::gossip_events("slow_peer").increment(1);
+                Metrics::gossip_events("slow_peer").increment(1);
             }
             libp2p::gossipsub::Event::GossipsubNotSupported { peer_id } => {
                 trace!(target: "gossip", peer_id = %peer_id, "Peer does not support gossipsub");
-                crate::Metrics::gossip_events("not_supported").increment(1);
+                Metrics::gossip_events("not_supported").increment(1);
             }
         }
         None
@@ -389,8 +389,8 @@ where
             SwarmEvent::ConnectionEstablished { peer_id, .. } => {
                 let peer_count = self.swarm.connected_peers().count();
                 debug!(target: "gossip", peer_id = %peer_id, peer_count, "Connection established");
-                crate::Metrics::gossipsub_connection("connected").increment(1);
-                crate::Metrics::swarm_peer_count().set(peer_count as f64);
+                Metrics::gossipsub_connection("connected").increment(1);
+                Metrics::swarm_peer_count().set(peer_count as f64);
 
                 self.peer_connection_start.insert(peer_id, Instant::now());
             }
@@ -400,30 +400,30 @@ where
                 if let Some(peer_id) = _peer_id {
                     self.connection_gate.remove_dial(&peer_id);
                 }
-                crate::Metrics::gossipsub_connection("outgoing_error").increment(1);
+                Metrics::gossipsub_connection("outgoing_error").increment(1);
             }
             SwarmEvent::IncomingConnectionError {
                 error, connection_id: _connection_id, ..
             } => {
                 debug!(target: "gossip", error = ?error, "Incoming connection error");
-                crate::Metrics::gossipsub_connection("incoming_error").increment(1);
+                Metrics::gossipsub_connection("incoming_error").increment(1);
             }
             SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
                 let peer_count = self.swarm.connected_peers().count();
                 debug!(target: "gossip", ?peer_id, ?cause, peer_count, "Connection closed");
-                crate::Metrics::gossipsub_connection("closed").increment(1);
-                crate::Metrics::swarm_peer_count().set(peer_count as f64);
+                Metrics::gossipsub_connection("closed").increment(1);
+                Metrics::swarm_peer_count().set(peer_count as f64);
 
                 // Record the total connection duration.
                 if let Some(start_time) = self.peer_connection_start.remove(&peer_id) {
                     let peer_duration = start_time.elapsed();
-                    crate::Metrics::gossip_peer_connection_duration_seconds()
+                    Metrics::gossip_peer_connection_duration_seconds()
                         .record(peer_duration.as_secs_f64());
                 }
 
                 // Record the peer score in the metrics if available.
                 if let Some(peer_score) = self.behaviour_mut().gossipsub.peer_score(&peer_id) {
-                    crate::Metrics::peer_scores().record(peer_score);
+                    Metrics::peer_scores().record(peer_score);
                 }
 
                 let pings = Arc::clone(&self.ping);

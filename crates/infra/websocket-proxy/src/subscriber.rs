@@ -11,7 +11,7 @@ use tokio_tungstenite::{
 use tokio_util::{bytes, sync::CancellationToken};
 use tracing::{error, info, trace, warn};
 
-use crate::metrics::Metrics;
+use crate::Metrics;
 
 /// Configuration options for a [`WebsocketSubscriber`].
 #[derive(Debug, Clone)]

@@ -19,7 +19,7 @@ use reth_trie_common::{BranchNodeCompact, Nibbles};
 
 use crate::{
     BlockStateDiff, OpProofsStorageResult, OpProofsStore,
-    api::{InitialStateAnchor, OpProofsInitialStateStore, OperationDurations, WriteCounts},
+    api::{InitialStateAnchor, OpProofsInitialStateStore, WriteCounts},
     cursor,
 };
 
@@ -32,31 +32,7 @@ base_macros::define_metrics! {
     }
 }
 
-base_macros::define_metrics! {
-    #[scope("optimism_trie_block")]
-    pub struct BlockMetrics {
-        #[describe("Total time to process a block (end-to-end) in seconds")]
-        total_duration_seconds: histogram,
-        #[describe("Time spent executing the block (EVM) in seconds")]
-        execution_duration_seconds: histogram,
-        #[describe("Time spent calculating state root in seconds")]
-        state_root_duration_seconds: histogram,
-        #[describe("Time spent writing trie updates to storage in seconds")]
-        write_duration_seconds: histogram,
-        #[describe("Number of trie updates written")]
-        account_trie_updates_written_total: counter,
-        #[describe("Number of storage trie updates written")]
-        storage_trie_updates_written_total: counter,
-        #[describe("Number of hashed accounts written")]
-        hashed_accounts_written_total: counter,
-        #[describe("Number of hashed storages written")]
-        hashed_storages_written_total: counter,
-        #[describe("Earliest block number that the proofs storage has stored")]
-        earliest_number: gauge,
-        #[describe("Latest block number that the proofs storage has stored")]
-        latest_number: gauge,
-    }
-}
+use crate::BlockMetrics;
 
 /// Types of storage operations that can be tracked.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
@@ -153,24 +129,6 @@ pub type OpProofsHashedAccountCursor<C> =
 /// layer.
 pub type OpProofsHashedStorageCursor<C> =
     cursor::OpProofsHashedStorageCursor<OpProofsHashedCursorWithMetrics<C>>;
-
-/// Record operation durations for the processing of a block.
-pub fn record_block_operation_durations(durations: &OperationDurations) {
-    BlockMetrics::total_duration_seconds().record(durations.total_duration_seconds);
-    BlockMetrics::execution_duration_seconds().record(durations.execution_duration_seconds);
-    BlockMetrics::state_root_duration_seconds().record(durations.state_root_duration_seconds);
-    BlockMetrics::write_duration_seconds().record(durations.write_duration_seconds);
-}
-
-/// Increment write counts of historical trie updates for a single block.
-pub fn increment_block_write_counts(counts: &WriteCounts) {
-    BlockMetrics::account_trie_updates_written_total()
-        .increment(counts.account_trie_updates_written_total);
-    BlockMetrics::storage_trie_updates_written_total()
-        .increment(counts.storage_trie_updates_written_total);
-    BlockMetrics::hashed_accounts_written_total().increment(counts.hashed_accounts_written_total);
-    BlockMetrics::hashed_storages_written_total().increment(counts.hashed_storages_written_total);
-}
 
 /// Wrapper for [`TrieCursor`] that records metrics.
 #[derive(Debug, Constructor, Clone)]

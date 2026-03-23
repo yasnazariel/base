@@ -244,7 +244,7 @@ mod tests {
         #[case] number: u64,
     ) {
         let handle = PrometheusBuilder::new().install_recorder().unwrap();
-        crate::Metrics::describe();
+        Metrics::describe();
 
         let mut state = EngineState::default();
         set_fn(

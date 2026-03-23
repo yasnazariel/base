@@ -16,7 +16,7 @@ use jsonrpsee::{
 };
 
 use crate::{
-    EngineRpcClient, L1State, L1WatcherQueries, OutputResponse, RollupNodeApiServer,
+    EngineRpcClient, L1State, L1WatcherQueries, Metrics, OutputResponse, RollupNodeApiServer,
     SafeHeadResponse, l1_watcher::L1WatcherQuerySender,
 };
 
@@ -69,7 +69,7 @@ impl<EngineRpcClient_: EngineRpcClient + 'static> RollupNodeApiServer
     for RollupRpc<EngineRpcClient_>
 {
     async fn op_output_at_block(&self, block_num: BlockNumberOrTag) -> RpcResult<OutputResponse> {
-        crate::Metrics::rpc("op_outputAtBlock").increment(1);
+        Metrics::rpc("op_outputAtBlock").increment(1);
 
         let (l1_sync_status_send, l1_sync_status_recv) = tokio::sync::oneshot::channel();
 
@@ -92,7 +92,7 @@ impl<EngineRpcClient_: EngineRpcClient + 'static> RollupNodeApiServer
         &self,
         block_num: BlockNumberOrTag,
     ) -> RpcResult<SafeHeadResponse> {
-        crate::Metrics::rpc("op_safeHeadAtL1Block").increment(1);
+        Metrics::rpc("op_safeHeadAtL1Block").increment(1);
 
         let number = match block_num {
             BlockNumberOrTag::Number(n) => n,
@@ -120,7 +120,7 @@ impl<EngineRpcClient_: EngineRpcClient + 'static> RollupNodeApiServer
     }
 
     async fn op_sync_status(&self) -> RpcResult<SyncStatus> {
-        crate::Metrics::rpc("op_syncStatus").increment(1);
+        Metrics::rpc("op_syncStatus").increment(1);
 
         let (l1_sync_status_send, l1_sync_status_recv) = tokio::sync::oneshot::channel();
 
@@ -140,13 +140,13 @@ impl<EngineRpcClient_: EngineRpcClient + 'static> RollupNodeApiServer
     }
 
     async fn op_rollup_config(&self) -> RpcResult<RollupConfig> {
-        crate::Metrics::rpc("op_rollupConfig").increment(1);
+        Metrics::rpc("op_rollupConfig").increment(1);
 
         self.engine_client.get_config().await
     }
 
     async fn op_version(&self) -> RpcResult<String> {
-        crate::Metrics::rpc("op_version").increment(1);
+        Metrics::rpc("op_version").increment(1);
 
         const RPC_VERSION: &str = env!("CARGO_PKG_VERSION");
 

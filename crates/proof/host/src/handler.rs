@@ -13,7 +13,7 @@ use base_protocol::{BlockInfo, OutputRoot, Predeploys};
 use tracing::warn;
 
 use crate::{
-    HostConfig, HostError, HostProviders, Result, SharedKeyValueStore, metrics::timed,
+    HostConfig, HostError, HostProviders, Metrics, Result, SharedKeyValueStore, metrics::timed,
     store_ordered_trie,
 };
 
@@ -61,13 +61,13 @@ pub async fn handle_hint(
 ) -> Result<()> {
     let hint_type_label: &str = hint.ty.into();
 
-    crate::Metrics::hint_requests_total(hint_type_label).increment(1);
-    let _timer = timed!(crate::Metrics::hint_duration_seconds(hint_type_label));
+    Metrics::hint_requests_total(hint_type_label).increment(1);
+    let _timer = timed!(Metrics::hint_duration_seconds(hint_type_label));
 
     let result = Box::pin(handle_hint_inner(hint, cfg, providers, kv)).await;
 
     if result.is_err() {
-        crate::Metrics::hint_errors_total(hint_type_label).increment(1);
+        Metrics::hint_errors_total(hint_type_label).increment(1);
     }
 
     result

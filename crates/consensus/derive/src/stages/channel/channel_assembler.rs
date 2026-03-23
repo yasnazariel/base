@@ -12,6 +12,7 @@ use base_protocol::{BlockInfo, Channel};
 
 use super::{ChannelReaderProvider, NextFrameProvider};
 use crate::{
+    Metrics,
     errors::PipelineError,
     traits::{OriginAdvancer, OriginProvider, SignalReceiver},
     types::{PipelineResult, Signal},
@@ -96,21 +97,14 @@ where
             self.channel = Some(Channel::new(next_frame.id, origin));
         }
 
-        #[cfg(feature = "metrics")]
-        {
-            let count = if self.channel.is_some() { 1 } else { 0 };
-            crate::metrics::Metrics::channel_buffer().set(count);
-        }
+        let count = if self.channel.is_some() { 1 } else { 0 };
+        Metrics::channel_buffer().set(count);
 
         if let Some(channel) = self.channel.as_mut() {
             // Track the number of blocks until the channel times out.
-            #[cfg(feature = "metrics")]
-            {
-                let timeout =
-                    channel.open_block_number() + self.cfg.channel_timeout(origin.timestamp);
-                let margin = timeout.saturating_sub(origin.number) as f64;
-                crate::metrics::Metrics::blocks_until_channel_timeout().set(margin);
-            }
+            let timeout = channel.open_block_number() + self.cfg.channel_timeout(origin.timestamp);
+            let margin = timeout.saturating_sub(origin.number) as f64;
+            Metrics::blocks_until_channel_timeout().set(margin);
 
             // Add the frame to the channel. If this fails, return NotEnoughData and discard the
             // frame.
@@ -131,18 +125,15 @@ where
                 return Err(PipelineError::NotEnoughData.temp());
             }
 
-            #[cfg(feature = "metrics")]
-            {
-                let size = channel.size() as f64;
-                crate::metrics::Metrics::channel_mem().set(size);
-            }
+            let size = channel.size() as f64;
+            Metrics::channel_mem().set(size);
 
             let max_rlp_bytes_per_channel = if self.cfg.is_fjord_active(origin.timestamp) {
                 MAX_RLP_BYTES_PER_CHANNEL_FJORD
             } else {
                 MAX_RLP_BYTES_PER_CHANNEL_BEDROCK
             };
-            crate::metrics::Metrics::max_rlp_bytes().set(max_rlp_bytes_per_channel as f64);
+            Metrics::max_rlp_bytes().set(max_rlp_bytes_per_channel as f64);
             if channel.size() > max_rlp_bytes_per_channel as usize {
                 warn!(
                     target: "channel_assembler",
@@ -171,7 +162,7 @@ where
             }
         }
 
-        crate::metrics::Metrics::channel_mem().set(0);
+        Metrics::channel_mem().set(0);
 
         Err(PipelineError::NotEnoughData.temp())
     }

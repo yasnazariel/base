@@ -1,6 +1,6 @@
 //! Contains the core derivation pipeline.
 
-use alloc::{boxed::Box, collections::VecDeque, sync::Arc};
+use alloc::{boxed::Box, collections::VecDeque, string::ToString, sync::Arc};
 use core::fmt::Debug;
 
 use async_trait::async_trait;
@@ -8,9 +8,9 @@ use base_consensus_genesis::{RollupConfig, SystemConfig};
 use base_protocol::{BlockInfo, L2BlockInfo, OpAttributesWithParent};
 
 use crate::{
-    ActivationSignal, L2ChainProvider, NextAttributes, OriginAdvancer, OriginProvider, Pipeline,
-    PipelineError, PipelineErrorKind, PipelineResult, ResetSignal, Signal, SignalReceiver,
-    StepResult,
+    ActivationSignal, L2ChainProvider, Metrics, NextAttributes, OriginAdvancer, OriginProvider,
+    Pipeline, PipelineError, PipelineErrorKind, PipelineResult, ResetSignal, Signal,
+    SignalReceiver, StepResult,
 };
 
 /// The derivation pipeline is responsible for deriving L2 inputs from L1 data.
@@ -65,8 +65,7 @@ where
     type Item = OpAttributesWithParent;
 
     fn next(&mut self) -> Option<Self::Item> {
-        crate::metrics::Metrics::payload_attributes_buffer()
-            .set(self.prepared.len().saturating_sub(1) as f64);
+        Metrics::payload_attributes_buffer().set(self.prepared.len().saturating_sub(1) as f64);
         self.prepared.pop_front()
     }
 }
@@ -119,8 +118,7 @@ where
                 self.attributes.signal(signal).await?;
             }
         }
-        #[cfg(feature = "metrics")]
-        crate::metrics::Metrics::pipeline_signals(&signal.to_string()).increment(1);
+        Metrics::pipeline_signals(&signal.to_string()).increment(1);
         Ok(())
     }
 }
@@ -165,21 +163,21 @@ where
     ///
     /// [`PipelineError`]: crate::errors::PipelineError
     async fn step(&mut self, cursor: L2BlockInfo) -> StepResult {
-        crate::metrics::Metrics::pipeline_steps().increment(1);
-        crate::metrics::Metrics::pipeline_step_block().set(cursor.block_info.number as f64);
+        Metrics::pipeline_steps().increment(1);
+        Metrics::pipeline_step_block().set(cursor.block_info.number as f64);
         match self.attributes.next_attributes(cursor).await {
             Ok(a) => {
                 trace!(target: "pipeline", attributes = ?a, "Prepared L2 attributes");
-                crate::metrics::Metrics::payload_attributes_buffer().increment(1);
-                crate::metrics::Metrics::payload_tx_count()
+                Metrics::payload_attributes_buffer().increment(1);
+                Metrics::payload_tx_count()
                     .set(a.attributes.transactions.as_ref().map_or(0.0, |txs| txs.len() as f64));
                 if !a.is_last_in_span {
-                    crate::metrics::Metrics::span_size().increment(1);
+                    Metrics::span_size().increment(1);
                 } else {
-                    crate::metrics::Metrics::span_size().set(0);
+                    Metrics::span_size().set(0);
                 }
                 self.prepared.push_back(a);
-                crate::metrics::Metrics::prepared_attributes().increment(1);
+                Metrics::prepared_attributes().increment(1);
                 StepResult::PreparedAttributes
             }
             Err(err) => match err {

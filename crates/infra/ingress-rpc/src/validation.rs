@@ -16,7 +16,7 @@ use reth_rpc_eth_types::{EthApiError, SignError};
 use tokio::time::Instant;
 use tracing::warn;
 
-use crate::metrics::Metrics;
+use crate::Metrics;
 
 const MAX_BUNDLE_GAS: u64 = 25_000_000;
 

@@ -12,7 +12,7 @@ use eyre::Result as EyreResult;
 use reth_provider::StateProvider;
 use revm_database::states::BundleState;
 
-use crate::{PendingTrieInput, meter::compute_pending_trie_input};
+use crate::{Metrics, PendingTrieInput, meter::compute_pending_trie_input};
 
 /// Internal cache entry for a single flashblock's pending trie input.
 #[derive(Debug, Clone)]
@@ -59,7 +59,7 @@ impl PendingTrieCache {
             && cached.payload_id == payload_id
             && cached.flashblock_index == flashblock_index
         {
-            crate::metrics::Metrics::pending_trie_cache_hits().increment(1);
+            Metrics::pending_trie_cache_hits().increment(1);
             return Ok(cached.trie_input.clone());
         }
 

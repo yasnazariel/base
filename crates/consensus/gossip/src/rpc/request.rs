@@ -17,7 +17,7 @@ use super::{
     PeerDump, PeerStats,
     types::{Connectedness, Direction, PeerInfo, PeerScores},
 };
-use crate::{ConnectionGate, GossipDriver, GossipScores};
+use crate::{ConnectionGate, GossipDriver, GossipScores, Metrics};
 
 /// A p2p RPC Request.
 #[derive(Debug)]
@@ -189,7 +189,7 @@ impl P2pRpcRequest {
             // Record the duration of the peer connection.
             if let Some(start_time) = gossip.peer_connection_start.remove(&peer_id) {
                 let _peer_duration = start_time.elapsed();
-                crate::Metrics::gossip_peer_connection_duration_seconds()
+                Metrics::gossip_peer_connection_duration_seconds()
                     .record(_peer_duration.as_secs_f64());
             }
         }

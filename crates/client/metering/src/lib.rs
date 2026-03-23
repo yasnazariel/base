@@ -37,6 +37,7 @@ mod meter;
 pub use meter::{MeterBundleOutput, PendingState, PendingTrieInput, meter_bundle};
 
 mod metrics;
+pub use metrics::Metrics;
 
 mod rpc;
 pub use rpc::MeteringApiImpl;

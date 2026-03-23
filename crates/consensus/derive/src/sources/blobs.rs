@@ -10,7 +10,7 @@ use async_trait::async_trait;
 use base_protocol::BlockInfo;
 
 use crate::{
-    BlobData, BlobProvider, ChainProvider, DataAvailabilityProvider, PipelineError,
+    BlobData, BlobProvider, ChainProvider, DataAvailabilityProvider, Metrics, PipelineError,
     PipelineErrorKind, PipelineResult, ResetError,
 };
 
@@ -99,8 +99,7 @@ where
                 data.push(BlobData::default());
             }
         }
-        #[cfg(feature = "metrics")]
-        crate::metrics::Metrics::dap_sources("blobs").increment(data.len() as f64);
+        Metrics::dap_sources("blobs").increment(data.len() as f64);
         (data, hashes)
     }
 

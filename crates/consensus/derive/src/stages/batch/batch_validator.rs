@@ -9,6 +9,7 @@ use base_protocol::{Batch, BatchValidity, BlockInfo, L2BlockInfo, SingleBatch};
 
 use super::NextBatchProvider;
 use crate::{
+    Metrics,
     errors::{PipelineError, PipelineErrorKind, ResetError},
     traits::{AttributesProvider, OriginAdvancer, OriginProvider, SignalReceiver},
     types::{PipelineResult, ResetSignal, Signal},
@@ -113,13 +114,10 @@ where
             // If the origin of the parent block is not included, we must advance the origin.
         }
 
-        #[cfg(feature = "metrics")]
-        {
-            if let Some(origin) = self.l1_blocks.first() {
-                crate::metrics::Metrics::l1_blocks_start().set(origin.number as f64);
-                let last = self.l1_blocks.last().unwrap_or(origin);
-                crate::metrics::Metrics::l1_blocks_end().set(last.number as f64);
-            }
+        if let Some(origin) = self.l1_blocks.first() {
+            Metrics::l1_blocks_start().set(origin.number as f64);
+            let last = self.l1_blocks.last().unwrap_or(origin);
+            Metrics::l1_blocks_end().set(last.number as f64);
         }
 
         Ok(())

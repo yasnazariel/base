@@ -32,55 +32,54 @@
 //! | `base_proof_host_replay_duration_seconds` | | Client replay (prologue+execute+validate) duration |
 
 base_macros::define_metrics! {
-    #[scope("base_proof_host")]
-    pub struct Metrics {
-        #[describe("Total proof requests received")]
-        #[label("mode", mode)]
-        requests_total: counter,
+    base_proof_host
 
-        #[describe("Proof request outcomes by result")]
-        #[label("outcome", outcome)]
-        requests_result_total: counter,
+    #[describe("Total proof requests received")]
+    #[label("mode", mode)]
+    requests_total: counter,
 
-        #[describe("Hint requests by type")]
-        #[label("hint_type", hint_type)]
-        hint_requests_total: counter,
+    #[describe("Proof request outcomes by result")]
+    #[label("outcome", outcome)]
+    requests_result_total: counter,
 
-        #[describe("Hint processing errors by type")]
-        #[label("hint_type", hint_type)]
-        hint_errors_total: counter,
+    #[describe("Hint requests by type")]
+    #[label("hint_type", hint_type)]
+    hint_requests_total: counter,
 
-        #[describe("KV lookups that missed the cache and required hint fetching")]
-        kv_cold_lookups_total: counter,
+    #[describe("Hint processing errors by type")]
+    #[label("hint_type", hint_type)]
+    hint_errors_total: counter,
 
-        #[describe("Total preimage accesses through the recording oracle")]
-        preimage_accesses_total: counter,
+    #[describe("KV lookups that missed the cache and required hint fetching")]
+    kv_cold_lookups_total: counter,
 
-        #[describe("Offline backend key-not-found events")]
-        offline_misses_total: counter,
+    #[describe("Total preimage accesses through the recording oracle")]
+    preimage_accesses_total: counter,
 
-        #[describe("Currently in-flight proof requests")]
-        in_flight_proofs: gauge,
+    #[describe("Offline backend key-not-found events")]
+    offline_misses_total: counter,
 
-        #[describe("Number of preimages captured in the last witness build")]
-        preimage_count: gauge,
+    #[describe("Currently in-flight proof requests")]
+    in_flight_proofs: gauge,
 
-        #[describe("End-to-end proof generation duration")]
-        proof_duration_seconds: histogram,
+    #[describe("Number of preimages captured in the last witness build")]
+    preimage_count: gauge,
 
-        #[describe("Witness build duration")]
-        witness_build_duration_seconds: histogram,
+    #[describe("End-to-end proof generation duration")]
+    proof_duration_seconds: histogram,
 
-        #[describe("Backend prover duration")]
-        prover_duration_seconds: histogram,
+    #[describe("Witness build duration")]
+    witness_build_duration_seconds: histogram,
 
-        #[describe("Per-hint-type processing duration")]
-        #[label("hint_type", hint_type)]
-        hint_duration_seconds: histogram,
+    #[describe("Backend prover duration")]
+    prover_duration_seconds: histogram,
 
-        #[describe("Client replay duration")]
-        replay_duration_seconds: histogram,
-    }
+    #[describe("Per-hint-type processing duration")]
+    #[label("hint_type", hint_type)]
+    hint_duration_seconds: histogram,
+
+    #[describe("Client replay duration")]
+    replay_duration_seconds: histogram,
 }
 
 impl Metrics {
