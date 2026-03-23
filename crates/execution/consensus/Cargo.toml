@@ -49,10 +49,7 @@ base-alloy-consensus.workspace = true
 reth-provider = { workspace = true, features = ["test-utils"] }
 
 alloy-chains.workspace = true
-
-base-alloy-consensus.workspace = true
 base-execution-forks.workspace = true
-
 
 [features]
 default = [ "std" ]
