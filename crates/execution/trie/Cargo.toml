@@ -90,9 +90,4 @@ serde-bincode-compat = [
 	"reth-trie-common/serde-bincode-compat",
 	"reth-trie/serde-bincode-compat",
 ]
-metrics = [
-	"dep:eyre",
-	"dep:metrics",
-	"reth-evm/metrics",
-	"reth-trie/metrics",
-]
+metrics = [ "dep:eyre", "dep:metrics", "reth-evm/metrics", "reth-trie/metrics" ]

@@ -1,21 +1,20 @@
 //! Prometheus metrics for the transaction consumer.
 
-base_macros::define_metrics! {
-    #[scope("txpool_consumer")]
-    pub struct ConsumerMetrics {
-        #[describe("Total consumer loop iterations")]
-        iterations: counter,
+base_macros::define_metrics_named! {
+    ConsumerMetrics, "txpool.consumer",
 
-        #[describe("Total transactions read from the pool iterator")]
-        txs_read: counter,
+    #[describe("Total consumer loop iterations")]
+    iterations: counter,
 
-        #[describe("Total transactions broadcast after deduplication")]
-        txs_sent: counter,
+    #[describe("Total transactions read from the pool iterator")]
+    txs_read: counter,
 
-        #[describe("Total transactions skipped by the validator")]
-        txs_ignored: counter,
+    #[describe("Total transactions broadcast after deduplication")]
+    txs_sent: counter,
 
-        #[describe("Current number of entries in the dedup cache")]
-        dedup_cache_size: gauge,
-    }
+    #[describe("Total transactions skipped by the validator")]
+    txs_ignored: counter,
+
+    #[describe("Current number of entries in the dedup cache")]
+    dedup_cache_size: gauge,
 }

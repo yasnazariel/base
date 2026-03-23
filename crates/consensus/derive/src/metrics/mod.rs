@@ -92,13 +92,12 @@ base_macros::define_metrics! {
     latest_decompressed_batch_type: gauge,
 }
 
-base_macros::define_metrics! {
-    #[scope("base_consensus_genesis")]
-    pub struct GenesisMetrics {
-        #[describe("The latest block number for a system config update")]
-        latest_system_config_update: gauge,
+base_macros::define_metrics_named! {
+    GenesisMetrics, "base_consensus_genesis",
 
-        #[describe("The block height at which a system config update errored")]
-        sys_config_update_error: gauge,
-    }
+    #[describe("The latest block number for a system config update")]
+    latest_system_config_update: gauge,
+
+    #[describe("The block height at which a system config update errored")]
+    sys_config_update_error: gauge,
 }

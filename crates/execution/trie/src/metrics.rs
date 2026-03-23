@@ -23,13 +23,12 @@ use crate::{
     cursor,
 };
 
-base_macros::define_metrics! {
-    #[scope("optimism_trie_storage_operation")]
-    pub struct OperationMetrics {
-        #[describe("Duration of storage operations in seconds")]
-        #[label("operation", operation)]
-        duration_seconds: histogram,
-    }
+base_macros::define_metrics_named! {
+    OperationMetrics, "optimism_trie.storage.operation",
+
+    #[describe("Duration of storage operations in seconds")]
+    #[label("operation", operation)]
+    duration_seconds: histogram,
 }
 
 use crate::BlockMetrics;

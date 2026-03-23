@@ -2,22 +2,21 @@
 
 use crate::PrunerOutput;
 
-base_macros::define_metrics! {
-    #[scope("optimism_trie_pruner")]
-    pub struct PrunerMetrics {
-        #[describe("Pruning duration")]
-        total_duration_seconds: histogram,
-        #[describe("Number of pruned blocks")]
-        pruned_blocks: gauge,
-        #[describe("Number of account trie updates written in the prune run")]
-        account_trie_updates_written: gauge,
-        #[describe("Number of storage trie updates written in the prune run")]
-        storage_trie_updates_written: gauge,
-        #[describe("Number of hashed accounts written in the prune run")]
-        hashed_accounts_written: gauge,
-        #[describe("Number of hashed storages written in the prune run")]
-        hashed_storages_written: gauge,
-    }
+base_macros::define_metrics_named! {
+    PrunerMetrics, "optimism_trie.pruner",
+
+    #[describe("Pruning duration")]
+    total_duration_seconds: histogram,
+    #[describe("Number of pruned blocks")]
+    pruned_blocks: gauge,
+    #[describe("Number of account trie updates written in the prune run")]
+    account_trie_updates_written: gauge,
+    #[describe("Number of storage trie updates written in the prune run")]
+    storage_trie_updates_written: gauge,
+    #[describe("Number of hashed accounts written in the prune run")]
+    hashed_accounts_written: gauge,
+    #[describe("Number of hashed storages written in the prune run")]
+    hashed_storages_written: gauge,
 }
 
 impl PrunerMetrics {

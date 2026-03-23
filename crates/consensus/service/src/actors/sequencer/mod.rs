@@ -27,8 +27,6 @@ pub use actor::{PendingStopSender, SequencerActor};
 mod admin_api_impl;
 pub use admin_api_impl::SequencerAdminQuery;
 
-mod metrics;
-
 mod error;
 pub use error::SequencerActorError;
 

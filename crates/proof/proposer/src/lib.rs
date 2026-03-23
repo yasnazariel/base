@@ -38,7 +38,7 @@ mod admin;
 pub use admin::AdminState;
 
 mod metrics;
-pub use metrics::{Metrics, record_startup_metrics};
+pub use metrics::Metrics;
 
 mod service;
 pub use service::run;

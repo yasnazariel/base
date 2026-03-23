@@ -7,10 +7,6 @@ base_macros::define_metrics! {
     #[label("type", event_type)]
     gossip_events: gauge,
 
-    #[describe("Events received by the libp2p gossipsub Swarm")]
-    #[label("type", event_type)]
-    gossipsub_events: gauge,
-
     #[describe("Connections made to the libp2p Swarm")]
     #[label("type", conn_type)]
     gossipsub_connection: gauge,

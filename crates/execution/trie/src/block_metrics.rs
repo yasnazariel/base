@@ -2,30 +2,29 @@
 
 use crate::api::{OperationDurations, WriteCounts};
 
-base_macros::define_metrics! {
-    #[scope("optimism_trie_block")]
-    pub struct BlockMetrics {
-        #[describe("Total time to process a block (end-to-end) in seconds")]
-        total_duration_seconds: histogram,
-        #[describe("Time spent executing the block (EVM) in seconds")]
-        execution_duration_seconds: histogram,
-        #[describe("Time spent calculating state root in seconds")]
-        state_root_duration_seconds: histogram,
-        #[describe("Time spent writing trie updates to storage in seconds")]
-        write_duration_seconds: histogram,
-        #[describe("Number of trie updates written")]
-        account_trie_updates_written_total: counter,
-        #[describe("Number of storage trie updates written")]
-        storage_trie_updates_written_total: counter,
-        #[describe("Number of hashed accounts written")]
-        hashed_accounts_written_total: counter,
-        #[describe("Number of hashed storages written")]
-        hashed_storages_written_total: counter,
-        #[describe("Earliest block number that the proofs storage has stored")]
-        earliest_number: gauge,
-        #[describe("Latest block number that the proofs storage has stored")]
-        latest_number: gauge,
-    }
+base_macros::define_metrics_named! {
+    BlockMetrics, "optimism_trie.block",
+
+    #[describe("Total time to process a block (end-to-end) in seconds")]
+    total_duration_seconds: histogram,
+    #[describe("Time spent executing the block (EVM) in seconds")]
+    execution_duration_seconds: histogram,
+    #[describe("Time spent calculating state root in seconds")]
+    state_root_duration_seconds: histogram,
+    #[describe("Time spent writing trie updates to storage in seconds")]
+    write_duration_seconds: histogram,
+    #[describe("Number of trie updates written")]
+    account_trie_updates_written_total: counter,
+    #[describe("Number of storage trie updates written")]
+    storage_trie_updates_written_total: counter,
+    #[describe("Number of hashed accounts written")]
+    hashed_accounts_written_total: counter,
+    #[describe("Number of hashed storages written")]
+    hashed_storages_written_total: counter,
+    #[describe("Earliest block number that the proofs storage has stored")]
+    earliest_number: gauge,
+    #[describe("Latest block number that the proofs storage has stored")]
+    latest_number: gauge,
 }
 
 impl BlockMetrics {

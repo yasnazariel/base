@@ -18,7 +18,7 @@ use tokio::{
 use tokio_util::sync::{CancellationToken, WaitForCancellationFuture};
 
 use crate::{
-    CancellableContext, NodeActor, SequencerAdminQuery, UnsafePayloadGossipClient,
+    CancellableContext, Metrics, NodeActor, SequencerAdminQuery, UnsafePayloadGossipClient,
     actors::{
         SequencerEngineClient,
         engine::EngineClientError,
@@ -26,9 +26,6 @@ use crate::{
             build::{PayloadBuilder, UnsealedPayloadHandle},
             conductor::Conductor,
             error::SequencerActorError,
-            metrics::{
-                inc_seal_error, update_seal_duration_metrics, update_total_transactions_sequenced,
-            },
             origin_selector::OriginSelector,
             recovery::RecoveryModeGuard,
             seal::PayloadSealer,
@@ -111,6 +108,20 @@ where
     SequencerEngineClient_: SequencerEngineClient,
     UnsafePayloadGossipClient_: UnsafePayloadGossipClient,
 {
+    /// Updates the metrics for the sequencer actor.
+    pub(super) fn update_metrics(&self) {
+        #[cfg(feature = "metrics")]
+        {
+            let state_flags: [(&str, String); 2] = [
+                ("active", self.is_active.to_string()),
+                ("recovery", self.recovery_mode.get().to_string()),
+            ];
+
+            let gauge = metrics::gauge!(Metrics::SEQUENCER_STATE, &state_flags);
+            gauge.set(1);
+        }
+    }
+
     /// Fetches the sealed payload envelope from the engine for the given unsealed handle.
     pub(super) async fn seal_payload(
         &self,
@@ -123,8 +134,9 @@ where
             .get_sealed_payload(handle.payload_id, handle.attributes_with_parent.clone())
             .await?;
 
-        update_seal_duration_metrics(seal_request_start.elapsed());
-        update_total_transactions_sequenced(handle.attributes_with_parent.count_transactions());
+        Metrics::sequencer_block_building_seal_task_duration().set(seal_request_start.elapsed());
+        Metrics::sequencer_total_transactions_sequenced()
+            .increment(handle.attributes_with_parent.count_transactions());
 
         Ok(PayloadSealer::new(envelope))
     }
@@ -341,12 +353,12 @@ where
                             Err(SequencerActorError::EngineError(EngineClientError::SealError(err))) => {
                                 if err.is_fatal() {
                                     error!(target: "sequencer", error = ?err, "Critical seal task error occurred");
-                                    inc_seal_error(true);
+                                    Metrics::sequencer_seal_errors_total("true").increment(1);
                                     self.cancellation_token.cancel();
                                     return Err(SequencerActorError::EngineError(EngineClientError::SealError(err)));
                                 }
                                 warn!(target: "sequencer", error = ?err, "Non-fatal seal error, dropping block");
-                                inc_seal_error(false);
+                                Metrics::sequencer_seal_errors_total("false").increment(1);
                                 // Rebuild immediately on the current unsafe head.
                                 next_payload_to_seal = self.builder.build().await?;
                                 if let Some(ref payload) = next_payload_to_seal {

@@ -35,7 +35,8 @@ impl NoopMetric {
 ///
 /// - Scope — the first token in the shorthand form; an ident prepended to
 ///   every metric name with an underscore separator. For the full
-///   `pub struct Name` form, use `#[scope("prefix")]` on the struct instead.
+///   `pub struct Name` form, use `#[scope("prefix")]` on the struct instead
+///   (or prefer [`define_metrics_named!`] for a flatter syntax).
 /// - `#[describe("...")]` — optional per-field; registers a human-readable
 ///   description via `metrics::describe_*!`.
 /// - `#[label("key", param)]` — optional per-field (may be repeated for
@@ -135,6 +136,51 @@ macro_rules! define_metrics {
             #[cfg(not(feature = "metrics"))]
             #[inline(always)]
             pub fn describe() {}
+        }
+    };
+}
+
+/// Convenience wrapper around [`define_metrics!`] for the named-struct form.
+///
+/// Instead of the full struct syntax:
+///
+/// ```ignore
+/// base_macros::define_metrics! {
+///     #[scope("my_app")]
+///     pub struct MyMetrics {
+///         requests_total: counter,
+///     }
+/// }
+/// ```
+///
+/// you can write:
+///
+/// ```ignore
+/// base_macros::define_metrics_named! {
+///     MyMetrics, "my_app",
+///     requests_total: counter,
+/// }
+/// ```
+#[macro_export]
+macro_rules! define_metrics_named {
+    (
+        $name:ident, $scope:expr,
+        $(
+            $(#[describe($desc:expr)])?
+            $(#[label($label_key:expr, $label_param:ident)])*
+            $field:ident : $kind:ident
+        ),*
+        $(,)?
+    ) => {
+        $crate::define_metrics! {
+            #[scope($scope)]
+            pub struct $name {
+                $(
+                    $(#[describe($desc)])?
+                    $(#[label($label_key, $label_param)])*
+                    $field : $kind
+                ),*
+            }
         }
     };
 }

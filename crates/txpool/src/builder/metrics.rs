@@ -1,18 +1,17 @@
 //! Metrics for the builder RPC handler.
 
-base_macros::define_metrics! {
-    #[scope("txpool_builder_rpc")]
-    pub struct BuilderApiMetrics {
-        #[describe("Transactions successfully inserted into the pool")]
-        txs_inserted: counter,
+base_macros::define_metrics_named! {
+    BuilderApiMetrics, "txpool.builder_rpc",
 
-        #[describe("Transactions that failed to decode")]
-        decode_errors: counter,
+    #[describe("Transactions successfully inserted into the pool")]
+    txs_inserted: counter,
 
-        #[describe("Transactions rejected by the pool")]
-        txs_rejected: counter,
+    #[describe("Transactions that failed to decode")]
+    decode_errors: counter,
 
-        #[describe("Time to insert a transaction in the local txpool")]
-        insert_duration: histogram,
-    }
+    #[describe("Transactions rejected by the pool")]
+    txs_rejected: counter,
+
+    #[describe("Time to insert a transaction in the local txpool")]
+    insert_duration: histogram,
 }
