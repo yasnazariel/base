@@ -42,7 +42,11 @@ base-execution-chainspec.workspace = true
 base-execution-payload-builder.workspace = true
 base-execution-exex = { workspace = true, features = ["metrics"] }
 base-execution-trie = { workspace = true, features = ["metrics"] }
-base-execution-evm = { workspace = true, features = ["std", "rpc"] }
+base-execution-primitives = { workspace = true, features = [
+	"serde",
+	"serde-bincode-compat",
+	"reth-codec",
+] }
 base-execution-consensus = { workspace = true, features = ["std"] }
 
 # revm with required Base features
@@ -53,7 +57,7 @@ revm = { workspace = true, features = [
 	"c-kzg",
 	"memory_limit",
 ] }
-base-revm.workspace = true
+base-evm = { workspace = true, features = ["rpc"] }
 
 # ethereum
 alloy-consensus.workspace = true
@@ -94,7 +98,7 @@ reth-node-builder = { workspace = true, features = ["test-utils"] }
 
 alloy-eips.workspace = true
 alloy-network.workspace = true
-base-alloy-evm.workspace = true
+base-evm = { workspace = true, features = ["alloy"] }
 base-alloy-network.workspace = true
 
 [features]

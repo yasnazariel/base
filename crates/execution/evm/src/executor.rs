@@ -1,4 +1,4 @@
-use alloc::{borrow::Cow, boxed::Box, vec::Vec};
+use std::{borrow::Cow, boxed::Box, vec::Vec};
 
 use alloy_consensus::{Eip658Value, Header, Transaction, TransactionEnvelope, TxReceipt};
 use alloy_eips::{Encodable2718, Typed2718};
@@ -16,14 +16,16 @@ use alloy_primitives::Address;
 use base_alloy_chains::BaseUpgrades;
 use base_alloy_consensus::OpDepositReceipt;
 use base_alloy_flz::tx_estimated_size_fjord as estimate_tx_compressed_size;
-use base_revm::{DEPOSIT_TRANSACTION_TYPE, L1_BLOCK_CONTRACT, L1BlockInfo};
 use revm::{
     Database as _, DatabaseCommit,
     context::{Block, result::ResultAndState},
     database::DatabaseCommitExt,
 };
 
-use crate::{BaseBlockExecutionCtx, BaseBlockExecutionError, OpReceiptBuilder, OpTxEnv, canyon};
+use crate::{
+    DEPOSIT_TRANSACTION_TYPE, L1_BLOCK_CONTRACT, L1BlockInfo, OpBlockExecutionCtx,
+    OpBlockExecutionError, OpReceiptBuilder, OpTxEnv, canyon,
+};
 
 /// The result of executing an OP transaction.
 #[derive(Debug)]
@@ -46,13 +48,13 @@ impl<H, T> TxResult for OpTxResult<H, T> {
 
 /// Block executor for Base.
 #[derive(Debug)]
-pub struct BaseBlockExecutor<Evm, R: OpReceiptBuilder, Spec> {
+pub struct OpBlockExecutor<Evm, R: OpReceiptBuilder, Spec> {
     /// Spec.
     pub spec: Spec,
     /// Receipt builder.
     pub receipt_builder: R,
     /// Context for block execution.
-    pub ctx: BaseBlockExecutionCtx,
+    pub ctx: OpBlockExecutionCtx,
     /// The EVM used by executor.
     pub evm: Evm,
     /// Receipts of executed transactions.
@@ -70,14 +72,14 @@ pub struct BaseBlockExecutor<Evm, R: OpReceiptBuilder, Spec> {
     pub system_caller: SystemCaller<Spec>,
 }
 
-impl<E, R, Spec> BaseBlockExecutor<E, R, Spec>
+impl<E, R, Spec> OpBlockExecutor<E, R, Spec>
 where
     E: Evm,
     R: OpReceiptBuilder,
     Spec: BaseUpgrades + Clone,
 {
     /// Creates a new [`BaseBlockExecutor`].
-    pub fn new(evm: E, ctx: BaseBlockExecutionCtx, spec: Spec, receipt_builder: R) -> Self {
+    pub fn new(evm: E, ctx: OpBlockExecutionCtx, spec: Spec, receipt_builder: R) -> Self {
         Self {
             is_regolith: spec
                 .is_regolith_active_at_timestamp(evm.block().timestamp().saturating_to()),
@@ -93,7 +95,7 @@ where
     }
 }
 
-impl<E, R, Spec> BaseBlockExecutor<E, R, Spec>
+impl<E, R, Spec> OpBlockExecutor<E, R, Spec>
 where
     E: Evm<
             DB: Database + DatabaseCommit + StateDB,
@@ -128,7 +130,7 @@ where
     }
 }
 
-impl<E, R, Spec> BlockExecutor for BaseBlockExecutor<E, R, Spec>
+impl<E, R, Spec> BlockExecutor for OpBlockExecutor<E, R, Spec>
 where
     E: Evm<
             DB: Database + DatabaseCommit + StateDB,
@@ -196,7 +198,7 @@ where
 
             if tx_da_footprint > da_footprint_available {
                 return Err(BlockExecutionError::Validation(BlockValidationError::Other(
-                    Box::new(BaseBlockExecutionError::TransactionDaFootprintAboveGasLimit {
+                    Box::new(OpBlockExecutionError::TransactionDaFootprintAboveGasLimit {
                         transaction_da_footprint: tx_da_footprint,
                         available_block_da_footprint: da_footprint_available,
                     }),
@@ -317,7 +319,7 @@ where
         })?;
 
         let legacy_gas_used =
-            self.receipts.last().map(|r| r.cumulative_gas_used()).unwrap_or_default();
+            self.receipts.last().map(|r: &R::Receipt| r.cumulative_gas_used()).unwrap_or_default();
 
         Ok((
             self.evm,
@@ -349,7 +351,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use alloc::{string::ToString, vec};
+    use std::{string::ToString, vec};
 
     use alloy_consensus::{SignableTransaction, TxLegacy, transaction::Recovered};
     use alloy_eips::eip2718::WithEncoded;
@@ -358,11 +360,6 @@ mod tests {
     use alloy_primitives::{Address, Signature, U256, uint};
     use base_alloy_chains::{BaseChainUpgrades, BaseUpgrade};
     use base_alloy_consensus::OpTxEnvelope;
-    use base_revm::{
-        BASE_FEE_SCALAR_OFFSET, DefaultOp, ECOTONE_L1_BLOB_BASE_FEE_SLOT,
-        ECOTONE_L1_FEE_SCALARS_SLOT, L1_BASE_FEE_SLOT, L1_BLOCK_CONTRACT, L1BlockInfo,
-        OPERATOR_FEE_SCALARS_SLOT, OpBuilder, OpSpecId,
-    };
     use revm::{
         Context,
         context::BlockEnv,
@@ -373,11 +370,16 @@ mod tests {
     };
 
     use super::*;
-    use crate::{BaseBlockExecutorFactory, OpAlloyReceiptBuilder, OpEvm, OpEvmFactory};
+    use crate::{
+        BASE_FEE_SCALAR_OFFSET, DefaultOp, ECOTONE_L1_BLOB_BASE_FEE_SLOT,
+        ECOTONE_L1_FEE_SCALARS_SLOT, L1_BASE_FEE_SLOT, L1_BLOCK_CONTRACT, L1BlockInfo,
+        OPERATOR_FEE_SCALARS_SLOT, OpAlloyReceiptBuilder, OpBlockExecutorFactory, OpBuilder, OpEvm,
+        OpEvmFactory, OpSpecId,
+    };
 
     #[test]
     fn test_with_encoded() {
-        let executor_factory = BaseBlockExecutorFactory::new(
+        let executor_factory = OpBlockExecutorFactory::new(
             OpAlloyReceiptBuilder::default(),
             BaseChainUpgrades::mainnet(),
             OpEvmFactory::default(),
@@ -385,7 +387,7 @@ mod tests {
         let mut db =
             revm::database::State::builder().with_database(CacheDB::<EmptyDB>::default()).build();
         let evm = executor_factory.evm_factory().create_evm(&mut db, EvmEnv::default());
-        let mut executor = executor_factory.create_executor(evm, BaseBlockExecutionCtx::default());
+        let mut executor = executor_factory.create_executor(evm, OpBlockExecutionCtx::default());
         let tx = Recovered::new_unchecked(
             OpTxEnvelope::Legacy(TxLegacy::default().into_signed(Signature::new(
                 Default::default(),
@@ -449,7 +451,7 @@ mod tests {
         op_chain_hardforks: &'a BaseChainUpgrades,
         gas_limit: u64,
         jovian_timestamp: u64,
-    ) -> BaseBlockExecutor<
+    ) -> OpBlockExecutor<
         OpEvm<&'a mut revm::database::State<InMemoryDB>, NoOpInspector>,
         &'a OpAlloyReceiptBuilder,
         &'a BaseChainUpgrades,
@@ -470,9 +472,9 @@ mod tests {
 
         let evm = OpEvm::new(ctx.build_op_with_inspector(NoOpInspector {}), true);
 
-        BaseBlockExecutor::new(
+        OpBlockExecutor::new(
             evm,
-            BaseBlockExecutionCtx::default(),
+            OpBlockExecutionCtx::default(),
             op_chain_hardforks,
             receipt_builder,
         )
@@ -569,7 +571,7 @@ mod tests {
             BlockExecutionError::Validation(BlockValidationError::Other(err)) => {
                 assert_eq!(
                     err.to_string(),
-                    BaseBlockExecutionError::TransactionDaFootprintAboveGasLimit {
+                    OpBlockExecutionError::TransactionDaFootprintAboveGasLimit {
                         transaction_da_footprint: expected_da_footprint,
                         available_block_da_footprint: GAS_LIMIT,
                     }

@@ -16,7 +16,7 @@ reth-evm.workspace = true
 reth-errors.workspace = true
 reth-revm.workspace = true
 reth-trie.workspace = true
-base-revm.workspace = true
+base-evm = { workspace = true, features = ["reth"] }
 reth-tasks.workspace = true
 reth-provider.workspace = true
 reth-consensus.workspace = true
@@ -26,8 +26,7 @@ base-flashblocks.workspace = true
 reth-chain-state.workspace = true
 reth-node-builder.workspace = true
 reth-trie-parallel.workspace = true
-base-execution-evm.workspace = true
-base-alloy-consensus = { workspace = true, features = ["reth"] }
+base-alloy-consensus.workspace = true
 reth-engine-tree = { workspace = true }
 reth-payload-primitives.workspace = true
 reth-primitives-traits.workspace = true
@@ -38,7 +37,6 @@ revm.workspace = true
 revm-primitives.workspace = true
 
 base-alloy-rpc-types-engine.workspace = true
-base-alloy-evm = { workspace = true, features = ["std"] }
 
 alloy-evm.workspace = true
 alloy-eips.workspace = true

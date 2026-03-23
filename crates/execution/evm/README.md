@@ -1,14 +1,14 @@
-# `base-execution-evm`
+# `base-evm`
 
-EVM configuration and execution for Base.
+Base EVM implementation.
 
 ## Overview
 
-Orchestrates EVM block execution for Base chains. The `OpEvmConfig` type implements Reth's
-`ConfigureEvm` and `ConfigureEngineEvm` traits, constructing hardfork-aware execution environments
-by mapping timestamps to `SpecId` values and building the correct EVM context for each block.
-Re-exports executor factories, block executors, and error types from the underlying alloy/revm
-layers.
+Provides Base-specific EVM execution support. Maps hardfork activation timestamps to revm
+`SpecId` values, and exposes `OpEvm`, `OpEvmFactory`, `OpBlockExecutor`, and
+`OpBlockExecutorFactory` for executing blocks with the correct gas rules and precompile sets for
+each hardfork. Also provides `OpAlloyReceiptBuilder` for constructing OP receipts and
+`ensure_create2_deployer` for Canyon hardfork compatibility.
 
 ## Usage
 
@@ -16,14 +16,14 @@ Add the dependency to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-base-execution-evm = { workspace = true }
+base-evm = { workspace = true }
 ```
 
 ```rust,ignore
-use base_execution_evm::OpEvmConfig;
+use base_evm::{OpEvmFactory, spec_by_timestamp_after_bedrock};
 
-let evm_config = OpEvmConfig::optimism(chain_spec);
-let env = evm_config.evm_env(&header, &parent)?;
+let spec = spec_by_timestamp_after_bedrock(timestamp);
+let factory = OpEvmFactory::default();
 ```
 
 ## License

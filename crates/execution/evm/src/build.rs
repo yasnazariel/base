@@ -1,4 +1,6 @@
-use alloc::sync::Arc;
+//! Block assembler for Base OP execution.
+
+use std::sync::Arc;
 
 use alloy_consensus::{
     Block, BlockBody, EMPTY_OMMER_ROOT_HASH, Header, TxReceipt, constants::EMPTY_WITHDRAWALS,
@@ -8,33 +10,34 @@ use alloy_eips::{eip7685::EMPTY_REQUESTS_HASH, merge::BEACON_NONCE};
 use alloy_evm::block::BlockExecutorFactory;
 use alloy_primitives::logs_bloom;
 use base_alloy_chains::BaseUpgrades;
-use base_alloy_consensus::DepositReceipt;
-use base_alloy_evm::BaseBlockExecutionCtx;
 use base_execution_consensus::{calculate_receipt_root_no_memo_optimism, isthmus};
+use base_execution_primitives::DepositReceipt;
 use reth_evm::execute::{BlockAssembler, BlockAssemblerInput};
 use reth_execution_errors::BlockExecutionError;
 use reth_execution_types::BlockExecutionResult;
 use reth_primitives_traits::{Receipt, SignedTransaction};
 use revm::context::Block as _;
 
+use crate::OpBlockExecutionCtx;
+
 /// Block builder for Base.
 #[derive(Debug)]
-pub struct BaseBlockAssembler<ChainSpec> {
+pub struct OpBlockAssembler<ChainSpec> {
     chain_spec: Arc<ChainSpec>,
 }
 
-impl<ChainSpec> BaseBlockAssembler<ChainSpec> {
-    /// Creates a new [`BaseBlockAssembler`].
+impl<ChainSpec> OpBlockAssembler<ChainSpec> {
+    /// Creates a new [`OpBlockAssembler`].
     pub const fn new(chain_spec: Arc<ChainSpec>) -> Self {
         Self { chain_spec }
     }
 }
 
-impl<ChainSpec: BaseUpgrades> BaseBlockAssembler<ChainSpec> {
+impl<ChainSpec: BaseUpgrades> OpBlockAssembler<ChainSpec> {
     /// Builds a block for `input` without any bounds on header `H`.
     pub fn assemble_block<
         F: for<'a> BlockExecutorFactory<
-                ExecutionCtx<'a>: Into<BaseBlockExecutionCtx>,
+                ExecutionCtx<'a>: Into<OpBlockExecutionCtx>,
                 Transaction: SignedTransaction,
                 Receipt: Receipt + DepositReceipt,
             >,
@@ -131,17 +134,17 @@ impl<ChainSpec: BaseUpgrades> BaseBlockAssembler<ChainSpec> {
     }
 }
 
-impl<ChainSpec> Clone for BaseBlockAssembler<ChainSpec> {
+impl<ChainSpec> Clone for OpBlockAssembler<ChainSpec> {
     fn clone(&self) -> Self {
         Self { chain_spec: Arc::clone(&self.chain_spec) }
     }
 }
 
-impl<F, ChainSpec> BlockAssembler<F> for BaseBlockAssembler<ChainSpec>
+impl<F, ChainSpec> BlockAssembler<F> for OpBlockAssembler<ChainSpec>
 where
     ChainSpec: BaseUpgrades,
     F: for<'a> BlockExecutorFactory<
-            ExecutionCtx<'a> = BaseBlockExecutionCtx,
+            ExecutionCtx<'a> = OpBlockExecutionCtx,
             Transaction: SignedTransaction,
             Receipt: Receipt + DepositReceipt,
         >,

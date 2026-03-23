@@ -96,6 +96,9 @@ unreachable-pub = "warn"
 unused-must-use = "deny"
 rust-2018-idioms = "deny"
 unnameable-types = "warn"
+# base_metrics::define_metrics! uses cfg(feature = "metrics") in macro expansions
+# which are evaluated in the destination crate's context, not the defining crate's.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("metrics"))'] }
 
 [workspace.lints.rustdoc]
 all = "warn"
@@ -182,7 +185,6 @@ base-common-rpc-types = { path = "crates/common/rpc-types" }
 base-access-lists = { path = "crates/common/access-lists" }
 base-alloy-flashblocks = { path = "crates/common/flashblocks" }
 base-alloy-rpc-jsonrpsee = { path = "crates/common/rpc-jsonrpsee" }
-base-alloy-evm = { path = "crates/common/evm", default-features = false }
 base-alloy-flz = { path = "crates/common/flz", default-features = false }
 base-alloy-consensus = { path = "crates/common/consensus", default-features = false }
 base-alloy-rpc-types-engine = { path = "crates/common/rpc-types-engine", default-features = false }
@@ -220,7 +222,6 @@ base-consensus-providers = { path = "crates/consensus/providers-alloy", default-
 # Execution
 base-node-core = { path = "crates/execution/node" }
 base-execution-cli = { path = "crates/execution/cli" }
-base-execution-evm = { path = "crates/execution/evm" }
 base-execution-rpc = { path = "crates/execution/rpc" }
 base-node-runner = { path = "crates/execution/runner" }
 base-execution-exex = { path = "crates/execution/exex" }
@@ -233,7 +234,7 @@ base-execution-storage = { path = "crates/execution/storage" }
 base-execution-chainspec = { path = "crates/execution/chainspec" }
 base-execution-consensus = { path = "crates/execution/consensus" }
 base-execution-payload-builder = { path = "crates/execution/payload" }
-base-revm = { path = "crates/execution/revm", default-features = false }
+base-evm = { path = "crates/execution/evm", default-features = false }
 
 # Txpool
 base-txpool = { path = "crates/txpool" }

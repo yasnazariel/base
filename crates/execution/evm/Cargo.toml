@@ -1,75 +1,142 @@
 [package]
-name = "base-execution-evm"
+name = "base-evm"
+description = "Base EVM implementation"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 homepage.workspace = true
 repository.workspace = true
+exclude.workspace = true
 
 [lints]
 workspace = true
 
 [dependencies]
-# Reth
-reth-evm.workspace = true
-reth-chainspec.workspace = true
-reth-execution-types.workspace = true
-reth-storage-errors.workspace = true
-reth-execution-errors.workspace = true
-reth-primitives-traits.workspace = true
-
-reth-rpc-eth-api = { workspace = true, optional = true }
-
-# ethereum
-alloy-evm.workspace = true
-alloy-eips.workspace = true
-alloy-primitives.workspace = true
-alloy-consensus.workspace = true
-base-alloy-chains.workspace = true
-base-alloy-evm = { workspace = true, features = ["std", "reth"] }
-base-alloy-consensus = { workspace = true, features = ["evm", "reth"] }
-base-alloy-rpc-types-engine = { workspace = true, features = ["reth"] }
-
-base-execution-chainspec.workspace = true
-base-execution-consensus.workspace = true
-
 # revm
-revm.workspace = true
-base-revm = { workspace = true, features = ["reth"] }
+revm = { workspace = true, default-features = false }
 
 # misc
-thiserror.workspace = true
+auto_impl.workspace = true
+base-alloy-chains = { workspace = true, features = ["revm"] }
+base-alloy-flz = { workspace = true, default-features = false }
+serde = { workspace = true, features = ["derive", "rc"], optional = true }
+
+# alloy (optional)
+alloy-evm = { workspace = true, optional = true }
+thiserror = { workspace = true, optional = true }
+alloy-eips = { workspace = true, optional = true }
+alloy-consensus = { workspace = true, optional = true }
+alloy-primitives = { workspace = true, optional = true }
+base-alloy-consensus = { workspace = true, optional = true }
+
+# reth (optional)
+reth-evm = { workspace = true, optional = true }
+reth-chainspec = { workspace = true, optional = true }
+reth-storage-errors = { workspace = true, optional = true }
+reth-execution-types = { workspace = true, optional = true }
+reth-execution-errors = { workspace = true, optional = true }
+reth-primitives-traits = { workspace = true, optional = true }
+base-execution-chainspec = { workspace = true, optional = true }
+base-execution-consensus = { workspace = true, optional = true }
+base-execution-primitives = { workspace = true, optional = true }
+base-alloy-rpc-types-engine = { workspace = true, optional = true }
+
+# rpc (optional)
+reth-rpc-eth-api = { workspace = true, optional = true }
+base-alloy-rpc-types = { workspace = true, optional = true }
 
 [dev-dependencies]
+rstest.workspace = true
 alloy-genesis.workspace = true
+alloy-hardforks.workspace = true
+sha2 = { workspace = true, default-features = false }
+serde = { workspace = true, features = ["derive", "rc"] }
+alloy-consensus.workspace = true
+reth-chainspec.workspace = true
+alloy-primitives = { workspace = true, default-features = false }
+alloy-sol-types = { workspace = true, default-features = false }
+reth-primitives-traits.workspace = true
+base-alloy-chains.workspace = true
+base-alloy-consensus.workspace = true
+base-execution-chainspec.workspace = true
 reth-evm = { workspace = true, features = ["test-utils"] }
 reth-revm = { workspace = true, features = ["test-utils"] }
-base-alloy-consensus = { workspace = true, features = ["arbitrary"] }
+serde_json = { workspace = true, default-features = false, features = ["alloc", "preserve_order"] }
+base-execution-primitives = { workspace = true, features = ["arbitrary"] }
 
 [features]
-default = [ "std" ]
+default = [ "blst", "c-kzg", "portable", "secp256k1", "std" ]
 std = [
-	"alloy-consensus/std",
-	"alloy-eips/std",
-	"alloy-evm/std",
-	"alloy-genesis/std",
-	"alloy-primitives/std",
-	"base-alloy-consensus/std",
-	"base-alloy-evm/std",
-	"base-alloy-rpc-types-engine/std",
-	"base-execution-chainspec/std",
-	"base-execution-consensus/std",
-	"base-revm/std",
-	"reth-chainspec/std",
-	"reth-evm/std",
-	"reth-execution-errors/std",
-	"reth-execution-types/std",
-	"reth-primitives-traits/std",
-	"reth-revm/std",
-	"reth-storage-errors/std",
+	"alloy-consensus?/std",
+	"alloy-eips?/std",
+	"alloy-evm?/std",
+	"alloy-primitives?/std",
+	"base-alloy-consensus?/std",
+	"base-alloy-flz/std",
+	"base-alloy-rpc-types-engine?/std",
+	"base-alloy-rpc-types?/std",
+	"base-execution-chainspec?/std",
+	"base-execution-consensus?/std",
+	"base-execution-primitives?/std",
+	"reth-chainspec?/std",
+	"reth-evm?/std",
+	"reth-execution-errors?/std",
+	"reth-execution-types?/std",
+	"reth-primitives-traits?/std",
+	"reth-storage-errors?/std",
 	"revm/std",
-	"thiserror/std",
+	"serde?/std",
+	"thiserror?/std",
 ]
-portable = [ "base-revm/portable", "reth-revm/portable", "revm/portable" ]
-rpc = [ "alloy-evm/rpc", "reth-rpc-eth-api" ]
+dev = [
+	"memory_limit",
+	"optional_balance_check",
+	"optional_block_gas_limit",
+	"optional_eip3541",
+	"optional_eip3607",
+	"optional_no_base_fee",
+]
+serde = [ "alloy-primitives?/serde", "dep:serde", "revm/serde" ]
+alloy = [
+	"base-alloy-consensus/evm",
+	"dep:alloy-consensus",
+	"dep:alloy-eips",
+	"dep:alloy-evm",
+	"dep:alloy-primitives",
+	"dep:base-alloy-consensus",
+	"dep:thiserror",
+]
+reth = [
+	"alloy",
+	"base-alloy-consensus/reth",
+	"dep:base-alloy-rpc-types-engine",
+	"dep:base-execution-chainspec",
+	"dep:base-execution-consensus",
+	"dep:base-execution-primitives",
+	"dep:reth-chainspec",
+	"dep:reth-evm",
+	"dep:reth-execution-errors",
+	"dep:reth-execution-types",
+	"dep:reth-primitives-traits",
+	"dep:reth-storage-errors",
+	"std",
+]
+rpc = [
+	"alloy-evm?/rpc",
+	"dep:base-alloy-rpc-types",
+	"dep:reth-rpc-eth-api",
+	"reth",
+]
+bn = [ "revm/bn" ]
+blst = [ "revm/blst" ]
+c-kzg = [ "revm/c-kzg" ]
+portable = [ "revm/portable" ]
+secp256k1 = [ "revm/secp256k1" ]
+memory_limit = [ "revm/memory_limit" ]
+optional_no_base_fee = [ "revm/optional_no_base_fee" ]
+optional_eip3541 = [ "revm/optional_eip3541" ]
+optional_eip3607 = [ "revm/optional_eip3607" ]
+optional_fee_charge = [ "revm/optional_fee_charge" ]
+optional_balance_check = [ "revm/optional_balance_check" ]
+optional_block_gas_limit = [ "revm/optional_block_gas_limit" ]

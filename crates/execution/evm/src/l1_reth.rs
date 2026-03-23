@@ -3,11 +3,10 @@
 use alloy_consensus::Transaction;
 use alloy_primitives::{U16, U256, hex};
 use base_alloy_chains::BaseUpgrades;
-use base_revm::{L1BlockInfo, OpSpecId};
 use reth_execution_errors::BlockExecutionError;
 use reth_primitives_traits::BlockBody;
 
-use crate::{BaseBlockExecutionError, error::L1BlockInfoError};
+use crate::{L1BlockInfo, L1BlockInfoError, OpL1BlockError, OpSpecId};
 
 /// The function selector of the "setL1BlockValuesEcotone" function in the `L1Block` contract.
 const L1_BLOCK_ECOTONE_SELECTOR: [u8; 4] = hex!("440a5e20");
@@ -23,11 +22,11 @@ const L1_BLOCK_JOVIAN_SELECTOR: [u8; 4] = hex!("3db6be2b");
 /// transaction in the L2 block.
 ///
 /// Returns an error if the L1 info transaction is not found, if the block is empty.
-pub fn extract_l1_info<B: BlockBody>(body: &B) -> Result<L1BlockInfo, BaseBlockExecutionError> {
+pub fn extract_l1_info<B: BlockBody>(body: &B) -> Result<L1BlockInfo, OpL1BlockError> {
     let l1_info_tx = body
         .transactions()
         .first()
-        .ok_or(BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::MissingTransaction))?;
+        .ok_or(OpL1BlockError::L1BlockInfo(L1BlockInfoError::MissingTransaction))?;
     extract_l1_info_from_tx(l1_info_tx)
 }
 
@@ -35,12 +34,10 @@ pub fn extract_l1_info<B: BlockBody>(body: &B) -> Result<L1BlockInfo, BaseBlockE
 /// block.
 ///
 /// Returns an error if the calldata is shorter than 4 bytes.
-pub fn extract_l1_info_from_tx<T: Transaction>(
-    tx: &T,
-) -> Result<L1BlockInfo, BaseBlockExecutionError> {
+pub fn extract_l1_info_from_tx<T: Transaction>(tx: &T) -> Result<L1BlockInfo, OpL1BlockError> {
     let l1_info_tx_data = tx.input();
     if l1_info_tx_data.len() < 4 {
-        return Err(BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::InvalidCalldata));
+        return Err(OpL1BlockError::L1BlockInfo(L1BlockInfoError::InvalidCalldata));
     }
 
     parse_l1_info(l1_info_tx_data)
@@ -55,7 +52,7 @@ pub fn extract_l1_info_from_tx<T: Transaction>(
 ///
 /// # Panics
 /// If the input is shorter than 4 bytes.
-pub fn parse_l1_info(input: &[u8]) -> Result<L1BlockInfo, BaseBlockExecutionError> {
+pub fn parse_l1_info(input: &[u8]) -> Result<L1BlockInfo, OpL1BlockError> {
     // Parse the L1 info transaction into an L1BlockInfo struct, depending on the function selector.
     // There are currently 4 variants:
     // - Jovian
@@ -74,7 +71,7 @@ pub fn parse_l1_info(input: &[u8]) -> Result<L1BlockInfo, BaseBlockExecutionErro
 }
 
 /// Parses the calldata of the [`L1BlockInfo`] transaction pre-Ecotone hardfork.
-pub fn parse_l1_info_tx_bedrock(data: &[u8]) -> Result<L1BlockInfo, BaseBlockExecutionError> {
+pub fn parse_l1_info_tx_bedrock(data: &[u8]) -> Result<L1BlockInfo, OpL1BlockError> {
     // The setL1BlockValues tx calldata must be exactly 260 bytes long, considering that
     // we already removed the first 4 bytes (the function selector). Detailed breakdown:
     //   32 bytes for the block number
@@ -86,17 +83,15 @@ pub fn parse_l1_info_tx_bedrock(data: &[u8]) -> Result<L1BlockInfo, BaseBlockExe
     // + 32 bytes for the fee overhead
     // + 32 bytes for the fee scalar
     if data.len() != 256 {
-        return Err(BaseBlockExecutionError::L1BlockInfo(
-            L1BlockInfoError::UnexpectedCalldataLength,
-        ));
+        return Err(OpL1BlockError::L1BlockInfo(L1BlockInfoError::UnexpectedCalldataLength));
     }
 
     let l1_base_fee = U256::try_from_be_slice(&data[64..96])
-        .ok_or(BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::BaseFeeConversion))?;
+        .ok_or(OpL1BlockError::L1BlockInfo(L1BlockInfoError::BaseFeeConversion))?;
     let l1_fee_overhead = U256::try_from_be_slice(&data[192..224])
-        .ok_or(BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::FeeOverheadConversion))?;
+        .ok_or(OpL1BlockError::L1BlockInfo(L1BlockInfoError::FeeOverheadConversion))?;
     let l1_fee_scalar = U256::try_from_be_slice(&data[224..256])
-        .ok_or(BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::FeeScalarConversion))?;
+        .ok_or(OpL1BlockError::L1BlockInfo(L1BlockInfoError::FeeScalarConversion))?;
 
     Ok(L1BlockInfo {
         l1_base_fee,
@@ -120,11 +115,9 @@ pub fn parse_l1_info_tx_bedrock(data: &[u8]) -> Result<L1BlockInfo, BaseBlockExe
 ///   9. _batcherHash        Versioned hash to authenticate batcher by.
 ///
 /// <https://github.com/ethereum-optimism/optimism/blob/957e13dd504fb336a4be40fb5dd0d8ba0276be34/packages/contracts-bedrock/src/L2/L1Block.sol#L136>
-pub fn parse_l1_info_tx_ecotone(data: &[u8]) -> Result<L1BlockInfo, BaseBlockExecutionError> {
+pub fn parse_l1_info_tx_ecotone(data: &[u8]) -> Result<L1BlockInfo, OpL1BlockError> {
     if data.len() != 160 {
-        return Err(BaseBlockExecutionError::L1BlockInfo(
-            L1BlockInfoError::UnexpectedCalldataLength,
-        ));
+        return Err(OpL1BlockError::L1BlockInfo(L1BlockInfoError::UnexpectedCalldataLength));
     }
 
     // https://github.com/ethereum-optimism/op-geth/blob/60038121c7571a59875ff9ed7679c48c9f73405d/core/types/rollup_cost.go#L317-L328
@@ -143,14 +136,13 @@ pub fn parse_l1_info_tx_ecotone(data: &[u8]) -> Result<L1BlockInfo, BaseBlockExe
     // 132   bytes32 _batcherHash,
 
     let l1_base_fee_scalar = U256::try_from_be_slice(&data[..4])
-        .ok_or(BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::BaseFeeScalarConversion))?;
-    let l1_blob_base_fee_scalar = U256::try_from_be_slice(&data[4..8]).ok_or({
-        BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::BlobBaseFeeScalarConversion)
-    })?;
+        .ok_or(OpL1BlockError::L1BlockInfo(L1BlockInfoError::BaseFeeScalarConversion))?;
+    let l1_blob_base_fee_scalar = U256::try_from_be_slice(&data[4..8])
+        .ok_or(OpL1BlockError::L1BlockInfo(L1BlockInfoError::BlobBaseFeeScalarConversion))?;
     let l1_base_fee = U256::try_from_be_slice(&data[32..64])
-        .ok_or(BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::BaseFeeConversion))?;
+        .ok_or(OpL1BlockError::L1BlockInfo(L1BlockInfoError::BaseFeeConversion))?;
     let l1_blob_base_fee = U256::try_from_be_slice(&data[64..96])
-        .ok_or(BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::BlobBaseFeeConversion))?;
+        .ok_or(OpL1BlockError::L1BlockInfo(L1BlockInfoError::BlobBaseFeeConversion))?;
 
     Ok(L1BlockInfo {
         l1_base_fee,
@@ -175,11 +167,9 @@ pub fn parse_l1_info_tx_ecotone(data: &[u8]) -> Result<L1BlockInfo, BaseBlockExe
 ///   9. _batcherHash         Versioned hash to authenticate batcher by.
 ///  10. _operatorFeeScalar   Operator fee scalar
 ///  11. _operatorFeeConstant Operator fee constant
-pub fn parse_l1_info_tx_isthmus(data: &[u8]) -> Result<L1BlockInfo, BaseBlockExecutionError> {
+pub fn parse_l1_info_tx_isthmus(data: &[u8]) -> Result<L1BlockInfo, OpL1BlockError> {
     if data.len() != 172 {
-        return Err(BaseBlockExecutionError::L1BlockInfo(
-            L1BlockInfoError::UnexpectedCalldataLength,
-        ));
+        return Err(OpL1BlockError::L1BlockInfo(L1BlockInfoError::UnexpectedCalldataLength));
     }
 
     // https://github.com/ethereum-optimism/op-geth/blob/60038121c7571a59875ff9ed7679c48c9f73405d/core/types/rollup_cost.go#L317-L328
@@ -200,20 +190,17 @@ pub fn parse_l1_info_tx_isthmus(data: &[u8]) -> Result<L1BlockInfo, BaseBlockExe
     // 168   uint64 _operatorFeeConstant
 
     let l1_base_fee_scalar = U256::try_from_be_slice(&data[..4])
-        .ok_or(BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::BaseFeeScalarConversion))?;
-    let l1_blob_base_fee_scalar = U256::try_from_be_slice(&data[4..8]).ok_or({
-        BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::BlobBaseFeeScalarConversion)
-    })?;
+        .ok_or(OpL1BlockError::L1BlockInfo(L1BlockInfoError::BaseFeeScalarConversion))?;
+    let l1_blob_base_fee_scalar = U256::try_from_be_slice(&data[4..8])
+        .ok_or(OpL1BlockError::L1BlockInfo(L1BlockInfoError::BlobBaseFeeScalarConversion))?;
     let l1_base_fee = U256::try_from_be_slice(&data[32..64])
-        .ok_or(BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::BaseFeeConversion))?;
+        .ok_or(OpL1BlockError::L1BlockInfo(L1BlockInfoError::BaseFeeConversion))?;
     let l1_blob_base_fee = U256::try_from_be_slice(&data[64..96])
-        .ok_or(BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::BlobBaseFeeConversion))?;
-    let operator_fee_scalar = U256::try_from_be_slice(&data[160..164]).ok_or({
-        BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::OperatorFeeScalarConversion)
-    })?;
-    let operator_fee_constant = U256::try_from_be_slice(&data[164..172]).ok_or({
-        BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::OperatorFeeConstantConversion)
-    })?;
+        .ok_or(OpL1BlockError::L1BlockInfo(L1BlockInfoError::BlobBaseFeeConversion))?;
+    let operator_fee_scalar = U256::try_from_be_slice(&data[160..164])
+        .ok_or(OpL1BlockError::L1BlockInfo(L1BlockInfoError::OperatorFeeScalarConversion))?;
+    let operator_fee_constant = U256::try_from_be_slice(&data[164..172])
+        .ok_or(OpL1BlockError::L1BlockInfo(L1BlockInfoError::OperatorFeeConstantConversion))?;
 
     Ok(L1BlockInfo {
         l1_base_fee,
@@ -241,11 +228,9 @@ pub fn parse_l1_info_tx_isthmus(data: &[u8]) -> Result<L1BlockInfo, BaseBlockExe
 ///  10. _operatorFeeScalar   Operator fee scalar
 ///  11. _operatorFeeConstant Operator fee constant
 ///  12. _daFootprintGasScalar DA footprint gas scalar
-pub fn parse_l1_info_tx_jovian(data: &[u8]) -> Result<L1BlockInfo, BaseBlockExecutionError> {
+pub fn parse_l1_info_tx_jovian(data: &[u8]) -> Result<L1BlockInfo, OpL1BlockError> {
     if data.len() != 174 {
-        return Err(BaseBlockExecutionError::L1BlockInfo(
-            L1BlockInfoError::UnexpectedCalldataLength,
-        ));
+        return Err(OpL1BlockError::L1BlockInfo(L1BlockInfoError::UnexpectedCalldataLength));
     }
 
     // https://github.com/ethereum-optimism/op-geth/blob/60038121c7571a59875ff9ed7679c48c9f73405d/core/types/rollup_cost.go#L317-L328
@@ -267,24 +252,19 @@ pub fn parse_l1_info_tx_jovian(data: &[u8]) -> Result<L1BlockInfo, BaseBlockExec
     // 176   uint16 _daFootprintGasScalar
 
     let l1_base_fee_scalar = U256::try_from_be_slice(&data[..4])
-        .ok_or(BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::BaseFeeScalarConversion))?;
-    let l1_blob_base_fee_scalar = U256::try_from_be_slice(&data[4..8]).ok_or({
-        BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::BlobBaseFeeScalarConversion)
-    })?;
+        .ok_or(OpL1BlockError::L1BlockInfo(L1BlockInfoError::BaseFeeScalarConversion))?;
+    let l1_blob_base_fee_scalar = U256::try_from_be_slice(&data[4..8])
+        .ok_or(OpL1BlockError::L1BlockInfo(L1BlockInfoError::BlobBaseFeeScalarConversion))?;
     let l1_base_fee = U256::try_from_be_slice(&data[32..64])
-        .ok_or(BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::BaseFeeConversion))?;
+        .ok_or(OpL1BlockError::L1BlockInfo(L1BlockInfoError::BaseFeeConversion))?;
     let l1_blob_base_fee = U256::try_from_be_slice(&data[64..96])
-        .ok_or(BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::BlobBaseFeeConversion))?;
-    let operator_fee_scalar = U256::try_from_be_slice(&data[160..164]).ok_or({
-        BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::OperatorFeeScalarConversion)
-    })?;
-    let operator_fee_constant = U256::try_from_be_slice(&data[164..172]).ok_or({
-        BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::OperatorFeeConstantConversion)
-    })?;
+        .ok_or(OpL1BlockError::L1BlockInfo(L1BlockInfoError::BlobBaseFeeConversion))?;
+    let operator_fee_scalar = U256::try_from_be_slice(&data[160..164])
+        .ok_or(OpL1BlockError::L1BlockInfo(L1BlockInfoError::OperatorFeeScalarConversion))?;
+    let operator_fee_constant = U256::try_from_be_slice(&data[164..172])
+        .ok_or(OpL1BlockError::L1BlockInfo(L1BlockInfoError::OperatorFeeConstantConversion))?;
     let da_footprint_gas_scalar: u16 = U16::try_from_be_slice(&data[172..174])
-        .ok_or({
-            BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::DaFootprintGasScalarConversion)
-        })?
+        .ok_or(OpL1BlockError::L1BlockInfo(L1BlockInfoError::DaFootprintGasScalarConversion))?
         .to();
 
     Ok(L1BlockInfo {

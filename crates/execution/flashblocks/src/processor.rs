@@ -14,7 +14,7 @@ use arc_swap::ArcSwapOption;
 use base_alloy_chains::BaseUpgrades;
 use base_alloy_consensus::{BaseBlock, OpTxEnvelope};
 use base_alloy_flashblocks::Flashblock;
-use base_execution_evm::{OpEvmConfig, OpNextBlockEnvAttributes};
+use base_evm::{OpEvmConfig, OpNextBlockEnvAttributes};
 use rayon::prelude::*;
 use reth_chainspec::{ChainSpecProvider, EthChainSpec};
 use reth_evm::ConfigureEvm;
