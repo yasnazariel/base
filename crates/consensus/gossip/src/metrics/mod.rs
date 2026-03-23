@@ -1,6 +1,6 @@
 //! Metrics for the Gossip stack.
 
-base_macros::define_metrics! {
+base_metrics::define_metrics! {
     base_node
 
     #[describe("Events received by the gossip layer")]

@@ -3,10 +3,7 @@ use std::fmt;
 use base_proof_primitives::{ProofRequest, ProofResult, ProverBackend};
 use tracing::{Instrument, info, info_span};
 
-use crate::{
-    Host, HostConfig, HostError, Metrics, ProverConfig,
-    metrics::{proof_guard, timed},
-};
+use crate::{Host, HostConfig, HostError, Metrics, ProverConfig, metrics::timed};
 
 /// Orchestrates witness generation ([`Host`]) and proving ([`ProverBackend`]).
 ///
@@ -43,7 +40,11 @@ impl<B: ProverBackend> ProverService<B> {
     /// 5. Hands the populated oracle to [`ProverBackend::prove`]
     pub async fn prove_block(&self, request: ProofRequest) -> Result<ProofResult, ProverError<B>> {
         Metrics::requests_total(Metrics::MODE_ONLINE).increment(1);
-        let mut guard = proof_guard!();
+        let mut guard = base_metrics::inflight!(
+            Metrics::in_flight_proofs(),
+            Metrics::requests_result_total,
+            Metrics::OUTCOME_DROPPED,
+        );
         let _proof_timer = timed!(Metrics::proof_duration_seconds());
 
         let l2_block = request.claimed_l2_block_number;

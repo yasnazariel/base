@@ -1,6 +1,6 @@
 //! Metrics for flashblocks.
 
-base_macros::define_metrics! {
+base_metrics::define_metrics! {
     reth_flashblocks
 
     #[describe("Count of times upstream receiver was closed/errored")]

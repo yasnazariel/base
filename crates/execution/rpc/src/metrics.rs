@@ -2,14 +2,14 @@
 
 use std::time::Instant;
 
-base_macros::define_metrics_named! {
+base_metrics::define_metrics_named! {
     SequencerMetrics, "base_rpc.sequencer",
 
     #[describe("How long it takes to forward a transaction to the sequencer")]
     sequencer_forward_latency: histogram,
 }
 
-base_macros::define_metrics_named! {
+base_metrics::define_metrics_named! {
     EthApiExtMetrics, "base_rpc.eth_api_ext",
 
     #[describe("How long it takes to handle a eth_getProof request successfully")]
@@ -41,7 +41,7 @@ impl DebugApis {
     }
 }
 
-base_macros::define_metrics_named! {
+base_metrics::define_metrics_named! {
     DebugApiExtRpcMetrics, "base_rpc.debug_api_ext",
 
     #[describe("End-to-end time to handle this API call")]

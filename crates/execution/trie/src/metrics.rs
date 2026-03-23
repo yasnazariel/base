@@ -23,7 +23,7 @@ use crate::{
     cursor,
 };
 
-base_macros::define_metrics_named! {
+base_metrics::define_metrics_named! {
     OperationMetrics, "optimism_trie.storage.operation",
 
     #[describe("Duration of storage operations in seconds")]

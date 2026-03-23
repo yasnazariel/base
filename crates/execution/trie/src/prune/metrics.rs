@@ -2,7 +2,7 @@
 
 use crate::PrunerOutput;
 
-base_macros::define_metrics_named! {
+base_metrics::define_metrics_named! {
     PrunerMetrics, "optimism_trie.pruner",
 
     #[describe("Pruning duration")]

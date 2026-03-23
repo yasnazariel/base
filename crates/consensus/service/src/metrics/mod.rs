@@ -1,6 +1,6 @@
 //! Metrics for the node service
 
-base_macros::define_metrics! {
+base_metrics::define_metrics! {
     base_node
 
     #[describe("L1 reorg count")]

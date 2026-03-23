@@ -3,7 +3,7 @@
 //! Provides metric identifiers and labels for monitoring engine performance,
 //! task execution, and block progression through safety levels.
 
-base_macros::define_metrics! {
+base_metrics::define_metrics! {
     base_node
 
     #[describe("Blockchain head labels")]

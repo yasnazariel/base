@@ -75,8 +75,7 @@ impl<F: ChainProvider + Send> OriginAdvancer for PollingTraversal<F> {
     /// This function fetches the next L1 [`BlockInfo`] from the data source and updates the
     /// [`SystemConfig`] with the receipts from the block.
     async fn advance_origin(&mut self) -> PipelineResult<()> {
-        #[cfg(feature = "metrics")]
-        let start_time = std::time::Instant::now();
+        let _timer = base_metrics::timed!(Metrics::pipeline_origin_advance());
 
         // Pull the next block or return EOF.
         // PipelineError::EOF has special handling further up the pipeline.
@@ -112,13 +111,6 @@ impl<F: ChainProvider + Send> OriginAdvancer for PollingTraversal<F> {
 
         // Update the block origin regardless of if a holocene activation is required.
         self.update_origin(next_l1_origin);
-
-        // Record the origin as advanced.
-        #[cfg(feature = "metrics")]
-        {
-            let duration = start_time.elapsed();
-            Metrics::pipeline_origin_advance().record(duration.as_secs_f64());
-        }
 
         // If the prev block is not holocene, but the next is, we need to flag this
         // so the pipeline driver will reset the pipeline for holocene activation.

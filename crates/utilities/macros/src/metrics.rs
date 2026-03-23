@@ -1,30 +1,4 @@
-//! Macros for recording metrics.
-
-/// A no-op metric handle used when the `metrics` feature is disabled.
-///
-/// Every method is `#[inline(always)]` and compiles to nothing, so call sites
-/// that use the unified [`define_metrics!`] macro pay zero cost when metrics
-/// are not enabled.
-#[derive(Debug, Clone, Copy)]
-pub struct NoopMetric;
-
-impl NoopMetric {
-    /// No-op `Gauge::set`.
-    #[inline(always)]
-    pub fn set<T>(&self, _: T) {}
-    /// No-op `Counter::increment`.
-    #[inline(always)]
-    pub fn increment<T>(&self, _: T) {}
-    /// No-op `Counter::absolute`.
-    #[inline(always)]
-    pub fn absolute<T>(&self, _: T) {}
-    /// No-op `Histogram::record`.
-    #[inline(always)]
-    pub fn record<T>(&self, _: T) {}
-    /// No-op `Gauge::decrement`.
-    #[inline(always)]
-    pub fn decrement<T>(&self, _: T) {}
-}
+//! Macros for defining and describing metrics.
 
 /// Defines a metrics struct with static associated functions.
 ///
@@ -52,7 +26,7 @@ impl NoopMetric {
 ///
 /// ```ignore
 /// // Struct name defaults to `Metrics` when omitted:
-/// base_macros::define_metrics! {
+/// base_metrics::define_metrics! {
 ///     my_app
 ///     #[describe("Total requests")]
 ///     requests_total: counter,
@@ -60,7 +34,7 @@ impl NoopMetric {
 /// Metrics::requests_total().increment(1);
 ///
 /// // Custom struct name:
-/// base_macros::define_metrics! {
+/// base_metrics::define_metrics! {
 ///     #[scope("my_app")]
 ///     pub struct MyMetrics {
 ///         #[describe("Request duration")]
@@ -145,7 +119,7 @@ macro_rules! define_metrics {
 /// Instead of the full struct syntax:
 ///
 /// ```ignore
-/// base_macros::define_metrics! {
+/// base_metrics::define_metrics! {
 ///     #[scope("my_app")]
 ///     pub struct MyMetrics {
 ///         requests_total: counter,
@@ -156,7 +130,7 @@ macro_rules! define_metrics {
 /// you can write:
 ///
 /// ```ignore
-/// base_macros::define_metrics_named! {
+/// base_metrics::define_metrics_named! {
 ///     MyMetrics, "my_app",
 ///     requests_total: counter,
 /// }
@@ -317,4 +291,40 @@ macro_rules! __describe_metric {
     };
     // No description — skip.
     ($scope:expr, $field:ident, $kind:ident) => {};
+}
+
+/// Creates a [`DropTimer`] (or [`NoopDropTimer`]) that records elapsed duration
+/// to a histogram metric on drop.
+///
+/// The `#[cfg(feature = "metrics")]` inside the expansion is evaluated in the
+/// **calling** crate's context, so the calling crate controls whether real
+/// timing happens or gets compiled away.
+///
+/// # Examples
+///
+/// ```ignore
+/// // Drop-based: records when `_timer` goes out of scope.
+/// let _timer = base_metrics::timed!(Metrics::proof_duration_seconds());
+///
+/// // Explicit stop: records immediately, drop is a no-op.
+/// let mut timer = base_metrics::timed!(Metrics::witness_build_duration_seconds());
+/// let result = do_work().await;
+/// timer.stop();
+///
+/// // With labels:
+/// let _timer = base_metrics::timed!(Metrics::hint_duration_seconds(label));
+/// ```
+#[macro_export]
+macro_rules! timed {
+    ($metric_handle:expr) => {{
+        #[cfg(feature = "metrics")]
+        {
+            $crate::DropTimer::new($metric_handle)
+        }
+        #[cfg(not(feature = "metrics"))]
+        {
+            let _ = &$metric_handle;
+            $crate::NoopDropTimer
+        }
+    }};
 }

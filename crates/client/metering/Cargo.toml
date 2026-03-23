@@ -48,7 +48,7 @@ base-alloy-consensus.workspace = true
 base-alloy-flz.workspace = true
 
 # metrics
-base-macros.workspace = true
+base-metrics.workspace = true
 metrics = { workspace = true, optional = true }
 
 # misc

@@ -2,7 +2,7 @@
 
 use crate::api::{OperationDurations, WriteCounts};
 
-base_macros::define_metrics_named! {
+base_metrics::define_metrics_named! {
     BlockMetrics, "optimism_trie.block",
 
     #[describe("Total time to process a block (end-to-end) in seconds")]

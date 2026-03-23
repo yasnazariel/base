@@ -1,6 +1,6 @@
 //! Metrics for the builder RPC handler.
 
-base_macros::define_metrics_named! {
+base_metrics::define_metrics_named! {
     BuilderApiMetrics, "txpool.builder_rpc",
 
     #[describe("Transactions successfully inserted into the pool")]

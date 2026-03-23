@@ -1,5 +1,5 @@
 [package]
-name = "base-macros"
+name = "base-metrics"
 version.workspace = true
 description = "Utility macros for base crates"
 
@@ -13,6 +13,9 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+metrics = { workspace = true, optional = true }
 
 [features]
 default = []
+std = []
+metrics = ["std", "dep:metrics"]

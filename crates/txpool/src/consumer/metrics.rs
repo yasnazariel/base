@@ -1,6 +1,6 @@
 //! Prometheus metrics for the transaction consumer.
 
-base_macros::define_metrics_named! {
+base_metrics::define_metrics_named! {
     ConsumerMetrics, "txpool.consumer",
 
     #[describe("Total consumer loop iterations")]

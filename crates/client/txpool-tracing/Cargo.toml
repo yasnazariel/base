@@ -34,7 +34,7 @@ tokio-stream.workspace = true
 # misc
 lru.workspace = true
 chrono.workspace = true
-base-macros.workspace = true
+base-metrics.workspace = true
 metrics = { workspace = true, optional = true }
 tracing = { workspace = true, features = ["std"] }
 derive_more = { workspace = true, features = ["display"] }

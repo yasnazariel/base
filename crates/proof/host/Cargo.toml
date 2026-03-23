@@ -47,7 +47,7 @@ tracing.workspace = true
 thiserror.workspace = true
 serde_json.workspace = true
 async-trait.workspace = true
-base-macros.workspace = true
+base-metrics.workspace = true
 
 # `metrics` feature
 metrics = { workspace = true, optional = true }
@@ -63,5 +63,5 @@ proptest.workspace = true
 
 [features]
 disk = [ "dep:rocksdb" ]
-metrics = [ "base-consensus-providers/metrics", "dep:metrics" ]
+metrics = [ "base-consensus-providers/metrics", "base-metrics/metrics", "dep:metrics" ]
 precompiles = [ "dep:revm" ]

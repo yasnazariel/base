@@ -1,6 +1,6 @@
 //! Metrics for the Alloy providers.
 
-base_macros::define_metrics! {
+base_metrics::define_metrics! {
     base_providers
 
     #[describe("Number of cache hits in chain provider")]

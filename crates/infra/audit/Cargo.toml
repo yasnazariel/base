@@ -12,7 +12,7 @@ workspace = true
 
 [dependencies]
 bytes.workspace = true
-base-macros.workspace = true
+base-metrics.workspace = true
 futures = { workspace = true }
 base-bundles.workspace = true
 async-trait.workspace = true

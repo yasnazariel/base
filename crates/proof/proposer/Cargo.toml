@@ -70,7 +70,7 @@ clap.workspace = true
 base-cli-utils.workspace = true
 
 # Metrics
-base-macros.workspace = true
+base-metrics.workspace = true
 metrics = { workspace = true, optional = true }
 metrics-exporter-prometheus.workspace = true
 

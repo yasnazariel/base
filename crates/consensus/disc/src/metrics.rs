@@ -1,6 +1,6 @@
 //! Metrics for the discovery service.
 
-base_macros::define_metrics! {
+base_metrics::define_metrics! {
     base_node
 
     #[describe("Events received by the discv5 service")]

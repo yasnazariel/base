@@ -8,9 +8,8 @@ use base_alloy_rpc_types_engine::OpPayloadAttributes;
 use base_consensus_genesis::RollupConfig;
 use base_protocol::{BlockInfo, L2BlockInfo, OpAttributesWithParent, SingleBatch};
 
-#[cfg(feature = "metrics")]
-use crate::Metrics;
 use crate::{
+    Metrics,
     errors::{PipelineError, ResetError},
     traits::{
         AttributesBuilder, AttributesProvider, NextAttributes, OriginAdvancer, OriginProvider,
@@ -83,19 +82,17 @@ where
         };
 
         // Construct the payload attributes from the loaded batch.
-        #[cfg(feature = "metrics")]
-        let start = std::time::Instant::now();
+        let mut _timer = base_metrics::timed!(Metrics::attributes_build_duration());
         let attributes = match self.create_next_attributes(batch, parent).await {
             Ok(attributes) => attributes,
             Err(e) => {
                 return Err(e);
             }
         };
+        _timer.stop();
         let origin = self.origin().ok_or(PipelineError::MissingOrigin.crit())?;
         let populated_attributes =
             OpAttributesWithParent::new(attributes, parent, Some(origin), self.is_last_in_span);
-        #[cfg(feature = "metrics")]
-        Metrics::attributes_build_duration().record(start.elapsed().as_secs_f64());
 
         // Clear out the local state once payload attributes are prepared.
         self.batch = None;

@@ -19,7 +19,7 @@ http.workspace = true
 futures.workspace = true
 backoff.workspace = true
 tokio-util.workspace = true
-base-macros.workspace = true
+base-metrics.workspace = true
 metrics = { workspace = true, optional = true }
 tokio-tungstenite.workspace = true
 brotli = { workspace = true, features = ["std"] }

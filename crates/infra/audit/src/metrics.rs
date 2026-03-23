@@ -1,6 +1,6 @@
 //! Metrics for audit operations including Kafka reads, S3 writes, and event processing.
 
-base_macros::define_metrics! {
+base_metrics::define_metrics! {
     tips_audit
 
     #[describe("Duration of archive_event")]

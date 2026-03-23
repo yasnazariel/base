@@ -12,7 +12,7 @@ workspace = true
 
 [dependencies]
 # Protocol
-base-macros.workspace = true
+base-metrics.workspace = true
 base-protocol.workspace = true
 base-consensus-genesis.workspace = true
 base-consensus-upgrades.workspace = true
@@ -53,7 +53,7 @@ alloy-primitives = { workspace = true, features = ["rlp", "k256", "map", "arbitr
 
 [features]
 default = []
-metrics = [ "dep:metrics" ]
+metrics = [ "base-metrics/metrics", "dep:metrics" ]
 serde = [
 	"alloy-consensus/serde",
 	"alloy-eips/serde",

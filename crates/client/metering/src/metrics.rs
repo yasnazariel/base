@@ -1,6 +1,6 @@
 //! Metrics for bundle metering.
 
-base_macros::define_metrics! {
+base_metrics::define_metrics! {
     reth_metering
 
     #[describe("Count of pending trie cache hits")]

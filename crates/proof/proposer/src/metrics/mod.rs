@@ -1,6 +1,6 @@
 //! Metrics for the proposer service.
 
-base_macros::define_metrics! {
+base_metrics::define_metrics! {
     base_proposer
 
     #[describe("Total number of L2 output proposals submitted")]

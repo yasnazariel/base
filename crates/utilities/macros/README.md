@@ -1,12 +1,13 @@
-# `base-macros`
+# `base-metrics`
 
-Utility helper macros for base crates.
+Utility macros and types for recording metrics in base crates.
 
 ## Overview
 
-Provides procedural and declarative macros used across the Base codebase for consistent
-instrumentation and boilerplate reduction. Currently includes metric-related macro utilities for
-registering and recording Prometheus metrics in a standardized way.
+Provides declarative macros and RAII types used across the Base codebase for consistent
+instrumentation. Includes `define_metrics!` for registering Prometheus metrics in a
+standardized way, `timed!` for automatic duration recording, and `inflight!` for tracking
+in-flight operations.
 
 ## Usage
 
@@ -14,11 +15,11 @@ Add the dependency to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-base-macros = { workspace = true }
+base-metrics = { workspace = true }
 ```
 
 ```rust,ignore
-use base_macros::metrics;
+use base_metrics::define_metrics;
 ```
 
 ## License

@@ -1,6 +1,6 @@
 //! Metrics for the derivation pipeline.
 
-base_macros::define_metrics! {
+base_metrics::define_metrics! {
     base_consensus_derive
 
     #[describe("The block height of the pipeline l1 origin")]
@@ -92,7 +92,7 @@ base_macros::define_metrics! {
     latest_decompressed_batch_type: gauge,
 }
 
-base_macros::define_metrics_named! {
+base_metrics::define_metrics_named! {
     GenesisMetrics, "base_consensus_genesis",
 
     #[describe("The latest block number for a system config update")]

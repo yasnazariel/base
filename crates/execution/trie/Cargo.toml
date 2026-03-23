@@ -30,7 +30,7 @@ reth-ethereum-primitives = { workspace = true, optional = true }
 
 # `metrics` feature
 metrics = { workspace = true, optional = true }
-base-macros.workspace = true
+base-metrics.workspace = true
 
 # ethereum
 alloy-eips.workspace = true

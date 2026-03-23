@@ -1,6 +1,6 @@
 //! Prometheus metrics for the tips ingress RPC service.
 
-base_macros::define_metrics! {
+base_metrics::define_metrics! {
     tips_ingress_rpc
 
     #[describe("RPC latency by method")]
