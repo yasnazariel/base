@@ -82,17 +82,17 @@ where
         };
 
         // Construct the payload attributes from the loaded batch.
-        let mut _timer = base_metrics::timed!(Metrics::attributes_build_duration());
+        let mut timer = base_metrics::timed!(Metrics::attributes_build_duration());
         let attributes = match self.create_next_attributes(batch, parent).await {
             Ok(attributes) => attributes,
             Err(e) => {
                 return Err(e);
             }
         };
-        _timer.stop();
         let origin = self.origin().ok_or(PipelineError::MissingOrigin.crit())?;
         let populated_attributes =
             OpAttributesWithParent::new(attributes, parent, Some(origin), self.is_last_in_span);
+        timer.stop();
 
         // Clear out the local state once payload attributes are prepared.
         self.batch = None;

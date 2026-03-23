@@ -144,7 +144,7 @@ where
             match batch_with_inclusion.batch {
                 Batch::Single(b) => return Ok(Batch::Single(b)),
                 Batch::Span(b) => {
-                    let mut _timer = base_metrics::timed!(Metrics::check_batch_prefix_duration());
+                    let mut timer = base_metrics::timed!(Metrics::check_batch_prefix_duration());
                     let (validity, _) = b
                         .check_batch_prefix(
                             self.config.as_ref(),
@@ -154,7 +154,7 @@ where
                             &mut self.fetcher,
                         )
                         .await;
-                    _timer.stop();
+                    timer.stop();
                     Metrics::batch_validity(&validity.to_string()).increment(1);
 
                     match validity {
