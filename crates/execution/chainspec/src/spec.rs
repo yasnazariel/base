@@ -265,7 +265,10 @@ impl From<Genesis> for OpChainSpec {
 
         // Time-based hardforks
         // L1 hardforks are mapped to the activation timestamps of the corresponding Base hardforks
-        let base_v1_time = genesis_info.base.v1;
+        // Prefer explicit Base V1 activation from Base chain info, but fall back to the Osaka
+        // timestamp from the chain config for compatibility with genesis formats that expose
+        // `base.v1` only through the canonical Osaka field.
+        let base_v1_time = genesis_info.base.v1.or(genesis.config.osaka_time);
         let time_hardfork_opts = [
             (BaseUpgrade::Regolith.boxed(), genesis_info.regolith_time),
             (EthereumHardfork::Shanghai.boxed(), genesis_info.canyon_time),
@@ -612,6 +615,23 @@ mod tests {
         assert!(chain_spec.is_fork_active_at_timestamp(EthereumHardfork::Osaka, 98));
         assert!(!chain_spec.is_fork_active_at_timestamp(BaseUpgrade::V1, 54));
         assert!(chain_spec.is_fork_active_at_timestamp(BaseUpgrade::V1, 55));
+    }
+
+    #[test]
+    fn parse_base_v1_from_osaka_fallback() {
+        let geth_genesis = r#"
+    {
+      "config": {
+        "osakaTime": 55
+      }
+    }
+    "#;
+        let genesis: Genesis = serde_json::from_str(geth_genesis).unwrap();
+        let chain_spec: OpChainSpec = genesis.into();
+
+        assert!(!chain_spec.is_fork_active_at_timestamp(BaseUpgrade::V1, 54));
+        assert!(chain_spec.is_fork_active_at_timestamp(BaseUpgrade::V1, 55));
+        assert!(chain_spec.is_fork_active_at_timestamp(EthereumHardfork::Osaka, 55));
     }
 
     #[test]

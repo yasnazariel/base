@@ -5,19 +5,57 @@
 
 use alloy_eips::{Encodable2718, Typed2718};
 use alloy_evm::{FromRecoveredTx, FromTxWithEncoded};
-use alloy_primitives::{Address, Bytes, U256};
-use base_revm::{Eip8130Call, Eip8130Parts, Eip8130StorageWrite, DepositTransactionParts, OpTransaction};
+use alloy_primitives::{Address, B256, Bytes, U256};
+use base_revm::{
+    DepositTransactionParts, Eip8130Call, Eip8130Parts, Eip8130StorageWrite, OpTransaction,
+};
 use revm::context::TxEnv;
 
 use crate::{
-    AccountChangeEntry, OpTxEnvelope, TxEip8130, TxDeposit, auto_delegation_code,
+    AccountChangeEntry, OpTxEnvelope, TxDeposit, TxEip8130, auto_delegation_code,
     config_change_writes, owner_registration_writes,
 };
+#[cfg(feature = "native-verifier")]
+use crate::{
+    NativeVerifyResult, ParsedSenderAuth, VERIFIER_K1, parse_sender_auth, sender_signature_hash,
+    try_native_verify,
+};
+
+#[cfg(feature = "native-verifier")]
+fn derive_sender_owner_id(tx: &TxEip8130) -> B256 {
+    let parsed = match parse_sender_auth(tx) {
+        Ok(parsed) => parsed,
+        Err(_) => return B256::ZERO,
+    };
+    let sig_hash = sender_signature_hash(tx);
+
+    match parsed {
+        ParsedSenderAuth::Eoa { signature } => {
+            let signature = Bytes::copy_from_slice(&signature);
+            match try_native_verify(VERIFIER_K1, &signature, sig_hash) {
+                NativeVerifyResult::Verified(owner_id) => owner_id,
+                NativeVerifyResult::Invalid(_) | NativeVerifyResult::Unsupported => B256::ZERO,
+            }
+        }
+        ParsedSenderAuth::Configured { verifier_type, data } => {
+            match try_native_verify(verifier_type, &data, sig_hash) {
+                NativeVerifyResult::Verified(owner_id) => owner_id,
+                NativeVerifyResult::Invalid(_) | NativeVerifyResult::Unsupported => B256::ZERO,
+            }
+        }
+    }
+}
+
+#[cfg(not(feature = "native-verifier"))]
+fn derive_sender_owner_id(_tx: &TxEip8130) -> B256 {
+    B256::ZERO
+}
 
 /// Build [`Eip8130Parts`] from a decoded [`TxEip8130`] for use by the handler.
 fn build_eip8130_parts(tx: &TxEip8130) -> Eip8130Parts {
     let sender = tx.effective_sender();
     let payer = tx.effective_payer();
+    let owner_id = derive_sender_owner_id(tx);
 
     let has_create_entry =
         tx.account_changes.iter().any(|e| matches!(e, AccountChangeEntry::Create(_)));
@@ -52,11 +90,7 @@ fn build_eip8130_parts(tx: &TxEip8130) -> Eip8130Parts {
         .map(|phase| {
             phase
                 .iter()
-                .map(|call| Eip8130Call {
-                    to: call.to,
-                    data: call.data.clone(),
-                    value: U256::ZERO,
-                })
+                .map(|call| Eip8130Call { to: call.to, data: call.data.clone(), value: U256::ZERO })
                 .collect()
         })
         .collect();
@@ -64,6 +98,7 @@ fn build_eip8130_parts(tx: &TxEip8130) -> Eip8130Parts {
     Eip8130Parts {
         sender,
         payer,
+        owner_id,
         nonce_key: tx.nonce_key,
         has_create_entry,
         auto_delegation_code: auto_delegation_code(),
@@ -205,5 +240,70 @@ impl FromTxWithEncoded<TxDeposit> for OpTransaction<TxEnv> {
             is_system_transaction: tx.is_system_transaction,
         };
         Self { base, enveloped_tx: Some(encoded), deposit, eip8130: Default::default() }
+    }
+}
+
+#[cfg(all(test, feature = "native-verifier"))]
+mod tests {
+    use alloy_primitives::keccak256;
+    use k256::{
+        ecdsa::{SigningKey, signature::hazmat::PrehashSigner},
+        elliptic_curve::rand_core::OsRng,
+    };
+
+    use super::*;
+
+    fn address_from_signing_key(signing_key: &SigningKey) -> Address {
+        let pubkey = signing_key.verifying_key().to_encoded_point(false);
+        let hash = keccak256(&pubkey.as_bytes()[1..]);
+        Address::from_slice(&hash[12..])
+    }
+
+    #[test]
+    fn derive_owner_id_for_configured_k1_sender() {
+        let signing_key = SigningKey::random(&mut OsRng);
+        let sender = address_from_signing_key(&signing_key);
+
+        let mut tx = TxEip8130 {
+            chain_id: 8453,
+            from: sender,
+            nonce_key: U256::ZERO,
+            nonce_sequence: 7,
+            max_priority_fee_per_gas: 1,
+            max_fee_per_gas: 1,
+            gas_limit: 21_000,
+            ..Default::default()
+        };
+
+        let sig_hash = sender_signature_hash(&tx);
+        let (signature, recovery_id) = signing_key.sign_prehash(sig_hash.as_slice()).unwrap();
+        let mut auth = Vec::with_capacity(66);
+        auth.push(VERIFIER_K1);
+        auth.extend_from_slice(&signature.to_bytes());
+        auth.push(recovery_id.to_byte());
+        tx.sender_auth = Bytes::from(auth);
+
+        let owner_id = derive_sender_owner_id(&tx);
+        let mut expected = [0u8; 32];
+        expected[..20].copy_from_slice(sender.as_slice());
+        assert_eq!(owner_id, B256::from(expected));
+    }
+
+    #[test]
+    fn derive_owner_id_unsupported_verifier_returns_zero() {
+        let tx = TxEip8130 {
+            from: Address::repeat_byte(0x11),
+            sender_auth: Bytes::from(
+                [
+                    0x00u8, // custom verifier
+                    0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22,
+                    0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22,
+                ]
+                .to_vec(),
+            ),
+            ..Default::default()
+        };
+
+        assert_eq!(derive_sender_owner_id(&tx), B256::ZERO);
     }
 }

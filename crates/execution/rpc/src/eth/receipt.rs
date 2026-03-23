@@ -6,9 +6,11 @@ use alloy_consensus::{BlockHeader, Receipt, ReceiptWithBloom, TxReceipt};
 use alloy_eips::eip2718::Encodable2718;
 use alloy_rpc_types_eth::{Log, TransactionReceipt};
 use base_alloy_chains::BaseUpgrades;
-use base_alloy_consensus::{OpReceipt, OpTransaction};
+use base_alloy_consensus::{OpEip8130Transaction, OpReceipt, OpTransaction};
 use base_alloy_flz::tx_estimated_size_fjord as estimate_tx_compressed_size;
-use base_alloy_rpc_types::{L1BlockInfo, OpTransactionReceipt, OpTransactionReceiptFields};
+use base_alloy_rpc_types::{
+    Eip8130ReceiptFields, L1BlockInfo, OpTransactionReceipt, OpTransactionReceiptFields,
+};
 use base_execution_evm::RethL1BlockInfo;
 use reth_chainspec::{ChainSpecProvider, EthChainSpec};
 use reth_node_api::NodePrimitives;
@@ -45,7 +47,7 @@ impl<Provider> OpReceiptConverter<Provider> {
 
 impl<Provider, N> ReceiptConverter<N> for OpReceiptConverter<Provider>
 where
-    N: NodePrimitives<SignedTx: OpTransaction, Receipt = OpReceipt>,
+    N: NodePrimitives<SignedTx: OpTransaction + OpEip8130Transaction, Receipt = OpReceipt>,
     Provider: BlockReader<Block = N::Block>
         + ChainSpecProvider<ChainSpec: BaseUpgrades>
         + Debug
@@ -278,6 +280,26 @@ pub struct OpReceiptBuilder {
     pub core_receipt: TransactionReceipt<ReceiptWithBloom<OpReceipt<Log>>>,
     /// Additional OP receipt fields.
     pub op_receipt_fields: OpTransactionReceiptFields,
+    /// Optional EIP-8130 receipt extension fields.
+    pub eip8130_fields: Option<Eip8130ReceiptFields>,
+}
+
+/// Infers per-phase EIP-8130 statuses from receipt-level status when possible.
+///
+/// Exact reconstruction is possible in these cases:
+/// - zero phases: empty
+/// - one phase: equals transaction status
+/// - transaction failed: all phases failed
+///
+/// For successful multi-phase transactions, the exact per-phase outcome is not
+/// recoverable from persisted canonical receipt fields alone.
+fn infer_eip8130_phase_statuses(phase_count: usize, tx_success: bool) -> Vec<bool> {
+    match (phase_count, tx_success) {
+        (0, _) => Vec::new(),
+        (1, status) => vec![status],
+        (_, false) => vec![false; phase_count],
+        (_, true) => Vec::new(),
+    }
 }
 
 impl OpReceiptBuilder {
@@ -288,7 +310,7 @@ impl OpReceiptBuilder {
         l1_block_info: &mut base_revm::L1BlockInfo,
     ) -> Result<Self, OpEthApiError>
     where
-        N: NodePrimitives<SignedTx: OpTransaction, Receipt = OpReceipt>,
+        N: NodePrimitives<SignedTx: OpTransaction + OpEip8130Transaction, Receipt = OpReceipt>,
     {
         let timestamp = input.meta.timestamp;
         let block_number = input.meta.block_number;
@@ -329,17 +351,24 @@ impl OpReceiptBuilder {
             .l1_block_info(chain_spec, tx_signed, l1_block_info)?
             .build();
 
-        Ok(Self { core_receipt, op_receipt_fields })
+        let eip8130_fields = tx_signed.as_eip8130().map(|tx| {
+            let tx = tx.inner();
+            let phase_statuses =
+                infer_eip8130_phase_statuses(tx.calls.len(), core_receipt.inner.status());
+            Eip8130ReceiptFields { payer: tx.effective_payer(), phase_statuses }
+        });
+
+        Ok(Self { core_receipt, op_receipt_fields, eip8130_fields })
     }
 
     /// Builds [`OpTransactionReceipt`] by combining core (l1) receipt fields and additional OP
     /// receipt fields.
     pub fn build(self) -> OpTransactionReceipt {
-        let Self { core_receipt: inner, op_receipt_fields } = self;
+        let Self { core_receipt: inner, op_receipt_fields, eip8130_fields } = self;
 
         let OpTransactionReceiptFields { l1_block_info, .. } = op_receipt_fields;
 
-        OpTransactionReceipt { inner, l1_block_info, eip8130_fields: None }
+        OpTransactionReceipt { inner, l1_block_info, eip8130_fields }
     }
 }
 
@@ -354,6 +383,15 @@ mod tests {
     use reth_primitives_traits::Recovered;
 
     use super::*;
+
+    #[test]
+    fn infer_phase_statuses_rules() {
+        assert_eq!(infer_eip8130_phase_statuses(0, true), Vec::<bool>::new());
+        assert_eq!(infer_eip8130_phase_statuses(1, true), vec![true]);
+        assert_eq!(infer_eip8130_phase_statuses(1, false), vec![false]);
+        assert_eq!(infer_eip8130_phase_statuses(3, false), vec![false, false, false]);
+        assert_eq!(infer_eip8130_phase_statuses(3, true), Vec::<bool>::new());
+    }
 
     /// OP Mainnet transaction at index 0 in block 124665056.
     ///

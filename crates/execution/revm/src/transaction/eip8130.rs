@@ -7,7 +7,7 @@
 
 use std::vec::Vec;
 
-use revm::primitives::{Address, Bytes, U256};
+use revm::primitives::{Address, B256, Bytes, U256};
 
 /// A single call within an AA transaction phase.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -64,6 +64,8 @@ pub struct Eip8130Parts {
     pub sender: Address,
     /// The effective payer address (same as sender if self-pay).
     pub payer: Address,
+    /// Authenticated owner identifier from sender auth.
+    pub owner_id: B256,
     /// Nonce key for 2D nonce slot calculation.
     pub nonce_key: U256,
     /// Whether the tx includes a create entry (determines auto-delegation skip).
@@ -155,6 +157,7 @@ mod tests {
         let parts = Eip8130Parts::default();
         assert_eq!(parts.sender, Address::ZERO);
         assert_eq!(parts.payer, Address::ZERO);
+        assert_eq!(parts.owner_id, B256::ZERO);
         assert_eq!(parts.nonce_key, U256::ZERO);
         assert!(!parts.has_create_entry);
         assert!(parts.auto_delegation_code.is_empty());

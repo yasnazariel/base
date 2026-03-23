@@ -23,16 +23,16 @@ use revm::{
     interpreter::{
         CallOutcome, Gas, InitialAndFloorGas, InstructionResult, InterpreterResult, SharedMemory,
         interpreter::EthInterpreter,
-        interpreter_action::{
-            CallInput, CallInputs, CallScheme, CallValue, FrameInit, FrameInput,
-        },
+        interpreter_action::{CallInput, CallInputs, CallScheme, CallValue, FrameInit, FrameInput},
     },
     primitives::{Address, U256, hardfork::SpecId, keccak256},
 };
 
 use crate::{
-    Eip8130PhaseResult, L1BlockInfo, OpContextTr, OpHaltReason, OpSpecId, encode_phase_statuses,
+    Eip8130PhaseResult, Eip8130TxContext, L1BlockInfo, OpContextTr, OpHaltReason, OpSpecId,
+    clear_eip8130_tx_context,
     constants::{BASE_FEE_RECIPIENT, L1_FEE_RECIPIENT, OPERATOR_FEE_RECIPIENT},
+    encode_phase_statuses, set_eip8130_tx_context,
     transaction::{DEPOSIT_TRANSACTION_TYPE, OpTransactionError, OpTxTr},
 };
 
@@ -40,9 +40,8 @@ use crate::{
 const EIP8130_TX_TYPE: u8 = 0x05;
 
 /// NonceManager system contract address (0x…aa02).
-const NONCE_MANAGER_ADDRESS: Address = Address::new([
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xaa, 0x02,
-]);
+const NONCE_MANAGER_ADDRESS: Address =
+    Address::new([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xaa, 0x02]);
 
 /// Base storage slot for the nonce mapping in NonceManager (slot index 1).
 const NONCE_BASE_SLOT: U256 = U256::from_limbs([1, 0, 0, 0]);
@@ -189,12 +188,21 @@ where
             *chain = L1BlockInfo::try_fetch(journal.db_mut(), block.number(), spec)?;
         }
 
+        // Clear any stale EIP-8130 context from a previous transaction.
+        clear_eip8130_tx_context();
+
         // AA transactions: deduct gas from payer, increment NonceManager nonce,
         // auto-delegate bare EOAs, and apply pre-execution storage writes.
         if tx.tx_type() == EIP8130_TX_TYPE {
             let sender = tx.caller();
             let nonce_sequence = tx.nonce();
             let eip8130 = tx.eip8130_parts().clone();
+
+            set_eip8130_tx_context(Eip8130TxContext::from((
+                &eip8130,
+                tx.gas_limit(),
+                U256::from(tx.max_fee_per_gas()),
+            )));
 
             // --- Gas deduction from payer ---
             let mut payer_account = journal.load_account_with_code_mut(sender)?.data;
@@ -220,8 +228,7 @@ where
             payer_account.set_balance(balance);
 
             // Check if sender is a bare EOA (no code) for auto-delegation.
-            let sender_has_code =
-                payer_account.account().info.code_hash != keccak256([]);
+            let sender_has_code = payer_account.account().info.code_hash != keccak256([]);
             drop(payer_account);
 
             // --- Nonce increment in NonceManager ---
@@ -236,7 +243,10 @@ where
             // If sender has no code and there's no create entry deploying new
             // code, set EIP-7702 delegation designator pointing at the
             // DEFAULT_ACCOUNT_ADDRESS.
-            if !sender_has_code && !eip8130.has_create_entry && !eip8130.auto_delegation_code.is_empty() {
+            if !sender_has_code
+                && !eip8130.has_create_entry
+                && !eip8130.auto_delegation_code.is_empty()
+            {
                 let code = revm::bytecode::Bytecode::new_raw(eip8130.auto_delegation_code.clone());
                 let mut acc = journal.load_account_with_code_mut(sender)?.data;
                 acc.set_code_and_hash_slow(code);
@@ -374,18 +384,11 @@ where
 
         let output = encode_phase_statuses(&phase_results);
 
-        let instruction_result = if any_phase_succeeded {
-            InstructionResult::Stop
-        } else {
-            InstructionResult::Revert
-        };
+        let instruction_result =
+            if any_phase_succeeded { InstructionResult::Stop } else { InstructionResult::Revert };
 
         let mut frame_result = FrameResult::Call(CallOutcome::new(
-            InterpreterResult {
-                result: instruction_result,
-                output,
-                gas: result_gas,
-            },
+            InterpreterResult { result: instruction_result, output, gas: result_gas },
             0..0,
         ));
 
@@ -1018,10 +1021,7 @@ mod tests {
         );
         db.insert_account_info(
             NONCE_MANAGER_ADDRESS,
-            AccountInfo {
-                code: Some(Bytecode::new_legacy(bytes!("FE"))),
-                ..Default::default()
-            },
+            AccountInfo { code: Some(Bytecode::new_legacy(bytes!("FE"))), ..Default::default() },
         );
         for (addr, code) in accounts {
             db.insert_account_info(
@@ -1129,7 +1129,7 @@ mod tests {
         let result = run_eip8130_tx(
             sender,
             &[
-                (target_ok, Bytecode::new_legacy(bytes!("00"))),       // STOP
+                (target_ok, Bytecode::new_legacy(bytes!("00"))), // STOP
                 (target_fail, Bytecode::new_legacy(bytes!("60006000FD"))), // REVERT
             ],
             Eip8130Parts {
@@ -1195,5 +1195,81 @@ mod tests {
         assert!(result.is_success());
         assert!(result.gas_used() > 0, "some gas should be spent");
         assert!(result.gas_used() <= gas_limit, "cannot spend more than limit");
+    }
+
+    #[test]
+    fn test_eip8130_owner_id_visible_through_tx_context() {
+        let sender = Address::from([0x11; 20]);
+        let target = Address::from([0x44; 20]);
+        let owner_id = B256::from([0xAB; 32]);
+
+        // Runtime for OwnerIdProbe:
+        // - probe(): reads TxContext.getOwnerId() and stores it at slot 0
+        // - lastOwnerId(): returns slot 0
+        let probe_runtime = Bytecode::new_legacy(bytes!(
+            "608060405234801561000f575f5ffd5b5060043610610034575f3560e01c80634320a6cb14610038578063b74af5a914610056575b5f5ffd5b610040610074565b60405161004d9190610111565b60405180910390f35b61005e610079565b60405161006b9190610111565b60405180910390f35b5f5481565b5f5f61aa0373ffffffffffffffffffffffffffffffffffffffff16631f5072f26040518163ffffffff1660e01b8152600401602060405180830381865afa1580156100c6573d5f5f3e3d5ffd5b505050506040513d601f19601f820116820180604052508101906100ea9190610158565b9050805f819055508091505090565b5f819050919050565b61010b816100f9565b82525050565b5f6020820190506101245f830184610102565b92915050565b5f5ffd5b610137816100f9565b8114610141575f5ffd5b50565b5f815190506101528161012e565b92915050565b5f6020828403121561016d5761016c61012a565b5b5f61017a84828501610144565b9150509291505056fea26469706673582212203ca48096bb84d6eb04b36713b485cfdc832bcb25ec90dc9b384decb8a8ba23ee64736f6c63430008210033"
+        ));
+
+        let mut db = InMemoryDB::default();
+        db.insert_account_info(
+            sender,
+            AccountInfo { balance: U256::from(10_000_000), ..Default::default() },
+        );
+        db.insert_account_info(
+            NONCE_MANAGER_ADDRESS,
+            AccountInfo { code: Some(Bytecode::new_legacy(bytes!("FE"))), ..Default::default() },
+        );
+        db.insert_account_info(
+            target,
+            AccountInfo { code: Some(probe_runtime), ..Default::default() },
+        );
+
+        let mut tx = OpTransaction::builder()
+            .base(
+                TxEnv::builder()
+                    .tx_type(Some(0x05))
+                    .caller(sender)
+                    .gas_limit(300_000)
+                    .kind(TxKind::Call(sender)),
+            )
+            .enveloped_tx(Some(bytes!("05FACADE")))
+            .build_fill();
+        tx.eip8130 = Eip8130Parts {
+            sender,
+            payer: sender,
+            owner_id,
+            call_phases: vec![vec![Eip8130Call {
+                to: target,
+                data: bytes!("b74af5a9"), // probe()
+                value: U256::ZERO,
+            }]],
+            ..Default::default()
+        };
+
+        let ctx = Context::op()
+            .with_db(db)
+            .with_tx(tx)
+            .with_chain(L1BlockInfo {
+                l2_block: Some(U256::ZERO),
+                operator_fee_scalar: Some(U256::ZERO),
+                operator_fee_constant: Some(U256::ZERO),
+                ..Default::default()
+            })
+            .with_cfg(CfgEnv::new_with_spec(OpSpecId::BASE_V1));
+        let mut evm = ctx.build_op();
+
+        let mut handler =
+            OpHandler::<_, EVMError<_, OpTransactionError>, EthFrame<EthInterpreter>>::new();
+        let result = handler.run(&mut evm).unwrap();
+        assert!(result.is_success(), "probe call should succeed");
+
+        let account =
+            evm.ctx().journal_mut().load_account(target).expect("target account should be loaded");
+        let slot = account.storage.get(&U256::ZERO).expect("probe should write slot 0");
+        assert_eq!(
+            slot.present_value(),
+            U256::from_be_bytes(owner_id.0),
+            "slot0 should store owner_id"
+        );
     }
 }

@@ -1,21 +1,75 @@
 //! Contains Base specific precompiles.
-use std::{boxed::Box, string::String};
+use std::{boxed::Box, cell::RefCell, string::String};
 
 use revm::{
-    context::Cfg,
-    context_interface::ContextTr,
+    Database,
+    context::{Cfg, LocalContextTr},
+    context_interface::{ContextTr, Transaction},
     handler::{EthPrecompiles, PrecompileProvider},
-    interpreter::{CallInputs, InterpreterResult},
+    interpreter::{CallInput, CallInputs, Gas, InstructionResult, InterpreterResult},
     precompile::{
         self, Precompile, PrecompileError, PrecompileId, PrecompileResult, Precompiles, bn254,
         modexp, secp256r1,
     },
-    primitives::{Address, OnceLock, hardfork::SpecId},
+    primitives::{Address, B256, Bytes, OnceLock, U256, hardfork::SpecId, keccak256},
 };
 
-use crate::OpSpecId;
+use crate::{Eip8130Parts, OpSpecId, transaction::OpTxTr};
 
-/// Base precompile provider
+thread_local! {
+    static EIP8130_TX_CONTEXT: RefCell<Option<Eip8130TxContext>> = const { RefCell::new(None) };
+}
+
+/// Lightweight snapshot of EIP-8130 tx fields needed by the TxContext precompile.
+/// Stored in a thread-local so DynPrecompile closures (which only receive
+/// `EvmInternals`) can access them without transient storage.
+#[derive(Clone, Debug)]
+pub struct Eip8130TxContext {
+    /// Effective sender address.
+    pub sender: Address,
+    /// Effective payer address.
+    pub payer: Address,
+    /// Owner ID from sender authentication.
+    pub owner_id: B256,
+    /// Transaction gas limit.
+    pub gas_limit: u64,
+    /// `gas_limit * max_fee_per_gas`.
+    pub max_cost: U256,
+}
+
+/// Sets the EIP-8130 transaction context for the current thread.
+/// Called by the handler before EVM execution of an AA transaction.
+pub fn set_eip8130_tx_context(ctx: Eip8130TxContext) {
+    EIP8130_TX_CONTEXT.with(|c| *c.borrow_mut() = Some(ctx));
+}
+
+/// Clears the EIP-8130 transaction context for the current thread.
+/// Called by the handler before processing any transaction (to avoid stale state).
+pub fn clear_eip8130_tx_context() {
+    EIP8130_TX_CONTEXT.with(|c| *c.borrow_mut() = None);
+}
+
+/// Reads the current EIP-8130 transaction context from the thread-local.
+/// Returns `None` for non-AA transactions.
+pub fn get_eip8130_tx_context() -> Option<Eip8130TxContext> {
+    EIP8130_TX_CONTEXT.with(|c| c.borrow().clone())
+}
+
+impl From<(&Eip8130Parts, u64, U256)> for Eip8130TxContext {
+    fn from((parts, gas_limit, max_fee_per_gas): (&Eip8130Parts, u64, U256)) -> Self {
+        Self {
+            sender: parts.sender,
+            payer: parts.payer,
+            owner_id: parts.owner_id,
+            gas_limit,
+            max_cost: U256::from(gas_limit) * max_fee_per_gas,
+        }
+    }
+}
+
+/// Base precompile provider that intercepts EIP-8130 system precompile
+/// addresses (TxContext, NonceManager) and delegates everything else
+/// to the standard Ethereum precompiles.
 #[derive(Debug, Clone)]
 pub struct BasePrecompiles {
     /// Inner precompile provider is same as Ethereums.
@@ -130,9 +184,245 @@ impl BasePrecompiles {
     }
 }
 
+/// EIP-8130 transaction type byte.
+const EIP8130_TX_TYPE: u8 = 0x05;
+
+/// NonceManager system precompile address.
+pub const NONCE_MANAGER_ADDRESS: Address =
+    Address::new([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xaa, 0x02]);
+
+/// TxContext system precompile address.
+pub const TX_CONTEXT_ADDRESS: Address =
+    Address::new([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xaa, 0x03]);
+
+/// Base storage slot for NonceManager nonce mapping.
+pub const NONCE_BASE_SLOT: U256 = U256::from_limbs([1, 0, 0, 0]);
+
+/// Gas cost for TxContext precompile calls.
+pub const TX_CONTEXT_GAS: u64 = 100;
+
+/// Gas cost for NonceManager precompile calls.
+pub const NONCE_MANAGER_GAS: u64 = 2_100;
+
+fn eip8130_precompiles_enabled(spec: OpSpecId) -> bool {
+    matches!(spec, OpSpecId::BASE_V1)
+}
+
+/// Computes the 4-byte function selector from a Solidity signature.
+pub fn selector(sig: &[u8]) -> [u8; 4] {
+    let h = keccak256(sig);
+    [h[0], h[1], h[2], h[3]]
+}
+
+/// Computes the NonceManager storage slot for `nonce[account][nonce_key]`.
+pub fn aa_nonce_slot(account: Address, nonce_key: U256) -> U256 {
+    let inner = {
+        let mut buf = [0u8; 64];
+        buf[12..32].copy_from_slice(account.as_slice());
+        let base_bytes = NONCE_BASE_SLOT.to_be_bytes::<32>();
+        buf[32..64].copy_from_slice(&base_bytes);
+        keccak256(buf)
+    };
+
+    let outer = {
+        let mut buf = [0u8; 64];
+        buf[0..32].copy_from_slice(&nonce_key.to_be_bytes::<32>());
+        buf[32..64].copy_from_slice(inner.as_slice());
+        keccak256(buf)
+    };
+
+    U256::from_be_bytes(outer.0)
+}
+
+/// ABI-encodes an address as a left-padded 32-byte word.
+pub fn encode_address(address: Address) -> Bytes {
+    let mut out = [0u8; 32];
+    out[12..32].copy_from_slice(address.as_slice());
+    Bytes::from(out.to_vec())
+}
+
+/// ABI-encodes a U256 as a big-endian 32-byte word.
+pub fn encode_u256(value: U256) -> Bytes {
+    Bytes::from(value.to_be_bytes::<32>().to_vec())
+}
+
+/// ABI-encodes a raw 32-byte value.
+pub fn encode_b256(value: [u8; 32]) -> Bytes {
+    Bytes::from(value.to_vec())
+}
+
+fn map_precompile_output(
+    gas_limit: u64,
+    output: Result<(u64, Bytes), String>,
+) -> InterpreterResult {
+    let mut result = InterpreterResult {
+        result: InstructionResult::Return,
+        gas: Gas::new(gas_limit),
+        output: Bytes::new(),
+    };
+
+    match output {
+        Ok((gas_used, bytes)) => {
+            if gas_limit < gas_used {
+                result.result = InstructionResult::PrecompileOOG;
+            } else {
+                let enough_gas = result.gas.record_cost(gas_used);
+                debug_assert!(enough_gas, "gas should be sufficient after explicit limit check");
+                result.output = bytes;
+            }
+        }
+        Err(_) => {
+            result.result = InstructionResult::PrecompileError;
+        }
+    }
+
+    result
+}
+
+fn run_nonce_manager_precompile<CTX>(
+    context: &mut CTX,
+    input: &[u8],
+) -> Result<(u64, Bytes), String>
+where
+    CTX: ContextTr<Cfg: Cfg<Spec = OpSpecId>, Tx: OpTxTr>,
+{
+    let get_nonce_selector = selector(b"getNonce(address,uint192)");
+    if input.len() < 4 || input[0..4] != get_nonce_selector {
+        return Err("unknown nonce manager selector".to_string());
+    }
+    if input.len() < 4 + 32 + 32 {
+        return Err("invalid nonce manager input".to_string());
+    }
+
+    let account = Address::from_slice(&input[4 + 12..4 + 32]);
+    let nonce_key = U256::from_be_slice(&input[4 + 32..4 + 64]);
+    let slot = aa_nonce_slot(account, nonce_key);
+
+    let storage_value =
+        context.db_mut().storage(NONCE_MANAGER_ADDRESS, slot.into()).map_err(|e| e.to_string())?;
+
+    let mut out = [0u8; 32];
+    let storage_bytes = storage_value.to_be_bytes::<32>();
+    out[24..32].copy_from_slice(&storage_bytes[24..32]);
+
+    Ok((NONCE_MANAGER_GAS, Bytes::from(out.to_vec())))
+}
+
+fn run_tx_context_precompile<CTX>(context: &CTX, input: &[u8]) -> Result<(u64, Bytes), String>
+where
+    CTX: ContextTr<Cfg: Cfg<Spec = OpSpecId>, Tx: OpTxTr>,
+{
+    if input.len() < 4 {
+        return Err("invalid tx context input".to_string());
+    }
+
+    let tx = context.tx();
+    let (sender, payer, owner_id, gas_limit, max_cost) = if tx.tx_type() == EIP8130_TX_TYPE {
+        let eip8130 = tx.eip8130_parts();
+        (
+            eip8130.sender,
+            eip8130.payer,
+            eip8130.owner_id.0,
+            tx.gas_limit(),
+            U256::from(tx.gas_limit()) * U256::from(tx.max_fee_per_gas()),
+        )
+    } else {
+        (Address::ZERO, Address::ZERO, [0u8; 32], 0, U256::ZERO)
+    };
+
+    let selector_bytes = &input[0..4];
+    let output = if selector_bytes == selector(b"getSender()") {
+        encode_address(sender)
+    } else if selector_bytes == selector(b"getPayer()") {
+        encode_address(payer)
+    } else if selector_bytes == selector(b"getOwnerId()") {
+        encode_b256(owner_id)
+    } else if selector_bytes == selector(b"getMaxCost()") {
+        encode_u256(max_cost)
+    } else if selector_bytes == selector(b"getGasLimit()") {
+        encode_u256(U256::from(gas_limit))
+    } else {
+        return Err("unknown tx context selector".to_string());
+    };
+
+    Ok((TX_CONTEXT_GAS, output))
+}
+
+/// Returns precompiles for Fjord spec.
+pub fn fjord() -> &'static Precompiles {
+    static INSTANCE: OnceLock<Precompiles> = OnceLock::new();
+    INSTANCE.get_or_init(|| {
+        let mut precompiles = Precompiles::cancun().clone();
+        precompiles.extend([secp256r1::P256VERIFY]);
+        precompiles
+    })
+}
+
+/// Returns precompiles for Granite spec.
+pub fn granite() -> &'static Precompiles {
+    static INSTANCE: OnceLock<Precompiles> = OnceLock::new();
+    INSTANCE.get_or_init(|| {
+        let mut precompiles = fjord().clone();
+        precompiles.extend([bn254_pair::GRANITE]);
+        precompiles
+    })
+}
+
+/// Returns precompiles for isthmus spec.
+pub fn isthmus() -> &'static Precompiles {
+    static INSTANCE: OnceLock<Precompiles> = OnceLock::new();
+    INSTANCE.get_or_init(|| {
+        let mut precompiles = granite().clone();
+        precompiles.extend(precompile::bls12_381::precompiles());
+        precompiles.extend([
+            bls12_381::ISTHMUS_G1_MSM,
+            bls12_381::ISTHMUS_G2_MSM,
+            bls12_381::ISTHMUS_PAIRING,
+        ]);
+        precompiles
+    })
+}
+
+/// Returns precompiles for jovian spec.
+pub fn jovian() -> &'static Precompiles {
+    static INSTANCE: OnceLock<Precompiles> = OnceLock::new();
+    INSTANCE.get_or_init(|| {
+        let mut precompiles = isthmus().clone();
+
+        let mut to_remove = Precompiles::default();
+        to_remove.extend([
+            bn254::pair::ISTANBUL,
+            bls12_381::ISTHMUS_G1_MSM,
+            bls12_381::ISTHMUS_G2_MSM,
+            bls12_381::ISTHMUS_PAIRING,
+        ]);
+
+        precompiles.difference(&to_remove);
+
+        precompiles.extend([
+            bn254_pair::JOVIAN,
+            bls12_381::JOVIAN_G1_MSM,
+            bls12_381::JOVIAN_G2_MSM,
+            bls12_381::JOVIAN_PAIRING,
+        ]);
+
+        precompiles
+    })
+}
+
+/// Returns precompiles for the Base V1 spec.
+pub fn base_v1() -> &'static Precompiles {
+    static INSTANCE: OnceLock<Precompiles> = OnceLock::new();
+    INSTANCE.get_or_init(|| {
+        let mut precompiles = jovian().clone();
+        precompiles.extend([modexp::OSAKA, secp256r1::P256VERIFY_OSAKA]);
+        precompiles
+    })
+}
+
 impl<CTX> PrecompileProvider<CTX> for BasePrecompiles
 where
-    CTX: ContextTr<Cfg: Cfg<Spec = OpSpecId>>,
+    CTX: ContextTr<Cfg: Cfg<Spec = OpSpecId>, Tx: OpTxTr>,
 {
     type Output = InterpreterResult;
 
@@ -151,17 +441,46 @@ where
         context: &mut CTX,
         inputs: &CallInputs,
     ) -> Result<Option<Self::Output>, String> {
+        let aa_context = context.tx().tx_type() == EIP8130_TX_TYPE;
+        if eip8130_precompiles_enabled(self.spec) || aa_context {
+            let input_bytes: std::vec::Vec<u8> = match &inputs.input {
+                CallInput::SharedBuffer(range) => context
+                    .local()
+                    .shared_memory_buffer_slice(range.clone())
+                    .map(|slice| slice.to_vec())
+                    .unwrap_or_default(),
+                CallInput::Bytes(bytes) => bytes.to_vec(),
+            };
+
+            if inputs.bytecode_address == NONCE_MANAGER_ADDRESS {
+                let output = run_nonce_manager_precompile(context, &input_bytes);
+                return Ok(Some(map_precompile_output(inputs.gas_limit, output)));
+            }
+
+            if inputs.bytecode_address == TX_CONTEXT_ADDRESS {
+                let output = run_tx_context_precompile(context, &input_bytes);
+                return Ok(Some(map_precompile_output(inputs.gas_limit, output)));
+            }
+        }
+
         self.inner.run(context, inputs)
     }
 
     #[inline]
     fn warm_addresses(&self) -> Box<impl Iterator<Item = Address>> {
-        self.inner.warm_addresses()
+        let mut addresses: std::vec::Vec<Address> = self.inner.warm_addresses().collect();
+        if eip8130_precompiles_enabled(self.spec) {
+            addresses.push(NONCE_MANAGER_ADDRESS);
+            addresses.push(TX_CONTEXT_ADDRESS);
+        }
+        Box::new(addresses.into_iter())
     }
 
     #[inline]
     fn contains(&self, address: &Address) -> bool {
-        self.inner.contains(address)
+        (eip8130_precompiles_enabled(self.spec)
+            && (*address == NONCE_MANAGER_ADDRESS || *address == TX_CONTEXT_ADDRESS))
+            || self.inner.contains(address)
     }
 }
 

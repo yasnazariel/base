@@ -21,7 +21,12 @@ mod l1block;
 pub use l1block::L1BlockInfo;
 
 mod precompiles;
-pub use precompiles::{BasePrecompiles, bls12_381, bn254_pair};
+pub use precompiles::{
+    BasePrecompiles, Eip8130TxContext, NONCE_BASE_SLOT, NONCE_MANAGER_ADDRESS, NONCE_MANAGER_GAS,
+    TX_CONTEXT_ADDRESS, TX_CONTEXT_GAS, aa_nonce_slot, base_v1, bls12_381, bn254_pair,
+    clear_eip8130_tx_context, encode_address, encode_b256, encode_u256, fjord, granite,
+    get_eip8130_tx_context, isthmus, jovian, selector, set_eip8130_tx_context,
+};
 
 mod result;
 pub use result::OpHaltReason;

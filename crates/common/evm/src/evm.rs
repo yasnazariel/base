@@ -93,7 +93,13 @@ where
         &mut self,
         tx: Self::Tx,
     ) -> Result<ResultAndState<Self::HaltReason>, Self::Error> {
-        if self.inspect { self.inner.inspect_tx(tx) } else { self.inner.transact(tx) }
+        let result = if self.inspect {
+            self.inner.inspect_one_tx(tx)?
+        } else {
+            self.inner.transact_one(tx)?
+        };
+        let state = self.inner.finalize();
+        Ok(ResultAndState::new(result, state))
     }
 
     fn transact_system_call(
@@ -102,7 +108,9 @@ where
         contract: Address,
         data: Bytes,
     ) -> Result<ResultAndState<Self::HaltReason>, Self::Error> {
-        self.inner.system_call_with_caller(caller, contract, data)
+        let result = self.inner.system_call_one_with_caller(caller, contract, data)?;
+        let state = self.inner.finalize();
+        Ok(ResultAndState::new(result, state))
     }
 
     fn finish(self) -> (Self::DB, EvmEnv<Self::Spec>) {
@@ -138,12 +146,18 @@ mod tests {
     use alloc::vec;
 
     use alloy_evm::{
-        EvmFactory, EvmInternals,
+        Evm, EvmFactory, EvmInternals,
         precompiles::{Precompile, PrecompileInput},
     };
-    use alloy_primitives::{Address, U256};
-    use base_revm::{bls12_381, bn254_pair};
-    use revm::{context::CfgEnv, database::EmptyDB};
+    use alloy_primitives::{Address, Bytes, U256, bytes};
+    use base_revm::{Eip8130Call, Eip8130Parts, OpTransaction, bls12_381, bn254_pair, decode_phase_statuses};
+    use revm::{
+        bytecode::Bytecode,
+        context::{CfgEnv, TxEnv},
+        database::{EmptyDB, InMemoryDB},
+        primitives::TxKind,
+        state::AccountInfo,
+    };
     use rstest::rstest;
 
     use super::*;
@@ -197,5 +211,49 @@ mod tests {
             internals: EvmInternals::from_context(ctx),
         });
         assert!(result.is_err(), "precompile {address} should fail over max input size");
+    }
+
+    #[test]
+    fn transact_raw_uses_op_handler_for_eip8130() {
+        let sender = Address::from([0x11; 20]);
+        let target = Address::from([0x22; 20]);
+
+        let mut db = InMemoryDB::default();
+        db.insert_account_info(
+            sender,
+            AccountInfo { balance: U256::from(10_000_000), ..Default::default() },
+        );
+        db.insert_account_info(
+            target,
+            AccountInfo { code: Some(Bytecode::new_legacy(bytes!("00"))), ..Default::default() },
+        );
+
+        let mut evm = OpEvmFactory::default().create_evm(
+            db,
+            EvmEnv::new(CfgEnv::new_with_spec(OpSpecId::BASE_V1), BlockEnv::default()),
+        );
+
+        let mut tx = OpTransaction::builder()
+            .base(
+                TxEnv::builder()
+                    .tx_type(Some(0x05))
+                    .caller(sender)
+                    .gas_limit(100_000)
+                    .kind(TxKind::Call(sender)),
+            )
+            .enveloped_tx(Some(bytes!("05FACADE")))
+            .build_fill();
+        tx.eip8130 = Eip8130Parts {
+            sender,
+            payer: sender,
+            call_phases: vec![vec![Eip8130Call { to: target, data: Bytes::new(), value: U256::ZERO }]],
+            ..Default::default()
+        };
+
+        let result = evm.transact_raw(tx).expect("EIP-8130 tx should execute");
+        assert!(result.result.is_success(), "AA phase execution should succeed");
+        let statuses =
+            decode_phase_statuses(result.result.output().expect("AA tx should return phase status"));
+        assert_eq!(statuses, vec![true]);
     }
 }

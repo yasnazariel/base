@@ -180,6 +180,11 @@ where
         tx: impl ExecutableTx<Self>,
     ) -> Result<Self::Result, BlockExecutionError> {
         let (tx_env, tx) = tx.into_parts();
+        // Rebuild the EVM tx using our `FromTxWithEncoded` implementation so extended
+        // transaction types (notably EIP-8130) preserve custom fields and tx type.
+        let encoded =
+            tx_env.encoded_bytes().cloned().unwrap_or_else(|| tx.tx().encoded_2718().into());
+        let tx_env = E::Tx::from_encoded_tx(tx.tx(), *tx.signer(), encoded);
         let is_deposit = tx.tx().ty() == DEPOSIT_TRANSACTION_TYPE;
 
         // The sum of the transaction's gas limit, Tg, and the gas utilized in this block prior,
