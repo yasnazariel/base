@@ -18,4 +18,4 @@ metrics = { workspace = true, optional = true }
 [features]
 default = []
 std = []
-metrics = ["std", "dep:metrics"]
+metrics = [ "dep:metrics", "std" ]
