@@ -149,6 +149,7 @@ const sidebar: SidebarItem[] = [
       { text: 'Overview', link: '/protocol/overview' },
       consensusSection,
       executionSection,
+      { text: 'Access Lists', link: '/protocol/access-lists' },
       bridgingSection,
       { text: 'Batcher', link: '/protocol/batcher' },
       { ...sectionItem('protocol/fault-proof', 'Proofs'), collapsed: true },

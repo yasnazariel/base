@@ -49,11 +49,11 @@ strict equivalence with L1 precompile pricing.
 [EIP-7642](https://eips.ethereum.org/EIPS/eip-7642) updates the Ethereum wire protocol to version 69,
 removing legacy fields from the `Status` message and simplifying the handshake.
 
-### Remove Account Balances & Receipts
+### Flashblocks Metadata Changes
 
 The `FlashblocksMetadata` payload transmitted over the Flashblocks WebSocket is simplified in V1.
-The `new_account_balances` and `receipts` fields are removed. The `access_list` field remains but
-will not be populated in V1.
+The `new_account_balances` and `receipts` fields are removed. The `access_list` field is populated
+with the [Flashblock-Level Access List (FAL)](/protocol/access-lists).
 
 **Before:**
 
@@ -80,7 +80,12 @@ will not be populated in V1.
 ```json
 {
   "block_number": 43403718,
-  "access_list": null
+  "access_list": {
+    "min_tx_index": 0,
+    "max_tx_index": 5,
+    "account_changes": ["..."],
+    "fal_hash": "0x..."
+  }
 }
 ```
 

@@ -27,7 +27,7 @@ Only `base-consensus` and `base-reth-node` will  support the Base V1 hardfork. I
 - [EIP-7951: secp256r1 Precompile](/upgrades/v1/exec-engine#secp256r1-precompile-gas-cost)
 - [EIP-7642: eth/69](/upgrades/v1/exec-engine#eth69)
 - [EIP-7910: eth_config RPC Method](/upgrades/v1/exec-engine#eth_config-rpc-method)
-- [Remove Account Balances & Receipts](/upgrades/v1/exec-engine#remove-account-balances--receipts)
+- [Flashblocks Metadata Changes](/upgrades/v1/exec-engine#flashblocks-metadata-changes)
 
 ## Proofs
 
