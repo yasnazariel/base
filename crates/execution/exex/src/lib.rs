@@ -10,7 +10,7 @@
 use std::{sync::Arc, time::Duration};
 
 use alloy_consensus::BlockHeader;
-use alloy_eips::eip1898::BlockWithParent;
+use alloy_eips::{BlockNumHash, eip1898::BlockWithParent};
 use base_execution_trie::{
     OpProofStoragePrunerTask, OpProofsStorage, OpProofsStore, live::LiveTrieCollector,
 };
@@ -220,19 +220,13 @@ where
         self.ensure_initialized()?;
         let sync_target_tx = self.spawn_sync_task();
 
-        // If storage is behind tip, start syncing immediately rather than waiting
-        // for the first notification.
-        let best_block = self.ctx.provider().best_block_number()?;
-        let latest_stored = self.storage.get_latest_block_number()?.map(|(n, _)| n).unwrap_or(0);
-        if latest_stored < best_block {
-            info!(
-                target: "base::exex",
-                latest_stored,
-                best_block,
-                "Storage behind tip, starting sync immediately"
-            );
-            sync_target_tx.send(best_block)?;
-        }
+        let collector = LiveTrieCollector::new(
+            self.ctx.evm_config().clone(),
+            self.ctx.provider().clone(),
+            &self.storage,
+        );
+
+        self.sync_to_tip(&collector).await?;
 
         let prune_task = OpProofStoragePrunerTask::new(
             self.storage.clone(),
@@ -243,12 +237,6 @@ where
         self.ctx
             .task_executor()
             .spawn_with_graceful_shutdown_signal(|signal| Box::pin(prune_task.run(signal)));
-
-        let collector = LiveTrieCollector::new(
-            self.ctx.evm_config().clone(),
-            self.ctx.provider().clone(),
-            &self.storage,
-        );
 
         while let Some(notification) = self.ctx.notifications.try_next().await? {
             self.handle_notification(notification, &collector, &sync_target_tx)?;
@@ -369,6 +357,48 @@ where
             debug!(target: "base::exex", latest_stored = latest, target, "Batch processed, yielding");
             task::yield_now().await;
         }
+    }
+
+    /// Syncs storage to within 256 blocks of the provider's best block.
+    async fn sync_to_tip(
+        &self,
+        collector: &LiveTrieCollector<'_, Node::Evm, Node::Provider, Storage>,
+    ) -> eyre::Result<()> {
+        loop {
+            let best_block = self.ctx.provider().best_block_number()?;
+            let (latest_stored, _) = self
+                .storage
+                .get_latest_block_number()?
+                .unwrap_or_else(|| (0, Default::default()));
+            if best_block.saturating_sub(latest_stored) <= 256 {
+                break;
+            }
+            info!(
+                target: "base::exex",
+                latest_stored,
+                best_block,
+                "Syncing to tip"
+            );
+            Self::process_batch(
+                latest_stored,
+                best_block,
+                self.ctx.provider(),
+                collector,
+                SYNC_BLOCKS_BATCH_SIZE,
+            )?;
+            let (finished_block, finished_hash) = self
+                .storage
+                .get_latest_block_number()?
+                .unwrap_or_else(|| (0, Default::default()));
+            self.ctx
+                .events
+                .send(ExExEvent::FinishedHeight(BlockNumHash::new(
+                    finished_block,
+                    finished_hash,
+                )))?;
+            tokio::task::yield_now().await;
+        }
+        Ok(())
     }
 
     /// Process a batch of blocks from start to target (up to `batch_size`)
