@@ -310,7 +310,8 @@ impl From<Genesis> for OpChainSpec {
 impl From<&BaseChainConfig> for OpChainSpec {
     fn from(cfg: &BaseChainConfig) -> Self {
         let genesis: Genesis =
-            serde_json::from_str(cfg.genesis_json).expect("invalid genesis json");
+            serde_json::from_str(cfg.genesis_json)
+            .unwrap_or_else(|e| panic!("invalid genesis json for chain {}: {e}", cfg.chain_id));
         let hardforks = BaseChainUpgrades::new(BaseUpgrade::forks_for(cfg)).to_chain_hardforks();
         let header = Self::make_genesis_header(&genesis, &hardforks);
         let genesis_header = if cfg.genesis_l2_hash.is_zero() {

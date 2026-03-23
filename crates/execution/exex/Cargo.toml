@@ -60,6 +60,7 @@ metrics = [ "base-execution-trie/metrics", "reth-trie/metrics" ]
 development = [
     "reth-node-builder",
     "base-node-core",
+    "base-alloy-chains",
     "base-execution-chainspec",
     "tempfile.workspace",
 ]
