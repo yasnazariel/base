@@ -1,7 +1,7 @@
 use alloy_consensus::{Transaction, transaction::Recovered};
 use alloy_eips::Encodable2718;
 use alloy_primitives::U256;
-use base_alloy_consensus::{AA_TX_TYPE_ID, TxAa};
+use base_alloy_consensus::{AA_TX_TYPE_ID, TxEip8130};
 use base_revm::{L1BlockInfo, OpSpecId};
 use derive_more::Display;
 use reth_primitives_traits::Account;
@@ -15,16 +15,16 @@ pub enum TxValidationError {
     /// Insufficient funds for L1 gas
     #[display("Insufficient funds for L1 gas: {_0}, account balance: {_1}")]
     InsufficientFundsForL1Gas(U256, U256),
-    /// AA transaction structural error
-    #[display("AA structural error: {_0}")]
-    AaStructuralError(String),
-    /// AA transaction expired
-    #[display("AA transaction expired: expiry={_0}, block_timestamp={_1}")]
-    AaExpired(u64, u64),
+    /// EIP-8130 transaction structural error
+    #[display("EIP-8130 structural error: {_0}")]
+    Eip8130StructuralError(String),
+    /// EIP-8130 transaction expired
+    #[display("EIP-8130 transaction expired: expiry={_0}, block_timestamp={_1}")]
+    Eip8130Expired(u64, u64),
 }
 
-/// Returns `true` if the transaction is an EIP-8130 AA transaction.
-pub fn is_aa_tx<T: Transaction>(tx: &T) -> bool {
+/// Returns `true` if the transaction is an EIP-8130 transaction.
+pub fn is_eip8130_tx<T: Transaction>(tx: &T) -> bool {
     tx.ty() == AA_TX_TYPE_ID
 }
 
@@ -33,24 +33,24 @@ pub fn is_aa_tx<T: Transaction>(tx: &T) -> bool {
 /// Checks structural validity, payer balance coverage, nonce sanity, and expiry.
 /// This is a lightweight pre-check suitable for metering-layer acceptance; full
 /// EVM-level validation (verifier STATICCALL, owner_config) happens later.
-pub fn validate_aa_tx(
-    tx: &TxAa,
+pub fn validate_eip8130_tx(
+    tx: &TxEip8130,
     payer_account: Account,
     block_timestamp: u64,
     l1_block_info: &mut L1BlockInfo,
 ) -> Result<(), TxValidationError> {
     if tx.gas_limit == 0 {
-        return Err(TxValidationError::AaStructuralError("zero gas limit".into()));
+        return Err(TxValidationError::Eip8130StructuralError("zero gas limit".into()));
     }
     if tx.max_fee_per_gas == 0 {
-        return Err(TxValidationError::AaStructuralError("zero max fee per gas".into()));
+        return Err(TxValidationError::Eip8130StructuralError("zero max fee per gas".into()));
     }
     if tx.sender_auth.is_empty() {
-        return Err(TxValidationError::AaStructuralError("empty sender_auth".into()));
+        return Err(TxValidationError::Eip8130StructuralError("empty sender_auth".into()));
     }
 
     if tx.expiry != 0 && tx.expiry < block_timestamp {
-        return Err(TxValidationError::AaExpired(tx.expiry, block_timestamp));
+        return Err(TxValidationError::Eip8130Expired(tx.expiry, block_timestamp));
     }
 
     let max_gas_cost =

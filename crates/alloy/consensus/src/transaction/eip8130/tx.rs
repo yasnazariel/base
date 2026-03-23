@@ -29,7 +29,7 @@ use super::{
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
-pub struct TxAa {
+pub struct TxEip8130 {
     /// Chain ID this transaction targets.
     #[cfg_attr(feature = "serde", serde(with = "alloy_serde::quantity"))]
     pub chain_id: u64,
@@ -69,7 +69,7 @@ pub struct TxAa {
     pub payer_auth: Bytes,
 }
 
-impl TxAa {
+impl TxEip8130 {
     /// Returns `true` if this is an EOA-mode transaction (sender derived via ecrecover).
     pub fn is_eoa(&self) -> bool {
         self.from == Address::ZERO
@@ -293,7 +293,7 @@ impl TxAa {
 // alloy_rlp::Encodable / Decodable
 // ---------------------------------------------------------------------------
 
-impl Encodable for TxAa {
+impl Encodable for TxEip8130 {
     fn encode(&self, out: &mut dyn BufMut) {
         let payload = self.fields_len();
         Header { list: true, payload_length: payload }.encode(out);
@@ -306,7 +306,7 @@ impl Encodable for TxAa {
     }
 }
 
-impl Decodable for TxAa {
+impl Decodable for TxEip8130 {
     fn decode(buf: &mut &[u8]) -> alloy_rlp::Result<Self> {
         Self::rlp_decode(buf)
     }
@@ -316,7 +316,7 @@ impl Decodable for TxAa {
 // Sealable
 // ---------------------------------------------------------------------------
 
-impl Sealable for TxAa {
+impl Sealable for TxEip8130 {
     fn hash_slow(&self) -> B256 {
         self.tx_hash()
     }
@@ -326,19 +326,19 @@ impl Sealable for TxAa {
 // EIP-2718
 // ---------------------------------------------------------------------------
 
-impl Typed2718 for TxAa {
+impl Typed2718 for TxEip8130 {
     fn ty(&self) -> u8 {
         AA_TX_TYPE_ID
     }
 }
 
-impl IsTyped2718 for TxAa {
+impl IsTyped2718 for TxEip8130 {
     fn is_type(ty: u8) -> bool {
         ty == AA_TX_TYPE_ID
     }
 }
 
-impl Encodable2718 for TxAa {
+impl Encodable2718 for TxEip8130 {
     fn type_flag(&self) -> Option<u8> {
         Some(AA_TX_TYPE_ID)
     }
@@ -353,7 +353,7 @@ impl Encodable2718 for TxAa {
     }
 }
 
-impl Decodable2718 for TxAa {
+impl Decodable2718 for TxEip8130 {
     fn typed_decode(ty: u8, buf: &mut &[u8]) -> Eip2718Result<Self> {
         if ty != AA_TX_TYPE_ID {
             return Err(Eip2718Error::UnexpectedType(ty));
@@ -370,7 +370,7 @@ impl Decodable2718 for TxAa {
 // Transaction trait
 // ---------------------------------------------------------------------------
 
-impl Transaction for TxAa {
+impl Transaction for TxEip8130 {
     fn chain_id(&self) -> Option<ChainId> {
         Some(self.chain_id)
     }
@@ -516,8 +516,8 @@ mod tests {
 
     use super::*;
 
-    fn sample_tx() -> TxAa {
-        TxAa {
+    fn sample_tx() -> TxEip8130 {
+        TxEip8130 {
             chain_id: 8453,
             from: Address::repeat_byte(0x01),
             nonce_key: U256::from(0u64),
@@ -543,7 +543,7 @@ mod tests {
         let tx = sample_tx();
         let mut buf = Vec::new();
         tx.encode(&mut buf);
-        let decoded = TxAa::decode(&mut buf.as_slice()).unwrap();
+        let decoded = TxEip8130::decode(&mut buf.as_slice()).unwrap();
         assert_eq!(tx, decoded);
     }
 
@@ -553,7 +553,7 @@ mod tests {
         let mut buf = Vec::new();
         tx.encode_2718(&mut buf);
         assert_eq!(buf[0], AA_TX_TYPE_ID);
-        let decoded = TxAa::decode_2718(&mut buf.as_slice()).unwrap();
+        let decoded = TxEip8130::decode_2718(&mut buf.as_slice()).unwrap();
         assert_eq!(tx, decoded);
         assert_eq!(buf.len(), tx.encode_2718_len());
     }
@@ -602,16 +602,16 @@ mod tests {
 
     #[test]
     fn empty_tx_rlp_round_trip() {
-        let tx = TxAa::default();
+        let tx = TxEip8130::default();
         let mut buf = Vec::new();
         tx.encode(&mut buf);
-        let decoded = TxAa::decode(&mut buf.as_slice()).unwrap();
+        let decoded = TxEip8130::decode(&mut buf.as_slice()).unwrap();
         assert_eq!(tx, decoded);
     }
 
     #[test]
     fn multi_phase_calls_round_trip() {
-        let tx = TxAa {
+        let tx = TxEip8130 {
             calls: vec![
                 vec![
                     Call { to: Address::repeat_byte(1), data: Bytes::from_static(&[0x01]) },
@@ -623,7 +623,7 @@ mod tests {
         };
         let mut buf = Vec::new();
         tx.encode(&mut buf);
-        let decoded = TxAa::decode(&mut buf.as_slice()).unwrap();
+        let decoded = TxEip8130::decode(&mut buf.as_slice()).unwrap();
         assert_eq!(tx.calls.len(), 2);
         assert_eq!(decoded.calls.len(), 2);
         assert_eq!(decoded.calls[0].len(), 2);

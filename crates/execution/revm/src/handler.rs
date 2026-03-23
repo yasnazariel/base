@@ -20,18 +20,24 @@ use revm::{
         pre_execution::{calculate_caller_fee, validate_account_nonce_and_code_with_components},
     },
     inspector::{Inspector, InspectorEvmTr, InspectorHandler},
-    interpreter::{Gas, interpreter::EthInterpreter, interpreter_action::FrameInit},
+    interpreter::{
+        CallOutcome, Gas, InitialAndFloorGas, InstructionResult, InterpreterResult, SharedMemory,
+        interpreter::EthInterpreter,
+        interpreter_action::{
+            CallInput, CallInputs, CallScheme, CallValue, FrameInit, FrameInput,
+        },
+    },
     primitives::{Address, U256, hardfork::SpecId, keccak256},
 };
 
 use crate::{
-    L1BlockInfo, OpContextTr, OpHaltReason, OpSpecId,
+    Eip8130PhaseResult, L1BlockInfo, OpContextTr, OpHaltReason, OpSpecId, encode_phase_statuses,
     constants::{BASE_FEE_RECIPIENT, L1_FEE_RECIPIENT, OPERATOR_FEE_RECIPIENT},
     transaction::{DEPOSIT_TRANSACTION_TYPE, OpTransactionError, OpTxTr},
 };
 
 /// EIP-8130 AA transaction type byte.
-const AA_TX_TYPE: u8 = 0x05;
+const EIP8130_TX_TYPE: u8 = 0x05;
 
 /// NonceManager system contract address (0x…aa02).
 const NONCE_MANAGER_ADDRESS: Address = Address::new([
@@ -130,7 +136,7 @@ where
         // AA transactions skip mainnet env validation (different intrinsic gas
         // model, no legacy nonce/code checks). Structural + signature validation
         // already happened in the mempool.
-        if tx_type == AA_TX_TYPE {
+        if tx_type == EIP8130_TX_TYPE {
             return Ok(());
         }
 
@@ -183,13 +189,14 @@ where
             *chain = L1BlockInfo::try_fetch(journal.db_mut(), block.number(), spec)?;
         }
 
-        // AA transactions: deduct gas from payer (= caller for self-pay),
-        // skip account nonce/code validation, increment NonceManager nonce
-        // instead of bumping the account nonce.
-        if tx.tx_type() == AA_TX_TYPE {
+        // AA transactions: deduct gas from payer, increment NonceManager nonce,
+        // auto-delegate bare EOAs, and apply pre-execution storage writes.
+        if tx.tx_type() == EIP8130_TX_TYPE {
             let sender = tx.caller();
             let nonce_sequence = tx.nonce();
+            let eip8130 = tx.eip8130_parts().clone();
 
+            // --- Gas deduction from payer ---
             let mut payer_account = journal.load_account_with_code_mut(sender)?.data;
             let mut balance = payer_account.account().info.balance;
 
@@ -212,19 +219,36 @@ where
             let balance = calculate_caller_fee(balance, tx, block, cfg)?;
             payer_account.set_balance(balance);
 
-            // Drop the account borrow before sstore.
+            // Check if sender is a bare EOA (no code) for auto-delegation.
+            let sender_has_code =
+                payer_account.account().info.code_hash != keccak256([]);
             drop(payer_account);
 
-            // Increment the 2D nonce in NonceManager storage.
-            // TODO(eip-8130): support non-zero nonce_key (requires extending
-            // OpTxTr or parsing enveloped_tx). For now nonce_key=0 covers the
-            // standard single-channel case.
-            let nonce_key = U256::ZERO;
+            // --- Nonce increment in NonceManager ---
+            let nonce_key = eip8130.nonce_key;
             let slot = aa_nonce_slot(sender, nonce_key);
             let new_nonce = U256::from(nonce_sequence + 1);
 
             journal.load_account(NONCE_MANAGER_ADDRESS)?;
             journal.sstore(NONCE_MANAGER_ADDRESS, slot, new_nonce)?;
+
+            // --- Auto-delegate bare EOAs ---
+            // If sender has no code and there's no create entry deploying new
+            // code, set EIP-7702 delegation designator pointing at the
+            // DEFAULT_ACCOUNT_ADDRESS.
+            if !sender_has_code && !eip8130.has_create_entry && !eip8130.auto_delegation_code.is_empty() {
+                let code = revm::bytecode::Bytecode::new_raw(eip8130.auto_delegation_code.clone());
+                let mut acc = journal.load_account_with_code_mut(sender)?.data;
+                acc.set_code_and_hash_slow(code);
+                drop(acc);
+            }
+
+            // --- Apply pre-execution storage writes ---
+            // Owner registrations, config changes, sequence bumps.
+            for w in &eip8130.pre_writes {
+                journal.load_account(w.address)?;
+                journal.sstore(w.address, w.slot, w.value)?;
+            }
 
             return Ok(());
         }
@@ -262,6 +286,111 @@ where
         }
 
         Ok(())
+    }
+
+    fn execution(
+        &mut self,
+        evm: &mut Self::Evm,
+        init_and_floor_gas: &InitialAndFloorGas,
+    ) -> Result<FrameResult, Self::Error> {
+        if evm.ctx().tx().tx_type() != EIP8130_TX_TYPE {
+            return self.mainnet.execution(evm, init_and_floor_gas);
+        }
+
+        let gas_limit = evm.ctx().tx().gas_limit().saturating_sub(init_and_floor_gas.initial_gas);
+        let eip8130 = evm.ctx().tx().eip8130_parts().clone();
+        let sender = evm.ctx().tx().caller();
+
+        let mut gas_remaining = gas_limit;
+        let mut phase_results = Vec::with_capacity(eip8130.call_phases.len());
+
+        // Ensure sender is loaded in the journal state for sub-call transfers.
+        evm.ctx().journal_mut().load_account(sender)?;
+
+        for phase in &eip8130.call_phases {
+            let checkpoint = evm.ctx().journal_mut().checkpoint();
+            let mut phase_ok = true;
+            let phase_gas_start = gas_remaining;
+
+            for call in phase {
+                if gas_remaining == 0 {
+                    phase_ok = false;
+                    break;
+                }
+
+                evm.ctx().journal_mut().load_account(call.to)?;
+
+                let call_gas = gas_remaining;
+                let call_inputs = CallInputs {
+                    input: CallInput::Bytes(call.data.clone()),
+                    return_memory_offset: 0..0,
+                    gas_limit: call_gas,
+                    bytecode_address: call.to,
+                    known_bytecode: None,
+                    target_address: call.to,
+                    caller: sender,
+                    value: CallValue::Transfer(call.value),
+                    scheme: CallScheme::Call,
+                    is_static: false,
+                };
+
+                let frame_init = FrameInit {
+                    depth: 0,
+                    memory: {
+                        let ctx = evm.ctx();
+                        let mut mem = SharedMemory::new_with_buffer(
+                            ctx.local().shared_memory_buffer().clone(),
+                        );
+                        mem.set_memory_limit(ctx.cfg().memory_limit());
+                        mem
+                    },
+                    frame_input: FrameInput::Call(Box::new(call_inputs)),
+                };
+
+                let call_result = self.mainnet.run_exec_loop(evm, frame_init)?;
+                let call_gas_used = call_gas.saturating_sub(call_result.gas().remaining());
+                gas_remaining = gas_remaining.saturating_sub(call_gas_used);
+
+                if !call_result.interpreter_result().result.is_ok() {
+                    phase_ok = false;
+                    break;
+                }
+            }
+
+            if !phase_ok {
+                evm.ctx().journal_mut().checkpoint_revert(checkpoint);
+            }
+
+            phase_results.push(Eip8130PhaseResult {
+                success: phase_ok,
+                gas_used: phase_gas_start.saturating_sub(gas_remaining),
+            });
+        }
+
+        let any_phase_succeeded = phase_results.iter().any(|r| r.success);
+
+        let mut result_gas = Gas::new_spent(evm.ctx().tx().gas_limit());
+        result_gas.erase_cost(gas_remaining);
+
+        let output = encode_phase_statuses(&phase_results);
+
+        let instruction_result = if any_phase_succeeded {
+            InstructionResult::Stop
+        } else {
+            InstructionResult::Revert
+        };
+
+        let mut frame_result = FrameResult::Call(CallOutcome::new(
+            InterpreterResult {
+                result: instruction_result,
+                output,
+                gas: result_gas,
+            },
+            0..0,
+        ));
+
+        self.last_frame_result(evm, &mut frame_result)?;
+        Ok(frame_result)
     }
 
     fn last_frame_result(
@@ -866,5 +995,205 @@ mod tests {
     fn test_clz_opcode_not_on_jovian() {
         let result = run_clz_bytecode(OpSpecId::JOVIAN);
         assert!(!result.is_success(), "CLZ opcode should not be available on JOVIAN (pre-OSAKA)");
+    }
+
+    // -----------------------------------------------------------------------
+    // EIP-8130 handler execution tests
+    // -----------------------------------------------------------------------
+
+    use crate::{Eip8130Call, Eip8130Parts, decode_phase_statuses};
+
+    /// Builds an EVM with EIP-8130 parts and runs the full handler flow,
+    /// returning the execution result.
+    fn run_eip8130_tx(
+        sender: Address,
+        accounts: &[(Address, Bytecode)],
+        eip8130: Eip8130Parts,
+        gas_limit: u64,
+    ) -> ExecutionResult<OpHaltReason> {
+        let mut db = InMemoryDB::default();
+        db.insert_account_info(
+            sender,
+            AccountInfo { balance: U256::from(10_000_000), ..Default::default() },
+        );
+        db.insert_account_info(
+            NONCE_MANAGER_ADDRESS,
+            AccountInfo {
+                code: Some(Bytecode::new_legacy(bytes!("FE"))),
+                ..Default::default()
+            },
+        );
+        for (addr, code) in accounts {
+            db.insert_account_info(
+                *addr,
+                AccountInfo { code: Some(code.clone()), ..Default::default() },
+            );
+        }
+
+        let mut tx = OpTransaction::builder()
+            .base(
+                TxEnv::builder()
+                    .tx_type(Some(0x05))
+                    .caller(sender)
+                    .gas_limit(gas_limit)
+                    .kind(TxKind::Call(sender)),
+            )
+            .enveloped_tx(Some(bytes!("05FACADE")))
+            .build_fill();
+        tx.eip8130 = eip8130;
+
+        let ctx = Context::op()
+            .with_db(db)
+            .with_tx(tx)
+            .with_chain(L1BlockInfo {
+                l2_block: Some(U256::ZERO),
+                operator_fee_scalar: Some(U256::ZERO),
+                operator_fee_constant: Some(U256::ZERO),
+                ..Default::default()
+            })
+            .with_cfg(CfgEnv::new_with_spec(OpSpecId::BASE_V1));
+        let mut evm = ctx.build_op();
+
+        let mut handler =
+            OpHandler::<_, EVMError<_, OpTransactionError>, EthFrame<EthInterpreter>>::new();
+        handler.run(&mut evm).unwrap()
+    }
+
+    #[test]
+    fn test_eip8130_empty_phases_reverts() {
+        let sender = Address::from([0x11; 20]);
+        let result = run_eip8130_tx(
+            sender,
+            &[],
+            Eip8130Parts { sender, payer: sender, ..Default::default() },
+            100_000,
+        );
+        assert!(!result.is_success(), "empty phases = no successes = tx reverts");
+    }
+
+    #[test]
+    fn test_eip8130_single_phase_success() {
+        let sender = Address::from([0x11; 20]);
+        let target = Address::from([0x22; 20]);
+
+        let result = run_eip8130_tx(
+            sender,
+            &[(target, Bytecode::new_legacy(bytes!("00")))], // STOP
+            Eip8130Parts {
+                sender,
+                payer: sender,
+                call_phases: vec![vec![Eip8130Call {
+                    to: target,
+                    data: Bytes::new(),
+                    value: U256::ZERO,
+                }]],
+                ..Default::default()
+            },
+            100_000,
+        );
+        assert!(result.is_success(), "single STOP call should succeed");
+
+        let statuses = decode_phase_statuses(result.output().unwrap());
+        assert_eq!(statuses, vec![true]);
+    }
+
+    #[test]
+    fn test_eip8130_single_phase_failure_reverts_tx() {
+        let sender = Address::from([0x11; 20]);
+        let target = Address::from([0x22; 20]);
+
+        let result = run_eip8130_tx(
+            sender,
+            &[(target, Bytecode::new_legacy(bytes!("60006000FD")))], // REVERT
+            Eip8130Parts {
+                sender,
+                payer: sender,
+                call_phases: vec![vec![Eip8130Call {
+                    to: target,
+                    data: Bytes::new(),
+                    value: U256::ZERO,
+                }]],
+                ..Default::default()
+            },
+            100_000,
+        );
+        assert!(!result.is_success(), "all phases failed → tx reverts");
+    }
+
+    #[test]
+    fn test_eip8130_mixed_phases_succeeds() {
+        let sender = Address::from([0x11; 20]);
+        let target_ok = Address::from([0x22; 20]);
+        let target_fail = Address::from([0x33; 20]);
+
+        let result = run_eip8130_tx(
+            sender,
+            &[
+                (target_ok, Bytecode::new_legacy(bytes!("00"))),       // STOP
+                (target_fail, Bytecode::new_legacy(bytes!("60006000FD"))), // REVERT
+            ],
+            Eip8130Parts {
+                sender,
+                payer: sender,
+                call_phases: vec![
+                    vec![Eip8130Call { to: target_ok, data: Bytes::new(), value: U256::ZERO }],
+                    vec![Eip8130Call { to: target_fail, data: Bytes::new(), value: U256::ZERO }],
+                ],
+                ..Default::default()
+            },
+            100_000,
+        );
+        assert!(result.is_success(), "at least one phase succeeded → tx succeeds");
+
+        let statuses = decode_phase_statuses(result.output().unwrap());
+        assert_eq!(statuses, vec![true, false]);
+    }
+
+    #[test]
+    fn test_eip8130_all_phases_fail_reverts_tx() {
+        let sender = Address::from([0x11; 20]);
+        let target_fail = Address::from([0x33; 20]);
+
+        let result = run_eip8130_tx(
+            sender,
+            &[(target_fail, Bytecode::new_legacy(bytes!("60006000FD")))], // REVERT
+            Eip8130Parts {
+                sender,
+                payer: sender,
+                call_phases: vec![
+                    vec![Eip8130Call { to: target_fail, data: Bytes::new(), value: U256::ZERO }],
+                    vec![Eip8130Call { to: target_fail, data: Bytes::new(), value: U256::ZERO }],
+                ],
+                ..Default::default()
+            },
+            100_000,
+        );
+        assert!(!result.is_success(), "all phases failed → tx reverts");
+    }
+
+    #[test]
+    fn test_eip8130_gas_accounting() {
+        let sender = Address::from([0x11; 20]);
+        let target = Address::from([0x22; 20]);
+
+        let gas_limit = 100_000u64;
+        let result = run_eip8130_tx(
+            sender,
+            &[(target, Bytecode::new_legacy(bytes!("00")))], // STOP
+            Eip8130Parts {
+                sender,
+                payer: sender,
+                call_phases: vec![vec![Eip8130Call {
+                    to: target,
+                    data: Bytes::new(),
+                    value: U256::ZERO,
+                }]],
+                ..Default::default()
+            },
+            gas_limit,
+        );
+        assert!(result.is_success());
+        assert!(result.gas_used() > 0, "some gas should be spent");
+        assert!(result.gas_used() <= gas_limit, "cannot spend more than limit");
     }
 }

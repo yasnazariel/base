@@ -11,14 +11,14 @@ mod integration {
 
     use crate::transaction::eip8130::{
         AA_BASE_COST, AA_TX_TYPE_ID, AccountChangeEntry, Call, ConfigChangeEntry,
-        ConfigOperation, CreateEntry, Owner, OwnerScope, TxAa,
+        ConfigOperation, CreateEntry, Owner, OwnerScope, TxEip8130,
         address::{create2_address, derive_account_address},
         gas::intrinsic_gas,
         signature::{payer_signature_hash, parse_sender_auth, sender_signature_hash},
     };
 
-    fn simple_tx(from: Address) -> TxAa {
-        TxAa {
+    fn simple_tx(from: Address) -> TxEip8130 {
+        TxEip8130 {
             chain_id: 8453,
             from,
             nonce_key: U256::ZERO,
@@ -53,7 +53,7 @@ mod integration {
 
         let mut buf = Vec::new();
         tx.rlp_encode(&mut buf);
-        let decoded = TxAa::rlp_decode(&mut buf.as_slice()).unwrap();
+        let decoded = TxEip8130::rlp_decode(&mut buf.as_slice()).unwrap();
         assert_eq!(tx, decoded);
     }
 
@@ -66,7 +66,7 @@ mod integration {
         tx.encode_2718(&mut buf);
         assert_eq!(buf[0], AA_TX_TYPE_ID);
 
-        let decoded = TxAa::decode_2718(&mut buf.as_slice()).unwrap();
+        let decoded = TxEip8130::decode_2718(&mut buf.as_slice()).unwrap();
         assert_eq!(tx, decoded);
     }
 
@@ -78,7 +78,7 @@ mod integration {
     fn sponsored_tx_payer_set() {
         let from = Address::repeat_byte(0xAA);
         let payer = Address::repeat_byte(0xCC);
-        let tx = TxAa {
+        let tx = TxEip8130 {
             payer,
             payer_auth: Bytes::from(vec![0u8; 65]),
             ..simple_tx(from)
@@ -99,7 +99,7 @@ mod integration {
     #[test]
     fn account_creation_entry_roundtrip() {
         let from = Address::repeat_byte(0x42);
-        let tx = TxAa {
+        let tx = TxEip8130 {
             account_changes: vec![AccountChangeEntry::Create(CreateEntry {
                 user_salt: B256::repeat_byte(0x01),
                 bytecode: Bytes::from_static(&[0x60, 0x80, 0x60, 0x40]),
@@ -121,7 +121,7 @@ mod integration {
 
         let mut buf = Vec::new();
         tx.rlp_encode(&mut buf);
-        let decoded = TxAa::rlp_decode(&mut buf.as_slice()).unwrap();
+        let decoded = TxEip8130::rlp_decode(&mut buf.as_slice()).unwrap();
         assert_eq!(tx, decoded);
     }
 
@@ -144,7 +144,7 @@ mod integration {
     #[test]
     fn config_change_entry_roundtrip() {
         let from = Address::repeat_byte(0x42);
-        let tx = TxAa {
+        let tx = TxEip8130 {
             account_changes: vec![AccountChangeEntry::ConfigChange(ConfigChangeEntry {
                 chain_id: 8453,
                 sequence: 3,
@@ -169,7 +169,7 @@ mod integration {
 
         let mut buf = Vec::new();
         tx.rlp_encode(&mut buf);
-        let decoded = TxAa::rlp_decode(&mut buf.as_slice()).unwrap();
+        let decoded = TxEip8130::rlp_decode(&mut buf.as_slice()).unwrap();
         assert_eq!(tx, decoded);
     }
 
@@ -180,8 +180,8 @@ mod integration {
     #[test]
     fn two_d_nonce_different_keys() {
         let from = Address::repeat_byte(0xAA);
-        let tx1 = TxAa { nonce_key: U256::ZERO, nonce_sequence: 5, ..simple_tx(from) };
-        let tx2 = TxAa { nonce_key: U256::from(1), nonce_sequence: 0, ..simple_tx(from) };
+        let tx1 = TxEip8130 { nonce_key: U256::ZERO, nonce_sequence: 5, ..simple_tx(from) };
+        let tx2 = TxEip8130 { nonce_key: U256::from(1), nonce_sequence: 0, ..simple_tx(from) };
 
         assert_ne!(tx1.nonce_key, tx2.nonce_key);
         assert_ne!(sender_signature_hash(&tx1), sender_signature_hash(&tx2));
@@ -193,11 +193,11 @@ mod integration {
 
     #[test]
     fn expiry_set_and_roundtripped() {
-        let tx = TxAa { expiry: 1000, ..simple_tx(Address::repeat_byte(0xAA)) };
+        let tx = TxEip8130 { expiry: 1000, ..simple_tx(Address::repeat_byte(0xAA)) };
 
         let mut buf = Vec::new();
         tx.rlp_encode(&mut buf);
-        let decoded = TxAa::rlp_decode(&mut buf.as_slice()).unwrap();
+        let decoded = TxEip8130::rlp_decode(&mut buf.as_slice()).unwrap();
         assert_eq!(decoded.expiry, 1000);
     }
 
@@ -217,7 +217,7 @@ mod integration {
 
     #[test]
     fn phased_calls_structure() {
-        let tx = TxAa {
+        let tx = TxEip8130 {
             calls: vec![
                 vec![Call {
                     to: Address::repeat_byte(0x01),
@@ -236,7 +236,7 @@ mod integration {
 
         let mut buf = Vec::new();
         tx.rlp_encode(&mut buf);
-        let decoded = TxAa::rlp_decode(&mut buf.as_slice()).unwrap();
+        let decoded = TxEip8130::rlp_decode(&mut buf.as_slice()).unwrap();
         assert_eq!(tx, decoded);
     }
 
@@ -284,7 +284,7 @@ mod integration {
 
     #[test]
     fn sender_and_payer_hashes_differ() {
-        let tx = TxAa {
+        let tx = TxEip8130 {
             payer: Address::repeat_byte(0xBB),
             payer_auth: Bytes::from(vec![0u8; 65]),
             ..simple_tx(Address::repeat_byte(0xAA))
@@ -301,8 +301,8 @@ mod integration {
     #[test]
     fn sender_hash_changes_with_nonce() {
         let from = Address::repeat_byte(0xAA);
-        let tx1 = TxAa { nonce_sequence: 0, ..simple_tx(from) };
-        let tx2 = TxAa { nonce_sequence: 1, ..simple_tx(from) };
+        let tx1 = TxEip8130 { nonce_sequence: 0, ..simple_tx(from) };
+        let tx2 = TxEip8130 { nonce_sequence: 1, ..simple_tx(from) };
         assert_ne!(sender_signature_hash(&tx1), sender_signature_hash(&tx2));
     }
 
@@ -318,7 +318,7 @@ mod integration {
 
     #[test]
     fn parse_eoa_sender_auth_too_short() {
-        let tx = TxAa {
+        let tx = TxEip8130 {
             from: Address::ZERO,
             sender_auth: Bytes::from(vec![0u8; 64]),
             ..simple_tx(Address::ZERO)
@@ -399,18 +399,18 @@ mod integration {
 
     #[test]
     fn empty_calls_roundtrip() {
-        let tx = TxAa { calls: vec![], ..simple_tx(Address::repeat_byte(0xAA)) };
+        let tx = TxEip8130 { calls: vec![], ..simple_tx(Address::repeat_byte(0xAA)) };
         let mut buf = Vec::new();
         tx.rlp_encode(&mut buf);
-        assert_eq!(tx.calls, TxAa::rlp_decode(&mut buf.as_slice()).unwrap().calls);
+        assert_eq!(tx.calls, TxEip8130::rlp_decode(&mut buf.as_slice()).unwrap().calls);
     }
 
     #[test]
     fn large_nonce_key() {
-        let tx = TxAa { nonce_key: U256::from(u64::MAX), ..simple_tx(Address::repeat_byte(0xAA)) };
+        let tx = TxEip8130 { nonce_key: U256::from(u64::MAX), ..simple_tx(Address::repeat_byte(0xAA)) };
         let mut buf = Vec::new();
         tx.rlp_encode(&mut buf);
-        assert_eq!(TxAa::rlp_decode(&mut buf.as_slice()).unwrap().nonce_key, U256::from(u64::MAX));
+        assert_eq!(TxEip8130::rlp_decode(&mut buf.as_slice()).unwrap().nonce_key, U256::from(u64::MAX));
     }
 
     // -----------------------------------------------------------------------
@@ -430,11 +430,11 @@ mod integration {
             U256::from(1),
             U256::from(2),
         );
-        let tx = TxAa { authorization_list: vec![auth], ..simple_tx(Address::repeat_byte(0xAA)) };
+        let tx = TxEip8130 { authorization_list: vec![auth], ..simple_tx(Address::repeat_byte(0xAA)) };
 
         let mut buf = Vec::new();
         tx.rlp_encode(&mut buf);
-        assert_eq!(TxAa::rlp_decode(&mut buf.as_slice()).unwrap().authorization_list.len(), 1);
+        assert_eq!(TxEip8130::rlp_decode(&mut buf.as_slice()).unwrap().authorization_list.len(), 1);
     }
 
     // -----------------------------------------------------------------------
@@ -446,7 +446,7 @@ mod integration {
         use alloy_primitives::Sealable;
         let from = Address::repeat_byte(0xAA);
         let h1 = simple_tx(from).hash_slow();
-        let h2 = TxAa { nonce_sequence: 1, ..simple_tx(from) }.hash_slow();
+        let h2 = TxEip8130 { nonce_sequence: 1, ..simple_tx(from) }.hash_slow();
         assert_ne!(h1, h2);
         assert_ne!(h1, B256::ZERO);
     }
@@ -457,7 +457,7 @@ mod integration {
 
     #[test]
     fn complex_tx_with_all_features() {
-        let tx = TxAa {
+        let tx = TxEip8130 {
             chain_id: 8453,
             from: Address::repeat_byte(0x42),
             nonce_key: U256::from(42),
@@ -503,7 +503,7 @@ mod integration {
 
         let mut buf = Vec::new();
         tx.rlp_encode(&mut buf);
-        assert_eq!(tx, TxAa::rlp_decode(&mut buf.as_slice()).unwrap());
+        assert_eq!(tx, TxEip8130::rlp_decode(&mut buf.as_slice()).unwrap());
         assert!(intrinsic_gas(&tx, true, 8453) > AA_BASE_COST);
     }
 }
@@ -513,7 +513,7 @@ mod evm_integration {
     use alloy_primitives::{Address, B256, Bytes, U256};
 
     use crate::transaction::eip8130::{
-        Call, TxAa,
+        Call, TxEip8130,
         execution::{
             TxContextValues, auto_delegation_code, build_execution_calls, gas_refund,
             max_gas_cost, nonce_increment_write,
@@ -523,8 +523,8 @@ mod evm_integration {
         validation::{validate_expiry, validate_structure},
     };
 
-    fn simple_tx(from: Address) -> TxAa {
-        TxAa {
+    fn simple_tx(from: Address) -> TxEip8130 {
+        TxEip8130 {
             chain_id: 8453,
             from,
             nonce_key: U256::ZERO,
@@ -552,7 +552,7 @@ mod evm_integration {
 
     #[test]
     fn validate_structure_oversized_sender_auth() {
-        let tx = TxAa {
+        let tx = TxEip8130 {
             sender_auth: Bytes::from(vec![0u8; 3000]),
             ..simple_tx(Address::repeat_byte(0xAA))
         };
@@ -566,13 +566,13 @@ mod evm_integration {
 
     #[test]
     fn validate_expiry_future_ok() {
-        let tx = TxAa { expiry: 2_000_000_000, ..simple_tx(Address::repeat_byte(0xAA)) };
+        let tx = TxEip8130 { expiry: 2_000_000_000, ..simple_tx(Address::repeat_byte(0xAA)) };
         assert!(validate_expiry(&tx, 1_000_000_000).is_ok());
     }
 
     #[test]
     fn validate_expiry_past_err() {
-        let tx = TxAa { expiry: 1_000_000_000, ..simple_tx(Address::repeat_byte(0xAA)) };
+        let tx = TxEip8130 { expiry: 1_000_000_000, ..simple_tx(Address::repeat_byte(0xAA)) };
         assert!(validate_expiry(&tx, 2_000_000_000).is_err());
     }
 
@@ -585,7 +585,7 @@ mod evm_integration {
 
     #[test]
     fn execution_calls_multi() {
-        let tx = TxAa {
+        let tx = TxEip8130 {
             calls: vec![
                 vec![Call { to: Address::repeat_byte(0x01), data: Bytes::default() }],
                 vec![

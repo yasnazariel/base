@@ -16,7 +16,7 @@ use super::{
         DELEGATE_VERIFIER_ADDRESS, K1_VERIFIER_ADDRESS, P256_RAW_VERIFIER_ADDRESS,
         P256_WEBAUTHN_VERIFIER_ADDRESS,
     },
-    tx::TxAa,
+    tx::TxEip8130,
 };
 
 /// Result of a successful AA transaction validation.
@@ -128,7 +128,7 @@ pub enum ValidationError {
 const UINT192_MAX: U256 = U256::from_limbs([u64::MAX, u64::MAX, u64::MAX, 0]);
 
 /// Validates structural constraints that don't require DB access.
-pub fn validate_structure(tx: &TxAa) -> Result<(), ValidationError> {
+pub fn validate_structure(tx: &TxEip8130) -> Result<(), ValidationError> {
     if tx.sender_auth.len() > MAX_SIGNATURE_SIZE {
         return Err(ValidationError::SenderAuthTooLarge(tx.sender_auth.len()));
     }
@@ -145,7 +145,7 @@ pub fn validate_structure(tx: &TxAa) -> Result<(), ValidationError> {
 }
 
 /// Validates the `account_changes` array structure.
-fn validate_account_changes_structure(tx: &TxAa) -> Result<(), ValidationError> {
+fn validate_account_changes_structure(tx: &TxEip8130) -> Result<(), ValidationError> {
     use super::types::AccountChangeEntry;
 
     let mut seen_create = false;
@@ -171,7 +171,7 @@ fn validate_account_changes_structure(tx: &TxAa) -> Result<(), ValidationError> 
 }
 
 /// Validates expiry against the current block timestamp.
-pub fn validate_expiry(tx: &TxAa, block_timestamp: u64) -> Result<(), ValidationError> {
+pub fn validate_expiry(tx: &TxEip8130, block_timestamp: u64) -> Result<(), ValidationError> {
     if tx.expiry != 0 && block_timestamp > tx.expiry {
         return Err(ValidationError::Expired { expiry: tx.expiry, current: block_timestamp });
     }
@@ -181,7 +181,7 @@ pub fn validate_expiry(tx: &TxAa, block_timestamp: u64) -> Result<(), Validation
 /// Validates the nonce against on-chain state.
 pub fn validate_nonce<DB: Database>(
     db: &mut DB,
-    tx: &TxAa,
+    tx: &TxEip8130,
 ) -> Result<(), ValidationError> {
     let current = read_nonce(db, tx.effective_sender(), tx.nonce_key)
         .map_err(|e| ValidationError::Database(format!("{e:?}")))?;
@@ -195,7 +195,7 @@ pub fn validate_nonce<DB: Database>(
 ///
 /// If `from == Address::ZERO` (EOA mode), the sender must be recovered from
 /// `sender_auth` via ecrecover. Otherwise, the `from` field is used directly.
-pub fn resolve_sender(tx: &TxAa) -> Address {
+pub fn resolve_sender(tx: &TxEip8130) -> Address {
     tx.effective_sender()
 }
 
@@ -266,7 +266,7 @@ pub fn check_lock_state<DB: Database>(
 /// Validates config change sequences.
 pub fn validate_config_change_sequences<DB: Database>(
     db: &mut DB,
-    tx: &TxAa,
+    tx: &TxEip8130,
 ) -> Result<(), ValidationError> {
     use super::types::AccountChangeEntry;
 
@@ -344,13 +344,13 @@ mod tests {
 
     #[test]
     fn structure_validation_empty_tx() {
-        let tx = TxAa::default();
+        let tx = TxEip8130::default();
         assert!(validate_structure(&tx).is_ok());
     }
 
     #[test]
     fn structure_validation_sender_auth_too_large() {
-        let tx = TxAa {
+        let tx = TxEip8130 {
             sender_auth: Bytes::from(vec![0u8; MAX_SIGNATURE_SIZE + 1]),
             ..Default::default()
         };
@@ -362,7 +362,7 @@ mod tests {
 
     #[test]
     fn structure_validation_nonce_key_too_large() {
-        let tx = TxAa {
+        let tx = TxEip8130 {
             nonce_key: UINT192_MAX + U256::from(1),
             ..Default::default()
         };
@@ -374,7 +374,7 @@ mod tests {
 
     #[test]
     fn expiry_validation() {
-        let tx = TxAa { expiry: 100, ..Default::default() };
+        let tx = TxEip8130 { expiry: 100, ..Default::default() };
         assert!(validate_expiry(&tx, 50).is_ok());
         assert!(validate_expiry(&tx, 100).is_ok());
         assert!(matches!(
@@ -385,7 +385,7 @@ mod tests {
 
     #[test]
     fn no_expiry_always_valid() {
-        let tx = TxAa { expiry: 0, ..Default::default() };
+        let tx = TxEip8130 { expiry: 0, ..Default::default() };
         assert!(validate_expiry(&tx, u64::MAX).is_ok());
     }
 

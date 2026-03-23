@@ -15,7 +15,7 @@ pub use eip8130::{
     NONCE_MANAGER_ADDRESS, OWNER_CONFIG_BASE_SLOT, Owner, OwnerScope, OwnerTuple,
     P256_RAW_VERIFIER_ADDRESS,
     P256_WEBAUTHN_VERIFIER_ADDRESS, ParsedSenderAuth, SEQUENCE_BASE_SLOT, SLOAD_GAS,
-    TX_CONTEXT_ADDRESS, TxAa, VERIFIER_CUSTOM, VERIFIER_DELEGATE, VERIFIER_K1,
+    TX_CONTEXT_ADDRESS, TxEip8130, VERIFIER_CUSTOM, VERIFIER_DELEGATE, VERIFIER_K1,
     VERIFIER_P256_RAW, VERIFIER_P256_WEBAUTHN, VerifierTarget, account_changes_cost,
     bytecode_cost, create2_address, deployment_code, deployment_header, derive_account_address,
     effective_salt, encode_owner_config, intrinsic_gas, lock_slot, nonce_key_cost, nonce_slot,
@@ -26,7 +26,7 @@ pub use eip8130::{
 };
 #[cfg(feature = "evm")]
 pub use eip8130::{
-    AaExecutionPlan, BalanceTransfer, CodePlacement, ExecutionCall, LockState, NONCE_MANAGER_GAS,
+    Eip8130ExecutionPlan, BalanceTransfer, CodePlacement, ExecutionCall, LockState, NONCE_MANAGER_GAS,
     PhaseResult, PrecompileError, TX_CONTEXT_GAS,
     StorageWrite, TxContextValues, ValidationError, ValidationResult, auto_delegation_code,
     build_execution_calls, check_lock_state, check_payer_authorization,
@@ -45,7 +45,7 @@ mod tx_type;
 pub use tx_type::DEPOSIT_TX_TYPE_ID;
 
 mod envelope;
-pub use envelope::{OpAaTransaction, OpTransaction, OpTxEnvelope, OpTxType};
+pub use envelope::{OpEip8130Transaction, OpTransaction, OpTxEnvelope, OpTxType};
 
 mod typed;
 pub use typed::OpTypedTransaction;

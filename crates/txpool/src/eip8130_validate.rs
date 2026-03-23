@@ -11,7 +11,7 @@ use reth_storage_api::StateProviderFactory;
 
 use base_alloy_consensus::{
     ACCOUNT_CONFIG_ADDRESS, K1_VERIFIER_ADDRESS, NONCE_MANAGER_ADDRESS, NativeVerifyResult,
-    OpPooledTransaction, OwnerScope, ParsedSenderAuth, TxAa, ValidationError, VerifierTarget,
+    OpPooledTransaction, OwnerScope, ParsedSenderAuth, TxEip8130, ValidationError, VerifierTarget,
     VERIFIER_K1, implicit_eoa_owner_id, nonce_slot, owner_config_slot, parse_owner_config,
     parse_sender_auth, payer_signature_hash, resolve_verifier, sender_signature_hash,
     try_native_verify, validate_expiry, validate_structure, verifier_type_to_address,
@@ -22,7 +22,7 @@ use crate::OpPooledTx;
 /// Successful AA validation outcome, providing the data the txpool needs for
 /// ordering and balance tracking.
 #[derive(Debug)]
-pub struct AaValidationOutcome {
+pub struct Eip8130ValidationOutcome {
     /// Payer's balance (used for txpool cost checks).
     pub balance: U256,
     /// The sender's current nonce_sequence (used for txpool nonce ordering).
@@ -31,8 +31,8 @@ pub struct AaValidationOutcome {
 
 /// Errors from AA transaction validation.
 #[derive(Debug)]
-pub enum AaValidationError {
-    /// Failed to decode the `TxAa` from 2718-encoded bytes.
+pub enum Eip8130ValidationError {
+    /// Failed to decode the `TxEip8130` from 2718-encoded bytes.
     DecodeFailed(String),
     /// Structural validation failed (sizes, nonce_key range, account_changes).
     Structural(ValidationError),
@@ -69,7 +69,7 @@ pub enum AaValidationError {
     StateError(String),
 }
 
-impl std::fmt::Display for AaValidationError {
+impl std::fmt::Display for Eip8130ValidationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::DecodeFailed(e) => write!(f, "decode failed: {e}"),
@@ -92,9 +92,9 @@ impl std::fmt::Display for AaValidationError {
     }
 }
 
-impl std::error::Error for AaValidationError {}
+impl std::error::Error for Eip8130ValidationError {}
 
-impl reth_transaction_pool::error::PoolTransactionError for AaValidationError {
+impl reth_transaction_pool::error::PoolTransactionError for Eip8130ValidationError {
     fn is_bad_transaction(&self) -> bool {
         matches!(self, Self::Structural(_) | Self::DecodeFailed(_))
     }
@@ -104,15 +104,15 @@ impl reth_transaction_pool::error::PoolTransactionError for AaValidationError {
     }
 }
 
-/// Decodes `TxAa` from a 2718-encoded pool transaction.
-fn decode_tx_aa<Tx: OpPooledTx>(transaction: &Tx) -> Result<TxAa, AaValidationError> {
+/// Decodes `TxEip8130` from a 2718-encoded pool transaction.
+fn decode_tx_eip8130<Tx: OpPooledTx>(transaction: &Tx) -> Result<TxEip8130, Eip8130ValidationError> {
     let encoded = transaction.encoded_2718();
     let bytes: &[u8] = encoded.as_ref();
     let pooled = OpPooledTransaction::decode_2718(&mut &bytes[..])
-        .map_err(|e| AaValidationError::DecodeFailed(e.to_string()))?;
+        .map_err(|e| Eip8130ValidationError::DecodeFailed(e.to_string()))?;
     match pooled {
-        OpPooledTransaction::Aa(sealed) => Ok(sealed.into_inner()),
-        _ => Err(AaValidationError::DecodeFailed("not an AA transaction".into())),
+        OpPooledTransaction::Eip8130(sealed) => Ok(sealed.into_inner()),
+        _ => Err(Eip8130ValidationError::DecodeFailed("not an AA transaction".into())),
     }
 }
 
@@ -121,11 +121,11 @@ fn read_storage(
     state: &dyn reth_storage_api::StateProvider,
     address: Address,
     slot: B256,
-) -> Result<U256, AaValidationError> {
+) -> Result<U256, Eip8130ValidationError> {
     state
         .storage(address, slot.into())
         .map(|v| v.unwrap_or_default())
-        .map_err(|e| AaValidationError::StateError(e.to_string()))
+        .map_err(|e| Eip8130ValidationError::StateError(e.to_string()))
 }
 
 /// Reads `owner_config(account, owner_id)` from AccountConfig storage.
@@ -135,7 +135,7 @@ fn read_owner_config_from_state(
     state: &dyn reth_storage_api::StateProvider,
     account: Address,
     owner_id: B256,
-) -> Result<(Address, u8), AaValidationError> {
+) -> Result<(Address, u8), Eip8130ValidationError> {
     let slot = owner_config_slot(account, owner_id);
     let value = read_storage(state, ACCOUNT_CONFIG_ADDRESS, slot)?;
     Ok(parse_owner_config(B256::from(value.to_be_bytes::<32>())))
@@ -151,12 +151,12 @@ fn read_owner_config_from_state(
 /// (K1 / P256), verify the returned ownerId against owner_config, and check
 /// SENDER scope.
 fn validate_sender(
-    tx: &TxAa,
+    tx: &TxEip8130,
     sender: Address,
     state: &dyn reth_storage_api::StateProvider,
-) -> Result<B256, AaValidationError> {
+) -> Result<B256, Eip8130ValidationError> {
     let parsed =
-        parse_sender_auth(tx).map_err(|e| AaValidationError::SenderAuthInvalid(e.into()))?;
+        parse_sender_auth(tx).map_err(|e| Eip8130ValidationError::SenderAuthInvalid(e.into()))?;
     let sig_hash = sender_signature_hash(tx);
 
     match parsed {
@@ -166,10 +166,10 @@ fn validate_sender(
             let owner_id = match result {
                 NativeVerifyResult::Verified(id) => id,
                 NativeVerifyResult::Invalid(e) => {
-                    return Err(AaValidationError::SenderAuthInvalid(e.to_string()));
+                    return Err(Eip8130ValidationError::SenderAuthInvalid(e.to_string()));
                 }
                 NativeVerifyResult::Unsupported => {
-                    return Err(AaValidationError::SenderAuthInvalid(
+                    return Err(Eip8130ValidationError::SenderAuthInvalid(
                         "K1 should be natively supported".into(),
                     ));
                 }
@@ -190,7 +190,7 @@ fn validate_sender(
         }
         ParsedSenderAuth::Configured { verifier_type, data } => {
             let target = resolve_verifier(verifier_type, &data)
-                .map_err(|e| AaValidationError::SenderAuthInvalid(e.into()))?;
+                .map_err(|e| Eip8130ValidationError::SenderAuthInvalid(e.into()))?;
 
             let (verifier_address, verify_data) = resolve_target(&target)?;
 
@@ -208,7 +208,7 @@ fn validate_sender(
                     Ok(owner_id)
                 }
                 NativeVerifyResult::Invalid(e) => {
-                    Err(AaValidationError::SenderAuthInvalid(e.to_string()))
+                    Err(Eip8130ValidationError::SenderAuthInvalid(e.to_string()))
                 }
                 NativeVerifyResult::Unsupported => {
                     // WebAuthn, DELEGATE, or custom verifiers can't be verified
@@ -223,12 +223,12 @@ fn validate_sender(
 
 /// Validates `payer_auth` for a sponsored AA transaction.
 fn validate_payer(
-    tx: &TxAa,
+    tx: &TxEip8130,
     payer: Address,
     state: &dyn reth_storage_api::StateProvider,
-) -> Result<(), AaValidationError> {
+) -> Result<(), Eip8130ValidationError> {
     if tx.payer_auth.is_empty() {
-        return Err(AaValidationError::PayerAuthInvalid(
+        return Err(Eip8130ValidationError::PayerAuthInvalid(
             "payer_auth is empty for sponsored tx".into(),
         ));
     }
@@ -239,7 +239,7 @@ fn validate_payer(
     let data = Bytes::copy_from_slice(&tx.payer_auth[1..]);
 
     let target = resolve_verifier(verifier_type, &data)
-        .map_err(|e| AaValidationError::PayerAuthInvalid(e.into()))?;
+        .map_err(|e| Eip8130ValidationError::PayerAuthInvalid(e.into()))?;
 
     let (verifier_address, verify_data) = resolve_target_for_payer(&target)?;
 
@@ -256,17 +256,17 @@ fn validate_payer(
             )?;
             Ok(())
         }
-        NativeVerifyResult::Invalid(e) => Err(AaValidationError::PayerAuthInvalid(e.to_string())),
+        NativeVerifyResult::Invalid(e) => Err(Eip8130ValidationError::PayerAuthInvalid(e.to_string())),
         NativeVerifyResult::Unsupported => Ok(()),
     }
 }
 
 /// Resolves a `VerifierTarget` into `(verifier_address, verify_data)`.
-fn resolve_target(target: &VerifierTarget) -> Result<(Address, Bytes), AaValidationError> {
+fn resolve_target(target: &VerifierTarget) -> Result<(Address, Bytes), Eip8130ValidationError> {
     match target {
         VerifierTarget::Native { verifier_type, data } => {
             let addr = verifier_type_to_address(*verifier_type).ok_or_else(|| {
-                AaValidationError::SenderAuthInvalid("unknown native verifier".into())
+                Eip8130ValidationError::SenderAuthInvalid("unknown native verifier".into())
             })?;
             Ok((addr, data.clone()))
         }
@@ -279,11 +279,11 @@ fn resolve_target(target: &VerifierTarget) -> Result<(Address, Bytes), AaValidat
 /// Same as `resolve_target` but returns payer-specific errors.
 fn resolve_target_for_payer(
     target: &VerifierTarget,
-) -> Result<(Address, Bytes), AaValidationError> {
+) -> Result<(Address, Bytes), Eip8130ValidationError> {
     match target {
         VerifierTarget::Native { verifier_type, data } => {
             let addr = verifier_type_to_address(*verifier_type).ok_or_else(|| {
-                AaValidationError::PayerAuthInvalid("unknown native verifier".into())
+                Eip8130ValidationError::PayerAuthInvalid("unknown native verifier".into())
             })?;
             Ok((addr, data.clone()))
         }
@@ -305,17 +305,17 @@ fn check_owner_authorized(
     expected_verifier: Address,
     required_scope: u8,
     role: &str,
-) -> Result<(), AaValidationError> {
+) -> Result<(), Eip8130ValidationError> {
     let (verifier, scope) = read_owner_config_from_state(state, account, owner_id)?;
 
     if verifier != Address::ZERO {
         if verifier != expected_verifier {
-            return Err(AaValidationError::SenderNotAuthorized(format!(
+            return Err(Eip8130ValidationError::SenderNotAuthorized(format!(
                 "{role} owner_config verifier mismatch: expected {expected_verifier}, got {verifier}"
             )));
         }
         if scope != 0 && (scope & required_scope) == 0 {
-            return Err(AaValidationError::SenderNotAuthorized(format!(
+            return Err(Eip8130ValidationError::SenderNotAuthorized(format!(
                 "{role} owner lacks required scope bit 0x{required_scope:02x}"
             )));
         }
@@ -327,7 +327,7 @@ fn check_owner_authorized(
         return Ok(());
     }
 
-    Err(AaValidationError::SenderNotAuthorized(format!(
+    Err(Eip8130ValidationError::SenderNotAuthorized(format!(
         "{role} not authorized (no owner_config and implicit EOA rule doesn't apply)"
     )))
 }
@@ -337,32 +337,32 @@ fn check_owner_authorized(
 /// Validates structural integrity, expiry, nonce, sender/payer authorization,
 /// and payer balance. Returns the data the txpool needs to order and track
 /// the transaction.
-pub fn validate_aa_transaction<Tx, Client>(
+pub fn validate_eip8130_transaction<Tx, Client>(
     transaction: &Tx,
     block_timestamp: u64,
     client: &Client,
-) -> Result<AaValidationOutcome, AaValidationError>
+) -> Result<Eip8130ValidationOutcome, Eip8130ValidationError>
 where
     Tx: OpPooledTx + Transaction,
     Client: StateProviderFactory,
 {
-    let tx = decode_tx_aa(transaction)?;
+    let tx = decode_tx_eip8130(transaction)?;
 
     // 1. Structural validation (no state needed)
-    validate_structure(&tx).map_err(AaValidationError::Structural)?;
+    validate_structure(&tx).map_err(Eip8130ValidationError::Structural)?;
 
     // 2. Expiry check
     validate_expiry(&tx, block_timestamp).map_err(|e| match e {
         ValidationError::Expired { expiry, current } => {
-            AaValidationError::Expired { expiry, current }
+            Eip8130ValidationError::Expired { expiry, current }
         }
-        other => AaValidationError::Structural(other),
+        other => Eip8130ValidationError::Structural(other),
     })?;
 
     // 3. Open state provider for storage reads
     let state = client
         .latest()
-        .map_err(|e| AaValidationError::StateError(e.to_string()))?;
+        .map_err(|e| Eip8130ValidationError::StateError(e.to_string()))?;
 
     let sender = tx.effective_sender();
 
@@ -371,7 +371,7 @@ where
     let current_nonce =
         read_storage(&*state, NONCE_MANAGER_ADDRESS, nonce_key_slot)?.to::<u64>();
     if current_nonce != tx.nonce_sequence {
-        return Err(AaValidationError::NonceMismatch {
+        return Err(Eip8130ValidationError::NonceMismatch {
             expected: current_nonce,
             got: tx.nonce_sequence,
         });
@@ -391,14 +391,14 @@ where
         U256::from(tx.gas_limit).saturating_mul(U256::from(tx.max_fee_per_gas));
     let balance = state
         .account_balance(&payer)
-        .map_err(|e| AaValidationError::StateError(e.to_string()))?
+        .map_err(|e| Eip8130ValidationError::StateError(e.to_string()))?
         .unwrap_or_default();
     if balance < max_gas_cost {
-        return Err(AaValidationError::InsufficientBalance {
+        return Err(Eip8130ValidationError::InsufficientBalance {
             required: max_gas_cost,
             available: balance,
         });
     }
 
-    Ok(AaValidationOutcome { balance, state_nonce: tx.nonce_sequence })
+    Ok(Eip8130ValidationOutcome { balance, state_nonce: tx.nonce_sequence })
 }

@@ -22,7 +22,7 @@ use alloy_primitives::{Address, B256, Bytes, U256};
 use super::{
     predeploys::{ACCOUNT_CONFIG_ADDRESS, DEFAULT_ACCOUNT_ADDRESS, NONCE_MANAGER_ADDRESS},
     storage::{encode_owner_config, nonce_slot, owner_config_slot, sequence_slot},
-    tx::TxAa,
+    tx::TxEip8130,
     types::{ConfigChangeEntry, CreateEntry},
 };
 
@@ -72,10 +72,10 @@ pub struct ExecutionCall {
 
 /// Represents the complete execution plan for an AA transaction.
 ///
-/// The plan is built from a validated `TxAa` and contains all the operations
+/// The plan is built from a validated `TxEip8130` and contains all the operations
 /// that need to be applied to the state.
 #[derive(Debug, Clone)]
-pub struct AaExecutionPlan {
+pub struct Eip8130ExecutionPlan {
     /// The sender address.
     pub sender: Address,
     /// The payer address.
@@ -195,8 +195,8 @@ pub fn auto_delegation_code() -> Bytes {
     Bytes::from(code)
 }
 
-/// Converts a `TxAa` into phased execution calls.
-pub fn build_execution_calls(tx: &TxAa) -> Vec<Vec<ExecutionCall>> {
+/// Converts a `TxEip8130` into phased execution calls.
+pub fn build_execution_calls(tx: &TxEip8130) -> Vec<Vec<ExecutionCall>> {
     let sender = tx.effective_sender();
     tx.calls
         .iter()
@@ -217,7 +217,7 @@ pub fn build_execution_calls(tx: &TxAa) -> Vec<Vec<ExecutionCall>> {
 /// Computes the maximum gas cost for payer deduction.
 ///
 /// `max_cost = gas_limit * max_fee_per_gas`
-pub fn max_gas_cost(tx: &TxAa) -> U256 {
+pub fn max_gas_cost(tx: &TxEip8130) -> U256 {
     U256::from(tx.gas_limit) * U256::from(tx.max_fee_per_gas)
 }
 
@@ -243,7 +243,7 @@ mod tests {
 
     #[test]
     fn max_gas_cost_calculation() {
-        let tx = TxAa {
+        let tx = TxEip8130 {
             gas_limit: 100_000,
             max_fee_per_gas: 10,
             ..Default::default()
@@ -263,7 +263,7 @@ mod tests {
 
     #[test]
     fn build_calls_from_empty_tx() {
-        let tx = TxAa::default();
+        let tx = TxEip8130::default();
         let calls = build_execution_calls(&tx);
         assert!(calls.is_empty());
     }

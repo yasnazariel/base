@@ -47,6 +47,7 @@ impl<Block: BlockEnvironment> TryIntoTxEnv<OpRevm<TxEnv>, Block> for OpTransacti
             base: self.as_ref().clone().try_into_tx_env(evm_env)?,
             enveloped_tx: Some(Bytes::new()),
             deposit: Default::default(),
+            eip8130: Default::default(),
         })
     }
 }

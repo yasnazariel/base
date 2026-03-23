@@ -28,7 +28,7 @@ impl NetworkWallet<Base> for EthereumWallet {
             OpTypedTransaction::Eip2930(tx) => TypedTransaction::Eip2930(tx),
             OpTypedTransaction::Eip1559(tx) => TypedTransaction::Eip1559(tx),
             OpTypedTransaction::Eip7702(tx) => TypedTransaction::Eip7702(tx),
-            OpTypedTransaction::Aa(_) => {
+            OpTypedTransaction::Eip8130(_) => {
                 return Err(alloy_signer::Error::other(
                     "not implemented for EIP-8130 account abstraction transaction",
                 ));

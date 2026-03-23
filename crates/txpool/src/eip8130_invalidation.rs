@@ -8,7 +8,7 @@ use std::collections::{HashMap, HashSet};
 
 use alloy_primitives::{Address, B256, U256};
 use base_alloy_consensus::{
-    AccountChangeEntry, TxAa, nonce_slot, owner_config_slot,
+    AccountChangeEntry, TxEip8130, nonce_slot, owner_config_slot,
     ACCOUNT_CONFIG_ADDRESS, NONCE_MANAGER_ADDRESS,
 };
 
@@ -24,12 +24,12 @@ pub struct InvalidationKey {
 /// Index that maps invalidation keys to the set of transaction hashes that
 /// depend on them.
 #[derive(Debug, Default)]
-pub struct AaInvalidationIndex {
+pub struct Eip8130InvalidationIndex {
     key_to_txs: HashMap<InvalidationKey, HashSet<B256>>,
     tx_to_keys: HashMap<B256, HashSet<InvalidationKey>>,
 }
 
-impl AaInvalidationIndex {
+impl Eip8130InvalidationIndex {
     /// Inserts a transaction and its invalidation keys into the index.
     pub fn insert(&mut self, tx_hash: B256, keys: HashSet<InvalidationKey>) {
         for key in &keys {
@@ -82,7 +82,7 @@ impl AaInvalidationIndex {
 /// Computes the set of storage slots that this AA transaction depends on.
 ///
 /// A state change to any of these slots should trigger re-validation or eviction.
-pub fn compute_invalidation_keys(tx: &TxAa) -> HashSet<InvalidationKey> {
+pub fn compute_invalidation_keys(tx: &TxEip8130) -> HashSet<InvalidationKey> {
     let mut keys = HashSet::new();
 
     // 1. Nonce slot — the sender's 2D nonce at (from, nonce_key)
@@ -145,7 +145,7 @@ pub fn compute_invalidation_keys(tx: &TxAa) -> HashSet<InvalidationKey> {
 /// hashes.
 pub fn process_fal(
     fal: &[(Address, B256)],
-    index: &AaInvalidationIndex,
+    index: &Eip8130InvalidationIndex,
 ) -> HashSet<B256> {
     let keys: Vec<InvalidationKey> =
         fal.iter().map(|(address, slot)| InvalidationKey { address: *address, slot: *slot }).collect();
@@ -156,14 +156,14 @@ pub fn process_fal(
 mod tests {
     use alloy_primitives::{Address, B256, Bytes, U256};
     use base_alloy_consensus::{
-        AccountChangeEntry, ConfigChangeEntry, ConfigOperation, CreateEntry, TxAa,
+        AccountChangeEntry, ConfigChangeEntry, ConfigOperation, CreateEntry, TxEip8130,
         ACCOUNT_CONFIG_ADDRESS, NONCE_MANAGER_ADDRESS, nonce_slot, OP_AUTHORIZE_OWNER,
     };
 
     use super::*;
 
-    fn make_simple_tx(from: Address, nonce_key: u64) -> TxAa {
-        TxAa {
+    fn make_simple_tx(from: Address, nonce_key: u64) -> TxEip8130 {
+        TxEip8130 {
             chain_id: 1,
             from,
             nonce_key,
@@ -178,7 +178,7 @@ mod tests {
 
     #[test]
     fn index_insert_lookup_remove() {
-        let mut index = AaInvalidationIndex::default();
+        let mut index = Eip8130InvalidationIndex::default();
         let tx_hash = B256::repeat_byte(0x01);
         let key = InvalidationKey {
             address: NONCE_MANAGER_ADDRESS,
@@ -213,7 +213,7 @@ mod tests {
     #[test]
     fn compute_keys_with_config_change() {
         let from = Address::repeat_byte(0x42);
-        let tx = TxAa {
+        let tx = TxEip8130 {
             chain_id: 1,
             from,
             account_changes: vec![AccountChangeEntry::ConfigChange(ConfigChangeEntry {
@@ -242,7 +242,7 @@ mod tests {
     #[test]
     fn compute_keys_with_create() {
         let from = Address::repeat_byte(0x42);
-        let tx = TxAa {
+        let tx = TxEip8130 {
             chain_id: 1,
             from,
             account_changes: vec![AccountChangeEntry::Create(CreateEntry {
@@ -261,7 +261,7 @@ mod tests {
 
     #[test]
     fn process_fal_finds_invalidated_txs() {
-        let mut index = AaInvalidationIndex::default();
+        let mut index = Eip8130InvalidationIndex::default();
 
         let from = Address::repeat_byte(0x42);
         let tx = make_simple_tx(from, 0);
@@ -277,7 +277,7 @@ mod tests {
 
     #[test]
     fn process_fal_unrelated_slot() {
-        let mut index = AaInvalidationIndex::default();
+        let mut index = Eip8130InvalidationIndex::default();
 
         let from = Address::repeat_byte(0x42);
         let tx = make_simple_tx(from, 0);

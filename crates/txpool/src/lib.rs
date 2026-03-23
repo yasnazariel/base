@@ -7,13 +7,15 @@
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-mod aa_invalidation;
-pub use aa_invalidation::{
-    AaInvalidationIndex, InvalidationKey, compute_invalidation_keys, process_fal,
+mod eip8130_invalidation;
+pub use eip8130_invalidation::{
+    Eip8130InvalidationIndex, InvalidationKey, compute_invalidation_keys, process_fal,
 };
 
-mod aa_validate;
-pub use aa_validate::{AaValidationError, AaValidationOutcome, validate_aa_transaction};
+mod eip8130_validate;
+pub use eip8130_validate::{
+    Eip8130ValidationError, Eip8130ValidationOutcome, validate_eip8130_transaction,
+};
 
 mod validator;
 pub use validator::{OpL1BlockInfo, OpTransactionValidator};

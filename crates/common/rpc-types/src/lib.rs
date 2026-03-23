@@ -15,7 +15,7 @@ pub use genesis::{OpBaseFeeInfo, OpBaseHardforkInfo, OpChainInfo, OpGenesisInfo}
 
 mod receipt;
 pub use receipt::{
-    AaReceiptFields, L1BlockInfo, OpTransactionReceipt, OpTransactionReceiptFields,
+    Eip8130ReceiptFields, L1BlockInfo, OpTransactionReceipt, OpTransactionReceiptFields,
 };
 
 mod transaction;

@@ -24,7 +24,7 @@ use reth_ethereum_primitives as _;
 
 use crate::{
     AA_TX_TYPE_ID, BaseBlock, DEPOSIT_TX_TYPE_ID, OpDepositReceipt, OpPooledTransaction,
-    OpReceipt, OpTxEnvelope, OpTxType, OpTypedTransaction, TxAa, TxDeposit,
+    OpReceipt, OpTxEnvelope, OpTxType, OpTypedTransaction, TxDeposit, TxEip8130,
 };
 
 // ---------------------------------------------------------------------------
@@ -45,7 +45,7 @@ impl reth_primitives_traits::InMemorySize for TxDeposit {
     }
 }
 
-impl reth_primitives_traits::InMemorySize for TxAa {
+impl reth_primitives_traits::InMemorySize for TxEip8130 {
     #[inline]
     fn size(&self) -> usize {
         core::mem::size_of::<Self>()
@@ -67,7 +67,7 @@ impl reth_primitives_traits::InMemorySize for OpReceipt {
             | Self::Eip2930(receipt)
             | Self::Eip1559(receipt)
             | Self::Eip7702(receipt)
-            | Self::Aa(receipt) => receipt.size(),
+            | Self::Eip8130(receipt) => receipt.size(),
             Self::Deposit(receipt) => receipt.size(),
         }
     }
@@ -80,7 +80,7 @@ impl reth_primitives_traits::InMemorySize for OpTypedTransaction {
             Self::Eip2930(tx) => tx.size(),
             Self::Eip1559(tx) => tx.size(),
             Self::Eip7702(tx) => tx.size(),
-            Self::Aa(tx) => reth_primitives_traits::InMemorySize::size(tx),
+            Self::Eip8130(tx) => reth_primitives_traits::InMemorySize::size(tx),
             Self::Deposit(tx) => tx.size(),
         }
     }
@@ -93,7 +93,7 @@ impl reth_primitives_traits::InMemorySize for OpPooledTransaction {
             Self::Eip2930(tx) => tx.size(),
             Self::Eip1559(tx) => tx.size(),
             Self::Eip7702(tx) => tx.size(),
-            Self::Aa(tx) => reth_primitives_traits::InMemorySize::size(tx.inner()),
+            Self::Eip8130(tx) => reth_primitives_traits::InMemorySize::size(tx.inner()),
         }
     }
 }
@@ -105,7 +105,7 @@ impl reth_primitives_traits::InMemorySize for OpTxEnvelope {
             Self::Eip2930(tx) => tx.size(),
             Self::Eip1559(tx) => tx.size(),
             Self::Eip7702(tx) => tx.size(),
-            Self::Aa(tx) => reth_primitives_traits::InMemorySize::size(tx.inner()),
+            Self::Eip8130(tx) => reth_primitives_traits::InMemorySize::size(tx.inner()),
             Self::Deposit(tx) => tx.size(),
         }
     }
@@ -218,10 +218,10 @@ impl Compact for TxDeposit {
 }
 
 // ---------------------------------------------------------------------------
-// Compact – TxAa (uses RLP as the compact encoding)
+// Compact – TxEip8130 (uses RLP as the compact encoding)
 // ---------------------------------------------------------------------------
 
-impl Compact for TxAa {
+impl Compact for TxEip8130 {
     fn to_compact<B>(&self, buf: &mut B) -> usize
     where
         B: BufMut + AsMut<[u8]>,
@@ -238,7 +238,7 @@ impl Compact for TxAa {
         let len = u32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]]) as usize;
         let rlp_data = &buf[4..4 + len];
         let tx = Self::rlp_decode(&mut &*rlp_data)
-            .expect("valid TxAa RLP from compact storage");
+            .expect("valid TxEip8130 RLP from compact storage");
         (tx, &buf[4 + len..])
     }
 }
@@ -260,7 +260,7 @@ impl Compact for OpTxType {
                 buf.put_u8(EIP7702_TX_TYPE_ID);
                 COMPACT_EXTENDED_IDENTIFIER_FLAG
             }
-            Self::Aa => {
+            Self::Eip8130 => {
                 buf.put_u8(AA_TX_TYPE_ID);
                 COMPACT_EXTENDED_IDENTIFIER_FLAG
             }
@@ -281,7 +281,7 @@ impl Compact for OpTxType {
                     let extended_identifier = buf.get_u8();
                     match extended_identifier {
                         EIP7702_TX_TYPE_ID => Self::Eip7702,
-                        AA_TX_TYPE_ID => Self::Aa,
+                        AA_TX_TYPE_ID => Self::Eip8130,
                         DEPOSIT_TX_TYPE_ID => Self::Deposit,
                         _ => panic!("Unsupported OpTxType identifier: {extended_identifier}"),
                     }
@@ -308,7 +308,7 @@ impl Compact for OpTypedTransaction {
             Self::Eip2930(tx) => tx.to_compact(out),
             Self::Eip1559(tx) => tx.to_compact(out),
             Self::Eip7702(tx) => tx.to_compact(out),
-            Self::Aa(tx) => tx.to_compact(out),
+            Self::Eip8130(tx) => tx.to_compact(out),
             Self::Deposit(tx) => tx.to_compact(out),
         };
         identifier
@@ -333,9 +333,9 @@ impl Compact for OpTypedTransaction {
                 let (tx, buf) = Compact::from_compact(buf, buf.len());
                 (Self::Eip7702(tx), buf)
             }
-            OpTxType::Aa => {
-                let (tx, buf) = TxAa::from_compact(buf, buf.len());
-                (Self::Aa(tx), buf)
+            OpTxType::Eip8130 => {
+                let (tx, buf) = TxEip8130::from_compact(buf, buf.len());
+                (Self::Eip8130(tx), buf)
             }
             OpTxType::Deposit => {
                 let (tx, buf) = Compact::from_compact(buf, buf.len());
@@ -356,7 +356,7 @@ impl reth_codecs::alloy::transaction::ToTxCompact for OpTxEnvelope {
             Self::Eip2930(tx) => tx.tx().to_compact(buf),
             Self::Eip1559(tx) => tx.tx().to_compact(buf),
             Self::Eip7702(tx) => tx.tx().to_compact(buf),
-            Self::Aa(tx) => tx.inner().to_compact(buf),
+            Self::Eip8130(tx) => tx.inner().to_compact(buf),
             Self::Deposit(tx) => tx.to_compact(buf),
         };
     }
@@ -387,10 +387,10 @@ impl reth_codecs::alloy::transaction::FromTxCompact for OpTxEnvelope {
                 let tx = Signed::new_unhashed(tx, signature);
                 (Self::Eip7702(tx), buf)
             }
-            OpTxType::Aa => {
-                let (tx, buf) = TxAa::from_compact(buf, buf.len());
+            OpTxType::Eip8130 => {
+                let (tx, buf) = TxEip8130::from_compact(buf, buf.len());
                 let tx = Sealed::new(tx);
-                (Self::Aa(tx), buf)
+                (Self::Eip8130(tx), buf)
             }
             OpTxType::Deposit => {
                 let (tx, buf) = TxDeposit::from_compact(buf, buf.len());
@@ -415,7 +415,7 @@ impl reth_codecs::alloy::transaction::Envelope for OpTxEnvelope {
             Self::Eip2930(tx) => tx.signature(),
             Self::Eip1559(tx) => tx.signature(),
             Self::Eip7702(tx) => tx.signature(),
-            Self::Aa(_) | Self::Deposit(_) => &DEPOSIT_SIGNATURE,
+            Self::Eip8130(_) | Self::Deposit(_) => &DEPOSIT_SIGNATURE,
         }
     }
 
@@ -501,7 +501,7 @@ impl From<CompactOpReceipt<'_>> for OpReceipt {
             OpTxType::Eip2930 => Self::Eip2930(inner),
             OpTxType::Eip1559 => Self::Eip1559(inner),
             OpTxType::Eip7702 => Self::Eip7702(inner),
-            OpTxType::Aa => Self::Aa(inner),
+            OpTxType::Eip8130 => Self::Eip8130(inner),
             OpTxType::Deposit => {
                 Self::Deposit(OpDepositReceipt { inner, deposit_nonce, deposit_receipt_version })
             }

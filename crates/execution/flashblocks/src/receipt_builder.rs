@@ -117,7 +117,7 @@ impl<C: BaseUpgrades> UnifiedReceiptBuilder<C> {
                 OpTxType::Eip2930 => OpReceipt::Eip2930(receipt),
                 OpTxType::Eip1559 => OpReceipt::Eip1559(receipt),
                 OpTxType::Eip7702 => OpReceipt::Eip7702(receipt),
-                OpTxType::Aa => OpReceipt::Aa(receipt),
+                OpTxType::Eip8130 => OpReceipt::Eip8130(receipt),
                 OpTxType::Deposit => unreachable!(),
             })
         }

@@ -21,7 +21,7 @@ impl Display for OpTxType {
             Self::Eip2930 => write!(f, "eip2930"),
             Self::Eip1559 => write!(f, "eip1559"),
             Self::Eip7702 => write!(f, "eip7702"),
-            Self::Aa => write!(f, "aa"),
+            Self::Eip8130 => write!(f, "eip8130"),
             Self::Deposit => write!(f, "deposit"),
         }
     }
@@ -30,16 +30,16 @@ impl Display for OpTxType {
 impl OpTxType {
     /// List of all variants.
     pub const ALL: [Self; 6] =
-        [Self::Legacy, Self::Eip2930, Self::Eip1559, Self::Eip7702, Self::Aa, Self::Deposit];
+        [Self::Legacy, Self::Eip2930, Self::Eip1559, Self::Eip7702, Self::Eip8130, Self::Deposit];
 
     /// Returns `true` if the type is [`OpTxType::Deposit`].
     pub const fn is_deposit(&self) -> bool {
         matches!(self, Self::Deposit)
     }
 
-    /// Returns `true` if the type is [`OpTxType::Aa`].
-    pub const fn is_aa(&self) -> bool {
-        matches!(self, Self::Aa)
+    /// Returns `true` if the type is [`OpTxType::Eip8130`].
+    pub const fn is_eip8130(&self) -> bool {
+        matches!(self, Self::Eip8130)
     }
 }
 
@@ -59,7 +59,7 @@ mod tests {
             OpTxType::Eip2930,
             OpTxType::Eip1559,
             OpTxType::Eip7702,
-            OpTxType::Aa,
+            OpTxType::Eip8130,
             OpTxType::Deposit,
         ];
         assert_eq!(OpTxType::ALL.to_vec(), all);

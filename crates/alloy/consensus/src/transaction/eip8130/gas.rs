@@ -3,7 +3,7 @@
 use alloy_rlp::Encodable;
 
 use super::{
-    AccountChangeEntry, TxAa,
+    AccountChangeEntry, TxEip8130,
     constants::{
         AA_BASE_COST, BYTECODE_BASE_GAS, BYTECODE_PER_BYTE_GAS, CONFIG_CHANGE_OP_GAS,
         CONFIG_CHANGE_SKIP_GAS, EOA_AUTH_GAS, NONCE_KEY_COLD_GAS, NONCE_KEY_WARM_GAS, SLOAD_GAS,
@@ -24,7 +24,7 @@ use super::{
 ///
 /// The `nonce_key_is_warm` parameter indicates whether the nonce channel has been
 /// used before (affects the SSTORE cost).
-pub fn intrinsic_gas(tx: &TxAa, nonce_key_is_warm: bool, chain_id: u64) -> u64 {
+pub fn intrinsic_gas(tx: &TxEip8130, nonce_key_is_warm: bool, chain_id: u64) -> u64 {
     let mut gas = AA_BASE_COST;
 
     gas += tx_payload_cost(tx);
@@ -39,7 +39,7 @@ pub fn intrinsic_gas(tx: &TxAa, nonce_key_is_warm: bool, chain_id: u64) -> u64 {
 
 /// Standard EIP-2028 calldata cost: 16 gas per non-zero byte, 4 per zero byte,
 /// computed over the full RLP encoding of the transaction.
-pub fn tx_payload_cost(tx: &TxAa) -> u64 {
+pub fn tx_payload_cost(tx: &TxEip8130) -> u64 {
     let mut buf = alloc::vec::Vec::with_capacity(tx.length());
     tx.encode(&mut buf);
     calldata_gas(&buf)
@@ -50,7 +50,7 @@ pub fn tx_payload_cost(tx: &TxAa) -> u64 {
 /// - EOA (ecrecover): flat 6 000 gas.
 /// - Configured: SLOAD (owner_config read) + verifier resolution cost.
 ///   The verifier execution cost is metered separately at runtime.
-pub fn sender_auth_cost(tx: &TxAa) -> u64 {
+pub fn sender_auth_cost(tx: &TxEip8130) -> u64 {
     if tx.is_eoa() {
         EOA_AUTH_GAS
     } else {
@@ -59,7 +59,7 @@ pub fn sender_auth_cost(tx: &TxAa) -> u64 {
 }
 
 /// Payer authentication cost: 0 for self-pay, same model as sender for sponsored.
-pub fn payer_auth_cost(tx: &TxAa) -> u64 {
+pub fn payer_auth_cost(tx: &TxEip8130) -> u64 {
     if tx.is_self_pay() {
         0
     } else {
@@ -73,7 +73,7 @@ pub fn nonce_key_cost(is_warm: bool) -> u64 {
 }
 
 /// Bytecode deployment cost: 32 000 base + 200/byte if a create entry is present.
-pub fn bytecode_cost(tx: &TxAa) -> u64 {
+pub fn bytecode_cost(tx: &TxEip8130) -> u64 {
     for entry in &tx.account_changes {
         if let AccountChangeEntry::Create(create) = entry {
             if create.bytecode.is_empty() {
@@ -89,7 +89,7 @@ pub fn bytecode_cost(tx: &TxAa) -> u64 {
 ///
 /// - Entries targeting the current `chain_id` (or chain_id == 0 for multi-chain): `CONFIG_CHANGE_OP_GAS` per operation.
 /// - Entries for a different chain: `CONFIG_CHANGE_SKIP_GAS` (SLOAD to verify and skip).
-pub fn account_changes_cost(tx: &TxAa, chain_id: u64) -> u64 {
+pub fn account_changes_cost(tx: &TxEip8130, chain_id: u64) -> u64 {
     let mut gas = 0u64;
     for entry in &tx.account_changes {
         if let AccountChangeEntry::ConfigChange(cc) = entry {
@@ -129,13 +129,13 @@ mod tests {
 
     #[test]
     fn bytecode_cost_no_create() {
-        let tx = TxAa::default();
+        let tx = TxEip8130::default();
         assert_eq!(bytecode_cost(&tx), 0);
     }
 
     #[test]
     fn bytecode_cost_with_create() {
-        let tx = TxAa {
+        let tx = TxEip8130 {
             account_changes: vec![AccountChangeEntry::Create(CreateEntry {
                 user_salt: Default::default(),
                 bytecode: Bytes::from_static(&[0x60; 100]),
@@ -152,7 +152,7 @@ mod tests {
 
     #[test]
     fn account_changes_cost_applied_vs_skipped() {
-        let tx = TxAa {
+        let tx = TxEip8130 {
             account_changes: vec![
                 AccountChangeEntry::ConfigChange(ConfigChangeEntry {
                     chain_id: 8453,
@@ -193,7 +193,7 @@ mod tests {
 
     #[test]
     fn eoa_auth_cost() {
-        let mut tx = TxAa::default();
+        let mut tx = TxEip8130::default();
         tx.from = Address::ZERO; // EOA
         assert_eq!(sender_auth_cost(&tx), EOA_AUTH_GAS);
 
@@ -203,7 +203,7 @@ mod tests {
 
     #[test]
     fn payer_auth_cost_self_pay_vs_sponsored() {
-        let mut tx = TxAa::default();
+        let mut tx = TxEip8130::default();
         assert_eq!(payer_auth_cost(&tx), 0); // self-pay
 
         tx.payer = Address::repeat_byte(0xCC);
@@ -212,7 +212,7 @@ mod tests {
 
     #[test]
     fn intrinsic_gas_smoke() {
-        let tx = TxAa {
+        let tx = TxEip8130 {
             chain_id: 8453,
             from: Address::repeat_byte(1),
             nonce_key: U256::ZERO,

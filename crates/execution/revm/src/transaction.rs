@@ -1,5 +1,11 @@
 //! Contains the `[OpTransaction]` type and its implementation.
 
+mod eip8130;
+pub use eip8130::{
+    Eip8130Call, Eip8130CodePlacement, Eip8130Parts, Eip8130PhaseResult, Eip8130StorageWrite, decode_phase_statuses,
+    encode_phase_statuses,
+};
+
 mod abstraction;
 pub use abstraction::{OpBuildError, OpTransaction, OpTransactionBuilder, OpTxTr};
 

@@ -34,8 +34,9 @@ pub use spec::*;
 
 mod transaction;
 pub use transaction::{
-    DEPOSIT_TRANSACTION_TYPE, DepositTransactionParts, OpBuildError, OpTransaction,
-    OpTransactionBuilder, OpTransactionError, OpTxTr,
+    Eip8130Call, Eip8130CodePlacement, Eip8130Parts, Eip8130PhaseResult, Eip8130StorageWrite, DEPOSIT_TRANSACTION_TYPE,
+    DepositTransactionParts, OpBuildError, OpTransaction, OpTransactionBuilder,
+    OpTransactionError, OpTxTr, decode_phase_statuses, encode_phase_statuses,
 };
 
 mod compat;

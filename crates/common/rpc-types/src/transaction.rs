@@ -18,7 +18,7 @@ pub use request::OpTransactionRequest;
 #[serde(
     try_from = "tx_serde::TransactionSerdeHelper<T>",
     into = "tx_serde::TransactionSerdeHelper<T>",
-    bound = "T: TransactionTrait + OpTransaction + base_alloy_consensus::OpAaTransaction + Clone + serde::Serialize + serde::de::DeserializeOwned"
+    bound = "T: TransactionTrait + OpTransaction + base_alloy_consensus::OpEip8130Transaction + Clone + serde::Serialize + serde::de::DeserializeOwned"
 )]
 pub struct Transaction<T = OpTxEnvelope> {
     /// Ethereum Transaction Types
@@ -210,7 +210,7 @@ mod tx_serde {
     //!
     //! Additionally, we need similar logic for the `gasPrice` field
     use alloy_consensus::{Transaction as TransactionTrait, transaction::Recovered};
-    use base_alloy_consensus::{OpAaTransaction, OpTransaction};
+    use base_alloy_consensus::{OpEip8130Transaction, OpTransaction};
     use serde::{Deserialize, Serialize, de::Error};
 
     use super::{Address, BlockHash, Transaction};
@@ -259,7 +259,7 @@ mod tx_serde {
         other: OptionalFields,
     }
 
-    impl<T: TransactionTrait + OpTransaction + OpAaTransaction> From<Transaction<T>>
+    impl<T: TransactionTrait + OpTransaction + OpEip8130Transaction> From<Transaction<T>>
         for TransactionSerdeHelper<T>
     {
         fn from(value: Transaction<T>) -> Self {
@@ -278,7 +278,7 @@ mod tx_serde {
 
             // Deposits and AA transactions embed `from` in their inner type, so
             // skip the RPC-level `from` field to avoid duplicate JSON keys.
-            let from = if inner.as_deposit().is_some() || inner.is_aa() {
+            let from = if inner.as_deposit().is_some() || inner.is_eip8130() {
                 None
             } else {
                 Some(inner.signer())
@@ -298,7 +298,7 @@ mod tx_serde {
         }
     }
 
-    impl<T: TransactionTrait + OpTransaction + OpAaTransaction> TryFrom<TransactionSerdeHelper<T>>
+    impl<T: TransactionTrait + OpTransaction + OpEip8130Transaction> TryFrom<TransactionSerdeHelper<T>>
         for Transaction<T>
     {
         type Error = serde_json::Error;
@@ -319,8 +319,8 @@ mod tx_serde {
                 from
             } else if let Some(deposit) = inner.as_deposit() {
                 deposit.from
-            } else if let Some(aa) = inner.as_aa() {
-                aa.from
+            } else if let Some(eip8130) = inner.as_eip8130() {
+                eip8130.from
             } else {
                 return Err(serde_json::Error::custom("missing `from` field"));
             };
@@ -371,13 +371,13 @@ mod tests {
 
     #[test]
     fn can_deserialize_aa_tx() {
-        use base_alloy_consensus::OpAaTransaction;
+        use base_alloy_consensus::OpEip8130Transaction;
         let rpc_tx = r#"{"type":"0x5","chainId":"0x509f455","from":"0x70997970c51812dc3a010c7d01b50e0d17dc79c8","nonceKey":"0x0","nonceSequence":"0x0","expiry":"0x0","maxPriorityFeePerGas":"0xf4240","maxFeePerGas":"0x3b9aca00","gas":"0xc350","authorizationList":[],"accountChanges":[],"calls":[[]],"payer":"0x0000000000000000000000000000000000000000","senderAuth":"0x01b20cd35322123007a2085319f0aa7154dc47c9dc4d6f713d00b6a87dbcafafa02885b9d7326ceeab6033b8ae512e51a774c70cdd9605c3d0fe6a355ddc4381981b","payerAuth":"0x","hash":"0x45a9e1761ba8a09a61fcd724b2d3558b5c08cbab45ecd4f552aa016a24bb50a2","blockHash":"0xf8b3c8f0cb5a88e3eef36d1d9103ceb0b6a1fbfbb9cd5a3a4116cae693ce54ed","blockNumber":"0x17","transactionIndex":"0x1","gasPrice":"0x3b9aca00"}"#;
 
         let result = serde_json::from_str::<Transaction>(rpc_tx);
         match &result {
             Ok(tx) => {
-                assert!(tx.as_ref().as_aa().is_some());
+                assert!(tx.as_ref().as_eip8130().is_some());
             }
             Err(e) => {
                 panic!("Failed to deserialize AA transaction: {e}");

@@ -1,6 +1,6 @@
 //! EIP-8130: Account Abstraction by Account Configuration.
 //!
-//! Defines the AA transaction type (`TxAa`), supporting types (calls, owners,
+//! Defines the AA transaction type (`TxEip8130`), supporting types (calls, owners,
 //! account change entries), constants, signature hash computation, intrinsic gas
 //! calculation, and CREATE2 address derivation.
 
@@ -19,7 +19,7 @@ pub use types::{
 };
 
 mod tx;
-pub use tx::TxAa;
+pub use tx::TxEip8130;
 
 mod signature;
 pub use signature::{
@@ -69,7 +69,7 @@ pub use accessors::{
 mod execution;
 #[cfg(feature = "evm")]
 pub use execution::{
-    AaExecutionPlan, BalanceTransfer, CodePlacement, ExecutionCall, PhaseResult, StorageWrite,
+    Eip8130ExecutionPlan, BalanceTransfer, CodePlacement, ExecutionCall, PhaseResult, StorageWrite,
     TxContextValues, auto_delegation_code, build_execution_calls, config_change_writes,
     gas_refund, max_gas_cost, nonce_increment_write, owner_registration_writes,
 };

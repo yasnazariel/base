@@ -5,19 +5,19 @@ use alloc::vec::Vec;
 use alloy_primitives::{Address, B256, Bytes, keccak256};
 
 use super::{
-    TxAa,
+    TxEip8130,
     constants::{VERIFIER_CUSTOM, VERIFIER_DELEGATE, VERIFIER_K1, VERIFIER_P256_RAW, VERIFIER_P256_WEBAUTHN},
 };
 
 /// Computed sender signature hash.
-pub fn sender_signature_hash(tx: &TxAa) -> B256 {
+pub fn sender_signature_hash(tx: &TxEip8130) -> B256 {
     let mut buf = Vec::with_capacity(512);
     tx.encode_for_sender_signing(&mut buf);
     keccak256(&buf)
 }
 
 /// Computed payer signature hash.
-pub fn payer_signature_hash(tx: &TxAa) -> B256 {
+pub fn payer_signature_hash(tx: &TxEip8130) -> B256 {
     let mut buf = Vec::with_capacity(512);
     tx.encode_for_payer_signing(&mut buf);
     keccak256(&buf)
@@ -64,7 +64,7 @@ pub enum VerifierTarget {
 ///
 /// - If `from == Address::ZERO` (EOA mode): expect exactly 65 bytes (raw ECDSA).
 /// - Otherwise (configured owner): first byte is the verifier type.
-pub fn parse_sender_auth(tx: &TxAa) -> Result<ParsedSenderAuth, &'static str> {
+pub fn parse_sender_auth(tx: &TxEip8130) -> Result<ParsedSenderAuth, &'static str> {
     if tx.is_eoa() {
         if tx.sender_auth.len() != 65 {
             return Err("EOA sender_auth must be exactly 65 bytes");
@@ -104,11 +104,11 @@ pub fn resolve_verifier(verifier_type: u8, data: &Bytes) -> Result<VerifierTarge
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::TxAa;
+    use crate::TxEip8130;
 
     #[test]
     fn parse_eoa_auth() {
-        let tx = TxAa {
+        let tx = TxEip8130 {
             from: Address::ZERO,
             sender_auth: Bytes::from([0xABu8; 65].as_slice()),
             ..Default::default()
@@ -119,7 +119,7 @@ mod tests {
 
     #[test]
     fn parse_eoa_wrong_length() {
-        let tx = TxAa {
+        let tx = TxEip8130 {
             from: Address::ZERO,
             sender_auth: Bytes::from_static(&[0x01; 64]),
             ..Default::default()
@@ -131,7 +131,7 @@ mod tests {
     fn parse_configured_k1() {
         let mut auth = vec![VERIFIER_K1];
         auth.extend_from_slice(&[0xAB; 65]);
-        let tx = TxAa {
+        let tx = TxEip8130 {
             from: Address::repeat_byte(0x01),
             sender_auth: Bytes::from(auth),
             ..Default::default()
@@ -151,7 +151,7 @@ mod tests {
         let mut auth = vec![VERIFIER_CUSTOM];
         auth.extend_from_slice(&[0xCC; 20]); // verifier address
         auth.extend_from_slice(&[0xDD; 32]); // data
-        let tx = TxAa {
+        let tx = TxEip8130 {
             from: Address::repeat_byte(0x01),
             sender_auth: Bytes::from(auth),
             ..Default::default()
@@ -175,7 +175,7 @@ mod tests {
 
     #[test]
     fn sender_payer_hashes_are_deterministic() {
-        let tx = TxAa {
+        let tx = TxEip8130 {
             chain_id: 1,
             from: Address::repeat_byte(0x01),
             nonce_key: alloy_primitives::U256::ZERO,

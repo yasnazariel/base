@@ -35,11 +35,11 @@ pub use transaction::{
     DELEGATE_VERIFIER_ADDRESS, DEPLOYMENT_HEADER_SIZE, DEPOSIT_TX_TYPE_ID, DepositTransaction,
     EOA_AUTH_GAS, IAccountConfig, INonceManager, ITxContext, IVerifier, K1_VERIFIER_ADDRESS,
     LOCK_BASE_SLOT, MAX_SIGNATURE_SIZE, NONCE_BASE_SLOT, NONCE_KEY_COLD_GAS, NONCE_KEY_WARM_GAS,
-    NONCE_MANAGER_ADDRESS, OWNER_CONFIG_BASE_SLOT, OpAaTransaction, OpDepositInfo, OwnerTuple,
+    NONCE_MANAGER_ADDRESS, OWNER_CONFIG_BASE_SLOT, OpEip8130Transaction, OpDepositInfo, OwnerTuple,
     OpPooledTransaction, OpTransaction, OpTransactionInfo, OpTxEnvelope, OpTxType,
     OpTypedTransaction, Owner, OwnerScope, P256_RAW_VERIFIER_ADDRESS,
     P256_WEBAUTHN_VERIFIER_ADDRESS, ParsedSenderAuth, SEQUENCE_BASE_SLOT, SLOAD_GAS,
-    TX_CONTEXT_ADDRESS, TxAa, TxDeposit, VERIFIER_CUSTOM, VERIFIER_DELEGATE, VERIFIER_K1,
+    TX_CONTEXT_ADDRESS, TxEip8130, TxDeposit, VERIFIER_CUSTOM, VERIFIER_DELEGATE, VERIFIER_K1,
     VERIFIER_P256_RAW, VERIFIER_P256_WEBAUTHN, VerifierTarget, account_changes_cost,
     bytecode_cost, create2_address, deployment_code, deployment_header, derive_account_address,
     effective_salt, encode_owner_config, intrinsic_gas, lock_slot, nonce_key_cost, nonce_slot,
@@ -50,7 +50,7 @@ pub use transaction::{
 };
 #[cfg(feature = "evm")]
 pub use transaction::{
-    AaExecutionPlan, BalanceTransfer, CodePlacement, ExecutionCall, LockState, NONCE_MANAGER_GAS,
+    Eip8130ExecutionPlan, BalanceTransfer, CodePlacement, ExecutionCall, LockState, NONCE_MANAGER_GAS,
     PhaseResult, PrecompileError, TX_CONTEXT_GAS,
     StorageWrite, TxContextValues, ValidationError, ValidationResult, auto_delegation_code,
     build_execution_calls, check_lock_state, check_payer_authorization,

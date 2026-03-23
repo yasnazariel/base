@@ -7,8 +7,8 @@
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-pub mod aa;
 pub mod config;
+pub mod eip8130;
 pub mod debug;
 pub mod engine;
 pub mod error;
@@ -22,7 +22,7 @@ pub mod witness;
 pub use config::{BaseEthConfigApiServer, BaseEthConfigHandler};
 #[cfg(feature = "client")]
 pub use engine::OpEngineApiClient;
-pub use aa::AaApiServer;
+pub use eip8130::Eip8130ApiServer;
 pub use engine::{OP_ENGINE_CAPABILITIES, OpEngineApi, OpEngineApiServer};
 pub use error::{OpEthApiError, OpInvalidTransactionError, SequencerClientError};
 pub use eth::{OpEthApi, OpEthApiBuilder, OpReceiptBuilder};

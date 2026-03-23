@@ -182,7 +182,7 @@ where
                 );
             }
 
-            return match crate::validate_aa_transaction(
+            return match crate::validate_eip8130_transaction(
                 &transaction,
                 self.block_timestamp(),
                 self.client(),
@@ -196,7 +196,7 @@ where
                     authorities: None,
                 },
                 Err(e) => {
-                    tracing::debug!(target: "txpool", error = %e, "AA transaction validation failed");
+                    tracing::debug!(target: "txpool", error = %e, "EIP-8130 transaction validation failed");
                     TransactionValidationOutcome::Invalid(
                         transaction,
                         reth_transaction_pool::error::InvalidPoolTransactionError::other(e),
