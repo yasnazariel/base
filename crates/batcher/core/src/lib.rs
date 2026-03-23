@@ -33,6 +33,7 @@ pub use event::DriverEvent;
 mod admin;
 pub use admin::{
     ADMIN_CHANNEL_CAPACITY, AdminCommand, AdminError, AdminHandle, AdminResult, BatcherStatus,
+    LogSetter,
 };
 
 mod driver;

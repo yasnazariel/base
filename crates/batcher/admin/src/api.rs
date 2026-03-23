@@ -8,7 +8,6 @@ use jsonrpsee::{
     proc_macros::rpc,
     types::ErrorObjectOwned,
 };
-use tracing::warn;
 
 #[rpc(server, namespace = "admin")]
 pub trait BatcherAdminApi {
@@ -68,6 +67,7 @@ impl BatcherAdminApiServerImpl {
         let code = match e {
             AdminError::NotSupported(_) => -32601,
             AdminError::ChannelClosed => -32001,
+            AdminError::SetLogLevel(_) => -32602,
         };
         ErrorObjectOwned::owned(code, e.to_string(), None::<()>)
     }
@@ -108,7 +108,6 @@ impl BatcherAdminApiServer for BatcherAdminApiServerImpl {
     }
 
     async fn set_log_level(&self, level: String) -> RpcResult<()> {
-        warn!(level = %level, "admin_setLogLevel called but not yet supported");
         self.handle.set_log_level(level).map_err(Self::admin_error)
     }
 }
@@ -128,5 +127,11 @@ mod tests {
     fn admin_error_channel_closed_uses_server_error_code() {
         let err = BatcherAdminApiServerImpl::admin_error(AdminError::ChannelClosed);
         assert_eq!(err.code(), -32001);
+    }
+
+    #[test]
+    fn admin_error_set_log_level_uses_invalid_params_code() {
+        let err = BatcherAdminApiServerImpl::admin_error(AdminError::SetLogLevel("bad".to_string()));
+        assert_eq!(err.code(), -32602);
     }
 }

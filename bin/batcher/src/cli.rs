@@ -8,7 +8,7 @@ use std::{
 use alloy_signer_local::PrivateKeySigner;
 use base_batcher_core::ThrottleConfig;
 use base_batcher_service::{BatcherConfig, BatcherService};
-use base_cli_utils::{LogConfig, RuntimeManager};
+use base_cli_utils::{LogConfig, LogReloadHandle, RuntimeManager};
 use base_runtime::TokioRuntime;
 use clap::{Args, Parser};
 use tracing::info;
@@ -34,11 +34,11 @@ pub(crate) struct Cli {
 impl Cli {
     /// Run the batcher CLI.
     pub(crate) fn run(self) -> eyre::Result<()> {
-        LogConfig::from(self.args.logging.clone()).init_tracing_subscriber()?;
+        let log_reload = LogConfig::from(self.args.logging.clone()).init_tracing_subscriber_with_reload()?;
         base_cli_utils::MetricsConfig::from(self.args.metrics.clone()).init_with(|| {
             base_cli_utils::register_version_metrics!();
         })?;
-        RuntimeManager::run_until_ctrl_c(self.args.exec())
+        RuntimeManager::run_until_ctrl_c(self.args.exec(log_reload))
     }
 }
 
@@ -209,7 +209,7 @@ impl BatcherArgs {
     }
 
     /// Execute the batcher.
-    async fn exec(self) -> eyre::Result<()> {
+    async fn exec(self, log_reload: LogReloadHandle) -> eyre::Result<()> {
         let config = self.into_config()?;
         info!(
             l1_rpc = %config.l1_rpc_url,
@@ -220,7 +220,13 @@ impl BatcherArgs {
         let rt = TokioRuntime::new();
         let _signal_handle = RuntimeManager::install_signal_handler(rt.token().clone());
 
-        let service = BatcherService::new(config);
+        let setter = log_reload.into_setter();
+        let log_setter = std::sync::Arc::new(
+            move |level: &str| -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+                setter(level).map_err(|e| e.to_string().into())
+            },
+        );
+        let service = BatcherService::new(config).with_log_setter(log_setter);
         service.setup(rt).await?.run().await
     }
 }

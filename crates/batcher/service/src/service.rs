@@ -8,8 +8,8 @@ use base_alloy_consensus::OpBlock;
 use base_alloy_network::Base;
 use base_batcher_admin::AdminServer;
 use base_batcher_core::{
-    AdminHandle, BatchDriver, DaThrottle, NoopThrottleClient, ThrottleClient, ThrottleConfig,
-    ThrottleController, ThrottleStrategy,
+    AdminHandle, BatchDriver, DaThrottle, LogSetter, NoopThrottleClient, ThrottleClient,
+    ThrottleConfig, ThrottleController, ThrottleStrategy,
 };
 use base_batcher_encoder::BatchEncoder;
 use base_batcher_source::{BlockSubscription, HybridBlockSource, HybridL1HeadSource, SourceError};
@@ -135,16 +135,27 @@ impl ReadyBatcher {
 /// Wires the encoder, block source, L1 head source, transaction manager, and driver.
 /// Call [`setup`](Self::setup) to initialise all components, then call
 /// [`ReadyBatcher::run`] to enter the submission loop.
-#[derive(Debug)]
+#[derive(derive_more::Debug)]
 pub struct BatcherService {
     /// Full batcher configuration.
     config: BatcherConfig,
+    /// Optional runtime log-level setter, provided via [`with_log_setter`](Self::with_log_setter).
+    #[debug(skip)]
+    log_setter: Option<LogSetter>,
 }
 
 impl BatcherService {
     /// Create a new [`BatcherService`] from the given configuration.
-    pub const fn new(config: BatcherConfig) -> Self {
-        Self { config }
+    pub fn new(config: BatcherConfig) -> Self {
+        Self { config, log_setter: None }
+    }
+
+    /// Attach a runtime log-level setter so that `admin_setLogLevel` works.
+    ///
+    /// The setter is forwarded to the admin handle and called when the
+    /// `admin_setLogLevel` JSON-RPC method is invoked.
+    pub fn with_log_setter(self, setter: LogSetter) -> Self {
+        Self { log_setter: Some(setter), ..self }
     }
 
     /// Build a block subscription for the given optional L2 WebSocket URL.
@@ -430,6 +441,10 @@ impl BatcherService {
         let admin_server = match self.config.admin_addr {
             Some(addr) => {
                 let (admin_handle, admin_rx) = AdminHandle::channel();
+                let admin_handle = match self.log_setter {
+                    Some(setter) => admin_handle.with_log_setter(setter),
+                    None => admin_handle,
+                };
                 driver = driver.with_admin_rx(admin_rx);
                 Some(AdminServer::spawn(addr, admin_handle).await?)
             }

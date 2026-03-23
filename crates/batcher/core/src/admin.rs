@@ -1,5 +1,14 @@
 //! Admin command channel for runtime control of the batch driver.
 
+use std::sync::Arc;
+
+/// Type-erased setter for the global log level.
+///
+/// The setter receives the raw level string from the JSON-RPC caller and is
+/// responsible for parsing it and applying it to the global subscriber. An
+/// error from the setter is surfaced as [`AdminError::SetLogLevel`].
+pub type LogSetter = Arc<dyn Fn(&str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> + Send + Sync>;
+
 use tokio::sync::{mpsc, oneshot};
 
 use crate::{ThrottleConfig, ThrottleInfo, ThrottleStrategy};
@@ -32,6 +41,9 @@ pub enum AdminError {
     /// The requested operation is not yet supported.
     #[error("not yet supported: {0}")]
     NotSupported(&'static str),
+    /// The log level setter failed (e.g. unknown level string or subscriber error).
+    #[error("failed to set log level: {0}")]
+    SetLogLevel(String),
 }
 
 /// Result type alias for admin operations.
@@ -74,16 +86,29 @@ pub enum AdminCommand {
 ///
 /// Create with [`AdminHandle::channel`]; wire the returned
 /// [`mpsc::Receiver`] into the driver via [`BatchDriver::with_admin_rx`].
-#[derive(Clone, Debug)]
+/// Optionally attach a log-level setter via [`AdminHandle::with_log_setter`]
+/// to enable `admin_setLogLevel`.
+#[derive(Clone, derive_more::Debug)]
 pub struct AdminHandle {
     tx: mpsc::Sender<AdminCommand>,
+    #[debug(skip)]
+    log_setter: Option<LogSetter>,
 }
 
 impl AdminHandle {
     /// Create a matched `(AdminHandle, Receiver)` pair.
     pub fn channel() -> (Self, mpsc::Receiver<AdminCommand>) {
         let (tx, rx) = mpsc::channel(ADMIN_CHANNEL_CAPACITY);
-        (Self { tx }, rx)
+        (Self { tx, log_setter: None }, rx)
+    }
+
+    /// Attach a runtime log-level setter.
+    ///
+    /// The setter is called by [`set_log_level`](Self::set_log_level) with the
+    /// raw level string from the JSON-RPC caller. It should parse the level and
+    /// apply it to the global subscriber.
+    pub fn with_log_setter(self, setter: LogSetter) -> Self {
+        Self { log_setter: Some(setter), ..self }
     }
 
     /// Resume block ingestion if currently paused.
@@ -138,14 +163,15 @@ impl AdminHandle {
         rx.await.map_err(|_| AdminError::ChannelClosed)
     }
 
-    /// Dynamic log level changes require a `tracing-subscriber` reload handle
-    /// threaded from the CLI through `BatcherService`.
+    /// Change the global log level at runtime.
     ///
-    /// Returns an error immediately so callers know the level was not changed.
-    /// No command is ever sent to the driver. A future chunk implements this
-    /// by modifying `base-cli-utils` to expose a reload handle.
-    pub fn set_log_level(&self, _level: String) -> AdminResult<()> {
-        Err(AdminError::NotSupported("set_log_level"))
+    /// Requires a setter to have been attached via [`with_log_setter`](Self::with_log_setter).
+    /// Returns [`AdminError::NotSupported`] when no setter is configured and
+    /// [`AdminError::SetLogLevel`] when the setter itself fails (e.g. unknown
+    /// level string).
+    pub fn set_log_level(&self, level: String) -> AdminResult<()> {
+        let setter = self.log_setter.as_ref().ok_or(AdminError::NotSupported("set_log_level"))?;
+        setter(&level).map_err(|e| AdminError::SetLogLevel(e.to_string()))
     }
 
     async fn send(&self, cmd: AdminCommand) -> AdminResult<()> {
@@ -174,9 +200,35 @@ mod tests {
     }
 
     #[test]
-    fn set_log_level_returns_not_supported() {
+    fn set_log_level_returns_not_supported_without_setter() {
         let (handle, _rx) = AdminHandle::channel();
         let err = handle.set_log_level("debug".to_string()).unwrap_err();
         assert!(matches!(err, AdminError::NotSupported(_)));
+    }
+
+    #[test]
+    fn set_log_level_calls_setter_when_configured() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let called = Arc::new(AtomicBool::new(false));
+        let called_clone = Arc::clone(&called);
+        let setter: Arc<dyn Fn(&str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> + Send + Sync> =
+            Arc::new(move |_level: &str| {
+                called_clone.store(true, Ordering::Relaxed);
+                Ok(())
+            });
+        let (handle, _rx) = AdminHandle::channel();
+        let handle = handle.with_log_setter(setter);
+        handle.set_log_level("debug".to_string()).unwrap();
+        assert!(called.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn set_log_level_returns_set_log_level_error_on_setter_failure() {
+        let setter: Arc<dyn Fn(&str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> + Send + Sync> =
+            Arc::new(|_: &str| Err("bad level".into()));
+        let (handle, _rx) = AdminHandle::channel();
+        let handle = handle.with_log_setter(setter);
+        let err = handle.set_log_level("notavalidlevel".to_string()).unwrap_err();
+        assert!(matches!(err, AdminError::SetLogLevel(_)));
     }
 }

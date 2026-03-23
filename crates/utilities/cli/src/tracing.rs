@@ -1,8 +1,13 @@
 //! Tracing subscriber initialization for CLI applications.
 
-use std::{fmt, io, sync::Once};
+use std::{
+    fmt,
+    io,
+    sync::{Arc, Once},
+};
 
 use tracing::Subscriber;
+use tracing::level_filters::LevelFilter;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{
     EnvFilter, Layer,
@@ -13,10 +18,41 @@ use tracing_subscriber::{
     },
     layer::SubscriberExt,
     registry::LookupSpan,
+    reload,
     util::SubscriberInitExt,
 };
 
 use crate::{FileLogConfig, LogConfig, LogFormat, LogRotation, StdoutLogConfig};
+
+type SetterFn = Arc<dyn Fn(&str) -> eyre::Result<()> + Send + Sync>;
+
+/// A handle for changing the global log level at runtime.
+///
+/// Created by [`LogConfig::init_tracing_subscriber_with_reload`] and passed
+/// into the admin server so that `admin_setLogLevel` works without restarting.
+#[derive(Clone)]
+pub struct LogReloadHandle {
+    setter: SetterFn,
+}
+
+impl LogReloadHandle {
+    /// Change the global log level to `level` (e.g. `"debug"`, `"info"`).
+    pub fn set_level(&self, level: &str) -> eyre::Result<()> {
+        (self.setter)(level)
+    }
+
+    /// Convert into a raw setter closure for use in crates that do not
+    /// depend on `base-cli-utils`.
+    pub fn into_setter(self) -> SetterFn {
+        self.setter
+    }
+}
+
+impl fmt::Debug for LogReloadHandle {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("LogReloadHandle").finish_non_exhaustive()
+    }
+}
 
 /// Custom logfmt formatter for tracing events.
 ///
@@ -84,6 +120,48 @@ impl LogConfig {
             .add_directive("discv5=error".parse().expect("valid directive"));
 
         self.init_tracing_subscriber_with_filter(filter)
+    }
+
+    /// Initialize the tracing subscriber and return a [`LogReloadHandle`] for
+    /// runtime log level changes.
+    ///
+    /// This sets the global default subscriber. Should only be called once.
+    /// Pass the returned handle to the admin server so that
+    /// `admin_setLogLevel` can take effect without a process restart.
+    pub fn init_tracing_subscriber_with_reload(&self) -> eyre::Result<LogReloadHandle> {
+        let base_filter = EnvFilter::builder()
+            .with_default_directive(self.global_level.into())
+            .from_env_lossy()
+            .add_directive("discv5=error".parse().expect("valid directive"));
+
+        let (reload_filter, reload_handle) = reload::Layer::new(base_filter);
+
+        let stdout_layer = self.stdout_logs.as_ref().map(build_stdout_layer);
+        let file_layer = self.file_logs.as_ref().map(build_file_layer);
+
+        tracing_subscriber::registry()
+            .with(reload_filter)
+            .with(stdout_layer)
+            .with(file_layer)
+            .try_init()
+            .map_err(|e| eyre::eyre!("Failed to initialize tracing subscriber: {}", e))?;
+
+        let setter = Arc::new(move |level: &str| -> eyre::Result<()> {
+            let new_filter = EnvFilter::builder()
+                .with_default_directive(
+                    level
+                        .parse::<LevelFilter>()
+                        .map_err(|e| eyre::eyre!("invalid log level {:?}: {}", level, e))?
+                        .into(),
+                )
+                .from_env_lossy()
+                .add_directive("discv5=error".parse().expect("valid directive"));
+            reload_handle
+                .reload(new_filter)
+                .map_err(|e| eyre::eyre!("reload failed: {}", e))
+        });
+
+        Ok(LogReloadHandle { setter })
     }
 
     /// Initialize the tracing subscriber with a custom filter.
