@@ -134,13 +134,16 @@ where
         .as_ref()
         .map(|ps| -> EyreResult<PendingTrieInput> {
             // Use cached trie input if available, otherwise compute it
-            if let Some(ref cached) = ps.trie_input {
-                Metrics::pending_trie_cache_hits().increment(1);
-                Ok(cached.clone())
-            } else {
-                let hashed = state_provider.hashed_post_state(&ps.bundle_state);
-                compute_pending_trie_input(&state_provider, hashed)
-            }
+            ps.trie_input.as_ref().map_or_else(
+                || {
+                    let hashed = state_provider.hashed_post_state(&ps.bundle_state);
+                    compute_pending_trie_input(&state_provider, hashed)
+                },
+                |cached| {
+                    Metrics::pending_trie_cache_hits().increment(1);
+                    Ok(cached.clone())
+                },
+            )
         })
         .transpose()?;
 
@@ -1066,7 +1069,7 @@ mod tests {
             .state_by_block_hash(latest.hash())
             .context("getting state provider for trie")?;
         let hashed = state_provider.hashed_post_state(&bundle_state);
-        let trie_input = compute_pending_trie_input(&state_provider, hashed, &Metrics::default())?;
+        let trie_input = compute_pending_trie_input(&state_provider, hashed)?;
         drop(state_provider);
 
         let pending_state = PendingState { bundle_state, trie_input: Some(trie_input) };

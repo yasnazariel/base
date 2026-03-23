@@ -9,9 +9,8 @@ use tokio::sync::watch::Sender;
 
 use super::EngineTaskExt;
 use crate::{
-    Metrics,
     EngineClient, EngineState, EngineSyncStateUpdate, EngineTask, EngineTaskError,
-    EngineTaskErrorSeverity, SyncStartError, SynchronizeTask, SynchronizeTaskError,
+    EngineTaskErrorSeverity, Metrics, SyncStartError, SynchronizeTask, SynchronizeTaskError,
     find_starting_forkchoice, task_queue::EngineTaskErrors,
 };
 

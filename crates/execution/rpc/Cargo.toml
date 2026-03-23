@@ -85,13 +85,11 @@ derive_more = { workspace = true, features = ["constructor"] }
 metrics.workspace = true
 reth-metrics.workspace = true
 
-# enum
-strum.workspace = true
-
 [dev-dependencies]
 base-execution-chainspec.workspace = true
 
 [features]
+metrics = [ "base-execution-trie/metrics", "reth-evm/metrics" ]
 client = [
 	"jsonrpsee/async-client",
 	"jsonrpsee/client",

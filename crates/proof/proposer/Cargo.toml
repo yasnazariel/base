@@ -94,5 +94,5 @@ reqwest = { workspace = true, features = ["json"] }
 tokio = { workspace = true, features = ["test-util"] }
 
 [features]
-default = ["metrics"]
-metrics = ["dep:metrics"]
+default = [ "metrics" ]
+metrics = [ "dep:metrics" ]

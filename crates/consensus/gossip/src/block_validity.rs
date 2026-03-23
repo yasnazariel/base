@@ -130,7 +130,8 @@ impl BlockHandler {
         let validation_result = self.validate_block_internal(envelope);
 
         // Record validation duration
-        Metrics::block_validation_duration_seconds().record(validation_start.elapsed().as_secs_f64());
+        Metrics::block_validation_duration_seconds()
+            .record(validation_start.elapsed().as_secs_f64());
 
         // Record success/failure metrics
         match &validation_result {
@@ -140,11 +141,7 @@ impl BlockHandler {
             Err(err) => {
                 let reason = match err {
                     BlockInvalidError::Timestamp { current, received } => {
-                        if *received > *current + 5 {
-                            "timestamp_future"
-                        } else {
-                            "timestamp_past"
-                        }
+                        if *received > *current + 5 { "timestamp_future" } else { "timestamp_past" }
                     }
                     BlockInvalidError::BlockHash { .. } => "invalid_hash",
                     BlockInvalidError::Signature => "invalid_signature",

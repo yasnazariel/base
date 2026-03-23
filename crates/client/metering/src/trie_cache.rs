@@ -65,8 +65,7 @@ impl PendingTrieCache {
 
         // Cache miss - compute the trie input with metrics
         let hashed = canonical_state_provider.hashed_post_state(bundle_state);
-        let trie_input =
-            compute_pending_trie_input(canonical_state_provider, hashed)?;
+        let trie_input = compute_pending_trie_input(canonical_state_provider, hashed)?;
 
         // Store the new entry, replacing any previous cached entry
         self.cache.store(Arc::new(Some(CachedEntry {
@@ -156,10 +155,7 @@ mod tests {
         let bundle_b = bundle_with_nonce(alice, 0, 2);
 
         let hashed_b = state_provider.hashed_post_state(&bundle_b);
-        let expected = crate::meter::compute_pending_trie_input(
-            &*state_provider,
-            hashed_b,
-        )?;
+        let expected = crate::meter::compute_pending_trie_input(&*state_provider, hashed_b)?;
 
         let cache = PendingTrieCache::new();
         cache.ensure_cached(payload_a, flashblock_index, &bundle_a, &*state_provider)?;

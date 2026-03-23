@@ -171,9 +171,8 @@ where
             Ok(a) => {
                 trace!(target: "pipeline", attributes = ?a, "Prepared L2 attributes");
                 crate::metrics::Metrics::payload_attributes_buffer().increment(1);
-                crate::metrics::Metrics::payload_tx_count().set(
-                    a.attributes.transactions.as_ref().map_or(0.0, |txs| txs.len() as f64),
-                );
+                crate::metrics::Metrics::payload_tx_count()
+                    .set(a.attributes.transactions.as_ref().map_or(0.0, |txs| txs.len() as f64));
                 if !a.is_last_in_span {
                     crate::metrics::Metrics::span_size().increment(1);
                 } else {

@@ -47,7 +47,7 @@ pub struct SequencerClient {
 
 impl SequencerClientInner {
     /// Creates a new instance with the given endpoint and client.
-    pub(crate) fn new(sequencer_endpoint: String, client: Client) -> Self {
+    pub(crate) const fn new(sequencer_endpoint: String, client: Client) -> Self {
         Self { sequencer_endpoint, client }
     }
 }
@@ -160,8 +160,7 @@ impl SequencerClient {
                     "Failed to forward transaction to sequencer",
                 );
             })?;
-        SequencerMetrics::sequencer_forward_latency()
-            .record(start.elapsed().as_secs_f64());
+        SequencerMetrics::sequencer_forward_latency().record(start.elapsed().as_secs_f64());
         Ok(tx_hash)
     }
 }

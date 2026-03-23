@@ -31,12 +31,7 @@ impl<P, H> OpProofStoragePruner<P, H> {
         min_block_interval: u64,
         prune_batch_size: u64,
     ) -> Self {
-        Self {
-            provider,
-            block_hash_reader,
-            min_block_interval,
-            prune_batch_size,
-        }
+        Self { provider, block_hash_reader, min_block_interval, prune_batch_size }
     }
 }
 

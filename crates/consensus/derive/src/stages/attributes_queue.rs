@@ -93,8 +93,7 @@ where
         let populated_attributes =
             OpAttributesWithParent::new(attributes, parent, Some(origin), self.is_last_in_span);
         #[cfg(feature = "metrics")]
-        crate::metrics::Metrics::attributes_build_duration()
-            .record(start.elapsed().as_secs_f64());
+        crate::metrics::Metrics::attributes_build_duration().record(start.elapsed().as_secs_f64());
 
         // Clear out the local state once payload attributes are prepared.
         self.batch = None;

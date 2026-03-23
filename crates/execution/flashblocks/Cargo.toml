@@ -88,4 +88,4 @@ alloy-eips.workspace = true
 base-execution-chainspec.workspace = true
 
 [features]
-metrics = ["dep:metrics"]
+metrics = [ "base-execution-rpc/metrics", "dep:metrics", "reth-evm/metrics" ]

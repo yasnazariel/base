@@ -26,8 +26,8 @@ use revm_database::states::bundle_state::BundleRetention;
 use tokio::sync::{Mutex, broadcast::Sender, mpsc::UnboundedReceiver};
 
 use crate::{
-    BlockAssembler, ExecutionError, FlashblockCache, Metrics, PendingBlocks,
-    PendingBlocksBuilder, PendingStateBuilder, ProviderError, Result, StateProcessorError,
+    BlockAssembler, ExecutionError, FlashblockCache, Metrics, PendingBlocks, PendingBlocksBuilder,
+    PendingStateBuilder, ProviderError, Result, StateProcessorError,
     validation::{
         CanonicalBlockReconciler, FlashblockSequenceValidator, ReconciliationStrategy,
         ReorgDetector, SequenceValidationResult,

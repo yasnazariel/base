@@ -1,15 +1,12 @@
 //! Prometheus metrics for the tips ingress RPC service.
 
-/// Records an RPC latency histogram sample for the given method name.
-pub fn record_histogram(rpc_latency: std::time::Duration, rpc: String) {
-    #[cfg(feature = "metrics")]
-    metrics::histogram!("tips_ingress_rpc_rpc_latency", "rpc" => rpc)
-        .record(rpc_latency.as_secs_f64());
-}
-
 base_macros::define_metrics! {
     #[scope("tips_ingress_rpc")]
     pub struct Metrics {
+        #[describe("RPC latency by method")]
+        #[label("rpc", rpc)]
+        rpc_latency: histogram,
+
         #[describe("Number of valid transactions received")]
         transactions_received: counter,
 

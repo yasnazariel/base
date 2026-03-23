@@ -201,6 +201,13 @@ impl std::fmt::Debug for ProofGuard {
 }
 
 #[cfg(feature = "metrics")]
+impl Default for ProofGuard {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(feature = "metrics")]
 impl ProofGuard {
     /// Creates a new guard. Prefer the [`proof_guard!`] macro.
     #[inline]
@@ -256,9 +263,14 @@ impl Drop for ProofGuard {
 macro_rules! timed {
     ($metric_handle:expr) => {{
         #[cfg(feature = "metrics")]
-        { $crate::DropTimer::new($metric_handle) }
+        {
+            $crate::DropTimer::new($metric_handle)
+        }
         #[cfg(not(feature = "metrics"))]
-        { let _ = &$metric_handle; $crate::DropTimer::new() }
+        {
+            let _ = &$metric_handle;
+            $crate::DropTimer::new()
+        }
     }};
 }
 
@@ -277,9 +289,13 @@ pub(crate) use timed;
 macro_rules! proof_guard {
     () => {{
         #[cfg(feature = "metrics")]
-        { $crate::ProofGuard::new() }
+        {
+            $crate::ProofGuard::new()
+        }
         #[cfg(not(feature = "metrics"))]
-        { $crate::ProofGuard::new() }
+        {
+            $crate::ProofGuard::new()
+        }
     }};
 }
 

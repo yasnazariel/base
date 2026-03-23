@@ -183,8 +183,7 @@ impl Tracker {
                 && let Some(pending_time) = event_log.pending_time
             {
                 let time_pending_to_inclusion = received_at.duration_since(pending_time);
-                Metrics::inclusion_duration()
-                    .record(time_pending_to_inclusion.as_millis() as f64);
+                Metrics::inclusion_duration().record(time_pending_to_inclusion.as_millis() as f64);
             }
 
             // If a tx is included/dropped, log it now.

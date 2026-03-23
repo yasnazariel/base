@@ -34,7 +34,7 @@ where
     pub const MAX_BACKOFF: Duration = Duration::from_secs(10);
 
     /// Creates a new flashblocks subscriber.
-    pub fn new(flashblocks_state: Arc<Receiver>, ws_url: Url) -> Self {
+    pub const fn new(flashblocks_state: Arc<Receiver>, ws_url: Url) -> Self {
         Self { ws_url, flashblocks_state }
     }
 

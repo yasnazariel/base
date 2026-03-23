@@ -7,8 +7,6 @@ use tracing::{info, trace};
 
 use super::{config::ConsumerConfig, metrics::ConsumerMetrics, validator::RecentlySent};
 
-
-
 /// Background consumer that drains the pool and broadcasts transactions.
 ///
 /// Each iteration creates a fresh `best_transactions()` snapshot, skips

@@ -91,9 +91,9 @@ serde-bincode-compat = [
 	"reth-trie/serde-bincode-compat",
 ]
 metrics = [
+	"dep:base-macros",
 	"dep:eyre",
 	"dep:metrics",
-	"dep:base-macros",
 	"reth-evm/metrics",
 	"reth-trie/metrics",
 ]

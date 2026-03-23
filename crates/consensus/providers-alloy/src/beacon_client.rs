@@ -10,8 +10,7 @@ use async_trait::async_trait;
 use c_kzg::Blob;
 use thiserror::Error;
 
-use crate::Metrics;
-use crate::blobs::BoxedBlob;
+use crate::{Metrics, blobs::BoxedBlob};
 
 /// The config spec engine api method.
 const SPEC_METHOD: &str = "eth/v1/config/spec";

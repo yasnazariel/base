@@ -35,4 +35,4 @@ aws-config = { workspace = true, features = ["default-https-client", "rt-tokio"]
 testcontainers-modules = { workspace = true, features = ["postgres", "kafka", "minio"] }
 
 [features]
-metrics = ["dep:metrics"]
+metrics = [ "dep:metrics" ]

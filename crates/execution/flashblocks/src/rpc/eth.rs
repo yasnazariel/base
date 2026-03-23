@@ -175,7 +175,7 @@ pub struct EthApiExt<Eth: EthApiTypes, FB> {
 
 impl<Eth: EthApiTypes, FB> EthApiExt<Eth, FB> {
     /// Creates a new extended Eth API instance with flashblocks support.
-    pub fn new(eth_api: Eth, eth_filter: EthFilter<Eth>, flashblocks_state: Arc<FB>) -> Self {
+    pub const fn new(eth_api: Eth, eth_filter: EthFilter<Eth>, flashblocks_state: Arc<FB>) -> Self {
         Self { eth_api, eth_filter, flashblocks_state }
     }
 }

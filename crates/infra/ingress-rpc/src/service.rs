@@ -24,7 +24,7 @@ use tracing::{debug, info, warn};
 
 use crate::{
     Config, TxSubmissionMethod,
-    metrics::{Metrics, record_histogram},
+    metrics::Metrics,
     queue::{BundleQueuePublisher, MessageQueue},
 };
 
@@ -289,7 +289,7 @@ impl<Q: MessageQueue> IngressService<Q> {
         })?
         .map_err(|e| EthApiError::InvalidParams(e.to_string()).into_rpc_err())?;
 
-        record_histogram(start.elapsed(), "base_meterBundle".to_string());
+        Metrics::rpc_latency("base_meterBundle").record(start.elapsed());
 
         // we can save some builder payload building computation by not including bundles
         // that we know will take longer than the block time to execute

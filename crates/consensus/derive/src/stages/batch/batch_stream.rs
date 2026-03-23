@@ -162,8 +162,7 @@ where
                     {
                         crate::metrics::Metrics::check_batch_prefix_duration()
                             .record(start.elapsed().as_secs_f64());
-                        crate::metrics::Metrics::batch_validity(&validity.to_string())
-                            .increment(1);
+                        crate::metrics::Metrics::batch_validity(&validity.to_string()).increment(1);
                     }
 
                     match validity {

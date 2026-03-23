@@ -39,7 +39,7 @@ pub struct BuilderApiImpl<P> {
 
 impl<P> BuilderApiImpl<P> {
     /// Creates a new handler backed by the given transaction pool.
-    pub fn new(pool: P) -> Self {
+    pub const fn new(pool: P) -> Self {
         Self { pool }
     }
 }

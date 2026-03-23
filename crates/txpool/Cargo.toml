@@ -41,10 +41,10 @@ futures.workspace = true
 url.workspace = true
 serde.workspace = true
 c-kzg.workspace = true
-base-macros.workspace = true
 tracing.workspace = true
 tokio-util.workspace = true
 async-trait.workspace = true
+base-macros.workspace = true
 derive_more.workspace = true
 parking_lot.workspace = true
 tokio-stream.workspace = true
@@ -60,5 +60,5 @@ reth-transaction-pool = { workspace = true, features = ["test-utils"] }
 tokio = { workspace = true, features = ["time", "rt-multi-thread", "macros"] }
 
 [features]
-default = ["metrics"]
-metrics = ["dep:metrics"]
+default = [ "metrics" ]
+metrics = [ "dep:metrics", "reth-evm/metrics" ]

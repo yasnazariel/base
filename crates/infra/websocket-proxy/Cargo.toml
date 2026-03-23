@@ -16,10 +16,10 @@ workspace = true
 
 [dependencies]
 http.workspace = true
-base-macros.workspace = true
 futures.workspace = true
 backoff.workspace = true
 tokio-util.workspace = true
+base-macros.workspace = true
 metrics = { workspace = true, optional = true }
 tokio-tungstenite.workspace = true
 brotli = { workspace = true, features = ["std"] }
@@ -34,4 +34,4 @@ axum = { workspace = true, features = ["ws", "query", "tokio", "http1"] }
 reqwest.workspace = true
 
 [features]
-metrics = ["dep:metrics"]
+metrics = [ "dep:metrics" ]

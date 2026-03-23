@@ -94,4 +94,4 @@ rand.workspace = true
 serde_json.workspace = true
 
 [features]
-metrics = ["dep:metrics"]
+metrics = [ "base-flashblocks/metrics", "dep:metrics", "reth-evm/metrics" ]

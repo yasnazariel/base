@@ -12,8 +12,8 @@ workspace = true
 
 [dependencies]
 url.workspace = true
-base-macros.workspace = true
 base-revm.workspace = true
+base-macros.workspace = true
 base-bundles.workspace = true
 async-trait.workspace = true
 metrics = { workspace = true, optional = true }
@@ -46,4 +46,4 @@ alloy-network.workspace = true
 base-bundles = { workspace = true, features = ["test-utils"] }
 
 [features]
-metrics = ["dep:metrics"]
+metrics = [ "audit-archiver-lib/metrics", "dep:metrics" ]

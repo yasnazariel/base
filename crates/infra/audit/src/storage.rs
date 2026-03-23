@@ -222,7 +222,7 @@ pub struct S3EventReaderWriter {
 
 impl S3EventReaderWriter {
     /// Creates a new S3 event reader/writer.
-    pub fn new(s3_client: S3Client, bucket: String) -> Self {
+    pub const fn new(s3_client: S3Client, bucket: String) -> Self {
         Self { s3_client, bucket }
     }
 

@@ -3,7 +3,6 @@
 use std::{
     fmt::Debug,
     future::Future,
-    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -264,7 +263,7 @@ pub struct OpProofsStorageWithMetrics<S> {
 
 impl<S> OpProofsStorageWithMetrics<S> {
     /// Initializes a new wrapper around the given storage instance.
-    pub fn new(storage: S) -> Self {
+    pub const fn new(storage: S) -> Self {
         Self { storage }
     }
 

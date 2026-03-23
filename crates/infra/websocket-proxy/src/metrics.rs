@@ -65,21 +65,13 @@ base_macros::define_metrics! {
 
         #[describe("Number of pings sent to upstream")]
         ping_sent: counter,
-    }
-}
 
-impl Metrics {
-    /// Records a proxy connection for the given application name.
-    pub fn proxy_connections_by_app(app: &str) {
-        #[cfg(feature = "metrics")]
-        metrics::counter!("websocket_proxy_connections_by_app", "app" => app.to_owned())
-            .increment(1);
-    }
+        #[describe("Proxy connections by application")]
+        #[label("app", app)]
+        connections_by_app: counter,
 
-    /// Records a message received from the given upstream source.
-    pub fn message_received_from_upstream(upstream: &str) {
-        #[cfg(feature = "metrics")]
-        metrics::counter!("websocket_proxy_upstream_messages", "upstream" => upstream.to_owned())
-            .increment(1);
+        #[describe("Messages received from upstream")]
+        #[label("upstream", upstream)]
+        upstream_messages: counter,
     }
 }

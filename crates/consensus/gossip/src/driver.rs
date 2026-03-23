@@ -239,7 +239,7 @@ where
         }
         let Some(multiaddr) = enr_to_multiaddr(&enr) else {
             debug!(target: "gossip", enr = ?enr, "Failed to extract tcp socket from enr");
-            crate::Metrics::dial_peer_error().increment(1);
+            crate::Metrics::dial_peer_error("no_tcp_socket").increment(1);
             return;
         };
         self.dial_multiaddr(multiaddr);
@@ -261,7 +261,7 @@ where
 
         if self.swarm.connected_peers().any(|p| p == &peer_id) {
             debug!(target: "gossip", peer=?addr, "Already connected to peer, not dialing");
-            crate::Metrics::dial_peer_error().increment(1);
+            crate::Metrics::dial_peer_error("already_connected").increment(1);
             return;
         }
 
@@ -279,7 +279,7 @@ where
             Err(e) => {
                 error!(target: "gossip", error = ?e, "Failed to connect to peer");
                 self.connection_gate.remove_dial(&peer_id);
-                crate::Metrics::dial_peer_error().increment(1);
+                crate::Metrics::dial_peer_error("dial_failed").increment(1);
             }
         }
     }

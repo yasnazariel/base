@@ -63,4 +63,4 @@ base-alloy-consensus.workspace = true
 eyre.workspace = true
 
 [features]
-metrics = ["dep:metrics"]
+metrics = [ "base-flashblocks/metrics", "dep:metrics" ]

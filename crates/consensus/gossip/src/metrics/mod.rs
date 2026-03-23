@@ -25,6 +25,7 @@ base_macros::define_metrics! {
         dial_peer: gauge,
 
         #[describe("Number of errors when dialing peers")]
+        #[label("reason", reason)]
         dial_peer_error: gauge,
 
         #[describe("Number of peers banned by the gossip stack")]

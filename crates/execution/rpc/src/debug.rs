@@ -280,13 +280,11 @@ where
             let state = state_provider
                 .witness(Default::default(), hashed_state)
                 .map_err(EthApiError::from)?;
-            let mut exec_witness =
-                ExecutionWitness { state, codes, keys, ..Default::default() };
+            let mut exec_witness = ExecutionWitness { state, codes, keys, ..Default::default() };
 
             // If there were no calls to the BLOCKHASH opcode, return only the
             // parent header.
-            let smallest =
-                lowest_block_number.unwrap_or_else(|| block_number.saturating_sub(1));
+            let smallest = lowest_block_number.unwrap_or_else(|| block_number.saturating_sub(1));
 
             let range = smallest..block_number;
             exec_witness.headers = self
