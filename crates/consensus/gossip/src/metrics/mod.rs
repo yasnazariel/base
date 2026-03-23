@@ -5,6 +5,7 @@ base_metrics::define_metrics! {
 
     #[describe("Events received by the gossip layer")]
     #[label("type", event_type)]
+    #[label("topic", topic)]
     gossip_events: gauge,
 
     #[describe("Connections made to the libp2p Swarm")]

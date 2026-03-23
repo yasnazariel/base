@@ -93,11 +93,7 @@ impl StorageOperation {
         if count_usize > 0
             && let Some(count) = u32::try_from(count_usize).ok()
         {
-            let hist = OperationMetrics::duration_seconds(self.as_str());
-            let per_item = duration / count;
-            for _ in 0..count {
-                hist.record(per_item);
-            }
+            OperationMetrics::duration_seconds(self.as_str()).record(duration / count);
         }
     }
 
