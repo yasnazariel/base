@@ -101,7 +101,7 @@ async fn test_pipeline_no_payload_calls_build() {
     use crate::actors::MockOriginSelector;
 
     let mut origin_selector = MockOriginSelector::new();
-    origin_selector.expect_next_l1_origin().times(1).return_once(|_, _| Ok(L1BlockInfo::default()));
+    origin_selector.expect_next_l1_origin().times(1).return_once(|_| Ok(L1BlockInfo::default()));
 
     let attributes_builder =
         TestAttributesBuilder { attributes: vec![Ok(OpPayloadAttributes::default())] };
@@ -142,7 +142,7 @@ async fn test_pipeline_stale_head_advanced_discards_and_rebuilds() {
     use crate::actors::MockOriginSelector;
 
     let mut origin_selector = MockOriginSelector::new();
-    origin_selector.expect_next_l1_origin().times(1).return_once(|_, _| Ok(L1BlockInfo::default()));
+    origin_selector.expect_next_l1_origin().times(1).return_once(|_| Ok(L1BlockInfo::default()));
 
     let attributes_builder =
         TestAttributesBuilder { attributes: vec![Ok(OpPayloadAttributes::default())] };
@@ -178,7 +178,7 @@ async fn test_pipeline_stale_head_rewound_discards_and_rebuilds() {
     use crate::actors::MockOriginSelector;
 
     let mut origin_selector = MockOriginSelector::new();
-    origin_selector.expect_next_l1_origin().times(1).return_once(|_, _| Ok(L1BlockInfo::default()));
+    origin_selector.expect_next_l1_origin().times(1).return_once(|_| Ok(L1BlockInfo::default()));
 
     let attributes_builder =
         TestAttributesBuilder { attributes: vec![Ok(OpPayloadAttributes::default())] };
@@ -243,7 +243,7 @@ async fn test_pipeline_nonfatal_seal_error_drops_block_and_rebuilds() {
     use crate::actors::MockOriginSelector;
 
     let mut origin_selector = MockOriginSelector::new();
-    origin_selector.expect_next_l1_origin().times(1).return_once(|_, _| Ok(L1BlockInfo::default()));
+    origin_selector.expect_next_l1_origin().times(1).return_once(|_| Ok(L1BlockInfo::default()));
 
     let attributes_builder =
         TestAttributesBuilder { attributes: vec![Ok(OpPayloadAttributes::default())] };
@@ -322,7 +322,7 @@ async fn test_pipeline_gossip_failure_continues_to_insert() {
     use crate::actors::MockOriginSelector;
 
     let mut origin_selector = MockOriginSelector::new();
-    origin_selector.expect_next_l1_origin().times(1).return_once(|_, _| Ok(L1BlockInfo::default()));
+    origin_selector.expect_next_l1_origin().times(1).return_once(|_| Ok(L1BlockInfo::default()));
 
     let attributes_builder =
         TestAttributesBuilder { attributes: vec![Ok(OpPayloadAttributes::default())] };
@@ -369,7 +369,7 @@ async fn test_pipeline_happy_path_no_conductor() {
     use crate::actors::MockOriginSelector;
 
     let mut origin_selector = MockOriginSelector::new();
-    origin_selector.expect_next_l1_origin().times(1).return_once(|_, _| Ok(L1BlockInfo::default()));
+    origin_selector.expect_next_l1_origin().times(1).return_once(|_| Ok(L1BlockInfo::default()));
 
     let attributes_builder =
         TestAttributesBuilder { attributes: vec![Ok(OpPayloadAttributes::default())] };
@@ -413,7 +413,7 @@ async fn test_pipeline_happy_path_with_conductor() {
     use crate::actors::MockOriginSelector;
 
     let mut origin_selector = MockOriginSelector::new();
-    origin_selector.expect_next_l1_origin().times(1).return_once(|_, _| Ok(L1BlockInfo::default()));
+    origin_selector.expect_next_l1_origin().times(1).return_once(|_| Ok(L1BlockInfo::default()));
 
     let attributes_builder =
         TestAttributesBuilder { attributes: vec![Ok(OpPayloadAttributes::default())] };
@@ -482,7 +482,7 @@ async fn test_pipeline_safe_lag_at_limit_continues() {
     use crate::actors::MockOriginSelector;
 
     let mut origin_selector = MockOriginSelector::new();
-    origin_selector.expect_next_l1_origin().times(1).return_once(|_, _| Ok(L1BlockInfo::default()));
+    origin_selector.expect_next_l1_origin().times(1).return_once(|_| Ok(L1BlockInfo::default()));
 
     let attributes_builder =
         TestAttributesBuilder { attributes: vec![Ok(OpPayloadAttributes::default())] };

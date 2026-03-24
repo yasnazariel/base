@@ -21,14 +21,12 @@ pub trait OriginSelector: Debug + Send + Sync {
     ///
     /// # Arguments
     /// * `unsafe_head` - The current unsafe head of the L2 chain
-    /// * `is_recovery_mode` - Whether the sequencer is in recovery mode
     ///
     /// # Returns
     /// The selected L1 origin block information, or an error if selection failed.
     async fn next_l1_origin(
         &mut self,
         unsafe_head: L2BlockInfo,
-        is_recovery_mode: bool,
     ) -> Result<BlockInfo, L1OriginSelectorError>;
 
     /// Clears the cached L1 origin state, forcing a full re-fetch on the next call.
@@ -61,9 +59,8 @@ impl<P: L1OriginSelectorProvider + Send + Sync> OriginSelector for L1OriginSelec
     async fn next_l1_origin(
         &mut self,
         unsafe_head: L2BlockInfo,
-        is_recovery_mode: bool,
     ) -> Result<BlockInfo, L1OriginSelectorError> {
-        self.select_origins(&unsafe_head, is_recovery_mode).await?;
+        self.select_origins(&unsafe_head).await?;
 
         // Start building on the next L1 origin block if the next L2 block's timestamp is
         // greater than or equal to the next L1 origin's timestamp.
@@ -134,7 +131,6 @@ impl<P: L1OriginSelectorProvider> L1OriginSelector<P> {
     async fn select_origins(
         &mut self,
         unsafe_head: &L2BlockInfo,
-        _in_recovery_mode: bool,
     ) -> Result<(), L1OriginSelectorError> {
         if self.current.map(|c| c.hash == unsafe_head.l1_origin.hash).unwrap_or(false) {
             // Do nothing; The next L2 block exists in the same epoch as the current L1 origin.
@@ -349,7 +345,7 @@ mod test {
                 },
                 seq_num: 0,
             };
-            let next = selector.next_l1_origin(unsafe_head, false).await.unwrap();
+            let next = selector.next_l1_origin(unsafe_head).await.unwrap();
 
             // The expected L1 origin block is the one corresponding to the epoch of the current L2
             // block.
@@ -410,7 +406,7 @@ mod test {
             },
             seq_num: 0,
         };
-        let next = selector.next_l1_origin(unsafe_head, false).await.unwrap();
+        let next = selector.next_l1_origin(unsafe_head).await.unwrap();
 
         // The expected L1 origin block is the one corresponding to the epoch of the current L2
         // block. Assuming the next L1 origin block is not available from the eyes of the
@@ -478,7 +474,7 @@ mod test {
         };
 
         if next_available {
-            let next = selector.next_l1_origin(unsafe_head, false).await.unwrap();
+            let next = selector.next_l1_origin(unsafe_head).await.unwrap();
             if next_ahead_of_unsafe {
                 // If the next L1 origin is available and ahead of the unsafe head, the L1 origin
                 // should not change.
@@ -494,7 +490,7 @@ mod test {
             // If we're past the sequencer drift, and the next L1 block is not available, a
             // `NotEnoughData` error should be returned signifying that we cannot
             // proceed with the next L1 origin until the block is present.
-            let next_err = selector.next_l1_origin(unsafe_head, false).await.unwrap_err();
+            let next_err = selector.next_l1_origin(unsafe_head).await.unwrap_err();
             assert!(matches!(next_err, L1OriginSelectorError::NotEnoughData(_)));
         }
     }

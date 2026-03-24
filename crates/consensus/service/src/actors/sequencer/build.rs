@@ -102,7 +102,7 @@ impl<A: AttributesBuilder, O: OriginSelector, E: SequencerEngineClient> PayloadB
     ) -> Result<Option<BlockInfo>, SequencerActorError> {
         let l1_origin = match self
             .origin_selector
-            .next_l1_origin(unsafe_head, self.recovery_mode.get())
+            .next_l1_origin(unsafe_head)
             .await
         {
             Ok(l1_origin) => l1_origin,
