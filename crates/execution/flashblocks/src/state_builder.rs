@@ -45,6 +45,8 @@ pub struct ExecutedPendingTransaction {
     pub result: ExecutionResult<OpHaltReason>,
     /// Per-transaction EVM execution time, if known.
     pub execution_time_us: Option<u128>,
+    /// Per-transaction state root simulation time, if known.
+    pub state_root_time_us: Option<u128>,
 }
 
 #[derive(Debug)]
@@ -53,6 +55,7 @@ struct CachedTransactionExecution {
     state: EvmState,
     result: ExecutionResult<OpHaltReason>,
     execution_time_us: Option<u128>,
+    state_root_time_us: Option<u128>,
 }
 
 /// Executes or fetches cached values for transactions in a flashblock.
@@ -139,6 +142,7 @@ where
                 state: p.get_transaction_state(&tx_hash)?,
                 result: p.get_transaction_result(&tx_hash)?.clone(),
                 execution_time_us: p.get_execution_time(&tx_hash),
+                state_root_time_us: p.get_state_root_time(&tx_hash),
             })
         });
 
@@ -191,8 +195,13 @@ where
         idx: usize,
         effective_gas_price: u128,
     ) -> Result<ExecutedPendingTransaction, StateProcessorError> {
-        let CachedTransactionExecution { receipt, state, result, execution_time_us } =
-            cached_execution;
+        let CachedTransactionExecution {
+            receipt,
+            state,
+            result,
+            execution_time_us,
+            state_root_time_us,
+        } = cached_execution;
 
         let (deposit_receipt_version, deposit_nonce) = if transaction.is_deposit() {
             let OpReceipt::Deposit(deposit_receipt) = &receipt.inner.inner.receipt else {
@@ -228,6 +237,7 @@ where
             state,
             result,
             execution_time_us,
+            state_root_time_us,
         })
     }
 
@@ -375,6 +385,7 @@ where
                     state,
                     result,
                     execution_time_us: Some(elapsed_us),
+                    state_root_time_us: None,
                 })
             }
             Err(e) => Err(ExecutionError::TransactionFailed {
@@ -549,7 +560,7 @@ mod tests {
     }
 
     #[test]
-    fn cached_execute_transaction_preserves_execution_time_from_prev_pending_blocks() {
+    fn cached_execute_transaction_preserves_timing_from_prev_pending_blocks() {
         let chain_spec = Arc::new(OpChainSpecBuilder::base_mainnet().build());
         let evm_config = OpEvmConfig::optimism(Arc::clone(&chain_spec));
 
@@ -621,6 +632,7 @@ mod tests {
         pending_blocks_builder.with_transaction_state(tx_hash, first_result.state.clone());
         pending_blocks_builder.with_transaction_result(tx_hash, first_result.result);
         pending_blocks_builder.with_execution_time(tx_hash, 1_234);
+        pending_blocks_builder.with_state_root_time(tx_hash, 2_345);
 
         let prev_pending_blocks =
             Arc::new(pending_blocks_builder.build().expect("should build cached pending blocks"));
@@ -642,6 +654,7 @@ mod tests {
             .expect("cached transaction execution failed");
 
         assert_eq!(cached_result.execution_time_us, Some(1_234));
+        assert_eq!(cached_result.state_root_time_us, Some(2_345));
     }
 
     #[test]

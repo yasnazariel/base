@@ -21,12 +21,20 @@ use reth_evm::eth::EthTxResult;
 use reth_revm::db::BundleState;
 use reth_rpc_convert::RpcTransaction;
 use reth_rpc_eth_api::{RpcBlock, RpcReceipt};
+use reth_trie_common::{HashedPostState, updates::TrieUpdates};
 use revm::{
     context::result::ExecResultAndState, context_interface::result::ExecutionResult,
     state::EvmState,
 };
 
 use crate::{BuildError, Metrics, PendingBlocksAPI, StateProcessorError, TransactionWithLogs};
+
+/// Cached trie snapshot for the accumulated pending state.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct PendingTrieInput {
+    pub trie_updates: TrieUpdates,
+    pub hashed_state: HashedPostState,
+}
 
 /// Builder for [`PendingBlocks`].
 #[derive(Debug)]
@@ -47,6 +55,7 @@ pub struct PendingBlocksBuilder {
     state_root_times: HashMap<B256, u128>,
 
     bundle_state: BundleState,
+    trie_input: Option<PendingTrieInput>,
 }
 
 impl Default for PendingBlocksBuilder {
@@ -73,6 +82,7 @@ impl PendingBlocksBuilder {
             state_root_times: HashMap::new(),
             state_overrides: None,
             bundle_state: BundleState::default(),
+            trie_input: None,
         }
     }
 
@@ -150,6 +160,13 @@ impl PendingBlocksBuilder {
         self
     }
 
+    /// Stores the cached trie snapshot for the accumulated pending state.
+    #[inline]
+    pub(crate) fn with_trie_input(&mut self, trie_input: PendingTrieInput) -> &Self {
+        self.trie_input = Some(trie_input);
+        self
+    }
+
     /// Stores the execution result for a transaction.
     #[inline]
     pub fn with_transaction_result(
@@ -200,6 +217,7 @@ impl PendingBlocksBuilder {
             transaction_results: self.transaction_results,
             execution_times: self.execution_times,
             state_root_times: self.state_root_times,
+            trie_input: self.trie_input,
         })
     }
 }
@@ -225,6 +243,7 @@ pub struct PendingBlocks {
     state_root_times: HashMap<B256, u128>,
 
     bundle_state: BundleState,
+    trie_input: Option<PendingTrieInput>,
 }
 
 impl PendingBlocks {
@@ -293,6 +312,11 @@ impl PendingBlocks {
         metrics.bundle_state_clone_duration.record(start.elapsed());
         metrics.bundle_state_clone_size.record(size as f64);
         cloned
+    }
+
+    /// Returns the cached trie snapshot for the accumulated pending state.
+    pub(crate) fn get_trie_input(&self) -> Option<PendingTrieInput> {
+        self.trie_input.clone()
     }
 
     /// Returns all transactions for a specific block number.
@@ -769,6 +793,20 @@ mod tests {
         builder.with_transaction_result(tx_hash, test_execution_result());
         builder.with_receipt(tx_hash, test_receipt(tx_hash, blob_gas_used));
         (tx_hash, builder.build().expect("should build pending blocks"))
+    }
+
+    #[test]
+    fn pending_blocks_round_trips_cached_trie_input() {
+        let mut builder = PendingBlocksBuilder::default();
+        let expected = PendingTrieInput::default();
+
+        builder.with_flashblocks([test_flashblock()]);
+        builder.with_header(Sealed::new_unchecked(Header::default(), B256::ZERO));
+        builder.with_trie_input(expected.clone());
+
+        let pending_blocks = builder.build().expect("should build pending blocks");
+
+        assert_eq!(pending_blocks.get_trie_input(), Some(expected));
     }
 
     /// Builds a [`PendingBlocks`] with the supplied (hash, `log_address`) pairs

@@ -20,20 +20,107 @@ use rayon::prelude::*;
 use reth_chainspec::{ChainSpecProvider, EthChainSpec};
 use reth_evm::ConfigureEvm;
 use reth_primitives::RecoveredBlock;
-use reth_provider::{BlockReaderIdExt, StateProviderFactory};
-use reth_revm::{State, database::StateProviderDatabase};
+use reth_provider::{
+    BlockReaderIdExt, HashedPostStateProvider, StateProviderFactory, StateRootProvider,
+};
+use reth_revm::{State, database::StateProviderDatabase, db::BundleState};
 use reth_trie_common::TrieInput;
-use revm_database::states::bundle_state::BundleRetention;
+use revm_database::states::{TransitionState, bundle_state::BundleRetention};
 use tokio::sync::{Mutex, broadcast::Sender, mpsc::UnboundedReceiver};
 
 use crate::{
     BlockAssembler, ExecutionError, FlashblockCache, Metrics, PendingBlocks, PendingBlocksBuilder,
     PendingStateBuilder, ProviderError, Result, StateProcessorError,
+    pending_blocks::PendingTrieInput,
     validation::{
         CanonicalBlockReconciler, FlashblockSequenceValidator, ReconciliationStrategy,
         ReorgDetector, SequenceValidationResult,
     },
 };
+
+fn compute_pending_trie_input<SP>(
+    state_provider: &SP,
+    bundle_state: &BundleState,
+) -> std::result::Result<PendingTrieInput, ProviderError>
+where
+    SP: HashedPostStateProvider + StateRootProvider + ?Sized,
+{
+    let hashed_state = state_provider.hashed_post_state(bundle_state);
+    let (_, trie_updates) = state_provider
+        .state_root_with_updates(hashed_state.clone())
+        .map_err(|error| ProviderError::StateProvider(error.to_string()))?;
+
+    Ok(PendingTrieInput { trie_updates, hashed_state })
+}
+
+fn advance_pending_trie_input<SP>(
+    state_provider: &SP,
+    cached_trie: PendingTrieInput,
+    delta_bundle: &BundleState,
+) -> std::result::Result<PendingTrieInput, ProviderError>
+where
+    SP: HashedPostStateProvider + StateRootProvider + ?Sized,
+{
+    let delta_hashed_state = state_provider.hashed_post_state(delta_bundle);
+    let mut trie_input = TrieInput::from_state(delta_hashed_state.clone());
+    trie_input.prepend_cached(cached_trie.trie_updates, cached_trie.hashed_state.clone());
+
+    let (_, trie_updates) = state_provider
+        .state_root_from_nodes_with_updates(trie_input)
+        .map_err(|error| ProviderError::StateProvider(error.to_string()))?;
+
+    let mut hashed_state = cached_trie.hashed_state;
+    hashed_state.extend(delta_hashed_state);
+
+    Ok(PendingTrieInput { trie_updates, hashed_state })
+}
+
+fn advance_pending_trie_input_from_transition_state<SP>(
+    state_provider: &SP,
+    cached_trie: PendingTrieInput,
+    transition_state: TransitionState,
+) -> std::result::Result<PendingTrieInput, ProviderError>
+where
+    SP: HashedPostStateProvider + StateRootProvider + ?Sized,
+{
+    let delta_bundle = bundle_state_from_transition_state(transition_state);
+    advance_pending_trie_input(state_provider, cached_trie, &delta_bundle)
+}
+
+fn bundle_state_from_transition_state(transition_state: TransitionState) -> BundleState {
+    let mut bundle_state = BundleState::default();
+    bundle_state
+        .apply_transitions_and_create_reverts(transition_state, BundleRetention::PlainState);
+    bundle_state
+}
+
+fn pending_transition_state<DB>(db: &State<DB>) -> Option<TransitionState> {
+    db.transition_state.as_ref().filter(|state| !state.transitions.is_empty()).cloned()
+}
+
+fn ensure_cached_trie_input<SP>(
+    state_provider: &SP,
+    cached_trie: &mut Option<PendingTrieInput>,
+    prev_pending_blocks: Option<&PendingBlocks>,
+) -> std::result::Result<(), ProviderError>
+where
+    SP: HashedPostStateProvider + StateRootProvider + ?Sized,
+{
+    if cached_trie.is_some() {
+        return Ok(());
+    }
+
+    let Some(prev_pending_blocks) = prev_pending_blocks else {
+        return Ok(());
+    };
+    let bundle_state = prev_pending_blocks.get_bundle_state();
+    if bundle_state.state().is_empty() {
+        return Ok(());
+    }
+
+    *cached_trie = Some(compute_pending_trie_input(state_provider, &bundle_state)?);
+    Ok(())
+}
 
 /// Messages consumed by the state processor.
 #[derive(Debug, Clone)]
@@ -397,6 +484,15 @@ where
                 pending_blocks.get_state_overrides().unwrap_or_default()
             });
 
+        // Keep execution on `with_bundle_prestate()` so the final `take_bundle()` still returns
+        // the full accumulated pending state, but maintain trie inputs separately so state-root
+        // simulations only hash the new transition delta between checkpoints.
+        let mut cached_trie = if self.simulate_state_root {
+            prev_pending_blocks.as_ref().and_then(|pending_blocks| pending_blocks.get_trie_input())
+        } else {
+            None
+        };
+
         for (_block_number, flashblocks) in flashblocks_per_block {
             // Use BlockAssembler to reconstruct the block from flashblocks
             let assembled = BlockAssembler::assemble(&flashblocks)?;
@@ -461,11 +557,12 @@ where
             pending_state_builder
                 .apply_pre_execution_changes(parent_hash, parent_beacon_block_root)?;
 
-            let mut cached_trie = None;
-
             for (idx, (transaction, sender)) in txs_with_senders.into_iter().enumerate() {
                 let tx_hash = transaction.tx_hash();
                 let is_deposit = transaction.is_deposit();
+                let was_in_prev_pending = prev_pending_blocks
+                    .as_ref()
+                    .is_some_and(|pending_blocks| pending_blocks.has_transaction_hash(&tx_hash));
 
                 pending_blocks_builder.with_transaction_sender(tx_hash, sender);
                 pending_blocks_builder.increment_nonce(sender);
@@ -478,40 +575,86 @@ where
                 if let Some(time_us) = executed_transaction.execution_time_us {
                     pending_blocks_builder.with_execution_time(tx_hash, time_us);
                 }
+                if let Some(time_us) = executed_transaction.state_root_time_us {
+                    pending_blocks_builder.with_state_root_time(tx_hash, time_us);
+                }
 
                 // Per-tx state root simulation is best-effort instrumentation:
-                // compute the state root after each non-deposit transaction while
-                // accumulating trie nodes across txs, but do not fail flashblock
-                // processing if the measurement itself errors.
-                if self.simulate_state_root && !is_deposit {
+                // compute the state root after each new non-deposit transaction while
+                // accumulating trie nodes across checkpoints, but do not fail
+                // flashblock processing if the measurement itself errors.
+                if self.simulate_state_root
+                    && !is_deposit
+                    && executed_transaction.state_root_time_us.is_none()
+                    && !was_in_prev_pending
+                {
                     let db = pending_state_builder.db_mut();
-                    db.merge_transitions(BundleRetention::Reverts);
-                    let state_provider = db.database.as_ref();
-                    let hashed_state = state_provider.hashed_post_state(&db.bundle_state);
 
-                    let start = Instant::now();
-                    let trie_result = if let Some((prev_updates, prev_hashed)) = cached_trie.take()
-                    {
-                        let mut trie_input = TrieInput::from_state(hashed_state.clone());
-                        trie_input.prepend_cached(prev_updates, prev_hashed);
-                        state_provider.state_root_from_nodes_with_updates(trie_input)
-                    } else {
-                        state_provider.state_root_with_updates(hashed_state.clone())
-                    };
-                    let state_root_time_us = start.elapsed().as_micros();
+                    if let Err(error) = ensure_cached_trie_input(
+                        db.database.as_ref(),
+                        &mut cached_trie,
+                        prev_pending_blocks.as_deref(),
+                    ) {
+                        warn!(
+                            tx_hash = %tx_hash,
+                            error = %error,
+                            "failed to hydrate pending trie cache; falling back to full bundle state root"
+                        );
+                    }
 
-                    match trie_result {
-                        Ok((_, trie_updates)) => {
-                            cached_trie = Some((trie_updates, hashed_state));
-                            pending_blocks_builder
-                                .with_state_root_time(tx_hash, state_root_time_us);
+                    if let Some(prev_trie) = cached_trie.take() {
+                        let state_provider = db.database.as_ref();
+                        let start = Instant::now();
+                        let trie_result = match pending_transition_state(db) {
+                            Some(transition_state) => {
+                                advance_pending_trie_input_from_transition_state(
+                                    state_provider,
+                                    prev_trie,
+                                    transition_state,
+                                )
+                            }
+                            None => Ok(prev_trie),
+                        };
+                        let state_root_time_us = start.elapsed().as_micros();
+
+                        db.merge_transitions(BundleRetention::Reverts);
+
+                        match trie_result {
+                            Ok(next_trie) => {
+                                cached_trie = Some(next_trie);
+                                pending_blocks_builder
+                                    .with_state_root_time(tx_hash, state_root_time_us);
+                            }
+                            Err(error) => {
+                                warn!(
+                                    tx_hash = %tx_hash,
+                                    error = %error,
+                                    "state root simulation failed; skipping timing for this transaction"
+                                );
+                            }
                         }
-                        Err(error) => {
-                            warn!(
-                                tx_hash = %tx_hash,
-                                error = %error,
-                                "state root simulation failed; skipping timing for this transaction"
-                            );
+                    } else {
+                        db.merge_transitions(BundleRetention::Reverts);
+                        let state_provider = db.database.as_ref();
+
+                        let start = Instant::now();
+                        let trie_result =
+                            compute_pending_trie_input(state_provider, &db.bundle_state);
+                        let state_root_time_us = start.elapsed().as_micros();
+
+                        match trie_result {
+                            Ok(next_trie) => {
+                                cached_trie = Some(next_trie);
+                                pending_blocks_builder
+                                    .with_state_root_time(tx_hash, state_root_time_us);
+                            }
+                            Err(error) => {
+                                warn!(
+                                    tx_hash = %tx_hash,
+                                    error = %error,
+                                    "state root simulation failed; skipping timing for this transaction"
+                                );
+                            }
                         }
                     }
                 }
@@ -533,14 +676,184 @@ where
             last_block_header = block_header;
         }
 
-        // Extract the accumulated bundle state for state root calculation.
-        // When simulate_state_root is enabled, transitions for non-deposit txs
-        // are already merged per-tx; this merge picks up any remaining deposit
-        // transitions and is otherwise a no-op.
+        if self.simulate_state_root {
+            let state_provider = db.database.as_ref();
+            if let Err(error) = ensure_cached_trie_input(
+                state_provider,
+                &mut cached_trie,
+                prev_pending_blocks.as_deref(),
+            ) {
+                warn!(
+                    error = %error,
+                    "failed to hydrate pending trie cache before finalizing pending state"
+                );
+            }
+
+            if let Some(prev_trie) = cached_trie.take() {
+                match pending_transition_state(&db) {
+                    Some(transition_state) => {
+                        match advance_pending_trie_input_from_transition_state(
+                            state_provider,
+                            prev_trie,
+                            transition_state,
+                        ) {
+                            Ok(next_trie) => cached_trie = Some(next_trie),
+                            Err(error) => {
+                                warn!(
+                                    error = %error,
+                                    "failed to refresh pending trie cache from final transition delta; falling back to full bundle"
+                                );
+                            }
+                        }
+                    }
+                    None => cached_trie = Some(prev_trie),
+                }
+            }
+        }
+
+        // Extract the accumulated bundle state for pending block serving.
         db.merge_transitions(BundleRetention::Reverts);
-        pending_blocks_builder.with_bundle_state(db.take_bundle());
+        let bundle_state = db.take_bundle();
+
+        if self.simulate_state_root && cached_trie.is_none() && !bundle_state.state().is_empty() {
+            let state_provider = db.database.as_ref();
+            match compute_pending_trie_input(state_provider, &bundle_state) {
+                Ok(trie_input) => cached_trie = Some(trie_input),
+                Err(error) => {
+                    warn!(
+                        error = %error,
+                        "failed to finalize pending trie cache from the accumulated bundle state"
+                    );
+                }
+            }
+        }
+
+        pending_blocks_builder.with_bundle_state(bundle_state);
+        if let Some(trie_input) = cached_trie {
+            pending_blocks_builder.with_trie_input(trie_input);
+        }
         pending_blocks_builder.with_state_overrides(state_overrides);
 
         Ok(Some(Arc::new(pending_blocks_builder.build()?)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Mutex;
+
+    use alloy_consensus::EMPTY_ROOT_HASH;
+    use alloy_primitives::{Address, B256, U256};
+    use reth_provider::ProviderResult;
+    use reth_revm::{bytecode::Bytecode, primitives::KECCAK_EMPTY, state::AccountInfo};
+    use reth_trie_common::{HashedPostState, KeccakKeyHasher, updates::TrieUpdates};
+
+    use super::*;
+
+    #[derive(Debug, Default)]
+    struct RecordingStateProvider {
+        last_hashed_state: Mutex<Option<HashedPostState>>,
+        last_trie_input: Mutex<Option<TrieInput>>,
+    }
+
+    impl HashedPostStateProvider for RecordingStateProvider {
+        fn hashed_post_state(&self, bundle_state: &revm_database::BundleState) -> HashedPostState {
+            HashedPostState::from_bundle_state::<KeccakKeyHasher>(bundle_state.state())
+        }
+    }
+
+    impl StateRootProvider for RecordingStateProvider {
+        fn state_root(&self, _state: HashedPostState) -> ProviderResult<B256> {
+            Ok(EMPTY_ROOT_HASH)
+        }
+
+        fn state_root_from_nodes(&self, input: TrieInput) -> ProviderResult<B256> {
+            *self.last_trie_input.lock().expect("trie input lock poisoned") = Some(input);
+            Ok(EMPTY_ROOT_HASH)
+        }
+
+        fn state_root_with_updates(
+            &self,
+            state: HashedPostState,
+        ) -> ProviderResult<(B256, TrieUpdates)> {
+            *self.last_hashed_state.lock().expect("hashed state lock poisoned") = Some(state);
+            Ok((EMPTY_ROOT_HASH, TrieUpdates::default()))
+        }
+
+        fn state_root_from_nodes_with_updates(
+            &self,
+            input: TrieInput,
+        ) -> ProviderResult<(B256, TrieUpdates)> {
+            *self.last_trie_input.lock().expect("trie input lock poisoned") = Some(input);
+            Ok((EMPTY_ROOT_HASH, TrieUpdates::default()))
+        }
+    }
+
+    fn bundle_with_nonce(who: Address, from_nonce: u64, to_nonce: u64) -> BundleState {
+        let balance = U256::from(1_000_000u128) * U256::from(10u128).pow(U256::from(18));
+
+        BundleState::new(
+            [(
+                who,
+                Some(AccountInfo {
+                    balance,
+                    nonce: from_nonce,
+                    code_hash: KECCAK_EMPTY,
+                    code: None,
+                    account_id: None,
+                }),
+                Some(AccountInfo {
+                    balance,
+                    nonce: to_nonce,
+                    code_hash: KECCAK_EMPTY,
+                    code: None,
+                    account_id: None,
+                }),
+                Default::default(),
+            )],
+            Vec::<Vec<(Address, Option<Option<AccountInfo>>, Vec<(U256, U256)>)>>::new(),
+            Vec::<(B256, Bytecode)>::new(),
+        )
+    }
+
+    #[test]
+    fn pending_trie_input_advance_uses_only_delta_prefix_sets() {
+        let state_provider = RecordingStateProvider::default();
+        let alice = Address::with_last_byte(0xAA);
+        let bob = Address::with_last_byte(0xBB);
+        let bundle_a = bundle_with_nonce(alice, 0, 1);
+        let bundle_b = bundle_with_nonce(bob, 0, 1);
+
+        let cached_trie =
+            compute_pending_trie_input(&state_provider, &bundle_a).expect("pending trie input");
+        let delta_hashed_state = state_provider.hashed_post_state(&bundle_b);
+        let expected_prefix_sets = delta_hashed_state.construct_prefix_sets();
+
+        let advanced_trie =
+            advance_pending_trie_input(&state_provider, cached_trie, &bundle_b).expect("advance");
+        let trie_input = state_provider
+            .last_trie_input
+            .lock()
+            .expect("trie input lock poisoned")
+            .clone()
+            .expect("expected trie input");
+
+        let mut full_hashed_state = state_provider.hashed_post_state(&bundle_a);
+        full_hashed_state.extend(delta_hashed_state);
+
+        assert_eq!(advanced_trie.hashed_state, full_hashed_state);
+        assert_eq!(trie_input.state, full_hashed_state);
+        assert_eq!(
+            trie_input.prefix_sets.account_prefix_set.len(),
+            expected_prefix_sets.account_prefix_set.len()
+        );
+        assert_eq!(
+            trie_input.prefix_sets.storage_prefix_sets.len(),
+            expected_prefix_sets.storage_prefix_sets.len()
+        );
+        assert_eq!(
+            trie_input.prefix_sets.destroyed_accounts.len(),
+            expected_prefix_sets.destroyed_accounts.len()
+        );
     }
 }
