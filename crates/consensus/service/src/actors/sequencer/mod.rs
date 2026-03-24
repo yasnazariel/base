@@ -15,14 +15,11 @@ pub use origin_selector::{
 mod recovery;
 pub use recovery::RecoveryModeGuard;
 
-mod seal;
-pub use seal::{PayloadSealer, SealState, SealStepError};
-
 mod pool;
 pub use pool::PoolActivation;
 
 mod actor;
-pub use actor::{PendingStopSender, SequencerActor};
+pub use actor::SequencerActor;
 
 mod admin_api_impl;
 pub use admin_api_impl::SequencerAdminQuery;

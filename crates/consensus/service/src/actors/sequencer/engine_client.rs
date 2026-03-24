@@ -1,5 +1,6 @@
-use std::{fmt::Debug, sync::Arc};
+use std::{fmt::Debug, sync::Arc, time::Duration};
 
+use alloy_primitives::B256;
 use alloy_rpc_types_engine::PayloadId;
 use async_trait::async_trait;
 use base_alloy_rpc_types_engine::OpExecutionPayloadEnvelope;
@@ -44,8 +45,19 @@ pub trait SequencerEngineClient: Debug + Send + Sync {
         payload: OpExecutionPayloadEnvelope,
     ) -> EngineClientResult<()>;
 
+    /// Inserts the sealed payload into the engine and waits (up to 500ms) for the
+    /// unsafe-head watch channel to reflect the expected block hash.
+    async fn insert_and_await_head(
+        &self,
+        payload: OpExecutionPayloadEnvelope,
+        expected_hash: B256,
+    ) -> EngineClientResult<L2BlockInfo>;
+
     /// Returns the current unsafe head [`L2BlockInfo`].
     async fn get_unsafe_head(&self) -> EngineClientResult<L2BlockInfo>;
+
+    /// Returns the current safe head [`L2BlockInfo`].
+    async fn get_safe_head(&self) -> EngineClientResult<L2BlockInfo>;
 }
 
 /// Blanket implementation so [`Arc<T>`] can be used wherever `T: SequencerEngineClient`.
@@ -81,8 +93,20 @@ impl<T: SequencerEngineClient> SequencerEngineClient for Arc<T> {
         (**self).insert_unsafe_payload(payload).await
     }
 
+    async fn insert_and_await_head(
+        &self,
+        payload: OpExecutionPayloadEnvelope,
+        expected_hash: B256,
+    ) -> EngineClientResult<L2BlockInfo> {
+        (**self).insert_and_await_head(payload, expected_hash).await
+    }
+
     async fn get_unsafe_head(&self) -> EngineClientResult<L2BlockInfo> {
         (**self).get_unsafe_head().await
+    }
+
+    async fn get_safe_head(&self) -> EngineClientResult<L2BlockInfo> {
+        (**self).get_safe_head().await
     }
 }
 
@@ -94,12 +118,18 @@ pub struct QueuedSequencerEngineClient {
     pub engine_actor_request_tx: mpsc::Sender<EngineActorRequest>,
     /// A channel to receive the latest unsafe head [`L2BlockInfo`].
     pub unsafe_head_rx: watch::Receiver<L2BlockInfo>,
+    /// A channel to receive the latest safe head [`L2BlockInfo`].
+    pub safe_head_rx: watch::Receiver<L2BlockInfo>,
 }
 
 #[async_trait]
 impl SequencerEngineClient for QueuedSequencerEngineClient {
     async fn get_unsafe_head(&self) -> EngineClientResult<L2BlockInfo> {
         Ok(*self.unsafe_head_rx.borrow())
+    }
+
+    async fn get_safe_head(&self) -> EngineClientResult<L2BlockInfo> {
+        Ok(*self.safe_head_rx.borrow())
     }
 
     async fn reset_engine_forkchoice(&self) -> EngineClientResult<()> {
@@ -191,5 +221,34 @@ impl SequencerEngineClient for QueuedSequencerEngineClient {
             .send(EngineActorRequest::ProcessUnsafeL2BlockRequest(Box::new(payload)))
             .await
             .map_err(|_| EngineClientError::RequestError("request channel closed.".to_string()))
+    }
+
+    async fn insert_and_await_head(
+        &self,
+        payload: OpExecutionPayloadEnvelope,
+        expected_hash: B256,
+    ) -> EngineClientResult<L2BlockInfo> {
+        const TIMEOUT: Duration = Duration::from_millis(500);
+        self.insert_unsafe_payload(payload).await?;
+        let mut rx = self.unsafe_head_rx.clone();
+        tokio::time::timeout(TIMEOUT, async move {
+            loop {
+                {
+                    let head = *rx.borrow_and_update();
+                    if head.block_info.hash == expected_hash {
+                        return Ok(head);
+                    }
+                }
+                rx.changed().await.map_err(|_| {
+                    EngineClientError::ResponseError("unsafe_head watch channel closed".to_string())
+                })?;
+            }
+        })
+        .await
+        .map_err(|_| {
+            EngineClientError::RequestError(
+                "insert_and_await_head: timed out waiting for unsafe head update".to_string(),
+            )
+        })?
     }
 }

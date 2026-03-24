@@ -5,15 +5,10 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-use alloy_primitives::B256;
 use async_trait::async_trait;
 use base_consensus_derive::AttributesBuilder;
 use base_consensus_genesis::RollupConfig;
-use base_consensus_rpc::SequencerAdminAPIError;
-use tokio::{
-    select,
-    sync::{mpsc, oneshot},
-};
+use tokio::{select, sync::mpsc};
 use tokio_util::sync::{CancellationToken, WaitForCancellationFuture};
 
 use crate::{
@@ -26,18 +21,20 @@ use crate::{
             conductor::Conductor,
             error::SequencerActorError,
             metrics::{
-                inc_seal_error, inc_seal_pipeline_overlap, update_seal_duration_metrics,
-                update_total_transactions_sequenced,
+                inc_seal_error, update_seal_duration_metrics, update_total_transactions_sequenced,
             },
             origin_selector::OriginSelector,
             recovery::RecoveryModeGuard,
-            seal::PayloadSealer,
         },
     },
 };
 
-/// Sender stashed by `stop_sequencer` when waiting for an in-flight seal pipeline to drain.
-pub type PendingStopSender = oneshot::Sender<Result<B256, SequencerAdminAPIError>>;
+/// Sealing duration constant, matching op-node's default `SealingDuration`.
+/// Replaces the measured `last_seal_duration` heuristic.
+const SEALING_DURATION: Duration = Duration::from_millis(50);
+
+/// Maximum number of blocks the unsafe head may lead the safe head before sequencing pauses.
+const MAX_SAFE_LAG: u64 = 1800;
 
 /// The [`SequencerActor`] is responsible for building L2 blocks on top of the current unsafe head
 /// and scheduling them to be signed and gossipped by the P2P layer, extending the L2 chain with new
@@ -74,12 +71,6 @@ pub struct SequencerActor<
     pub rollup_config: Arc<RollupConfig>,
     /// A client to asynchronously sign and gossip built payloads to the network actor.
     pub unsafe_payload_gossip_client: UnsafePayloadGossipClient_,
-    /// In-flight seal pipeline. [`Some`] while a sealed payload is being committed,
-    /// gossiped, and inserted. [`None`] when idle.
-    pub sealer: Option<PayloadSealer>,
-    /// Stashed response sender for a pending `stop_sequencer` call that is waiting
-    /// for the in-flight seal pipeline to complete before responding.
-    pub pending_stop: Option<PendingStopSender>,
 }
 
 impl<
@@ -103,22 +94,123 @@ where
     SequencerEngineClient_: SequencerEngineClient,
     UnsafePayloadGossipClient_: UnsafePayloadGossipClient,
 {
-    /// Fetches the sealed payload envelope from the engine for the given unsealed handle.
-    pub(super) async fn seal_payload(
-        &self,
-        handle: &UnsealedPayloadHandle,
-    ) -> Result<PayloadSealer, SequencerActorError> {
-        let seal_request_start = Instant::now();
+    /// Runs one complete block cycle: seal (if pre-built) → conductor commit → gossip → insert →
+    /// build next.
+    ///
+    /// Returns the duration until the next tick should fire.
+    pub(crate) async fn run_block_pipeline(
+        &mut self,
+        next_payload: &mut Option<UnsealedPayloadHandle>,
+    ) -> Result<Duration, SequencerActorError> {
+        // PHASE 1: SEAL the pre-built payload (if any).
+        if let Some(handle) = next_payload.take() {
+            // Stale detection: if the head has moved (advanced OR rewound), discard the stale
+            // build.
+            let current_head = self.engine_client.get_unsafe_head().await?;
+            if current_head.block_info.number
+                != handle.attributes_with_parent.parent().block_info.number
+            {
+                warn!(
+                    target: "sequencer",
+                    current_head = current_head.block_info.number,
+                    build_parent = handle.attributes_with_parent.parent().block_info.number,
+                    "Head moved since build started, discarding stale payload"
+                );
+                // Fall through to build a fresh payload below.
+            } else {
+                // Seal: get the completed payload from the engine.
+                let seal_start = Instant::now();
+                let envelope = match self
+                    .engine_client
+                    .get_sealed_payload(handle.payload_id, handle.attributes_with_parent.clone())
+                    .await
+                {
+                    Ok(env) => env,
+                    Err(EngineClientError::SealError(err)) => {
+                        if err.is_fatal() {
+                            error!(target: "sequencer", error = ?err, "Fatal seal error");
+                            inc_seal_error(true);
+                            self.cancellation_token.cancel();
+                            return Err(EngineClientError::SealError(err).into());
+                        }
+                        warn!(target: "sequencer", error = ?err, "Non-fatal seal error, dropping block");
+                        inc_seal_error(false);
+                        // Fall through to build a fresh payload below.
+                        *next_payload = self.builder.build().await?;
+                        return Ok(Self::schedule_next_tick(next_payload, &self.rollup_config));
+                    }
+                    Err(other) => return Err(other.into()),
+                };
 
-        let envelope = self
-            .engine_client
-            .get_sealed_payload(handle.payload_id, handle.attributes_with_parent.clone())
-            .await?;
+                update_seal_duration_metrics(seal_start.elapsed());
+                update_total_transactions_sequenced(
+                    handle.attributes_with_parent.count_transactions(),
+                );
 
-        update_seal_duration_metrics(seal_request_start.elapsed());
-        update_total_transactions_sequenced(handle.attributes_with_parent.count_transactions());
+                // Conductor commit (blocking, up to 30s). Non-fatal on failure (1s backoff via
+                // caller).
+                if let Some(conductor) = &self.conductor {
+                    conductor.commit_unsafe_payload(&envelope).await.map_err(|e| {
+                        warn!(target: "sequencer", error = %e, "Conductor commit failed, will retry");
+                        SequencerActorError::ConductorCommitFailed(e)
+                    })?;
+                }
 
-        Ok(PayloadSealer::new(envelope))
+                // Gossip: best-effort P2P broadcast. Failure is non-fatal; continue to insert.
+                if let Err(e) = self
+                    .unsafe_payload_gossip_client
+                    .schedule_execution_payload_gossip(envelope.clone())
+                    .await
+                {
+                    warn!(target: "sequencer", error = %e, "Gossip failed, continuing to insert");
+                }
+
+                // Insert and wait for the unsafe head watch channel to confirm.
+                let expected_hash = envelope.execution_payload.block_hash();
+                self.engine_client.insert_and_await_head(envelope, expected_hash).await?;
+            }
+        }
+
+        // Safe-lag guard: pause sequencing if unsafe head is too far ahead of safe head.
+        let unsafe_num = self.engine_client.get_unsafe_head().await?.block_info.number;
+        let safe_num = self.engine_client.get_safe_head().await?.block_info.number;
+        if unsafe_num.saturating_sub(safe_num) > MAX_SAFE_LAG {
+            warn!(
+                target: "sequencer",
+                unsafe_head = unsafe_num,
+                safe_head = safe_num,
+                max_safe_lag = MAX_SAFE_LAG,
+                "Unsafe head too far ahead of safe head, pausing sequencing"
+            );
+            *next_payload = None;
+            return Ok(Duration::from_secs(1));
+        }
+
+        // PHASE 2: BUILD the next payload.
+        *next_payload = self.builder.build().await?;
+
+        // PHASE 3: SCHEDULE the next tick.
+        Ok(Self::schedule_next_tick(next_payload, &self.rollup_config))
+    }
+
+    /// Computes the delay until the next build tick should fire.
+    pub(crate) fn schedule_next_tick(
+        next_payload: &Option<UnsealedPayloadHandle>,
+        rollup_config: &RollupConfig,
+    ) -> Duration {
+        next_payload.as_ref().map_or_else(
+            || Duration::from_millis(100),
+            |payload| {
+                let next_block_ts = payload
+                    .attributes_with_parent
+                    .attributes()
+                    .payload_attributes
+                    .timestamp
+                    .saturating_add(rollup_config.block_time);
+                let seal_time = UNIX_EPOCH + Duration::from_secs(next_block_ts) - SEALING_DURATION;
+                seal_time.duration_since(SystemTime::now()).map_or(Duration::ZERO, |d| d)
+            },
+        )
     }
 
     /// Schedules the initial engine reset request and waits for the unsafe head to be updated.
@@ -167,8 +259,7 @@ where
         // Reset the engine state prior to beginning block building.
         self.schedule_initial_reset().await?;
 
-        let mut next_payload_to_seal: Option<UnsealedPayloadHandle> = None;
-        let mut last_seal_duration = Duration::from_secs(0);
+        let mut next_payload: Option<UnsealedPayloadHandle> = None;
         loop {
             select! {
                 biased;
@@ -178,83 +269,29 @@ where
                 }
                 Some(query) = self.admin_api_rx.recv() => {
                     let active_before = self.is_active;
-
-                    self.handle_admin_query(query).await;
-
+                    self.handle_admin_query(&mut next_payload, query).await;
                     if !active_before && self.is_active {
                         build_ticker.reset_immediately();
                     }
                 }
                 _ = build_ticker.tick(), if self.is_active => {
-                    if let Some(handle) = next_payload_to_seal.take() {
-                        if self.sealer.is_some() {
-                            error!(target: "sequencer", "Seal pipeline did not complete before next block was sealed");
-                            inc_seal_pipeline_overlap();
-                            self.sealer = None;
-                        }
-
-                        let seal_start = Instant::now();
-                        match self.seal_payload(&handle).await {
-                            Ok(new_sealer) => {
-                                last_seal_duration = seal_start.elapsed();
-                                self.sealer = Some(new_sealer);
-                            }
-                            Err(SequencerActorError::EngineError(EngineClientError::SealError(err))) => {
-                                if err.is_fatal() {
-                                    error!(target: "sequencer", error = ?err, "Critical seal task error occurred");
-                                    inc_seal_error(true);
-                                    self.cancellation_token.cancel();
-                                    return Err(SequencerActorError::EngineError(EngineClientError::SealError(err)));
-                                }
-                                warn!(target: "sequencer", error = ?err, "Non-fatal seal error, dropping block");
-                                inc_seal_error(false);
-                            }
-                            Err(other_err) => {
-                                error!(target: "sequencer", error = ?other_err, "Unexpected error sealing payload");
-                                self.cancellation_token.cancel();
-                                return Err(other_err);
-                            }
-                        }
-                    }
-
-                    next_payload_to_seal = self.builder.build().await?;
-
-                    if let Some(ref payload) = next_payload_to_seal {
-                        let next_block_seconds = payload.attributes_with_parent.parent().block_info.timestamp.saturating_add(self.rollup_config.block_time);
-                        let next_block_time = UNIX_EPOCH + Duration::from_secs(next_block_seconds) - last_seal_duration;
-                        match next_block_time.duration_since(SystemTime::now()) {
-                            Ok(duration) => build_ticker.reset_after(duration),
-                            Err(_) => build_ticker.reset_immediately(),
-                        };
-                    } else {
-                        build_ticker.reset_immediately();
-                    }
-                }
-                // Drive the seal pipeline (commit → gossip → insert) one step at a time.
-                Some(result) = async {
-                    match self.sealer.as_mut() {
-                        Some(s) => Some(s.step(
-                            &self.conductor,
-                            &self.unsafe_payload_gossip_client,
-                            &self.engine_client,
-                        ).await),
-                        None => std::future::pending().await,
-                    }
-                } => {
+                    // Inner select! ensures shutdown/cancellation remains responsive
+                    // during the (potentially long) conductor commit inside run_block_pipeline.
+                    let cancel = self.cancellation_token.clone();
+                    let result = tokio::select! {
+                        biased;
+                        _ = cancel.cancelled() => return Ok(()),
+                        r = self.run_block_pipeline(&mut next_payload) => r,
+                    };
                     match result {
-                        Ok(true) => {
-                            self.sealer = None;
-                            if let Some(tx) = self.pending_stop.take() {
-                                let result = self.resolve_stop_head().await;
-                                if tx.send(result).is_err() {
-                                    warn!(target: "sequencer", "Failed to send deferred stop_sequencer response");
-                                }
-                            }
+                        Ok(next_tick) => build_ticker.reset_after(next_tick),
+                        Err(e) if e.is_fatal() => {
+                            self.cancellation_token.cancel();
+                            return Err(e);
                         }
-                        Ok(false) => {}
-                        Err(err) => {
-                            let step = self.sealer.as_ref().map(|s| s.state.label()).unwrap_or("unknown");
-                            warn!(target: "sequencer", error = ?err, step, "Seal step failed, will retry");
+                        Err(e) => {
+                            warn!(target: "sequencer", error = ?e, "Non-fatal pipeline error, backing off");
+                            build_ticker.reset_after(Duration::from_secs(1));
                         }
                     }
                 }

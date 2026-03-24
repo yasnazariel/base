@@ -2,7 +2,8 @@ use base_consensus_derive::PipelineErrorKind;
 use base_consensus_engine::BuildTaskError;
 
 use crate::{
-    L1OriginSelectorError, UnsafePayloadGossipClientError, actors::engine::EngineClientError,
+    ConductorError, L1OriginSelectorError, UnsafePayloadGossipClientError,
+    actors::engine::EngineClientError,
 };
 
 /// An error produced by the [`crate::SequencerActor`].
@@ -26,4 +27,17 @@ pub enum SequencerActorError {
     /// An error occurred while attempting to schedule unsafe payload gossip.
     #[error("An error occurred while attempting to schedule unsafe payload gossip: {0}")]
     PayloadGossip(#[from] UnsafePayloadGossipClientError),
+    /// Conductor commit failed (non-fatal, retry with backoff).
+    #[error("Conductor commit failed: {0}")]
+    ConductorCommitFailed(ConductorError),
+}
+
+impl SequencerActorError {
+    /// Returns `true` for errors that should terminate the sequencer.
+    pub fn is_fatal(&self) -> bool {
+        matches!(
+            self,
+            Self::EngineError(EngineClientError::SealError(err)) if err.is_fatal()
+        )
+    }
 }

@@ -181,6 +181,7 @@ impl RollupNode {
         engine_request_rx: mpsc::Receiver<EngineActorRequest>,
         derivation_client: QueuedEngineDerivationClient,
         unsafe_head_tx: watch::Sender<L2BlockInfo>,
+        safe_head_tx: watch::Sender<L2BlockInfo>,
     ) -> EngineActor<EngineProcessor<E, QueuedEngineDerivationClient>, EngineRpcProcessor<E>> {
         let engine_state = EngineState::default();
         let (engine_state_tx, engine_state_rx) = watch::channel(engine_state);
@@ -193,6 +194,7 @@ impl RollupNode {
             derivation_client,
             engine,
             if self.mode().is_sequencer() { Some(unsafe_head_tx) } else { None },
+            if self.mode().is_sequencer() { Some(safe_head_tx) } else { None },
         );
 
         let engine_rpc_processor = EngineRpcProcessor::new(
@@ -279,6 +281,7 @@ impl RollupNode {
 
         let (engine_actor_request_tx, engine_actor_request_rx) = mpsc::channel(1024);
         let (unsafe_head_tx, unsafe_head_rx) = watch::channel(L2BlockInfo::default());
+        let (safe_head_tx, safe_head_rx) = watch::channel(L2BlockInfo::default());
 
         let engine_actor = self.create_engine_actor(
             engine_client,
@@ -286,6 +289,7 @@ impl RollupNode {
             engine_actor_request_rx,
             QueuedEngineDerivationClient::new(derivation_actor_request_tx.clone()),
             unsafe_head_tx,
+            safe_head_tx,
         );
 
         // Select the concrete derivation actor implementation based on
@@ -382,6 +386,7 @@ impl RollupNode {
             let sequencer_engine_client = QueuedSequencerEngineClient {
                 engine_actor_request_tx: engine_actor_request_tx.clone(),
                 unsafe_head_rx,
+                safe_head_rx,
             };
 
             // Create the admin API channel
@@ -409,8 +414,6 @@ impl RollupNode {
                     recovery_mode,
                     rollup_config: Arc::clone(&self.config),
                     unsafe_payload_gossip_client: queued_gossip_client,
-                    sealer: None,
-                    pending_stop: None,
                 }),
                 Some(QueuedSequencerAdminAPIClient::new(sequencer_admin_api_tx)),
             )

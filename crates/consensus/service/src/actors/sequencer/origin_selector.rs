@@ -30,6 +30,9 @@ pub trait OriginSelector: Debug + Send + Sync {
         unsafe_head: L2BlockInfo,
         is_recovery_mode: bool,
     ) -> Result<BlockInfo, L1OriginSelectorError>;
+
+    /// Clears the cached L1 origin state, forcing a full re-fetch on the next call.
+    fn clear(&mut self);
 }
 
 /// The [`L1OriginSelector`] is responsible for selecting the L1 origin block based on the
@@ -104,6 +107,11 @@ impl<P: L1OriginSelectorProvider + Send + Sync> OriginSelector for L1OriginSelec
 
         self.next.ok_or(L1OriginSelectorError::NotEnoughData(current))
     }
+
+    fn clear(&mut self) {
+        self.current = None;
+        self.next = None;
+    }
 }
 
 impl<P: L1OriginSelectorProvider> L1OriginSelector<P> {
@@ -126,14 +134,8 @@ impl<P: L1OriginSelectorProvider> L1OriginSelector<P> {
     async fn select_origins(
         &mut self,
         unsafe_head: &L2BlockInfo,
-        in_recovery_mode: bool,
+        _in_recovery_mode: bool,
     ) -> Result<(), L1OriginSelectorError> {
-        if in_recovery_mode {
-            self.current = self.l1.get_block_by_hash(unsafe_head.l1_origin.hash).await?;
-            self.next = self.l1.get_block_by_number(unsafe_head.l1_origin.number + 1).await?;
-            return Ok(());
-        }
-
         if self.current.map(|c| c.hash == unsafe_head.l1_origin.hash).unwrap_or(false) {
             // Do nothing; The next L2 block exists in the same epoch as the current L1 origin.
         } else if self.next.map(|n| n.hash == unsafe_head.l1_origin.hash).unwrap_or(false) {

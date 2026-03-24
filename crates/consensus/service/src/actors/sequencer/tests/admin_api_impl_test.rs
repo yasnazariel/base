@@ -9,7 +9,10 @@ use tokio::sync::oneshot;
 
 use crate::{
     ConductorError, EngineClientError, SequencerAdminQuery,
-    actors::{MockConductor, MockSequencerEngineClient, sequencer::tests::test_util::test_actor},
+    actors::{
+        MockConductor, MockOriginSelector, MockSequencerEngineClient,
+        sequencer::tests::test_util::test_actor,
+    },
 };
 
 #[rstest]
@@ -26,7 +29,7 @@ async fn test_is_sequencer_active(
             false => actor.is_sequencer_active().await,
             true => {
                 let (tx, rx) = oneshot::channel();
-                actor.handle_admin_query(SequencerAdminQuery::SequencerActive(tx)).await;
+                actor.handle_admin_query(&mut None, SequencerAdminQuery::SequencerActive(tx)).await;
                 rx.await.unwrap()
             }
         }
@@ -53,7 +56,9 @@ async fn test_is_conductor_enabled(
             false => actor.is_conductor_enabled().await,
             true => {
                 let (tx, rx) = oneshot::channel();
-                actor.handle_admin_query(SequencerAdminQuery::ConductorEnabled(tx)).await;
+                actor
+                    .handle_admin_query(&mut None, SequencerAdminQuery::ConductorEnabled(tx))
+                    .await;
                 rx.await.unwrap()
             }
         }
@@ -78,7 +83,7 @@ async fn test_in_recovery_mode(
             false => actor.in_recovery_mode().await,
             true => {
                 let (tx, rx) = oneshot::channel();
-                actor.handle_admin_query(SequencerAdminQuery::RecoveryMode(tx)).await;
+                actor.handle_admin_query(&mut None, SequencerAdminQuery::RecoveryMode(tx)).await;
                 rx.await.unwrap()
             }
         }
@@ -118,7 +123,12 @@ async fn test_start_sequencer_no_conductor(
             false => actor.start_sequencer(test_hash).await,
             true => {
                 let (tx, rx) = oneshot::channel();
-                actor.handle_admin_query(SequencerAdminQuery::StartSequencer(test_hash, tx)).await;
+                actor
+                    .handle_admin_query(
+                        &mut None,
+                        SequencerAdminQuery::StartSequencer(test_hash, tx),
+                    )
+                    .await;
                 rx.await.unwrap()
             }
         }
@@ -155,7 +165,12 @@ async fn test_start_sequencer_conductor_is_leader(#[values(true, false)] via_cha
             false => actor.start_sequencer(test_hash).await,
             true => {
                 let (tx, rx) = oneshot::channel();
-                actor.handle_admin_query(SequencerAdminQuery::StartSequencer(test_hash, tx)).await;
+                actor
+                    .handle_admin_query(
+                        &mut None,
+                        SequencerAdminQuery::StartSequencer(test_hash, tx),
+                    )
+                    .await;
                 rx.await.unwrap()
             }
         }
@@ -182,7 +197,12 @@ async fn test_start_sequencer_conductor_not_leader(#[values(true, false)] via_ch
             false => actor.start_sequencer(B256::ZERO).await,
             true => {
                 let (tx, rx) = oneshot::channel();
-                actor.handle_admin_query(SequencerAdminQuery::StartSequencer(B256::ZERO, tx)).await;
+                actor
+                    .handle_admin_query(
+                        &mut None,
+                        SequencerAdminQuery::StartSequencer(B256::ZERO, tx),
+                    )
+                    .await;
                 rx.await.unwrap()
             }
         }
@@ -212,7 +232,12 @@ async fn test_start_sequencer_conductor_leader_rpc_error(#[values(true, false)] 
             false => actor.start_sequencer(B256::ZERO).await,
             true => {
                 let (tx, rx) = oneshot::channel();
-                actor.handle_admin_query(SequencerAdminQuery::StartSequencer(B256::ZERO, tx)).await;
+                actor
+                    .handle_admin_query(
+                        &mut None,
+                        SequencerAdminQuery::StartSequencer(B256::ZERO, tx),
+                    )
+                    .await;
                 rx.await.unwrap()
             }
         }
@@ -242,7 +267,12 @@ async fn test_start_sequencer_already_active_skips_leader_check(
             false => actor.start_sequencer(B256::ZERO).await,
             true => {
                 let (tx, rx) = oneshot::channel();
-                actor.handle_admin_query(SequencerAdminQuery::StartSequencer(B256::ZERO, tx)).await;
+                actor
+                    .handle_admin_query(
+                        &mut None,
+                        SequencerAdminQuery::StartSequencer(B256::ZERO, tx),
+                    )
+                    .await;
                 rx.await.unwrap()
             }
         }
@@ -270,10 +300,10 @@ async fn test_start_sequencer_engine_not_initialized(#[values(true, false)] via_
             true => {
                 let (tx, rx) = oneshot::channel();
                 actor
-                    .handle_admin_query(SequencerAdminQuery::StartSequencer(
-                        B256::from([1u8; 32]),
-                        tx,
-                    ))
+                    .handle_admin_query(
+                        &mut None,
+                        SequencerAdminQuery::StartSequencer(B256::from([1u8; 32]), tx),
+                    )
                     .await;
                 rx.await.unwrap()
             }
@@ -309,7 +339,10 @@ async fn test_start_sequencer_unsafe_head_mismatch(#[values(true, false)] via_ch
             true => {
                 let (tx, rx) = oneshot::channel();
                 actor
-                    .handle_admin_query(SequencerAdminQuery::StartSequencer(requested_hash, tx))
+                    .handle_admin_query(
+                        &mut None,
+                        SequencerAdminQuery::StartSequencer(requested_hash, tx),
+                    )
                     .await;
                 rx.await.unwrap()
             }
@@ -341,10 +374,10 @@ async fn test_start_sequencer_engine_client_error(#[values(true, false)] via_cha
             true => {
                 let (tx, rx) = oneshot::channel();
                 actor
-                    .handle_admin_query(SequencerAdminQuery::StartSequencer(
-                        B256::from([1u8; 32]),
-                        tx,
-                    ))
+                    .handle_admin_query(
+                        &mut None,
+                        SequencerAdminQuery::StartSequencer(B256::from([1u8; 32]), tx),
+                    )
                     .await;
                 rx.await.unwrap()
             }
@@ -383,7 +416,7 @@ async fn test_stop_sequencer_success(
     // stop the sequencer
     let (tx, rx) = oneshot::channel();
     if via_channel {
-        actor.handle_admin_query(SequencerAdminQuery::StopSequencer(tx)).await;
+        actor.handle_admin_query(&mut None, SequencerAdminQuery::StopSequencer(tx)).await;
     } else {
         actor.stop_sequencer(tx).await;
     }
@@ -411,7 +444,7 @@ async fn test_stop_sequencer_error_fetching_unsafe_head(#[values(true, false)] v
 
     let (tx, rx) = oneshot::channel();
     if via_channel {
-        actor.handle_admin_query(SequencerAdminQuery::StopSequencer(tx)).await;
+        actor.handle_admin_query(&mut None, SequencerAdminQuery::StopSequencer(tx)).await;
     } else {
         actor.stop_sequencer(tx).await;
     }
@@ -447,7 +480,10 @@ async fn test_set_recovery_mode(
             true => {
                 let (tx, rx) = oneshot::channel();
                 actor
-                    .handle_admin_query(SequencerAdminQuery::SetRecoveryMode(mode_to_set, tx))
+                    .handle_admin_query(
+                        &mut None,
+                        SequencerAdminQuery::SetRecoveryMode(mode_to_set, tx),
+                    )
                     .await;
                 rx.await.unwrap()
             }
@@ -500,7 +536,7 @@ async fn test_override_leader(
             false => actor.override_leader().await,
             true => {
                 let (tx, rx) = oneshot::channel();
-                actor.handle_admin_query(SequencerAdminQuery::OverrideLeader(tx)).await;
+                actor.handle_admin_query(&mut None, SequencerAdminQuery::OverrideLeader(tx)).await;
                 rx.await.unwrap()
             }
         }
@@ -525,15 +561,21 @@ async fn test_reset_derivation_pipeline_success(#[values(true, false)] via_chann
     let mut client = MockSequencerEngineClient::new();
     client.expect_reset_engine_forkchoice().times(1).return_once(|| Ok(()));
 
+    let mut origin_selector = MockOriginSelector::new();
+    origin_selector.expect_clear().times(1).return_once(|| ());
+
     let mut actor = test_actor();
     actor.engine_client = Arc::new(client);
+    actor.builder.origin_selector = origin_selector;
 
     let result = async {
         match via_channel {
-            false => actor.reset_derivation_pipeline().await,
+            false => actor.reset_derivation_pipeline(&mut None).await,
             true => {
                 let (tx, rx) = oneshot::channel();
-                actor.handle_admin_query(SequencerAdminQuery::ResetDerivationPipeline(tx)).await;
+                actor
+                    .handle_admin_query(&mut None, SequencerAdminQuery::ResetDerivationPipeline(tx))
+                    .await;
                 rx.await.unwrap()
             }
         }
@@ -552,15 +594,21 @@ async fn test_reset_derivation_pipeline_error(#[values(true, false)] via_channel
         .times(1)
         .return_once(|| Err(EngineClientError::RequestError("reset failed".to_string())));
 
+    let mut origin_selector = MockOriginSelector::new();
+    origin_selector.expect_clear().times(1).return_once(|| ());
+
     let mut actor = test_actor();
     actor.engine_client = Arc::new(client);
+    actor.builder.origin_selector = origin_selector;
 
     let result = async {
         match via_channel {
-            false => actor.reset_derivation_pipeline().await,
+            false => actor.reset_derivation_pipeline(&mut None).await,
             true => {
                 let (tx, rx) = oneshot::channel();
-                actor.handle_admin_query(SequencerAdminQuery::ResetDerivationPipeline(tx)).await;
+                actor
+                    .handle_admin_query(&mut None, SequencerAdminQuery::ResetDerivationPipeline(tx))
+                    .await;
                 rx.await.unwrap()
             }
         }
@@ -585,9 +633,13 @@ async fn test_handle_admin_query_resilient_to_dropped_receiver() {
     client.expect_get_unsafe_head().times(1).returning(move || Ok(unsafe_head));
     client.expect_reset_engine_forkchoice().times(1).returning(|| Ok(()));
 
+    let mut origin_selector = MockOriginSelector::new();
+    origin_selector.expect_clear().times(1).return_once(|| ());
+
     let mut actor = test_actor();
     actor.conductor = Some(conductor);
     actor.engine_client = Arc::new(client);
+    actor.builder.origin_selector = origin_selector;
 
     let mut queries: Vec<SequencerAdminQuery> = Vec::new();
     {
@@ -632,7 +684,8 @@ async fn test_handle_admin_query_resilient_to_dropped_receiver() {
     }
 
     // None of these should fail even if the receiver is dropped
+    let mut next_payload = None;
     for query in queries {
-        actor.handle_admin_query(query).await;
+        actor.handle_admin_query(&mut next_payload, query).await;
     }
 }

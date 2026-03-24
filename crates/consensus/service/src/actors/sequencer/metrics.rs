@@ -77,27 +77,6 @@ pub(super) fn update_total_transactions_sequenced(_transaction_count: u64) {
 }
 
 #[inline]
-pub(super) fn inc_seal_step_retry(_step: &'static str) {
-    base_macros::inc!(counter, crate::Metrics::SEQUENCER_SEAL_STEP_RETRIES_TOTAL, "step" => _step);
-}
-
-#[inline]
-pub(super) fn update_seal_step_duration(_step: &'static str, _duration: Duration) {
-    base_macros::set!(
-        gauge,
-        crate::Metrics::SEQUENCER_SEAL_STEP_DURATION,
-        "step",
-        _step,
-        _duration
-    );
-}
-
-#[inline]
-pub(super) fn inc_seal_pipeline_overlap() {
-    base_macros::inc!(counter, crate::Metrics::SEQUENCER_SEAL_PIPELINE_OVERLAP_TOTAL);
-}
-
-#[inline]
 pub(super) fn inc_seal_error(fatal: bool) {
     let _label = if fatal { "true" } else { "false" };
     base_macros::inc!(counter, crate::Metrics::SEQUENCER_SEAL_ERROR_TOTAL, "fatal" => _label);
@@ -106,11 +85,6 @@ pub(super) fn inc_seal_error(fatal: bool) {
 #[inline]
 pub(super) fn inc_start_rejected(_reason: &'static str) {
     base_macros::inc!(counter, crate::Metrics::SEQUENCER_START_REJECTED_TOTAL, "reason" => _reason);
-}
-
-#[inline]
-pub(super) fn inc_stop_deferred() {
-    base_macros::inc!(counter, crate::Metrics::SEQUENCER_STOP_DEFERRED_TOTAL);
 }
 
 #[inline]

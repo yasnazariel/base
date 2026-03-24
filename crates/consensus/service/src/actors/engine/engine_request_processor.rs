@@ -69,6 +69,11 @@ where
     /// This is `Some` when the node is in sequencer mode, and `None` when the node is in validator
     /// mode.
     unsafe_head_tx: Option<watch::Sender<L2BlockInfo>>,
+    /// A channel to use to relay the current safe head.
+    /// ## Note
+    /// This is `Some` when the node is in sequencer mode, and `None` when the node is in validator
+    /// mode.
+    safe_head_tx: Option<watch::Sender<L2BlockInfo>>,
 
     /// The [`RollupConfig`] used to build tasks.
     rollup: Arc<RollupConfig>,
@@ -90,6 +95,7 @@ where
         derivation_client: DerivationClient,
         engine: Engine<EngineClient_>,
         unsafe_head_tx: Option<watch::Sender<L2BlockInfo>>,
+        safe_head_tx: Option<watch::Sender<L2BlockInfo>>,
     ) -> Self {
         Self {
             client,
@@ -99,6 +105,7 @@ where
             last_safe_head_sent: L2BlockInfo::default(),
             rollup: config,
             unsafe_head_tx,
+            safe_head_tx,
         }
     }
 
@@ -213,6 +220,12 @@ where
         info!(target: "engine", safe_head = engine_safe_head.block_info.number, "Attempted L2 Safe Head Update");
         debug!(target: "engine", safe_head = ?engine_safe_head, "Attempted L2 Safe Head Update");
         self.last_safe_head_sent = engine_safe_head;
+
+        if let Some(safe_head_tx) = self.safe_head_tx.as_ref() {
+            safe_head_tx.send_if_modified(|val| {
+                (*val != engine_safe_head).then(|| *val = engine_safe_head).is_some()
+            });
+        }
 
         Ok(())
     }

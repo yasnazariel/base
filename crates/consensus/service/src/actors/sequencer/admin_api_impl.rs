@@ -3,10 +3,7 @@ use base_consensus_derive::AttributesBuilder;
 use base_consensus_rpc::SequencerAdminAPIError;
 use tokio::sync::oneshot;
 
-use super::{
-    SequencerActor,
-    metrics::{inc_start_rejected, inc_stop_deferred},
-};
+use super::{SequencerActor, build::UnsealedPayloadHandle, metrics::inc_start_rejected};
 use crate::{Conductor, OriginSelector, SequencerEngineClient, UnsafePayloadGossipClient};
 
 /// The query types to the sequencer actor for the admin api.
@@ -54,7 +51,11 @@ where
 {
     /// Handles the provided [`SequencerAdminQuery`], sending the response via the provided sender.
     /// This function is used to decouple admin API logic from the response mechanism (channels).
-    pub(super) async fn handle_admin_query(&mut self, query: SequencerAdminQuery) {
+    pub(super) async fn handle_admin_query(
+        &mut self,
+        next_payload: &mut Option<UnsealedPayloadHandle>,
+        query: SequencerAdminQuery,
+    ) {
         match query {
             SequencerAdminQuery::SequencerActive(tx) => {
                 if tx.send(self.is_sequencer_active().await).is_err() {
@@ -90,7 +91,7 @@ where
                 }
             }
             SequencerAdminQuery::ResetDerivationPipeline(tx) => {
-                if tx.send(self.reset_derivation_pipeline().await).is_err() {
+                if tx.send(self.reset_derivation_pipeline(next_payload).await).is_err() {
                     warn!(target: "sequencer", "Failed to send response for reset_derivation_pipeline query");
                 }
             }
@@ -176,8 +177,8 @@ where
         Ok(())
     }
 
-    /// Stops the sequencer. If a seal pipeline is in-flight, the response is deferred
-    /// until the pipeline completes so the returned hash reflects the fully inserted head.
+    /// Stops the sequencer. Since the seal pipeline now runs inline (blocking),
+    /// the head is always up-to-date when admin queries are processed.
     pub(super) async fn stop_sequencer(
         &mut self,
         tx: oneshot::Sender<Result<B256, SequencerAdminAPIError>>,
@@ -185,16 +186,9 @@ where
         info!(target: "sequencer", "Stopping sequencer");
         self.is_active = false;
         self.update_metrics();
-
-        if self.sealer.is_some() {
-            info!(target: "sequencer", "Seal pipeline in-flight, deferring stop response");
-            inc_stop_deferred();
-            self.pending_stop = Some(tx);
-        } else {
-            let result = self.resolve_stop_head().await;
-            if tx.send(result).is_err() {
-                warn!(target: "sequencer", "Failed to send stop_sequencer response");
-            }
+        let result = self.resolve_stop_head().await;
+        if tx.send(result).is_err() {
+            warn!(target: "sequencer", "Failed to send stop_sequencer response");
         }
     }
 
@@ -243,10 +237,18 @@ where
         Ok(())
     }
 
-    pub(super) async fn reset_derivation_pipeline(&self) -> Result<(), SequencerAdminAPIError> {
+    /// Resets the derivation pipeline, discarding any pre-built payload and clearing origin cache.
+    pub(super) async fn reset_derivation_pipeline(
+        &mut self,
+        next_payload: &mut Option<UnsealedPayloadHandle>,
+    ) -> Result<(), SequencerAdminAPIError> {
         info!(target: "sequencer", "Resetting derivation pipeline");
+        // Discard any pre-built payload — it was built on the pre-reset chain.
+        next_payload.take();
+        // Clear origin selector cache so it refetches from the new head.
+        self.builder.origin_selector.clear();
         self.engine_client.reset_engine_forkchoice().await.map_err(|e| {
-            error!(target: "sequencer", err=?e, "Failed to reset engine forkchoice");
+            error!(target: "sequencer", err = ?e, "Failed to reset engine forkchoice");
             SequencerAdminAPIError::RequestError(format!("Failed to reset engine: {e}"))
         })
     }

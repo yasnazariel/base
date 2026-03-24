@@ -87,6 +87,7 @@ impl FollowNode {
             derivation_client,
             engine,
             None,
+            None,
         );
 
         let engine_rpc_processor = EngineRpcProcessor::new(

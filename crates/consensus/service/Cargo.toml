@@ -76,6 +76,7 @@ metrics = { workspace = true, optional = true }
 http.workspace = true
 rand.workspace = true
 rstest.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
 backon.workspace = true
 anyhow.workspace = true
 mockall.workspace = true

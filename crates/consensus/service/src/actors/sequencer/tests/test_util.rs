@@ -44,7 +44,5 @@ pub(crate) fn test_actor() -> SequencerActor<
         recovery_mode,
         rollup_config,
         unsafe_payload_gossip_client: MockUnsafePayloadGossipClient::new(),
-        sealer: None,
-        pending_stop: None,
     }
 }
