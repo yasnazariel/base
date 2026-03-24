@@ -68,7 +68,7 @@ where
                 }
             }
             SequencerAdminQuery::StopSequencer(tx) => {
-                self.stop_sequencer(tx).await;
+                self.stop_sequencer(next_payload, tx).await;
             }
             SequencerAdminQuery::ConductorEnabled(tx) => {
                 if tx.send(self.is_conductor_enabled().await).is_err() {
