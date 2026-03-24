@@ -7,7 +7,7 @@ use alloy_consensus::{
     transaction::{Recovered, SignerRecoverable},
 };
 use alloy_eips::BlockNumberOrTag;
-use alloy_primitives::{Address, BlockNumber};
+use alloy_primitives::{Address, BlockNumber, TxHash};
 use alloy_rpc_types_eth::state::StateOverride;
 use arc_swap::ArcSwapOption;
 use base_alloy_consensus::OpTxEnvelope;
@@ -120,6 +120,33 @@ where
 
     *cached_trie = Some(compute_pending_trie_input(state_provider, &bundle_state)?);
     Ok(())
+}
+
+fn timed_pending_trie_update<Compute>(
+    cached_trie: &mut Option<PendingTrieInput>,
+    pending_blocks_builder: &mut PendingBlocksBuilder,
+    tx_hash: TxHash,
+    compute: Compute,
+) where
+    Compute: FnOnce() -> std::result::Result<PendingTrieInput, ProviderError>,
+{
+    let start = Instant::now();
+    let trie_result = compute();
+    let state_root_time_us = start.elapsed().as_micros();
+
+    match trie_result {
+        Ok(next_trie) => {
+            *cached_trie = Some(next_trie);
+            pending_blocks_builder.with_state_root_time(tx_hash, state_root_time_us);
+        }
+        Err(error) => {
+            warn!(
+                tx_hash = %tx_hash,
+                error = %error,
+                "state root simulation failed; skipping timing for this transaction"
+            );
+        }
+    }
 }
 
 /// Messages consumed by the state processor.
@@ -604,58 +631,32 @@ where
 
                     if let Some(prev_trie) = cached_trie.take() {
                         let state_provider = db.database.as_ref();
-                        let start = Instant::now();
-                        let trie_result = match pending_transition_state(db) {
-                            Some(transition_state) => {
-                                advance_pending_trie_input_from_transition_state(
-                                    state_provider,
-                                    prev_trie,
-                                    transition_state,
-                                )
-                            }
-                            None => Ok(prev_trie),
-                        };
-                        let state_root_time_us = start.elapsed().as_micros();
+                        timed_pending_trie_update(
+                            &mut cached_trie,
+                            &mut pending_blocks_builder,
+                            tx_hash,
+                            || match pending_transition_state(db) {
+                                Some(transition_state) => {
+                                    advance_pending_trie_input_from_transition_state(
+                                        state_provider,
+                                        prev_trie,
+                                        transition_state,
+                                    )
+                                }
+                                None => Ok(prev_trie),
+                            },
+                        );
 
                         db.merge_transitions(BundleRetention::Reverts);
-
-                        match trie_result {
-                            Ok(next_trie) => {
-                                cached_trie = Some(next_trie);
-                                pending_blocks_builder
-                                    .with_state_root_time(tx_hash, state_root_time_us);
-                            }
-                            Err(error) => {
-                                warn!(
-                                    tx_hash = %tx_hash,
-                                    error = %error,
-                                    "state root simulation failed; skipping timing for this transaction"
-                                );
-                            }
-                        }
                     } else {
                         db.merge_transitions(BundleRetention::Reverts);
                         let state_provider = db.database.as_ref();
-
-                        let start = Instant::now();
-                        let trie_result =
-                            compute_pending_trie_input(state_provider, &db.bundle_state);
-                        let state_root_time_us = start.elapsed().as_micros();
-
-                        match trie_result {
-                            Ok(next_trie) => {
-                                cached_trie = Some(next_trie);
-                                pending_blocks_builder
-                                    .with_state_root_time(tx_hash, state_root_time_us);
-                            }
-                            Err(error) => {
-                                warn!(
-                                    tx_hash = %tx_hash,
-                                    error = %error,
-                                    "state root simulation failed; skipping timing for this transaction"
-                                );
-                            }
-                        }
+                        timed_pending_trie_update(
+                            &mut cached_trie,
+                            &mut pending_blocks_builder,
+                            tx_hash,
+                            || compute_pending_trie_input(state_provider, &db.bundle_state),
+                        );
                     }
                 }
 
@@ -677,6 +678,11 @@ where
         }
 
         if self.simulate_state_root {
+            // Steady state is to carry the cached trie forward from the previous pending
+            // snapshot, then extend it with any trailing deposit-only transitions that were
+            // never measured per-tx. Hydration from the previous bundle and full recompute
+            // from the accumulated bundle are only fallback paths for the first snapshot or
+            // after cache misses/errors.
             let state_provider = db.database.as_ref();
             if let Err(error) = ensure_cached_trie_input(
                 state_provider,
