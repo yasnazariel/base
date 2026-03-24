@@ -230,6 +230,9 @@ impl SequencerEngineClient for QueuedSequencerEngineClient {
     ) -> EngineClientResult<L2BlockInfo> {
         const TIMEOUT: Duration = Duration::from_millis(500);
         self.insert_unsafe_payload(payload).await?;
+        // Clone after insert: safe because the loop always calls borrow_and_update() before
+        // changed(), so even if the engine updates the watch before this clone executes, the
+        // current value is checked immediately rather than blocking on the next change.
         let mut rx = self.unsafe_head_rx.clone();
         tokio::time::timeout(TIMEOUT, async move {
             loop {
