@@ -349,7 +349,7 @@ where
                 message,
             } => {
                 trace!(target: "gossip", topic = %message.topic, "Received message");
-                Metrics::gossip_events("message", message.topic.as_str()).increment(1);
+                Metrics::gossip_events("message", message.topic.to_string()).increment(1);
                 if self.handler.topics().contains(&message.topic) {
                     let (status, payload) = self.handler.handle(message);
                     _ = self
@@ -362,11 +362,11 @@ where
             }
             libp2p::gossipsub::Event::Subscribed { peer_id, topic } => {
                 trace!(target: "gossip", peer_id = %peer_id, topic = ?topic, "Peer subscribed");
-                Metrics::gossip_events("subscribed", topic.as_str()).increment(1);
+                Metrics::gossip_events("subscribed", topic.to_string()).increment(1);
             }
             libp2p::gossipsub::Event::Unsubscribed { peer_id, topic } => {
                 trace!(target: "gossip", peer_id = %peer_id, topic = ?topic, "Peer unsubscribed");
-                Metrics::gossip_events("unsubscribed", topic.as_str()).increment(1);
+                Metrics::gossip_events("unsubscribed", topic.to_string()).increment(1);
             }
             libp2p::gossipsub::Event::SlowPeer { peer_id, .. } => {
                 trace!(target: "gossip", peer_id = %peer_id, "Slow peer");

@@ -155,7 +155,7 @@ where
                         )
                         .await;
                     timer.stop();
-                    Metrics::batch_validity(&validity.to_string()).increment(1);
+                    Metrics::batch_validity(validity.to_string()).increment(1);
 
                     match validity {
                         BatchValidity::Accept => self.span = Some(b),

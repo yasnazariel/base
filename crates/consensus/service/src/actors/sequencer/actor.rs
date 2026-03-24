@@ -111,8 +111,8 @@ where
     /// Updates the metrics for the sequencer actor.
     pub(super) fn update_metrics(&self) {
         Metrics::sequencer_state(
-            &self.is_active.to_string(),
-            &self.recovery_mode.get().to_string(),
+            self.is_active.to_string(),
+            self.recovery_mode.get().to_string(),
         )
         .set(1);
     }

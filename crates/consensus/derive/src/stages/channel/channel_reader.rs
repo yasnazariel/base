@@ -142,7 +142,7 @@ where
         // Read the next batch from the reader's decompressed data
         match next_batch.next_batch(self.cfg.as_ref()).ok_or(PipelineError::NotEnoughData.temp()) {
             Ok(batch) => {
-                Metrics::read_batches(&batch.to_string()).increment(1);
+                Metrics::read_batches(batch.to_string()).increment(1);
                 Ok(batch)
             }
             Err(e) => {

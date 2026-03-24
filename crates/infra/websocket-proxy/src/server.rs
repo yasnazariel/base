@@ -181,7 +181,7 @@ async fn authenticated_websocket_handler(
                 .unwrap()
         },
         |app| {
-            Metrics::connections_by_app(&app).increment(1);
+            Metrics::connections_by_app(app).increment(1);
             websocket_handler(state, ws, addr, headers, FilterType::None)
         },
     )
@@ -207,7 +207,7 @@ async fn authenticated_filter_websocket_handler(
                 .unwrap()
         }
         Some(app) => {
-            Metrics::connections_by_app(app).increment(1);
+            Metrics::connections_by_app(app.to_string()).increment(1);
             let filter = create_filter_from_query(query.0);
             websocket_handler(state, ws, addr, headers, filter)
         }

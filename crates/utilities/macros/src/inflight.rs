@@ -12,7 +12,7 @@
 #[cfg(feature = "metrics")]
 pub struct InflightCounter {
     gauge: metrics::Gauge,
-    counter_fn: fn(&str) -> metrics::Counter,
+    counter_fn: fn(&'static str) -> metrics::Counter,
     outcome: &'static str,
 }
 
@@ -40,7 +40,7 @@ impl InflightCounter {
     #[inline]
     pub fn new(
         gauge: metrics::Gauge,
-        counter_fn: fn(&str) -> metrics::Counter,
+        counter_fn: fn(&'static str) -> metrics::Counter,
         outcome: &'static str,
     ) -> Self {
         gauge.increment(1);
@@ -99,8 +99,7 @@ macro_rules! inflight {
         #[cfg(not(feature = "metrics"))]
         {
             let _ = &$gauge;
-            let _ = &$counter_fn;
-            let _ = &$default_outcome;
+            let _ = $default_outcome;
             $crate::InflightCounter::new()
         }
     }};

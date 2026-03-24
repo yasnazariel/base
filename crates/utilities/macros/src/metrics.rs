@@ -230,16 +230,14 @@ macro_rules! __define_metric_fn {
     (@labeled2 $macro_name:ident $ret:ident $scope:expr, $field:ident, $lk1:expr, $lp1:ident, $lk2:expr, $lp2:ident) => {
         #[cfg(feature = "metrics")]
         #[allow(unused)]
-        pub fn $field($lp1: &str, $lp2: &str) -> ::metrics::$ret {
-            let v1 = $lp1.to_string();
-            let v2 = $lp2.to_string();
-            ::metrics::$macro_name!(concat!($scope, "_", stringify!($field)), $lk1 => v1, $lk2 => v2)
+        pub fn $field($lp1: impl Into<::metrics::SharedString>, $lp2: impl Into<::metrics::SharedString>) -> ::metrics::$ret {
+            ::metrics::$macro_name!(concat!($scope, "_", stringify!($field)), $lk1 => $lp1.into(), $lk2 => $lp2.into())
         }
 
         #[cfg(not(feature = "metrics"))]
         #[inline(always)]
         #[allow(unused)]
-        pub fn $field(_: &str, _: &str) -> $crate::NoopMetric {
+        pub fn $field<S1, S2>(_: S1, _: S2) -> $crate::NoopMetric {
             $crate::NoopMetric
         }
     };
@@ -247,15 +245,14 @@ macro_rules! __define_metric_fn {
     (@labeled $macro_name:ident $ret:ident $scope:expr, $field:ident, $lk:expr, $lp:ident) => {
         #[cfg(feature = "metrics")]
         #[allow(unused)]
-        pub fn $field($lp: &str) -> ::metrics::$ret {
-            let label_value = $lp.to_string();
-            ::metrics::$macro_name!(concat!($scope, "_", stringify!($field)), $lk => label_value)
+        pub fn $field($lp: impl Into<::metrics::SharedString>) -> ::metrics::$ret {
+            ::metrics::$macro_name!(concat!($scope, "_", stringify!($field)), $lk => $lp.into())
         }
 
         #[cfg(not(feature = "metrics"))]
         #[inline(always)]
         #[allow(unused)]
-        pub fn $field(_: &str) -> $crate::NoopMetric {
+        pub fn $field<S>(_: S) -> $crate::NoopMetric {
             $crate::NoopMetric
         }
     };

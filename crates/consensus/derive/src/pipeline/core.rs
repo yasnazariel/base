@@ -118,7 +118,7 @@ where
                 self.attributes.signal(signal).await?;
             }
         }
-        Metrics::pipeline_signals(&signal.to_string()).increment(1);
+        Metrics::pipeline_signals(signal.to_string()).increment(1);
         Ok(())
     }
 }
