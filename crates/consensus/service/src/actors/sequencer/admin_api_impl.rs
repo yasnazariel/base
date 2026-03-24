@@ -181,10 +181,13 @@ where
     /// the head is always up-to-date when admin queries are processed.
     pub(super) async fn stop_sequencer(
         &mut self,
+        next_payload: &mut Option<UnsealedPayloadHandle>,
         tx: oneshot::Sender<Result<B256, SequencerAdminAPIError>>,
     ) {
         info!(target: "sequencer", "Stopping sequencer");
         self.is_active = false;
+        // Discard any pre-built payload so a subsequent start always builds fresh.
+        next_payload.take();
         self.update_metrics();
         let result = self.resolve_stop_head().await;
         if tx.send(result).is_err() {

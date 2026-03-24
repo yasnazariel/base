@@ -418,7 +418,7 @@ async fn test_stop_sequencer_success(
     if via_channel {
         actor.handle_admin_query(&mut None, SequencerAdminQuery::StopSequencer(tx)).await;
     } else {
-        actor.stop_sequencer(tx).await;
+        actor.stop_sequencer(&mut None, tx).await;
     }
     let result = rx.await.unwrap();
     assert!(result.is_ok());
@@ -446,7 +446,7 @@ async fn test_stop_sequencer_error_fetching_unsafe_head(#[values(true, false)] v
     if via_channel {
         actor.handle_admin_query(&mut None, SequencerAdminQuery::StopSequencer(tx)).await;
     } else {
-        actor.stop_sequencer(tx).await;
+        actor.stop_sequencer(&mut None, tx).await;
     }
     let result = rx.await.unwrap();
     assert!(result.is_err());
