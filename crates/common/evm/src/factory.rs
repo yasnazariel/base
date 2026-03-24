@@ -6,7 +6,8 @@ use alloy_primitives::U256;
 use base_revm::{
     BasePrecompiles, DefaultOp, NONCE_MANAGER_ADDRESS, NONCE_MANAGER_GAS, OpBuilder, OpContext,
     OpHaltReason, OpSpecId, OpTransaction, OpTransactionError, TX_CONTEXT_ADDRESS, TX_CONTEXT_GAS,
-    aa_nonce_slot, encode_address, encode_b256, encode_u256, get_eip8130_tx_context, selector,
+    aa_nonce_slot, encode_address, encode_b256, encode_calls_abi, encode_u256,
+    get_eip8130_tx_context, selector,
 };
 use revm::{
     Context, Inspector,
@@ -26,7 +27,7 @@ fn make_tx_context_precompile() -> DynPrecompile {
         }
 
         let ctx = get_eip8130_tx_context();
-        let (sender, payer, owner_id, gas_limit, max_cost) = match ctx {
+        let (sender, payer, owner_id, gas_limit, max_cost) = match &ctx {
             Some(c) => (c.sender, c.payer, c.owner_id.0, c.gas_limit, c.max_cost),
             None => (Default::default(), Default::default(), [0u8; 32], 0, U256::ZERO),
         };
@@ -42,6 +43,9 @@ fn make_tx_context_precompile() -> DynPrecompile {
             encode_u256(max_cost)
         } else if sel == selector(b"getGasLimit()") {
             encode_u256(U256::from(gas_limit))
+        } else if sel == selector(b"getCalls()") {
+            let phases = ctx.as_ref().map(|c| &c.call_phases[..]).unwrap_or(&[]);
+            encode_calls_abi(phases)
         } else {
             return Err(PrecompileError::Other("unknown tx context selector".into()));
         };

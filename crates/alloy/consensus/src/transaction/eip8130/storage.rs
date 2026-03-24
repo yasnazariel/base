@@ -5,32 +5,38 @@
 
 use alloy_primitives::{Address, B256, U256, keccak256};
 
-/// Base storage slot for the `owner_config` mapping in `AccountConfig`.
+/// Base storage slot for the `_ownerConfigs` mapping in `AccountConfiguration`.
 ///
-/// `owner_config[account][ownerId]` →
+/// `_ownerConfigs[account][ownerId]` →
 ///   `keccak256(ownerId . keccak256(account . OWNER_CONFIG_BASE_SLOT))`
 ///
-/// Each slot packs: `verifier (20 bytes) | scope (1 byte) | reserved (11 bytes)`.
+/// Solidity packing (right-aligned): `zeros(11) | scope(1) | verifier(20)`.
 pub const OWNER_CONFIG_BASE_SLOT: U256 = U256::ZERO;
 
-/// Base storage slot for the `nonce` mapping in `NonceManager`.
+/// Base storage slot for the `_accountLocks` mapping in `AccountConfiguration`.
+///
+/// `_accountLocks[account]` → `keccak256(account . LOCK_BASE_SLOT)`
+///
+/// Solidity `AccountLock { bool locked; uint32 unlockDelay; uint32 unlockRequestedAt; }`.
+/// Packing (right-aligned): `zeros(23) | unlockRequestedAt(4) | unlockDelay(4) | locked(1)`.
+pub const LOCK_BASE_SLOT: U256 = U256::from_limbs([1, 0, 0, 0]);
+
+/// Base storage slot for the `_changeSequences` mapping in `AccountConfiguration`.
+///
+/// `_changeSequences[account]` → `keccak256(account . SEQUENCE_BASE_SLOT)`
+///
+/// Solidity `ChangeSequences { uint64 multichain; uint64 local; }`.
+/// Packing (right-aligned): `zeros(16) | local(8) | multichain(8)`.
+pub const SEQUENCE_BASE_SLOT: U256 = U256::from_limbs([2, 0, 0, 0]);
+
+/// Base storage slot for the `nonce` mapping in `NonceManager` (precompile at 0xAa02).
 ///
 /// `nonce[account][nonceKey]` →
 ///   `keccak256(nonceKey . keccak256(account . NONCE_BASE_SLOT))`
+///
+/// NonceManager is a separate precompile at a different address; this slot
+/// does not overlap with AccountConfiguration storage.
 pub const NONCE_BASE_SLOT: U256 = U256::from_limbs([1, 0, 0, 0]);
-
-/// Base storage slot for the `lock_state` mapping in `AccountConfig`.
-///
-/// `lock_state[account]` → `keccak256(account . LOCK_BASE_SLOT)`
-///
-/// Packs: `locked (bool) | unlock_delay (u64) | unlock_requested_at (u64)`.
-pub const LOCK_BASE_SLOT: U256 = U256::from_limbs([2, 0, 0, 0]);
-
-/// Base storage slot for the `change_sequence` mapping in `AccountConfig`.
-///
-/// `change_sequence[account][chainId]` →
-///   `keccak256(chainId . keccak256(account . SEQUENCE_BASE_SLOT))`
-pub const SEQUENCE_BASE_SLOT: U256 = U256::from_limbs([3, 0, 0, 0]);
 
 /// Computes the storage slot for `owner_config[account][ownerId]`.
 pub fn owner_config_slot(account: Address, owner_id: B256) -> B256 {
@@ -78,16 +84,66 @@ pub fn lock_slot(account: Address) -> B256 {
     keccak256(buf)
 }
 
-/// Computes the storage slot for `change_sequence[account][chainId]`.
+/// Computes the base storage slot for `_changeSequences[account]`.
+///
+/// The Solidity struct `ChangeSequences { uint64 multichain; uint64 local; }` packs
+/// both fields into this single slot (right-aligned):
+///   bits [0,  64)  = multichain (chain_id 0)
+///   bits [64, 128) = local      (chain_id == block.chainid)
+pub fn sequence_base_slot(account: Address) -> B256 {
+    let mut buf = [0u8; 64];
+    buf[12..32].copy_from_slice(account.as_slice());
+    SEQUENCE_BASE_SLOT
+        .to_be_bytes::<32>()
+        .as_slice()
+        .iter()
+        .enumerate()
+        .for_each(|(i, &b)| {
+            buf[32 + i] = b;
+        });
+    keccak256(buf)
+}
+
+/// Reads the `multichain` or `local` sequence from a packed slot value.
+///
+/// `is_multichain` = true  → reads the low 8 bytes  (chain_id 0)
+/// `is_multichain` = false → reads bytes [16..24]    (local chain)
+pub fn read_sequence(slot_value: U256, is_multichain: bool) -> u64 {
+    if is_multichain {
+        slot_value.as_limbs()[0]
+    } else {
+        (slot_value >> 64_u8).as_limbs()[0]
+    }
+}
+
+/// Writes a sequence value into a packed slot, preserving the other field.
+pub fn write_sequence(current: U256, is_multichain: bool, new_value: u64) -> U256 {
+    let mask_low = U256::from(u64::MAX);
+    let mask_high = mask_low << 64_u8;
+    if is_multichain {
+        (current & mask_high) | U256::from(new_value)
+    } else {
+        (current & mask_low) | (U256::from(new_value) << 64_u8)
+    }
+}
+
+/// Legacy helper: computes the slot as if it were a nested mapping.
+///
+/// **Deprecated** – use [`sequence_base_slot`] + [`read_sequence`]/[`write_sequence`]
+/// for compatibility with the deployed AccountConfiguration contract.
+#[deprecated(note = "use sequence_base_slot + read_sequence/write_sequence instead")]
 pub fn sequence_slot(account: Address, chain_id: u64) -> B256 {
     let inner = {
         let mut buf = [0u8; 64];
         buf[12..32].copy_from_slice(account.as_slice());
-        SEQUENCE_BASE_SLOT.to_be_bytes::<32>().as_slice().iter().enumerate().for_each(
-            |(i, &b)| {
+        SEQUENCE_BASE_SLOT
+            .to_be_bytes::<32>()
+            .as_slice()
+            .iter()
+            .enumerate()
+            .for_each(|(i, &b)| {
                 buf[32 + i] = b;
-            },
-        );
+            });
         keccak256(buf)
     };
 
@@ -99,19 +155,28 @@ pub fn sequence_slot(account: Address, chain_id: u64) -> B256 {
 
 /// Parses an `owner_config` storage slot value into `(verifier, scope)`.
 ///
-/// Layout: `verifier (20 bytes) | scope (1 byte) | reserved (11 bytes)`.
+/// Solidity right-aligned packing for `OwnerConfig { address verifier; uint8 scope; }`:
+///   `zeros(11) | scope(1) | verifier(20)`
+///
+/// In the 32-byte big-endian word:
+///   bytes [12..32] = verifier (20 bytes, low-order)
+///   byte  [11]     = scope
+///   bytes [0..11]  = zeros
 pub fn parse_owner_config(slot_value: B256) -> (Address, u8) {
     let bytes = slot_value.as_slice();
-    let verifier = Address::from_slice(&bytes[..20]);
-    let scope = bytes[20];
+    let verifier = Address::from_slice(&bytes[12..32]);
+    let scope = bytes[11];
     (verifier, scope)
 }
 
 /// Encodes `(verifier, scope)` into an `owner_config` storage slot value.
+///
+/// Must match Solidity's right-aligned struct packing so the deployed
+/// `AccountConfiguration` contract can read protocol-written storage.
 pub fn encode_owner_config(verifier: Address, scope: u8) -> B256 {
     let mut bytes = [0u8; 32];
-    bytes[..20].copy_from_slice(verifier.as_slice());
-    bytes[20] = scope;
+    bytes[12..32].copy_from_slice(verifier.as_slice());
+    bytes[11] = scope;
     B256::from(bytes)
 }
 
@@ -176,11 +241,35 @@ mod tests {
     }
 
     #[test]
-    fn sequence_slot_deterministic() {
+    fn sequence_base_slot_deterministic() {
         let account = Address::repeat_byte(0x01);
-        let slot1 = sequence_slot(account, 1);
-        let slot2 = sequence_slot(account, 1);
+        let slot1 = sequence_base_slot(account);
+        let slot2 = sequence_base_slot(account);
         assert_eq!(slot1, slot2);
+    }
+
+    #[test]
+    fn read_write_sequence_multichain() {
+        let packed = U256::ZERO;
+        let updated = write_sequence(packed, true, 42);
+        assert_eq!(read_sequence(updated, true), 42);
+        assert_eq!(read_sequence(updated, false), 0);
+    }
+
+    #[test]
+    fn read_write_sequence_local() {
+        let packed = U256::ZERO;
+        let updated = write_sequence(packed, false, 99);
+        assert_eq!(read_sequence(updated, false), 99);
+        assert_eq!(read_sequence(updated, true), 0);
+    }
+
+    #[test]
+    fn read_write_sequence_preserves_other() {
+        let packed = write_sequence(U256::ZERO, true, 10);
+        let packed = write_sequence(packed, false, 20);
+        assert_eq!(read_sequence(packed, true), 10);
+        assert_eq!(read_sequence(packed, false), 20);
     }
 
     #[test]

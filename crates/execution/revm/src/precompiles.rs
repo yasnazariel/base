@@ -1,5 +1,5 @@
 //! Contains Base specific precompiles.
-use std::{boxed::Box, cell::RefCell, string::String};
+use std::{boxed::Box, cell::RefCell, string::String, vec::Vec};
 
 use revm::{
     Database,
@@ -14,7 +14,7 @@ use revm::{
     primitives::{Address, B256, Bytes, OnceLock, U256, hardfork::SpecId, keccak256},
 };
 
-use crate::{Eip8130Parts, OpSpecId, transaction::OpTxTr};
+use crate::{Eip8130Call, Eip8130Parts, OpSpecId, transaction::OpTxTr};
 
 thread_local! {
     static EIP8130_TX_CONTEXT: RefCell<Option<Eip8130TxContext>> = const { RefCell::new(None) };
@@ -35,6 +35,8 @@ pub struct Eip8130TxContext {
     pub gas_limit: u64,
     /// `gas_limit * max_fee_per_gas`.
     pub max_cost: U256,
+    /// Phased call batches.
+    pub call_phases: Vec<Vec<Eip8130Call>>,
 }
 
 /// Sets the EIP-8130 transaction context for the current thread.
@@ -63,6 +65,7 @@ impl From<(&Eip8130Parts, u64, U256)> for Eip8130TxContext {
             owner_id: parts.owner_id,
             gas_limit,
             max_cost: U256::from(gas_limit) * max_fee_per_gas,
+            call_phases: parts.call_phases.clone(),
         }
     }
 }
@@ -251,6 +254,97 @@ pub fn encode_b256(value: [u8; 32]) -> Bytes {
     Bytes::from(value.to_vec())
 }
 
+/// ABI-encodes the return value of `getCalls() returns (CallTuple[][] memory)`
+/// where `CallTuple = (address target, bytes data)`.
+///
+/// Encoding layout (standard Solidity ABI for a dynamic nested array of structs):
+/// - word 0: offset to outer array = 0x20
+/// - outer array: [length, offset_0, offset_1, ..., phase_0_data, phase_1_data, ...]
+/// - each phase: [length, offset_0, ..., struct_0, struct_1, ...]
+/// - each struct: [address (padded), offset_to_bytes (0x40), bytes_len, bytes_data (padded)]
+pub fn encode_calls_abi(phases: &[Vec<Eip8130Call>]) -> Bytes {
+    let mut buf = Vec::<u8>::new();
+
+    // Return value offset (points to the outer array).
+    buf.extend_from_slice(&pad32(32u64));
+
+    // Outer array length.
+    buf.extend_from_slice(&pad32(phases.len() as u64));
+
+    // Pre-compute offsets to each phase's data (relative to outer array body start).
+    // Body starts right after the N offset words.
+    let mut phase_offsets = Vec::with_capacity(phases.len());
+    let mut running = phases.len() * 32; // skip N offset words
+    for phase in phases {
+        phase_offsets.push(running);
+        running += encoded_phase_size(phase);
+    }
+
+    for off in &phase_offsets {
+        buf.extend_from_slice(&pad32(*off as u64));
+    }
+
+    for phase in phases {
+        encode_phase(phase, &mut buf);
+    }
+
+    Bytes::from(buf)
+}
+
+fn encoded_struct_size(call: &Eip8130Call) -> usize {
+    // address (32) + offset to bytes (32) + bytes length (32) + padded data
+    32 + 32 + 32 + padded_len(call.data.len())
+}
+
+fn encoded_phase_size(phase: &[Eip8130Call]) -> usize {
+    let m = phase.len();
+    // length word + M offset words + sum of struct sizes
+    32 + m * 32 + phase.iter().map(|c| encoded_struct_size(c)).sum::<usize>()
+}
+
+fn encode_phase(phase: &[Eip8130Call], buf: &mut Vec<u8>) {
+    let m = phase.len();
+    buf.extend_from_slice(&pad32(m as u64));
+
+    // Offsets to each struct (relative to the start of the struct data area).
+    let mut struct_offsets = Vec::with_capacity(m);
+    let mut running = m * 32; // skip M offset words
+    for call in phase {
+        struct_offsets.push(running);
+        running += encoded_struct_size(call);
+    }
+
+    for off in &struct_offsets {
+        buf.extend_from_slice(&pad32(*off as u64));
+    }
+
+    for call in phase {
+        // address (left-padded to 32)
+        let mut addr_word = [0u8; 32];
+        addr_word[12..32].copy_from_slice(call.to.as_slice());
+        buf.extend_from_slice(&addr_word);
+
+        // offset to bytes data = 0x40 (2 words past struct head start)
+        buf.extend_from_slice(&pad32(64u64));
+
+        // bytes: length + right-padded data
+        buf.extend_from_slice(&pad32(call.data.len() as u64));
+        buf.extend_from_slice(&call.data);
+        let pad = padded_len(call.data.len()) - call.data.len();
+        buf.extend(std::iter::repeat(0u8).take(pad));
+    }
+}
+
+fn pad32(v: u64) -> [u8; 32] {
+    let mut word = [0u8; 32];
+    word[24..32].copy_from_slice(&v.to_be_bytes());
+    word
+}
+
+fn padded_len(len: usize) -> usize {
+    (len + 31) & !31
+}
+
 fn map_precompile_output(
     gas_limit: u64,
     output: Result<(u64, Bytes), String>,
@@ -317,30 +411,30 @@ where
     }
 
     let tx = context.tx();
-    let (sender, payer, owner_id, gas_limit, max_cost) = if tx.tx_type() == EIP8130_TX_TYPE {
-        let eip8130 = tx.eip8130_parts();
-        (
-            eip8130.sender,
-            eip8130.payer,
-            eip8130.owner_id.0,
-            tx.gas_limit(),
-            U256::from(tx.gas_limit()) * U256::from(tx.max_fee_per_gas()),
-        )
+    let eip8130 = if tx.tx_type() == EIP8130_TX_TYPE {
+        Some(tx.eip8130_parts().clone())
     } else {
-        (Address::ZERO, Address::ZERO, [0u8; 32], 0, U256::ZERO)
+        None
     };
 
     let selector_bytes = &input[0..4];
     let output = if selector_bytes == selector(b"getSender()") {
-        encode_address(sender)
+        encode_address(eip8130.as_ref().map_or(Address::ZERO, |p| p.sender))
     } else if selector_bytes == selector(b"getPayer()") {
-        encode_address(payer)
+        encode_address(eip8130.as_ref().map_or(Address::ZERO, |p| p.payer))
     } else if selector_bytes == selector(b"getOwnerId()") {
-        encode_b256(owner_id)
+        encode_b256(eip8130.as_ref().map_or([0u8; 32], |p| p.owner_id.0))
     } else if selector_bytes == selector(b"getMaxCost()") {
+        let max_cost = eip8130.as_ref().map_or(U256::ZERO, |_| {
+            U256::from(tx.gas_limit()) * U256::from(tx.max_fee_per_gas())
+        });
         encode_u256(max_cost)
     } else if selector_bytes == selector(b"getGasLimit()") {
+        let gas_limit = eip8130.as_ref().map_or(0u64, |_| tx.gas_limit());
         encode_u256(U256::from(gas_limit))
+    } else if selector_bytes == selector(b"getCalls()") {
+        let phases = eip8130.as_ref().map_or(&[][..], |p| &p.call_phases);
+        encode_calls_abi(phases)
     } else {
         return Err("unknown tx context selector".to_string());
     };

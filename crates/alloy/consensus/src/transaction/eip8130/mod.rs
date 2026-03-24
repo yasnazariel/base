@@ -54,8 +54,10 @@ mod storage;
 pub use storage::{
     LOCK_BASE_SLOT, NONCE_BASE_SLOT, OWNER_CONFIG_BASE_SLOT, SEQUENCE_BASE_SLOT,
     encode_owner_config, lock_slot, nonce_slot, owner_config_slot, parse_owner_config,
-    sequence_slot,
+    read_sequence, sequence_base_slot, write_sequence,
 };
+#[allow(deprecated)]
+pub use storage::sequence_slot;
 
 #[cfg(feature = "evm")]
 mod accessors;
@@ -69,9 +71,10 @@ pub use accessors::{
 mod execution;
 #[cfg(feature = "evm")]
 pub use execution::{
-    Eip8130ExecutionPlan, BalanceTransfer, CodePlacement, ExecutionCall, PhaseResult, StorageWrite,
-    TxContextValues, auto_delegation_code, build_execution_calls, config_change_writes,
-    gas_refund, max_gas_cost, nonce_increment_write, owner_registration_writes,
+    Eip8130ExecutionPlan, BalanceTransfer, CodePlacement, ExecutionCall, PhaseResult,
+    SequenceUpdateInfo, StorageWrite, TxContextValues, auto_delegation_code,
+    build_execution_calls, config_change_sequence, config_change_writes, gas_refund,
+    max_gas_cost, nonce_increment_write, owner_registration_writes,
 };
 
 #[cfg(feature = "evm")]

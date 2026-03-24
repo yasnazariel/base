@@ -10,11 +10,12 @@ use alloy_primitives::{Address, B256, Bytes, U256};
 use reth_storage_api::StateProviderFactory;
 
 use base_alloy_consensus::{
-    ACCOUNT_CONFIG_ADDRESS, K1_VERIFIER_ADDRESS, NONCE_MANAGER_ADDRESS, NativeVerifyResult,
-    OpPooledTransaction, OwnerScope, ParsedSenderAuth, TxEip8130, ValidationError, VerifierTarget,
-    VERIFIER_K1, implicit_eoa_owner_id, nonce_slot, owner_config_slot, parse_owner_config,
-    parse_sender_auth, payer_signature_hash, resolve_verifier, sender_signature_hash,
-    try_native_verify, validate_expiry, validate_structure, verifier_type_to_address,
+    ACCOUNT_CONFIG_ADDRESS, AccountChangeEntry, K1_VERIFIER_ADDRESS, NONCE_MANAGER_ADDRESS,
+    NativeVerifyResult, OpPooledTransaction, OwnerScope, ParsedSenderAuth, TxEip8130,
+    ValidationError, VerifierTarget, VERIFIER_K1, implicit_eoa_owner_id, intrinsic_gas, lock_slot,
+    nonce_slot, owner_config_slot, parse_owner_config, parse_sender_auth, payer_signature_hash,
+    read_sequence, resolve_verifier, sender_signature_hash, sequence_base_slot, try_native_verify,
+    validate_expiry, validate_structure, verifier_type_to_address,
 };
 
 use crate::OpPooledTx;
@@ -27,6 +28,9 @@ pub struct Eip8130ValidationOutcome {
     pub balance: U256,
     /// The sender's current nonce_sequence (used for txpool nonce ordering).
     pub state_nonce: u64,
+    /// The resolved sender owner ID (from signature verification).
+    /// `B256::ZERO` if the verifier was unsupported and deferred to execution.
+    pub sender_owner_id: B256,
 }
 
 /// Errors from AA transaction validation.
@@ -58,6 +62,22 @@ pub enum Eip8130ValidationError {
     PayerAuthInvalid(String),
     /// Payer's owner is not authorized in AccountConfig.
     PayerNotAuthorized(String),
+    /// Account is locked; config changes are rejected.
+    AccountLocked,
+    /// Config change sequence does not match on-chain value.
+    SequenceMismatch {
+        /// On-chain sequence.
+        expected: u64,
+        /// Sequence in the transaction.
+        got: u64,
+    },
+    /// Gas limit is below the intrinsic gas cost.
+    IntrinsicGasTooLow {
+        /// Minimum required gas.
+        intrinsic: u64,
+        /// Gas limit in the transaction.
+        gas_limit: u64,
+    },
     /// Payer has insufficient balance to cover `gas_limit * max_fee_per_gas`.
     InsufficientBalance {
         /// Required balance.
@@ -84,6 +104,13 @@ impl std::fmt::Display for Eip8130ValidationError {
             Self::SenderNotAuthorized(e) => write!(f, "sender not authorized: {e}"),
             Self::PayerAuthInvalid(e) => write!(f, "payer auth invalid: {e}"),
             Self::PayerNotAuthorized(e) => write!(f, "payer not authorized: {e}"),
+            Self::AccountLocked => write!(f, "account is locked"),
+            Self::SequenceMismatch { expected, got } => {
+                write!(f, "config change sequence mismatch (expected={expected}, got={got})")
+            }
+            Self::IntrinsicGasTooLow { intrinsic, gas_limit } => {
+                write!(f, "gas limit below intrinsic (intrinsic={intrinsic}, limit={gas_limit})")
+            }
             Self::InsufficientBalance { required, available } => {
                 write!(f, "payer insufficient balance (required={required}, available={available})")
             }
@@ -183,7 +210,7 @@ fn validate_sender(
                 owner_id,
                 K1_VERIFIER_ADDRESS,
                 OwnerScope::SENDER,
-                "sender",
+                OwnerRole::Sender,
             )?;
 
             Ok(owner_id)
@@ -203,7 +230,7 @@ fn validate_sender(
                         owner_id,
                         verifier_address,
                         OwnerScope::SENDER,
-                        "sender",
+                        OwnerRole::Sender,
                     )?;
                     Ok(owner_id)
                 }
@@ -252,7 +279,7 @@ fn validate_payer(
                 owner_id,
                 verifier_address,
                 OwnerScope::PAYER,
-                "payer",
+                OwnerRole::Payer,
             )?;
             Ok(())
         }
@@ -304,19 +331,19 @@ fn check_owner_authorized(
     owner_id: B256,
     expected_verifier: Address,
     required_scope: u8,
-    role: &str,
+    role: OwnerRole,
 ) -> Result<(), Eip8130ValidationError> {
     let (verifier, scope) = read_owner_config_from_state(state, account, owner_id)?;
 
     if verifier != Address::ZERO {
         if verifier != expected_verifier {
-            return Err(Eip8130ValidationError::SenderNotAuthorized(format!(
-                "{role} owner_config verifier mismatch: expected {expected_verifier}, got {verifier}"
+            return Err(role.not_authorized(format!(
+                "owner_config verifier mismatch: expected {expected_verifier}, got {verifier}"
             )));
         }
         if scope != 0 && (scope & required_scope) == 0 {
-            return Err(Eip8130ValidationError::SenderNotAuthorized(format!(
-                "{role} owner lacks required scope bit 0x{required_scope:02x}"
+            return Err(role.not_authorized(format!(
+                "owner lacks required scope bit 0x{required_scope:02x}"
             )));
         }
         return Ok(());
@@ -327,9 +354,25 @@ fn check_owner_authorized(
         return Ok(());
     }
 
-    Err(Eip8130ValidationError::SenderNotAuthorized(format!(
-        "{role} not authorized (no owner_config and implicit EOA rule doesn't apply)"
-    )))
+    Err(role.not_authorized(
+        "no owner_config and implicit EOA rule doesn't apply".into(),
+    ))
+}
+
+/// Distinguishes between sender and payer roles for error reporting.
+#[derive(Debug, Clone, Copy)]
+enum OwnerRole {
+    Sender,
+    Payer,
+}
+
+impl OwnerRole {
+    fn not_authorized(self, detail: String) -> Eip8130ValidationError {
+        match self {
+            Self::Sender => Eip8130ValidationError::SenderNotAuthorized(detail),
+            Self::Payer => Eip8130ValidationError::PayerNotAuthorized(detail),
+        }
+    }
 }
 
 /// Full AA transaction validation pipeline for the mempool.
@@ -377,16 +420,57 @@ where
         });
     }
 
-    // 5. Sender authorization (includes signature verification for K1/P256)
-    validate_sender(&tx, sender, &*state)?;
+    // 5. Lock state — reject config changes on locked accounts
+    let has_config_changes = tx
+        .account_changes
+        .iter()
+        .any(|e| matches!(e, AccountChangeEntry::ConfigChange(_)));
+    if has_config_changes {
+        let lock_slot_key = lock_slot(sender);
+        let lock_value = read_storage(&*state, ACCOUNT_CONFIG_ADDRESS, lock_slot_key)?;
+        let lock_bytes = lock_value.to_be_bytes::<32>();
+        if lock_bytes[0] != 0 {
+            return Err(Eip8130ValidationError::AccountLocked);
+        }
+    }
 
-    // 6. Payer resolution and authorization
+    // 6. Config change sequence validation
+    for entry in &tx.account_changes {
+        if let AccountChangeEntry::ConfigChange(change) = entry {
+            let seq_slot = sequence_base_slot(sender);
+            let packed = read_storage(&*state, ACCOUNT_CONFIG_ADDRESS, seq_slot)?;
+            let is_multichain = change.chain_id == 0;
+            let expected = read_sequence(packed, is_multichain);
+            if change.sequence != expected {
+                return Err(Eip8130ValidationError::SequenceMismatch {
+                    expected,
+                    got: change.sequence,
+                });
+            }
+        }
+    }
+
+    // 7. Intrinsic gas — gas_limit must cover the minimum execution cost.
+    //    Nonce key is "warm" if the current sequence > 0 (channel already used).
+    let nonce_key_is_warm = current_nonce > 0;
+    let min_gas = intrinsic_gas(&tx, nonce_key_is_warm, tx.chain_id);
+    if tx.gas_limit < min_gas {
+        return Err(Eip8130ValidationError::IntrinsicGasTooLow {
+            intrinsic: min_gas,
+            gas_limit: tx.gas_limit,
+        });
+    }
+
+    // 8. Sender authorization (includes signature verification for K1/P256)
+    let sender_owner_id = validate_sender(&tx, sender, &*state)?;
+
+    // 9. Payer resolution and authorization
     let payer = if tx.payer == Address::ZERO { sender } else { tx.payer };
     if payer != sender {
         validate_payer(&tx, payer, &*state)?;
     }
 
-    // 7. Balance check — payer must cover max gas cost
+    // 10. Balance check — payer must cover max gas cost
     let max_gas_cost =
         U256::from(tx.gas_limit).saturating_mul(U256::from(tx.max_fee_per_gas));
     let balance = state
@@ -400,5 +484,5 @@ where
         });
     }
 
-    Ok(Eip8130ValidationOutcome { balance, state_nonce: tx.nonce_sequence })
+    Ok(Eip8130ValidationOutcome { balance, state_nonce: tx.nonce_sequence, sender_owner_id })
 }

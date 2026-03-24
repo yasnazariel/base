@@ -11,7 +11,7 @@ use super::{
     predeploys::{ACCOUNT_CONFIG_ADDRESS, NONCE_MANAGER_ADDRESS},
     storage::{
         encode_owner_config, lock_slot, nonce_slot, owner_config_slot, parse_owner_config,
-        sequence_slot,
+        read_sequence, sequence_base_slot,
     },
 };
 
@@ -101,12 +101,15 @@ pub fn read_lock_state<DB: Database>(
 }
 
 /// Reads the change sequence for `(account, chain_id)` from AccountConfig.
+///
+/// The `ChangeSequences { uint64 multichain; uint64 local }` struct is packed
+/// into a single slot. `chain_id == 0` reads `multichain`, otherwise `local`.
 pub fn read_change_sequence<DB: Database>(
     db: &mut DB,
     account: Address,
     chain_id: u64,
 ) -> Result<u64, DB::Error> {
-    let slot = sequence_slot(account, chain_id);
-    let value = db.storage(ACCOUNT_CONFIG_ADDRESS, slot.into())?;
-    Ok(value.to::<u64>())
+    let slot = sequence_base_slot(account);
+    let packed = db.storage(ACCOUNT_CONFIG_ADDRESS, slot.into())?;
+    Ok(read_sequence(packed, chain_id == 0))
 }

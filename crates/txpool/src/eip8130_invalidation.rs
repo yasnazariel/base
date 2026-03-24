@@ -82,28 +82,42 @@ impl Eip8130InvalidationIndex {
 /// Computes the set of storage slots that this AA transaction depends on.
 ///
 /// A state change to any of these slots should trigger re-validation or eviction.
-pub fn compute_invalidation_keys(tx: &TxEip8130) -> HashSet<InvalidationKey> {
+///
+/// When available, pass the resolved `sender_owner_id` and `payer_owner_id`
+/// from validation to track the exact owner config slots. Falls back to a
+/// hash-based proxy when `None`.
+pub fn compute_invalidation_keys(
+    tx: &TxEip8130,
+    resolved_sender_owner_id: Option<B256>,
+    resolved_payer_owner_id: Option<B256>,
+) -> HashSet<InvalidationKey> {
     let mut keys = HashSet::new();
 
     // 1. Nonce slot — the sender's 2D nonce at (from, nonce_key)
     let nonce_key_slot = nonce_slot(tx.from, U256::from(tx.nonce_key));
     keys.insert(InvalidationKey { address: NONCE_MANAGER_ADDRESS, slot: nonce_key_slot });
 
-    // 2. Owner config slot for the sender_auth's owner_id (if the tx has
-    //    a non-empty sender_auth, the owner_config for the resolved owner_id
-    //    matters). We approximate using a zero owner_id for EOA implicit auth
-    //    and the actual data for delegated auth; the precise owner_id requires
-    //    signature verification which we don't repeat here. Instead we track
-    //    the slot for owner_id = keccak256(sender_auth) as a proxy.
+    // 2. Sender owner config slot — use the resolved owner_id if available
+    //    (from validation), otherwise fall back to keccak256(sender_auth) as
+    //    a proxy. The resolved owner_id gives us the exact storage slot.
     if !tx.sender_auth.is_empty() {
-        let auth_hash = alloy_primitives::keccak256(&tx.sender_auth);
-        let config_slot = owner_config_slot(tx.from, auth_hash);
+        let owner_id = resolved_sender_owner_id.unwrap_or_else(|| {
+            alloy_primitives::keccak256(&tx.sender_auth)
+        });
+        let config_slot = owner_config_slot(tx.from, owner_id);
         keys.insert(InvalidationKey { address: ACCOUNT_CONFIG_ADDRESS, slot: config_slot });
     }
 
-    // 3. Payer balance — if there's a separate payer, their ETH balance matters.
-    //    We don't track raw balance via storage slots (balance is account state,
-    //    not contract storage), but we can track any payer-related config slots.
+    // 3. Payer owner config — if there's a separate payer, their owner
+    //    authorization can be revoked, invalidating the tx.
+    let payer = tx.payer;
+    if payer != Address::ZERO && payer != tx.from && !tx.payer_auth.is_empty() {
+        let payer_owner_id = resolved_payer_owner_id.unwrap_or_else(|| {
+            alloy_primitives::keccak256(&tx.payer_auth)
+        });
+        let payer_config_slot = owner_config_slot(payer, payer_owner_id);
+        keys.insert(InvalidationKey { address: ACCOUNT_CONFIG_ADDRESS, slot: payer_config_slot });
+    }
 
     // 4. Account changes — each create entry depends on the target address having
     //    no code, and each config change depends on the sender's lock state and
@@ -121,14 +135,16 @@ pub fn compute_invalidation_keys(tx: &TxEip8130) -> HashSet<InvalidationKey> {
                 );
                 keys.insert(InvalidationKey { address: tx.from, slot: deployer_hash });
             }
-            AccountChangeEntry::ConfigChange(cc) => {
+            AccountChangeEntry::ConfigChange(_cc) => {
                 let lock_key_slot = base_alloy_consensus::lock_slot(tx.from);
                 keys.insert(InvalidationKey {
                     address: ACCOUNT_CONFIG_ADDRESS,
                     slot: lock_key_slot,
                 });
 
-                let seq_slot = base_alloy_consensus::sequence_slot(tx.from, cc.chain_id);
+                // Both multichain and local sequences are packed into a single
+                // slot, so watching the base slot covers both chain_id variants.
+                let seq_slot = base_alloy_consensus::sequence_base_slot(tx.from);
                 keys.insert(InvalidationKey {
                     address: ACCOUNT_CONFIG_ADDRESS,
                     slot: seq_slot,
@@ -201,7 +217,7 @@ mod tests {
     fn compute_keys_includes_nonce_slot() {
         let from = Address::repeat_byte(0x42);
         let tx = make_simple_tx(from, 0);
-        let keys = compute_invalidation_keys(&tx);
+        let keys = compute_invalidation_keys(&tx, None, None);
 
         let expected_slot = nonce_slot(from, U256::ZERO);
         assert!(keys.contains(&InvalidationKey {
@@ -231,7 +247,7 @@ mod tests {
             ..Default::default()
         };
 
-        let keys = compute_invalidation_keys(&tx);
+        let keys = compute_invalidation_keys(&tx, None, None);
         let lock_key = base_alloy_consensus::lock_slot(from);
         assert!(keys.contains(&InvalidationKey {
             address: ACCOUNT_CONFIG_ADDRESS,
@@ -254,7 +270,7 @@ mod tests {
             ..Default::default()
         };
 
-        let keys = compute_invalidation_keys(&tx);
+        let keys = compute_invalidation_keys(&tx, None, None);
         // Should have nonce key + at least one create-related key
         assert!(keys.len() >= 2);
     }
@@ -266,7 +282,7 @@ mod tests {
         let from = Address::repeat_byte(0x42);
         let tx = make_simple_tx(from, 0);
         let tx_hash = B256::repeat_byte(0x01);
-        let keys = compute_invalidation_keys(&tx);
+        let keys = compute_invalidation_keys(&tx, None, None);
         index.insert(tx_hash, keys);
 
         let nonce_key_slot = nonce_slot(from, U256::ZERO);
@@ -282,7 +298,7 @@ mod tests {
         let from = Address::repeat_byte(0x42);
         let tx = make_simple_tx(from, 0);
         let tx_hash = B256::repeat_byte(0x01);
-        let keys = compute_invalidation_keys(&tx);
+        let keys = compute_invalidation_keys(&tx, None, None);
         index.insert(tx_hash, keys);
 
         let fal = vec![(NONCE_MANAGER_ADDRESS, B256::repeat_byte(0xFF))];

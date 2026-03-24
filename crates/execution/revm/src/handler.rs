@@ -29,19 +29,22 @@ use revm::{
 };
 
 use crate::{
-    Eip8130PhaseResult, Eip8130TxContext, L1BlockInfo, OpContextTr, OpHaltReason, OpSpecId,
-    clear_eip8130_tx_context,
+    Eip8130PhaseResult, Eip8130TxContext, L1BlockInfo, NONCE_MANAGER_ADDRESS, OpContextTr,
+    OpHaltReason, OpSpecId, TX_CONTEXT_ADDRESS, clear_eip8130_tx_context,
     constants::{BASE_FEE_RECIPIENT, L1_FEE_RECIPIENT, OPERATOR_FEE_RECIPIENT},
-    encode_phase_statuses, set_eip8130_tx_context,
+    encode_phase_statuses, phase_statuses_system_log, set_eip8130_tx_context,
     transaction::{DEPOSIT_TRANSACTION_TYPE, OpTransactionError, OpTxTr},
 };
 
 /// EIP-8130 AA transaction type byte.
 const EIP8130_TX_TYPE: u8 = 0x05;
 
-/// NonceManager system contract address (0x…aa02).
-const NONCE_MANAGER_ADDRESS: Address =
-    Address::new([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xaa, 0x02]);
+/// AccountConfiguration deployed contract address.
+/// Must match the CREATE2 address from `Deploy.s.sol` (salt = 0).
+const ACCOUNT_CONFIG_ADDRESS: Address = Address::new([
+    0x0F, 0x12, 0x71, 0x93, 0xb7, 0x2E, 0x0f, 0x85, 0x46, 0xA6, 0xF4, 0xE4, 0x71, 0xb6, 0xF8,
+    0x24, 0x19, 0x00, 0x93, 0x2B,
+]);
 
 /// Base storage slot for the nonce mapping in NonceManager (slot index 1).
 const NONCE_BASE_SLOT: U256 = U256::from_limbs([1, 0, 0, 0]);
@@ -205,7 +208,8 @@ where
             )));
 
             // --- Gas deduction from payer ---
-            let mut payer_account = journal.load_account_with_code_mut(sender)?.data;
+            let payer = eip8130.payer;
+            let mut payer_account = journal.load_account_with_code_mut(payer)?.data;
             let mut balance = payer_account.account().info.balance;
 
             if !cfg.is_fee_charge_disabled() {
@@ -226,10 +230,12 @@ where
 
             let balance = calculate_caller_fee(balance, tx, block, cfg)?;
             payer_account.set_balance(balance);
+            drop(payer_account);
 
             // Check if sender is a bare EOA (no code) for auto-delegation.
-            let sender_has_code = payer_account.account().info.code_hash != keccak256([]);
-            drop(payer_account);
+            let sender_account = journal.load_account_with_code_mut(sender)?.data;
+            let sender_has_code = sender_account.account().info.code_hash != keccak256([]);
+            drop(sender_account);
 
             // --- Nonce increment in NonceManager ---
             let nonce_key = eip8130.nonce_key;
@@ -254,10 +260,29 @@ where
             }
 
             // --- Apply pre-execution storage writes ---
-            // Owner registrations, config changes, sequence bumps.
+            // Owner registrations, config changes.
             for w in &eip8130.pre_writes {
                 journal.load_account(w.address)?;
                 journal.sstore(w.address, w.slot, w.value)?;
+            }
+
+            // --- Account creation (place runtime bytecode at CREATE2-derived addresses) ---
+            for placement in &eip8130.code_placements {
+                let code =
+                    revm::bytecode::Bytecode::new_raw(placement.code.clone());
+                let mut acc = journal.load_account_with_code_mut(placement.address)?.data;
+                acc.set_code_and_hash_slow(code);
+                drop(acc);
+            }
+
+            // --- Sequence bumps (read-modify-write on packed ChangeSequences slot) ---
+            if !eip8130.sequence_updates.is_empty() {
+                journal.load_account(ACCOUNT_CONFIG_ADDRESS)?;
+                for upd in &eip8130.sequence_updates {
+                    let current = journal.sload(ACCOUNT_CONFIG_ADDRESS, upd.slot)?.data;
+                    let new_packed = upd.apply(current);
+                    journal.sstore(ACCOUNT_CONFIG_ADDRESS, upd.slot, new_packed)?;
+                }
             }
 
             return Ok(());
@@ -379,13 +404,28 @@ where
 
         let any_phase_succeeded = phase_results.iter().any(|r| r.success);
 
+        // Deploy-only transactions (account creation with no call phases) succeed
+        // when pre-execution code placement completed without error.
+        let deploy_only_success =
+            phase_results.is_empty() && !eip8130.code_placements.is_empty();
+
+        let tx_succeeded = any_phase_succeeded || deploy_only_success;
+
+        // Emit a system log with per-phase statuses so they survive in the receipt's
+        // log list and can be recovered at RPC time for multi-phase transactions.
+        if any_phase_succeeded {
+            evm.ctx()
+                .journal_mut()
+                .log(phase_statuses_system_log(TX_CONTEXT_ADDRESS, &phase_results));
+        }
+
         let mut result_gas = Gas::new_spent(evm.ctx().tx().gas_limit());
         result_gas.erase_cost(gas_remaining);
 
         let output = encode_phase_statuses(&phase_results);
 
         let instruction_result =
-            if any_phase_succeeded { InstructionResult::Stop } else { InstructionResult::Revert };
+            if tx_succeeded { InstructionResult::Stop } else { InstructionResult::Revert };
 
         let mut frame_result = FrameResult::Call(CallOutcome::new(
             InterpreterResult { result: instruction_result, output, gas: result_gas },
@@ -440,6 +480,20 @@ where
         {
             let spec = evm.ctx().cfg().spec();
             additional_refund = evm.ctx().chain().operator_fee_refund(frame_result.gas(), spec);
+        }
+
+        // For EIP-8130 sponsored transactions, refund the payer (not tx.caller()).
+        if evm.ctx().tx().tx_type() == EIP8130_TX_TYPE {
+            let payer = evm.ctx().tx().eip8130_parts().payer;
+            let basefee = evm.ctx().block().basefee() as u128;
+            let effective_gas_price = evm.ctx().tx().effective_gas_price(basefee);
+            let gas = frame_result.gas();
+            let refund_amount = U256::from(
+                effective_gas_price
+                    .saturating_mul((gas.remaining() + gas.refunded() as u64) as u128),
+            ) + additional_refund;
+            evm.ctx().journal_mut().load_account_mut(payer)?.incr_balance(refund_amount);
+            return Ok(());
         }
 
         reimburse_caller(evm.ctx(), frame_result.gas(), additional_refund).map_err(From::from)
@@ -1004,7 +1058,7 @@ mod tests {
     // EIP-8130 handler execution tests
     // -----------------------------------------------------------------------
 
-    use crate::{Eip8130Call, Eip8130Parts, decode_phase_statuses};
+    use crate::{Eip8130Call, Eip8130CodePlacement, Eip8130Parts, decode_phase_statuses};
 
     /// Builds an EVM with EIP-8130 parts and runs the full handler flow,
     /// returning the execution result.
@@ -1069,6 +1123,33 @@ mod tests {
             100_000,
         );
         assert!(!result.is_success(), "empty phases = no successes = tx reverts");
+    }
+
+    #[test]
+    fn test_eip8130_deploy_only_succeeds() {
+        let sender = Address::from([0x11; 20]);
+        let deployed_addr = Address::from([0x99; 20]);
+        let bytecode = bytes!("363d3d373d3d3d363d73DEADBEEF5af43d82803e903d91602b57fd5bf3");
+
+        let result = run_eip8130_tx(
+            sender,
+            &[],
+            Eip8130Parts {
+                sender,
+                payer: sender,
+                has_create_entry: true,
+                code_placements: vec![Eip8130CodePlacement {
+                    address: deployed_addr,
+                    code: bytecode,
+                }],
+                ..Default::default()
+            },
+            100_000,
+        );
+        assert!(result.is_success(), "deploy-only tx should succeed");
+
+        let statuses = decode_phase_statuses(result.output().unwrap());
+        assert!(statuses.is_empty(), "no call phases = empty statuses");
     }
 
     #[test]

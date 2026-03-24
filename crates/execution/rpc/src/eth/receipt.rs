@@ -12,6 +12,7 @@ use base_alloy_rpc_types::{
     Eip8130ReceiptFields, L1BlockInfo, OpTransactionReceipt, OpTransactionReceiptFields,
 };
 use base_execution_evm::RethL1BlockInfo;
+use base_revm::{TX_CONTEXT_ADDRESS, extract_phase_statuses_from_logs};
 use reth_chainspec::{ChainSpecProvider, EthChainSpec};
 use reth_node_api::NodePrimitives;
 use reth_primitives_traits::SealedBlock;
@@ -353,8 +354,13 @@ impl OpReceiptBuilder {
 
         let eip8130_fields = tx_signed.as_eip8130().map(|tx| {
             let tx = tx.inner();
-            let phase_statuses =
-                infer_eip8130_phase_statuses(tx.calls.len(), core_receipt.inner.status());
+            let phase_statuses = extract_phase_statuses_from_logs(
+                core_receipt.inner.logs(),
+                TX_CONTEXT_ADDRESS,
+            )
+            .unwrap_or_else(|| {
+                infer_eip8130_phase_statuses(tx.calls.len(), core_receipt.inner.status())
+            });
             Eip8130ReceiptFields { payer: tx.effective_payer(), phase_statuses }
         });
 

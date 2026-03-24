@@ -256,4 +256,87 @@ mod tests {
             decode_phase_statuses(result.result.output().expect("AA tx should return phase status"));
         assert_eq!(statuses, vec![true]);
     }
+
+    /// Verifies that `owner_id` propagates through the full production path:
+    /// `OpEvmFactory` → `PrecompilesMap` → `DynPrecompile` (thread-local) → TxContext.getOwnerId().
+    ///
+    /// The probe contract STATICCALLs the TxContext precompile (0x...Aa03),
+    /// calls getOwnerId(), and writes the result to storage slot 0.
+    #[test]
+    fn transact_raw_owner_id_propagates_via_factory() {
+        use alloy_primitives::B256;
+        use base_revm::NONCE_MANAGER_ADDRESS;
+
+        let sender = Address::from([0x11; 20]);
+        let target = Address::from([0x44; 20]);
+        let owner_id = B256::from([0xAB; 32]);
+
+        // OwnerIdProbe runtime: probe() calls TxContext.getOwnerId() and stores at slot 0.
+        let probe_runtime = Bytecode::new_legacy(bytes!(
+            "608060405234801561000f575f5ffd5b5060043610610034575f3560e01c80634320a6cb14610038578063b74af5a914610056575b5f5ffd5b610040610074565b60405161004d9190610111565b60405180910390f35b61005e610079565b60405161006b9190610111565b60405180910390f35b5f5481565b5f5f61aa0373ffffffffffffffffffffffffffffffffffffffff16631f5072f26040518163ffffffff1660e01b8152600401602060405180830381865afa1580156100c6573d5f5f3e3d5ffd5b505050506040513d601f19601f820116820180604052508101906100ea9190610158565b9050805f819055508091505090565b5f819050919050565b61010b816100f9565b82525050565b5f6020820190506101245f830184610102565b92915050565b5f5ffd5b610137816100f9565b8114610141575f5ffd5b50565b5f815190506101528161012e565b92915050565b5f6020828403121561016d5761016c61012a565b5b5f61017a84828501610144565b9150509291505056fea26469706673582212203ca48096bb84d6eb04b36713b485cfdc832bcb25ec90dc9b384decb8a8ba23ee64736f6c63430008210033"
+        ));
+
+        let mut db = InMemoryDB::default();
+        db.insert_account_info(
+            sender,
+            AccountInfo { balance: U256::from(10_000_000), ..Default::default() },
+        );
+        db.insert_account_info(
+            target,
+            AccountInfo { code: Some(probe_runtime), ..Default::default() },
+        );
+        db.insert_account_info(
+            NONCE_MANAGER_ADDRESS,
+            AccountInfo {
+                code: Some(Bytecode::new_legacy(bytes!("FE"))),
+                ..Default::default()
+            },
+        );
+
+        let mut evm = OpEvmFactory::default().create_evm(
+            db,
+            EvmEnv::new(CfgEnv::new_with_spec(OpSpecId::BASE_V1), BlockEnv::default()),
+        );
+
+        let mut tx = OpTransaction::builder()
+            .base(
+                TxEnv::builder()
+                    .tx_type(Some(0x05))
+                    .caller(sender)
+                    .gas_limit(300_000)
+                    .kind(TxKind::Call(sender)),
+            )
+            .enveloped_tx(Some(bytes!("05FACADE")))
+            .build_fill();
+        tx.eip8130 = Eip8130Parts {
+            sender,
+            payer: sender,
+            owner_id,
+            call_phases: vec![vec![Eip8130Call {
+                to: target,
+                data: bytes!("b74af5a9"), // probe()
+                value: U256::ZERO,
+            }]],
+            ..Default::default()
+        };
+
+        let result = evm.transact_raw(tx).expect("EIP-8130 tx should execute");
+        assert!(result.result.is_success(), "probe() phase should succeed");
+
+        let statuses =
+            decode_phase_statuses(result.result.output().expect("AA tx should return phase status"));
+        assert_eq!(statuses, vec![true], "single phase should succeed");
+
+        let target_state = result.state.get(&target).expect("target should have state changes");
+        let slot_value = target_state
+            .storage
+            .get(&U256::ZERO)
+            .expect("probe should write slot 0")
+            .present_value();
+        assert_eq!(
+            slot_value,
+            U256::from_be_bytes(owner_id.0),
+            "slot 0 should contain the owner_id from TxContext.getOwnerId()"
+        );
+    }
 }

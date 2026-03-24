@@ -633,6 +633,7 @@ mod evm_integration {
             owner_id: B256::repeat_byte(0xCC),
             gas_limit: 1_000_000,
             max_cost: U256::from(2_000_000_000_000u64),
+            calls: Vec::new(),
         };
 
         for sel in [
@@ -641,6 +642,7 @@ mod evm_integration {
             ITxContext::getOwnerIdCall::SELECTOR,
             ITxContext::getMaxCostCall::SELECTOR,
             ITxContext::getGasLimitCall::SELECTOR,
+            ITxContext::getCallsCall::SELECTOR,
         ] {
             let (gas, out) = handle_tx_context(&ctx, &sel).unwrap();
             assert_eq!(gas, TX_CONTEXT_GAS);

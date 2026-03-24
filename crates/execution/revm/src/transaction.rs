@@ -2,8 +2,9 @@
 
 mod eip8130;
 pub use eip8130::{
-    Eip8130Call, Eip8130CodePlacement, Eip8130Parts, Eip8130PhaseResult, Eip8130StorageWrite, decode_phase_statuses,
-    encode_phase_statuses,
+    Eip8130Call, Eip8130CodePlacement, Eip8130Parts, Eip8130PhaseResult,
+    Eip8130SequenceUpdate, Eip8130StorageWrite, decode_phase_statuses, encode_phase_statuses,
+    extract_phase_statuses_from_logs, phase_statuses_log_topic, phase_statuses_system_log,
 };
 
 mod abstraction;

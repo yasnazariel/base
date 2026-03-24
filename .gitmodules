@@ -1,0 +1,3 @@
+[submodule "contracts/eip-8130"]
+	path = contracts/eip-8130
+	url = https://github.com/base/eip-8130.git

@@ -7,13 +7,15 @@ use alloy_eips::{Encodable2718, Typed2718};
 use alloy_evm::{FromRecoveredTx, FromTxWithEncoded};
 use alloy_primitives::{Address, B256, Bytes, U256};
 use base_revm::{
-    DepositTransactionParts, Eip8130Call, Eip8130Parts, Eip8130StorageWrite, OpTransaction,
+    DepositTransactionParts, Eip8130Call, Eip8130CodePlacement, Eip8130Parts,
+    Eip8130SequenceUpdate, Eip8130StorageWrite, OpTransaction,
 };
 use revm::context::TxEnv;
 
 use crate::{
-    AccountChangeEntry, OpTxEnvelope, TxDeposit, TxEip8130, auto_delegation_code,
-    config_change_writes, owner_registration_writes,
+    ACCOUNT_CONFIG_ADDRESS, AccountChangeEntry, OpTxEnvelope, TxDeposit, TxEip8130,
+    auto_delegation_code, config_change_sequence, config_change_writes, derive_account_address,
+    owner_registration_writes,
 };
 #[cfg(feature = "native-verifier")]
 use crate::{
@@ -61,16 +63,28 @@ fn build_eip8130_parts(tx: &TxEip8130) -> Eip8130Parts {
         tx.account_changes.iter().any(|e| matches!(e, AccountChangeEntry::Create(_)));
 
     let mut pre_writes = Vec::new();
+    let mut sequence_updates = Vec::new();
+    let mut code_placements = Vec::new();
     for entry in &tx.account_changes {
         match entry {
             AccountChangeEntry::Create(create) => {
-                for w in owner_registration_writes(sender, create) {
+                let account = derive_account_address(
+                    ACCOUNT_CONFIG_ADDRESS,
+                    create.user_salt,
+                    &create.bytecode,
+                    &create.initial_owners,
+                );
+                for w in owner_registration_writes(account, create) {
                     pre_writes.push(Eip8130StorageWrite {
                         address: w.address,
                         slot: w.slot,
                         value: w.value,
                     });
                 }
+                code_placements.push(Eip8130CodePlacement {
+                    address: account,
+                    code: create.bytecode.clone(),
+                });
             }
             AccountChangeEntry::ConfigChange(cc) => {
                 for w in config_change_writes(sender, cc) {
@@ -80,6 +94,12 @@ fn build_eip8130_parts(tx: &TxEip8130) -> Eip8130Parts {
                         value: w.value,
                     });
                 }
+                let seq = config_change_sequence(sender, cc);
+                sequence_updates.push(Eip8130SequenceUpdate {
+                    slot: seq.slot,
+                    is_multichain: seq.is_multichain,
+                    new_value: seq.new_value,
+                });
             }
         }
     }
@@ -103,6 +123,8 @@ fn build_eip8130_parts(tx: &TxEip8130) -> Eip8130Parts {
         has_create_entry,
         auto_delegation_code: auto_delegation_code(),
         pre_writes,
+        sequence_updates,
+        code_placements,
         call_phases,
     }
 }
@@ -120,7 +142,7 @@ impl FromRecoveredTx<OpTxEnvelope> for TxEnv {
             OpTxEnvelope::Eip7702(tx) => Self::from_recovered_tx(tx.tx(), caller),
             OpTxEnvelope::Eip8130(tx) => {
                 let inner = tx.inner();
-                Self {
+                let mut env = Self {
                     tx_type: inner.ty(),
                     caller,
                     gas_limit: inner.gas_limit,
@@ -131,7 +153,11 @@ impl FromRecoveredTx<OpTxEnvelope> for TxEnv {
                     gas_price: inner.max_fee_per_gas,
                     gas_priority_fee: Some(inner.max_priority_fee_per_gas),
                     ..Default::default()
+                };
+                if !inner.authorization_list.is_empty() {
+                    env.set_signed_authorization(inner.authorization_list.clone());
                 }
+                env
             }
             OpTxEnvelope::Deposit(tx) => Self::from_recovered_tx(tx.inner(), caller),
         }

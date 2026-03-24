@@ -21,7 +21,7 @@ use alloy_primitives::{Address, B256, Bytes, U256};
 
 use super::{
     predeploys::{ACCOUNT_CONFIG_ADDRESS, DEFAULT_ACCOUNT_ADDRESS, NONCE_MANAGER_ADDRESS},
-    storage::{encode_owner_config, nonce_slot, owner_config_slot, sequence_slot},
+    storage::{encode_owner_config, nonce_slot, owner_config_slot, sequence_base_slot},
     tx::TxEip8130,
     types::{ConfigChangeEntry, CreateEntry},
 };
@@ -113,6 +113,8 @@ pub struct TxContextValues {
     pub gas_limit: u64,
     /// The maximum cost.
     pub max_cost: U256,
+    /// Phased calls: `calls[phase_index][call_index] = (target, data)`.
+    pub calls: Vec<Vec<(Address, Bytes)>>,
 }
 
 /// Phase execution result.
@@ -154,7 +156,10 @@ pub fn owner_registration_writes(
         .collect()
 }
 
-/// Builds the config change storage writes.
+/// Builds the config change storage writes (owner registrations only).
+///
+/// Sequence bumps are handled separately via [`config_change_sequence`]
+/// because the packed `ChangeSequences` slot requires read-modify-write.
 pub fn config_change_writes(
     account: Address,
     change: &ConfigChangeEntry,
@@ -177,14 +182,32 @@ pub fn config_change_writes(
         });
     }
 
-    let seq_slot = sequence_slot(account, change.chain_id);
-    writes.push(StorageWrite {
-        address: ACCOUNT_CONFIG_ADDRESS,
-        slot: seq_slot.into(),
-        value: U256::from(change.sequence + 1),
-    });
-
     writes
+}
+
+/// Returns the sequence update parameters for a config change.
+///
+/// The caller should apply this as a read-modify-write on the packed
+/// `ChangeSequences { uint64 multichain; uint64 local }` storage slot.
+pub fn config_change_sequence(
+    account: Address,
+    change: &ConfigChangeEntry,
+) -> SequenceUpdateInfo {
+    SequenceUpdateInfo {
+        slot: sequence_base_slot(account).into(),
+        is_multichain: change.chain_id == 0,
+        new_value: change.sequence + 1,
+    }
+}
+
+/// Pre-computed info for a read-modify-write sequence update.
+pub struct SequenceUpdateInfo {
+    /// Storage slot for `_changeSequences[account]`.
+    pub slot: U256,
+    /// Whether this updates the multichain (chain_id 0) or local field.
+    pub is_multichain: bool,
+    /// New sequence value to write.
+    pub new_value: u64,
 }
 
 /// Builds the auto-delegation code: `0xef0100 || DEFAULT_ACCOUNT_ADDRESS`.

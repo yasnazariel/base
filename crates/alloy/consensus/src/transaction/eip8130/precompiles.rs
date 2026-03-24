@@ -14,6 +14,8 @@ use super::{
     execution::TxContextValues,
 };
 
+type CallTupleArray = sol_data::Array<sol_data::Array<(sol_data::Address, sol_data::Bytes)>>;
+
 /// Gas cost for TxContext precompile calls (pure memory read).
 pub const TX_CONTEXT_GAS: u64 = 100;
 
@@ -67,6 +69,9 @@ pub fn handle_tx_context(
         _ if selector == ITxContext::getGasLimitCall::SELECTOR => {
             <sol_data::Uint<256>>::abi_encode(&U256::from(ctx.gas_limit))
         }
+        _ if selector == ITxContext::getCallsCall::SELECTOR => {
+            <CallTupleArray>::abi_encode(&ctx.calls)
+        }
         _ => return Err(PrecompileError::UnknownSelector),
     };
 
@@ -101,6 +106,7 @@ mod tests {
             owner_id: B256::repeat_byte(0xCC),
             gas_limit: 1_000_000,
             max_cost: U256::from(1_000_000_000u64),
+            calls: Vec::new(),
         };
 
         let mut input = Vec::new();
