@@ -201,13 +201,12 @@ where
         next_payload.as_ref().map_or_else(
             || Duration::from_millis(100),
             |payload| {
-                let next_block_ts = payload
+                let block_ts = payload
                     .attributes_with_parent
                     .attributes()
                     .payload_attributes
-                    .timestamp
-                    .saturating_add(rollup_config.block_time);
-                let seal_time = UNIX_EPOCH + Duration::from_secs(next_block_ts) - SEALING_DURATION;
+                    .timestamp;
+                let seal_time = UNIX_EPOCH + Duration::from_secs(block_ts) - SEALING_DURATION;
                 seal_time.duration_since(SystemTime::now()).map_or(Duration::ZERO, |d| d)
             },
         )
