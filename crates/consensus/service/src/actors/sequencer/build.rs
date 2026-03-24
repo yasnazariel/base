@@ -123,6 +123,7 @@ impl<A: AttributesBuilder, O: OriginSelector, E: SequencerEngineClient> PayloadB
                 "Cannot build new L2 block on inconsistent L1 origin, resetting engine"
             );
             self.engine_client.reset_engine_forkchoice().await?;
+            self.origin_selector.clear();
             return Ok(None);
         }
 
@@ -150,6 +151,7 @@ impl<A: AttributesBuilder, O: OriginSelector, E: SequencerEngineClient> PayloadB
                     error!(target: "sequencer", ?err, "Failed to reset engine");
                     return Err(SequencerActorError::ChannelClosed);
                 }
+                self.origin_selector.clear();
 
                 warn!(
                     target: "sequencer",
