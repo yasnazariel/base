@@ -29,6 +29,7 @@ eyre.workspace = true
 tower.workspace = true
 tracing.workspace = true
 thiserror.workspace = true
+derive_more.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 tokio-vsock.workspace = true

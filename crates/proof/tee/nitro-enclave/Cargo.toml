@@ -50,6 +50,7 @@ tracing.workspace = true
 rand_08.workspace = true
 thiserror.workspace = true
 parking_lot.workspace = true
+derive_more.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 tokio-vsock.workspace = true

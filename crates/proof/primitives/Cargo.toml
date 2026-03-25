@@ -17,6 +17,7 @@ alloy-primitives = { workspace = true }
 base-proof-preimage = { workspace = true }
 serde = { workspace = true, optional = true, features = ["derive"] }
 jsonrpsee = { workspace = true, optional = true }
+derive_more.workspace = true
 
 [dev-dependencies]
 serde_json = { workspace = true, features = ["std"] }

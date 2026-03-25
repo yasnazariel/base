@@ -69,7 +69,7 @@ impl ProofJournal {
 }
 
 /// A proposal containing an output root and signature.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, derive_more::Into)]
 pub struct Proposal {
     /// The output root hash.
     pub output_root: B256,

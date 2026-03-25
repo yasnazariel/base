@@ -64,7 +64,7 @@ impl ProofJournal {
 }
 
 /// A proposal containing an output root and signature.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, derive_more::From)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Proposal {
     /// The output root hash.

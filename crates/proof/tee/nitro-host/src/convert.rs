@@ -15,15 +15,7 @@ pub struct Convert;
 impl Convert {
     /// Convert an enclave-native proposal to the host-side primitives type.
     pub fn proposal(p: EnclaveProposal) -> Proposal {
-        Proposal {
-            output_root: p.output_root,
-            signature: p.signature,
-            l1_origin_hash: p.l1_origin_hash,
-            l1_origin_number: p.l1_origin_number,
-            l2_block_number: p.l2_block_number,
-            prev_output_root: p.prev_output_root,
-            config_hash: p.config_hash,
-        }
+        Proposal::from(Into::<(_, _, _, _, _, _, _)>::into(p))
     }
 
     /// Convert a [`TeeProofResult`] to a [`ProofResult::Tee`].
