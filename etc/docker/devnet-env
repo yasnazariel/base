@@ -144,8 +144,10 @@ MINIO_CONSOLE_PORT=7001
 # Chain Configuration
 L1_CHAIN_ID=1337
 L2_CHAIN_ID=84538453
-# Set to 0 to activate Base V1 (EIP-8130 AA) from genesis.
-L2_BASE_V1_BLOCK=0
+# Set to 1 to activate Base V1 (EIP-8130 AA) at the first derived block.
+# Block 0 (genesis) is created by op-deployer before derivation, so block=0
+# would miss the transition boundary and skip the upgrade TxDeposit injection.
+L2_BASE_V1_BLOCK=1
 
 # Metering Resource Limits
 # Whole-block budgets for gas/state-root/DA, plus a per-flashblock execution budget.
