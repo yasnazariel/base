@@ -42,7 +42,7 @@ use super::core::{DriverConfig, RecoveredState};
 use crate::{
     constants::{NO_PARENT_INDEX, PROPOSAL_TIMEOUT, RECOVERY_SCAN_CONCURRENCY},
     error::ProposerError,
-    metrics as proposer_metrics,
+    metrics::Metrics as ProposerMetrics,
     output_proposer::{OutputProposer, is_game_already_exists},
 };
 

@@ -145,8 +145,7 @@ impl<L2: L2Provider, P: ZkProofProvider, T: TxManager> Driver<L2, P, T> {
                 }
             }
 
-            metrics::gauge!(ChallengerMetrics::PENDING_PROOFS)
-                .set(self.pending_proofs.len() as f64);
+            ChallengerMetrics::pending_proofs().set(self.pending_proofs.len() as f64);
 
             select! {
                 biased;
@@ -276,7 +275,7 @@ impl<L2: L2Provider, P: ZkProofProvider, T: TxManager> Driver<L2, P, T> {
         if candidate.tee_prover != Address::ZERO
             && let Some(tee) = &self.tee
         {
-            metrics::counter!(ChallengerMetrics::TEE_PROOF_ATTEMPTS_TOTAL).increment(1);
+            ChallengerMetrics::tee_proof_attempts_total().increment(1);
             let tee_fut = self.attempt_tee_proof(
                 &candidate,
                 invalid_index,
@@ -301,7 +300,7 @@ impl<L2: L2Provider, P: ZkProofProvider, T: TxManager> Driver<L2, P, T> {
                     if let Err(e) = self.poll_or_submit(game_address).await {
                         warn!(error = %e, game = %game_address, "initial TEE submission failed, will retry next tick");
                     }
-                    metrics::counter!(ChallengerMetrics::TEE_PROOF_OBTAINED_TOTAL).increment(1);
+                    ChallengerMetrics::tee_proof_obtained_total().increment(1);
                     return Ok(());
                 }
                 Ok(Err(e)) => {
@@ -312,7 +311,7 @@ impl<L2: L2Provider, P: ZkProofProvider, T: TxManager> Driver<L2, P, T> {
                     );
                 }
             }
-            metrics::counter!(ChallengerMetrics::TEE_PROOF_FALLBACK_TOTAL).increment(1);
+            ChallengerMetrics::tee_proof_fallback_total().increment(1);
         }
 
         // ZK fallback (or direct ZK if no TEE prover).
@@ -540,7 +539,7 @@ impl<L2: L2Provider, P: ZkProofProvider, T: TxManager> Driver<L2, P, T> {
             }
         };
 
-        metrics::counter!(ChallengerMetrics::PROOF_RETRIES_TOTAL).increment(1);
+        ChallengerMetrics::proof_retries_total().increment(1);
 
         match self.zk_prover.prove_block(request).await {
             Ok(response) => {

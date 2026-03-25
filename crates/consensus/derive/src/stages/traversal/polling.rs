@@ -8,8 +8,8 @@ use base_consensus_genesis::{RollupConfig, SystemConfig};
 use base_protocol::BlockInfo;
 
 use crate::{
-    ActivationSignal, ChainProvider, GenesisMetrics, L1RetrievalProvider, Metrics, OriginAdvancer,
-    OriginProvider, PipelineError, PipelineResult, ResetError, ResetSignal, Signal, SignalReceiver,
+    ActivationSignal, ChainProvider, L1RetrievalProvider, Metrics, OriginAdvancer, OriginProvider,
+    PipelineError, PipelineResult, ResetError, ResetSignal, Signal, SignalReceiver,
 };
 
 /// The [`PollingTraversal`] stage of the derivation pipeline.

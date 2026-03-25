@@ -8,4 +8,8 @@ base_metrics::define_metrics! {
 
     #[describe("Time taken for a transaction to be included in a flashblock from when it's marked as pending")]
     fb_inclusion_duration: histogram,
+
+    #[describe("Transaction mempool event duration in milliseconds")]
+    #[label("event", event)]
+    tx_event: histogram,
 }

@@ -255,10 +255,9 @@ impl Tracker {
         true
     }
 
-    /// Records a metrics histogram. We have to use `histogram!` here because it supports tags.
+    /// Records a metrics histogram for a transaction mempool event.
     fn record_histogram(time_in_mempool: Duration, event: TxEvent) {
-        metrics::histogram!("reth_transaction_tracing_tx_event", "event" => event.to_string())
-            .record(time_in_mempool.as_millis() as f64);
+        Metrics::tx_event(event.to_string()).record(time_in_mempool.as_millis() as f64);
     }
 }
 

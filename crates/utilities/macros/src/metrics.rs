@@ -1,16 +1,15 @@
 //! Macros for defining and describing metrics.
 
-/// Defines a metrics struct with static associated functions.
+/// Defines a metrics struct named `Metrics` with static associated functions.
 ///
 /// Each field becomes a function that returns the appropriate `metrics` handle
 /// (or [`NoopMetric`] when the `metrics` feature is disabled).
 ///
+/// The scope ident is prepended to every metric name with an underscore
+/// separator. For a custom struct name, use [`define_metrics_named!`].
+///
 /// # Attributes
 ///
-/// - Scope — the first token in the shorthand form; an ident prepended to
-///   every metric name with an underscore separator. For the full
-///   `pub struct Name` form, use `#[scope("prefix")]` on the struct instead
-///   (or prefer [`define_metrics_named!`] for a flatter syntax).
 /// - `#[describe("...")]` — optional per-field; registers a human-readable
 ///   description via `metrics::describe_*!`.
 /// - `#[label("key", param)]` — optional per-field (may be repeated for
@@ -25,29 +24,12 @@
 /// # Example
 ///
 /// ```ignore
-/// // Struct name defaults to `Metrics` when omitted:
 /// base_metrics::define_metrics! {
 ///     my_app
 ///     #[describe("Total requests")]
 ///     requests_total: counter,
 /// }
 /// Metrics::requests_total().increment(1);
-///
-/// // Custom struct name:
-/// base_metrics::define_metrics! {
-///     #[scope("my_app")]
-///     pub struct MyMetrics {
-///         #[describe("Request duration")]
-///         #[label("method", method)]
-///         request_duration: histogram,
-///
-///         #[label("kind", kind)]
-///         #[label("reason", reason)]
-///         errors: counter,
-///     }
-/// }
-/// MyMetrics::request_duration("GET").record(0.42);
-/// MyMetrics::errors("dial", "timeout").increment(1);
 /// ```
 #[macro_export]
 macro_rules! define_metrics {
@@ -60,30 +42,67 @@ macro_rules! define_metrics {
         ),*
         $(,)?
     ) => {
-        $crate::define_metrics! {
-            #[scope(stringify!($scope))]
-            pub struct Metrics {
-                $(
-                    $(#[describe($desc)])?
-                    $(#[label($label_key, $label_param)])*
-                    $field : $kind
-                ),*
-            }
+        $crate::__define_metrics_impl! {
+            stringify!($scope), Metrics,
+            $(
+                $(#[describe($desc)])?
+                $(#[label($label_key, $label_param)])*
+                $field : $kind
+            ),*
         }
     };
+}
+
+/// Like [`define_metrics!`] but with a custom struct name.
+///
+/// # Example
+///
+/// ```ignore
+/// base_metrics::define_metrics_named! {
+///     MyMetrics, "my_app",
+///     #[describe("Request duration")]
+///     #[label("method", method)]
+///     request_duration: histogram,
+/// }
+/// MyMetrics::request_duration("GET").record(0.42);
+/// ```
+#[macro_export]
+macro_rules! define_metrics_named {
     (
-        #[scope($scope:expr)]
-        $vis:vis struct $name:ident {
+        $name:ident, $scope:expr,
+        $(
+            $(#[describe($desc:expr)])?
+            $(#[label($label_key:expr, $label_param:ident)])*
+            $field:ident : $kind:ident
+        ),*
+        $(,)?
+    ) => {
+        $crate::__define_metrics_impl! {
+            $scope, $name,
             $(
-                $(#[describe($desc:expr)])?
-                $(#[label($label_key:expr, $label_param:ident)])*
-                $field:ident : $kind:ident
+                $(#[describe($desc)])?
+                $(#[label($label_key, $label_param)])*
+                $field : $kind
             ),*
-            $(,)?
         }
+    };
+}
+
+/// Internal implementation for [`define_metrics!`] and [`define_metrics_named!`].
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __define_metrics_impl {
+    (
+        $scope:expr, $name:ident,
+        $(
+            $(#[describe($desc:expr)])?
+            $(#[label($label_key:expr, $label_param:ident)])*
+            $field:ident : $kind:ident
+        ),*
+        $(,)?
     ) => {
         #[allow(missing_docs)]
-        $vis struct $name;
+        pub struct $name;
 
         #[allow(missing_docs)]
         impl $name {
@@ -110,51 +129,6 @@ macro_rules! define_metrics {
             #[cfg(not(feature = "metrics"))]
             #[inline(always)]
             pub fn describe() {}
-        }
-    };
-}
-
-/// Convenience wrapper around [`define_metrics!`] for the named-struct form.
-///
-/// Instead of the full struct syntax:
-///
-/// ```ignore
-/// base_metrics::define_metrics! {
-///     #[scope("my_app")]
-///     pub struct MyMetrics {
-///         requests_total: counter,
-///     }
-/// }
-/// ```
-///
-/// you can write:
-///
-/// ```ignore
-/// base_metrics::define_metrics_named! {
-///     MyMetrics, "my_app",
-///     requests_total: counter,
-/// }
-/// ```
-#[macro_export]
-macro_rules! define_metrics_named {
-    (
-        $name:ident, $scope:expr,
-        $(
-            $(#[describe($desc:expr)])?
-            $(#[label($label_key:expr, $label_param:ident)])*
-            $field:ident : $kind:ident
-        ),*
-        $(,)?
-    ) => {
-        $crate::define_metrics! {
-            #[scope($scope)]
-            pub struct $name {
-                $(
-                    $(#[describe($desc)])?
-                    $(#[label($label_key, $label_param)])*
-                    $field : $kind
-                ),*
-            }
         }
     };
 }

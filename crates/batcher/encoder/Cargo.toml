@@ -12,7 +12,8 @@ repository.workspace = true
 workspace = true
 
 [dependencies]
-metrics.workspace = true
+base-metrics.workspace = true
+metrics = { workspace = true, optional = true }
 tracing = { workspace = true, features = ["std"] }
 base-comp = { workspace = true, features = ["std"] }
 thiserror = { workspace = true, features = ["std"] }
@@ -26,3 +27,7 @@ base-consensus-genesis = { workspace = true, features = ["std"] }
 [dev-dependencies]
 alloy-consensus = { workspace = true, features = ["std"] }
 rstest.workspace = true
+
+[features]
+default = [ "metrics" ]
+metrics = [ "dep:metrics" ]
