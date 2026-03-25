@@ -39,6 +39,8 @@ pub struct PendingBlocksBuilder {
     transactions: Vec<Transaction>,
     account_balances: HashMap<Address, U256>,
     transaction_count: HashMap<Address, U256>,
+    /// EIP-8130 2D nonce deltas keyed by `(account, nonce_key)`.
+    aa_nonce_deltas: HashMap<(Address, U256), u64>,
     transaction_receipts: HashMap<B256, OpTransactionReceipt>,
     transactions_by_hash: HashMap<B256, Transaction>,
     transaction_state: HashMap<B256, EvmState>,
@@ -66,6 +68,7 @@ impl PendingBlocksBuilder {
             transactions: Vec::new(),
             account_balances: HashMap::new(),
             transaction_count: HashMap::new(),
+            aa_nonce_deltas: HashMap::new(),
             transaction_receipts: HashMap::new(),
             transactions_by_hash: HashMap::new(),
             transaction_state: HashMap::new(),
@@ -114,13 +117,21 @@ impl PendingBlocksBuilder {
         self
     }
 
-    /// Increments the pending nonce for an account.
+    /// Increments the pending nonce for an account (legacy / non-AA transactions).
     #[inline]
     pub fn increment_nonce(&mut self, sender: Address) -> &Self {
         let zero = U256::from(0);
         let current_count = self.transaction_count.get(&sender).unwrap_or(&zero);
 
         _ = self.transaction_count.insert(sender, *current_count + U256::from(1));
+        self
+    }
+
+    /// Increments the pending 2D nonce for an EIP-8130 AA transaction.
+    #[inline]
+    pub fn increment_aa_nonce(&mut self, sender: Address, nonce_key: U256) -> &Self {
+        let entry = self.aa_nonce_deltas.entry((sender, nonce_key)).or_insert(0);
+        *entry += 1;
         self
     }
 
@@ -193,6 +204,7 @@ impl PendingBlocksBuilder {
             transactions: self.transactions,
             account_balances: self.account_balances,
             transaction_count: self.transaction_count,
+            aa_nonce_deltas: self.aa_nonce_deltas,
             transaction_receipts: self.transaction_receipts,
             transactions_by_hash: self.transactions_by_hash,
             transaction_state: self.transaction_state,
@@ -217,6 +229,8 @@ pub struct PendingBlocks {
 
     account_balances: HashMap<Address, U256>,
     transaction_count: HashMap<Address, U256>,
+    /// EIP-8130 2D nonce deltas keyed by `(account, nonce_key)`.
+    aa_nonce_deltas: HashMap<(Address, U256), u64>,
     transaction_receipts: HashMap<B256, OpTransactionReceipt>,
     transactions_by_hash: HashMap<B256, Transaction>,
     transaction_state: HashMap<B256, EvmState>,
@@ -391,6 +405,11 @@ impl PendingBlocks {
         self.transaction_count.get(&address).copied().unwrap_or_else(|| U256::from(0))
     }
 
+    /// Returns the pending 2D nonce delta for an EIP-8130 account and nonce key.
+    pub fn get_aa_nonce_delta(&self, address: Address, nonce_key: U256) -> u64 {
+        self.aa_nonce_deltas.get(&(address, nonce_key)).copied().unwrap_or(0)
+    }
+
     /// Returns the balance for an address in pending state.
     pub fn get_balance(&self, address: Address) -> Option<U256> {
         self.account_balances.get(&address).copied()
@@ -552,6 +571,10 @@ impl PendingBlocksAPI for Guard<Option<Arc<PendingBlocks>>> {
 
     fn get_transaction_count(&self, address: Address) -> U256 {
         self.as_ref().map(|pb| pb.get_transaction_count(address)).unwrap_or_else(|| U256::from(0))
+    }
+
+    fn get_aa_nonce_delta(&self, address: Address, nonce_key: U256) -> u64 {
+        self.as_ref().map(|pb| pb.get_aa_nonce_delta(address, nonce_key)).unwrap_or(0)
     }
 
     fn get_block(&self, full: bool) -> Option<RpcBlock<Base>> {

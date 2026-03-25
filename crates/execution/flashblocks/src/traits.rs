@@ -37,6 +37,9 @@ pub trait PendingBlocksAPI {
     /// Get the pending transactions count for an address
     fn get_transaction_count(&self, address: Address) -> U256;
 
+    /// Get the pending 2D nonce delta for an EIP-8130 account and nonce key.
+    fn get_aa_nonce_delta(&self, address: Address, nonce_key: U256) -> u64;
+
     /// Retrieves the current block. If `full` is true, includes full transaction details.
     fn get_block(&self, full: bool) -> Option<RpcBlock<Base>>;
 

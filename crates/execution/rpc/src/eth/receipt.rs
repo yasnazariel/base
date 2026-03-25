@@ -285,21 +285,19 @@ pub struct OpReceiptBuilder {
     pub eip8130_fields: Option<Eip8130ReceiptFields>,
 }
 
-/// Infers per-phase EIP-8130 statuses from receipt-level status when possible.
+/// Infers per-phase EIP-8130 statuses from receipt-level status when the
+/// system log is not present (pre-fix receipts only).
 ///
-/// Exact reconstruction is possible in these cases:
-/// - zero phases: empty
-/// - one phase: equals transaction status
-/// - transaction failed: all phases failed
-///
-/// For successful multi-phase transactions, the exact per-phase outcome is not
-/// recoverable from persisted canonical receipt fields alone.
+/// The handler now always emits a system log for phased AA transactions, so
+/// `extract_phase_statuses_from_logs` should always succeed for new receipts.
+/// This fallback handles legacy receipts where the log was only emitted on
+/// success.
 fn infer_eip8130_phase_statuses(phase_count: usize, tx_success: bool) -> Vec<bool> {
     match (phase_count, tx_success) {
         (0, _) => Vec::new(),
         (1, status) => vec![status],
         (_, false) => vec![false; phase_count],
-        (_, true) => Vec::new(),
+        (_, true) => vec![true; phase_count],
     }
 }
 
@@ -396,7 +394,7 @@ mod tests {
         assert_eq!(infer_eip8130_phase_statuses(1, true), vec![true]);
         assert_eq!(infer_eip8130_phase_statuses(1, false), vec![false]);
         assert_eq!(infer_eip8130_phase_statuses(3, false), vec![false, false, false]);
-        assert_eq!(infer_eip8130_phase_statuses(3, true), Vec::<bool>::new());
+        assert_eq!(infer_eip8130_phase_statuses(3, true), vec![true, true, true]);
     }
 
     /// OP Mainnet transaction at index 0 in block 124665056.

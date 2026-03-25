@@ -162,6 +162,11 @@ where
         {
             upgrade_transactions.append(&mut Hardforks::JOVIAN.txs().collect());
         }
+        if self.rollup_cfg.is_base_v1_active(next_l2_time)
+            && !self.rollup_cfg.is_base_v1_active(l2_parent.block_info.timestamp)
+        {
+            upgrade_transactions.append(&mut Hardforks::BASE_V1.txs().collect());
+        }
 
         // Build and encode the L1 info transaction for the current payload.
         let (_, l1_info_tx_envelope) = L1BlockInfoTx::try_new_with_deposit_tx(

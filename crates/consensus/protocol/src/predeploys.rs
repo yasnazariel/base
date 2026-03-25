@@ -185,4 +185,28 @@ impl Deployers {
     /// Jovian Gas Price Oracle deployer address.
     pub const JOVIAN_GAS_PRICE_ORACLE: Address =
         address!("4210000000000000000000000000000000000007");
+
+    /// Base V1 K1 Verifier deployer address.
+    pub const BASE_V1_K1_VERIFIER: Address =
+        address!("4210000000000000000000000000000000000008");
+
+    /// Base V1 P256 Verifier deployer address.
+    pub const BASE_V1_P256_VERIFIER: Address =
+        address!("4210000000000000000000000000000000000009");
+
+    /// Base V1 WebAuthn Verifier deployer address.
+    pub const BASE_V1_WEBAUTHN_VERIFIER: Address =
+        address!("421000000000000000000000000000000000000a");
+
+    /// Base V1 Account Configuration deployer address.
+    pub const BASE_V1_ACCOUNT_CONFIGURATION: Address =
+        address!("421000000000000000000000000000000000000b");
+
+    /// Base V1 Delegate Verifier deployer address.
+    pub const BASE_V1_DELEGATE_VERIFIER: Address =
+        address!("421000000000000000000000000000000000000c");
+
+    /// Base V1 Default Account deployer address.
+    pub const BASE_V1_DEFAULT_ACCOUNT: Address =
+        address!("421000000000000000000000000000000000000d");
 }

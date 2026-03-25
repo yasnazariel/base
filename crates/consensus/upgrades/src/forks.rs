@@ -1,6 +1,6 @@
 //! Contains all hardforks represented in the [`crate::Hardfork`] type.
 
-use crate::{Ecotone, Fjord, Isthmus, Jovian};
+use crate::{BaseV1, Ecotone, Fjord, Isthmus, Jovian};
 
 /// Base Hardforks
 ///
@@ -46,6 +46,9 @@ impl Hardforks {
 
     /// The Jovian hardfork upgrade transactions.
     pub const JOVIAN: Jovian = Jovian;
+
+    /// The Base V1 hardfork upgrade transactions.
+    pub const BASE_V1: BaseV1 = BaseV1;
 }
 
 #[cfg(test)]
@@ -68,5 +71,8 @@ mod tests {
 
         let jovian_upgrade_tx = Hardforks::JOVIAN.txs();
         assert_eq!(jovian_upgrade_tx.collect::<Vec<_>>().len(), 5);
+
+        let base_v1_upgrade_tx = Hardforks::BASE_V1.txs();
+        assert_eq!(base_v1_upgrade_tx.collect::<Vec<_>>().len(), 6);
     }
 }

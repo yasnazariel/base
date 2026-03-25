@@ -8,11 +8,11 @@ use alloy_consensus::{
 };
 use alloy_eips::BlockNumberOrTag;
 use alloy_network::TransactionResponse;
-use alloy_primitives::{Address, BlockNumber};
+use alloy_primitives::{Address, BlockNumber, U256};
 use alloy_rpc_types_eth::state::StateOverride;
 use arc_swap::ArcSwapOption;
 use base_alloy_chains::BaseUpgrades;
-use base_alloy_consensus::{BaseBlock, OpTxEnvelope};
+use base_alloy_consensus::{BaseBlock, OpEip8130Transaction, OpTxEnvelope};
 use base_alloy_flashblocks::Flashblock;
 use base_execution_evm::{OpEvmConfig, OpNextBlockEnvAttributes};
 use rayon::prelude::*;
@@ -465,7 +465,14 @@ where
                 let is_deposit = transaction.is_deposit();
 
                 pending_blocks_builder.with_transaction_sender(tx_hash, sender);
-                pending_blocks_builder.increment_nonce(sender);
+                if let Some(aa_tx) = transaction.as_eip8130() {
+                    pending_blocks_builder.increment_aa_nonce(
+                        sender,
+                        U256::from(aa_tx.nonce_key),
+                    );
+                } else {
+                    pending_blocks_builder.increment_nonce(sender);
+                }
 
                 let recovered_transaction = Recovered::new_unchecked(transaction, sender);
 

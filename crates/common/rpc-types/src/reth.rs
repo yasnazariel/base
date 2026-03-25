@@ -3,6 +3,7 @@
 use core::convert::Infallible;
 
 use alloy_consensus::{SignableTransaction, error::ValueError};
+use alloy_eips::eip2718::Typed2718;
 use alloy_evm::{
     EvmEnv,
     env::BlockEnvironment,
@@ -11,7 +12,7 @@ use alloy_evm::{
 use alloy_network::TxSigner;
 use alloy_primitives::{Address, Bytes};
 use alloy_signer::Signature;
-use base_alloy_consensus::{OpTransaction, OpTransactionInfo, OpTxEnvelope};
+use base_alloy_consensus::{OpTransaction, OpTransactionInfo, OpTxEnvelope, build_eip8130_parts};
 use base_revm::OpTransaction as OpRevm;
 use reth_rpc_convert::{
     SignTxRequestError, SignableTxRequest, TryIntoSimTx, transaction::FromConsensusTx,
@@ -43,6 +44,29 @@ impl<Block: BlockEnvironment> TryIntoTxEnv<OpRevm<TxEnv>, Block> for OpTransacti
         self,
         evm_env: &EvmEnv<Spec, Block>,
     ) -> Result<OpRevm<TxEnv>, Self::Err> {
+        if let Some(aa_tx) = self.build_eip8130() {
+            let eip8130 = build_eip8130_parts(&aa_tx);
+            let sender = aa_tx.effective_sender();
+            let mut base: TxEnv = self.as_ref().clone().try_into_tx_env(evm_env)?;
+            base.tx_type = aa_tx.ty();
+            base.caller = sender;
+            base.nonce = aa_tx.nonce_sequence;
+            base.kind = revm::primitives::TxKind::Call(sender);
+            base.value = alloy_primitives::U256::ZERO;
+            base.data = Bytes::new();
+            base.gas_price = aa_tx.max_fee_per_gas;
+            base.gas_priority_fee = Some(aa_tx.max_priority_fee_per_gas);
+            if !aa_tx.authorization_list.is_empty() {
+                base.set_signed_authorization(aa_tx.authorization_list);
+            }
+            return Ok(OpRevm {
+                base,
+                enveloped_tx: Some(Bytes::new()),
+                deposit: Default::default(),
+                eip8130,
+            });
+        }
+
         Ok(OpRevm {
             base: self.as_ref().clone().try_into_tx_env(evm_env)?,
             enveloped_tx: Some(Bytes::new()),

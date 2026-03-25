@@ -5073,6 +5073,8 @@ dependencies = [
  "base-execution-chainspec",
  "base-execution-evm",
  "base-metrics",
+ "base-execution-forks",
+ "base-execution-primitives",
  "base-revm",
  "base-test-utils",
  "c-kzg",

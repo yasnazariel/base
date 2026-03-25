@@ -9,12 +9,14 @@
 
 mod eip8130_invalidation;
 pub use eip8130_invalidation::{
-    Eip8130InvalidationIndex, InvalidationKey, compute_invalidation_keys, process_fal,
+    Eip8130InvalidationIndex, InvalidationKey, compute_invalidation_keys,
+    maintain_eip8130_invalidation, process_fal,
 };
 
 mod eip8130_validate;
 pub use eip8130_validate::{
-    Eip8130ValidationError, Eip8130ValidationOutcome, validate_eip8130_transaction,
+    Eip8130ValidationError, Eip8130ValidationOutcome, VerifierAllowlist,
+    validate_eip8130_transaction,
 };
 
 mod validator;

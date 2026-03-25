@@ -289,12 +289,33 @@ impl OpTxEnvelope {
 
     /// Attempts to convert the envelope into the ethereum pooled variant.
     ///
-    /// Returns an error if the envelope's variant is incompatible with the pooled format:
-    /// [`TxDeposit`].
+    /// Returns an error if the envelope's variant is incompatible with the pooled
+    /// format: [`TxDeposit`] and [`TxEip8130`].
     pub fn try_into_eth_pooled(
         self,
     ) -> Result<alloy_consensus::transaction::PooledTransaction, ValueError<Self>> {
-        self.try_into_pooled().map(Into::into)
+        match self {
+            Self::Legacy(tx) => {
+                let pooled: OpPooledTransaction = tx.into();
+                Ok(pooled.try_into().expect("legacy always converts"))
+            }
+            Self::Eip2930(tx) => {
+                let pooled: OpPooledTransaction = tx.into();
+                Ok(pooled.try_into().expect("eip2930 always converts"))
+            }
+            Self::Eip1559(tx) => {
+                let pooled: OpPooledTransaction = tx.into();
+                Ok(pooled.try_into().expect("eip1559 always converts"))
+            }
+            Self::Eip7702(tx) => {
+                let pooled: OpPooledTransaction = tx.into();
+                Ok(pooled.try_into().expect("eip7702 always converts"))
+            }
+            tx @ (Self::Eip8130(_) | Self::Deposit(_)) => Err(ValueError::new(
+                tx,
+                "AA/Deposit transactions cannot be converted to ethereum PooledTransaction",
+            )),
+        }
     }
 
     /// Attempts to convert the L2 variant into an ethereum [`TxEnvelope`].

@@ -44,9 +44,6 @@ base-alloy-consensus.workspace = true
 # rpc
 jsonrpsee.workspace = true
 
-# base-alloy
-base-alloy-consensus.workspace = true
-
 # DA calculation
 base-alloy-flz.workspace = true
 

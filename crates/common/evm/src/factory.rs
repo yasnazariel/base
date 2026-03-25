@@ -95,7 +95,7 @@ fn make_nonce_manager_precompile() -> DynPrecompile {
 /// Builds a [`PrecompilesMap`] for the given spec, including EIP-8130
 /// system precompiles (TxContext, NonceManager) when `BASE_V1` is active.
 fn op_precompiles_map(spec: OpSpecId) -> PrecompilesMap {
-    let precompiles = OpPrecompiles::new_with_spec(spec);
+    let precompiles = BasePrecompiles::new_with_spec(spec);
     let mut map = PrecompilesMap::from_static(precompiles.precompiles());
 
     if spec == OpSpecId::BASE_V1 {

@@ -54,7 +54,7 @@ fn derive_sender_owner_id(_tx: &TxEip8130) -> B256 {
 }
 
 /// Build [`Eip8130Parts`] from a decoded [`TxEip8130`] for use by the handler.
-fn build_eip8130_parts(tx: &TxEip8130) -> Eip8130Parts {
+pub fn build_eip8130_parts(tx: &TxEip8130) -> Eip8130Parts {
     let sender = tx.effective_sender();
     let payer = tx.effective_payer();
     let owner_id = derive_sender_owner_id(tx);

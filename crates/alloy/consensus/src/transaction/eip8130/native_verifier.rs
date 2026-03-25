@@ -2,14 +2,17 @@
 //!
 //! Provides a fast-path for mempool validation: known verifier types
 //! (K1, P256_RAW) are verified using pure-Rust crypto instead of
-//! spinning up an EVM STATICCALL. Custom and WebAuthn verifiers
-//! always fall back to the on-chain STATICCALL path.
+//! spinning up an EVM STATICCALL. P256_WEBAUTHN is structurally
+//! validated (envelope format, challenge match) but defers full
+//! cryptographic verification to execution because the public key
+//! is not embedded in the auth envelope. Custom verifiers and
+//! delegate always fall back to the on-chain STATICCALL path.
 
 use alloy_primitives::{Address, B256, Bytes};
 use k256::ecdsa::{RecoveryId, Signature as K256Signature, VerifyingKey};
 use p256::ecdsa::{Signature as P256Signature, VerifyingKey as P256VerifyingKey};
 
-use super::constants::{VERIFIER_K1, VERIFIER_P256_RAW};
+use super::constants::{VERIFIER_K1, VERIFIER_P256_RAW, VERIFIER_P256_WEBAUTHN};
 
 /// Outcome of a native verification attempt.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,6 +43,18 @@ pub enum NativeVerifyError {
     /// P256 signature verification failed.
     #[error("P256 verification failed: {0}")]
     P256VerificationFailed(String),
+    /// WebAuthn envelope is too short to contain required fields.
+    #[error("WebAuthn envelope too short ({0} bytes)")]
+    WebAuthnTooShort(usize),
+    /// WebAuthn clientDataJSON length field overflows the envelope.
+    #[error("WebAuthn clientDataJSON length ({0}) overflows envelope")]
+    WebAuthnClientDataOverflow(usize),
+    /// WebAuthn clientDataJSON is not valid UTF-8.
+    #[error("WebAuthn clientDataJSON is not valid UTF-8")]
+    WebAuthnClientDataNotUtf8,
+    /// WebAuthn clientDataJSON does not contain the expected challenge.
+    #[error("WebAuthn clientDataJSON missing or mismatched challenge")]
+    WebAuthnChallengeMismatch,
 }
 
 /// Attempts native verification for a known verifier type.
@@ -59,6 +74,7 @@ pub fn try_native_verify(
     match verifier_type {
         VERIFIER_K1 => verify_k1(data, hash),
         VERIFIER_P256_RAW => verify_p256_raw(data, hash),
+        VERIFIER_P256_WEBAUTHN => validate_webauthn_structure(data, hash),
         _ => NativeVerifyResult::Unsupported,
     }
 }
@@ -173,6 +189,89 @@ fn verify_p256_raw(data: &Bytes, hash: B256) -> NativeVerifyResult {
     NativeVerifyResult::Verified(owner_id)
 }
 
+/// Minimum authenticator data: 32-byte rpIdHash + 1-byte flags + 4-byte signCount.
+const MIN_AUTHENTICATOR_DATA_LEN: usize = 37;
+/// P256 signature: r(32) || s(32).
+const P256_SIG_LEN: usize = 64;
+/// clientDataJSON length prefix.
+const CLIENT_DATA_LEN_PREFIX: usize = 4;
+
+/// WebAuthn P256 structural validation.
+///
+/// Envelope layout (after the 0x03 type byte):
+/// `authenticatorData(37+) || clientDataJSONLength(4, big-endian) || clientDataJSON || signature(64)`
+///
+/// Full cryptographic verification requires the public key (stored on-chain),
+/// so this function validates the envelope structure and challenge, then
+/// returns [`NativeVerifyResult::Unsupported`] to defer the P256 signature
+/// check to execution. If the envelope is malformed, returns
+/// [`NativeVerifyResult::Invalid`] to reject the tx early.
+fn validate_webauthn_structure(data: &Bytes, expected_hash: B256) -> NativeVerifyResult {
+    let min_len = MIN_AUTHENTICATOR_DATA_LEN + CLIENT_DATA_LEN_PREFIX + P256_SIG_LEN;
+    if data.len() < min_len {
+        return NativeVerifyResult::Invalid(NativeVerifyError::WebAuthnTooShort(data.len()));
+    }
+
+    let client_data_len_offset = MIN_AUTHENTICATOR_DATA_LEN;
+    let len_bytes: [u8; 4] = data[client_data_len_offset..client_data_len_offset + 4]
+        .try_into()
+        .unwrap();
+    let client_data_len = u32::from_be_bytes(len_bytes) as usize;
+
+    let client_data_start = client_data_len_offset + CLIENT_DATA_LEN_PREFIX;
+    let client_data_end = client_data_start + client_data_len;
+    let expected_total = client_data_end + P256_SIG_LEN;
+
+    if data.len() < expected_total {
+        return NativeVerifyResult::Invalid(NativeVerifyError::WebAuthnClientDataOverflow(
+            client_data_len,
+        ));
+    }
+
+    let client_data_bytes = &data[client_data_start..client_data_end];
+    let client_data_str = match core::str::from_utf8(client_data_bytes) {
+        Ok(s) => s,
+        Err(_) => {
+            return NativeVerifyResult::Invalid(NativeVerifyError::WebAuthnClientDataNotUtf8);
+        }
+    };
+
+    let expected_challenge = base64_url_encode(expected_hash.as_slice());
+    if !client_data_str.contains(&expected_challenge) {
+        return NativeVerifyResult::Invalid(NativeVerifyError::WebAuthnChallengeMismatch);
+    }
+
+    // Structure is valid; defer full P256 cryptographic verification to execution.
+    NativeVerifyResult::Unsupported
+}
+
+/// Base64url-encodes bytes without padding (WebAuthn challenge format).
+fn base64_url_encode(bytes: &[u8]) -> alloc::string::String {
+    use alloc::string::String;
+
+    const TABLE: &[u8; 64] =
+        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+    let mut out = String::with_capacity((bytes.len() * 4 + 2) / 3);
+    let chunks = bytes.chunks(3);
+    for chunk in chunks {
+        let b0 = chunk[0] as u32;
+        let b1 = if chunk.len() > 1 { chunk[1] as u32 } else { 0 };
+        let b2 = if chunk.len() > 2 { chunk[2] as u32 } else { 0 };
+        let triple = (b0 << 16) | (b1 << 8) | b2;
+
+        out.push(TABLE[((triple >> 18) & 0x3F) as usize] as char);
+        out.push(TABLE[((triple >> 12) & 0x3F) as usize] as char);
+        if chunk.len() > 1 {
+            out.push(TABLE[((triple >> 6) & 0x3F) as usize] as char);
+        }
+        if chunk.len() > 2 {
+            out.push(TABLE[(triple & 0x3F) as usize] as char);
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -188,10 +287,11 @@ mod tests {
             try_native_verify(0x00, &data, hash),
             NativeVerifyResult::Unsupported,
         );
-        assert_eq!(
+        // 0x03 (WebAuthn) now does structural validation — short data returns Invalid.
+        assert!(matches!(
             try_native_verify(0x03, &data, hash),
-            NativeVerifyResult::Unsupported,
-        );
+            NativeVerifyResult::Invalid(NativeVerifyError::WebAuthnTooShort(65)),
+        ));
         assert_eq!(
             try_native_verify(0x04, &data, hash),
             NativeVerifyResult::Unsupported,
@@ -307,5 +407,80 @@ mod tests {
         if let NativeVerifyResult::Verified(owner_id) = result {
             assert_ne!(owner_id, B256::from(owner_b));
         }
+    }
+
+    fn build_webauthn_envelope(hash: B256, tamper_challenge: bool) -> Bytes {
+        let authenticator_data = vec![0xAA; 37];
+
+        let challenge_b64 = base64_url_encode(hash.as_slice());
+        let client_data_json = if tamper_challenge {
+            r#"{"type":"webauthn.get","challenge":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","origin":"https://example.com"}"#
+        } else {
+            &alloc::format!(
+                r#"{{"type":"webauthn.get","challenge":"{}","origin":"https://example.com"}}"#,
+                challenge_b64,
+            )
+        };
+
+        let cd_bytes = client_data_json.as_bytes();
+        let cd_len = (cd_bytes.len() as u32).to_be_bytes();
+
+        let signature = vec![0xBB; 64];
+
+        let mut envelope = Vec::new();
+        envelope.extend_from_slice(&authenticator_data);
+        envelope.extend_from_slice(&cd_len);
+        envelope.extend_from_slice(cd_bytes);
+        envelope.extend_from_slice(&signature);
+        Bytes::from(envelope)
+    }
+
+    #[test]
+    fn webauthn_too_short_returns_invalid() {
+        let data = Bytes::from(vec![0u8; 50]);
+        let hash = B256::repeat_byte(0xCC);
+        assert!(matches!(
+            try_native_verify(VERIFIER_P256_WEBAUTHN, &data, hash),
+            NativeVerifyResult::Invalid(NativeVerifyError::WebAuthnTooShort(50)),
+        ));
+    }
+
+    #[test]
+    fn webauthn_valid_structure_returns_unsupported() {
+        let hash = keccak256(b"webauthn test");
+        let data = build_webauthn_envelope(hash, false);
+        assert_eq!(
+            try_native_verify(VERIFIER_P256_WEBAUTHN, &data, hash),
+            NativeVerifyResult::Unsupported,
+        );
+    }
+
+    #[test]
+    fn webauthn_wrong_challenge_returns_invalid() {
+        let hash = keccak256(b"webauthn test");
+        let data = build_webauthn_envelope(hash, true);
+        assert!(matches!(
+            try_native_verify(VERIFIER_P256_WEBAUTHN, &data, hash),
+            NativeVerifyResult::Invalid(NativeVerifyError::WebAuthnChallengeMismatch),
+        ));
+    }
+
+    #[test]
+    fn webauthn_overflow_client_data_returns_invalid() {
+        let hash = B256::repeat_byte(0xDD);
+        let mut data = vec![0u8; 37];
+        data.extend_from_slice(&[0xFF, 0xFF, 0xFF, 0xFF]); // 4GB length
+        data.extend_from_slice(&[0u8; 64]); // signature
+        assert!(matches!(
+            try_native_verify(VERIFIER_P256_WEBAUTHN, &Bytes::from(data), hash),
+            NativeVerifyResult::Invalid(NativeVerifyError::WebAuthnClientDataOverflow(_)),
+        ));
+    }
+
+    #[test]
+    fn base64_url_encode_known_value() {
+        let input = [0xDE, 0xAD, 0xBE, 0xEF];
+        let encoded = base64_url_encode(&input);
+        assert_eq!(encoded, "3q2-7w");
     }
 }

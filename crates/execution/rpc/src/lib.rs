@@ -22,7 +22,7 @@ pub mod witness;
 pub use config::{BaseEthConfigApiServer, BaseEthConfigHandler};
 #[cfg(feature = "client")]
 pub use engine::OpEngineApiClient;
-pub use eip8130::Eip8130ApiServer;
+pub use eip8130::{Eip8130ApiImpl, Eip8130ApiServer, eip8130_api};
 pub use engine::{OP_ENGINE_CAPABILITIES, OpEngineApi, OpEngineApiServer};
 pub use error::{OpEthApiError, OpInvalidTransactionError, SequencerClientError};
 pub use eth::{OpEthApi, OpEthApiBuilder, OpReceiptBuilder};

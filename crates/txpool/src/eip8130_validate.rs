@@ -4,21 +4,53 @@
 //! crypto for K1 and P256 verifiers), and payer balance before accepting
 //! an AA transaction into the pending pool.
 
+use std::collections::HashSet;
+
 use alloy_consensus::Transaction;
-use alloy_eips::eip2718::Decodable2718;
 use alloy_primitives::{Address, B256, Bytes, U256};
 use reth_storage_api::StateProviderFactory;
 
 use base_alloy_consensus::{
-    ACCOUNT_CONFIG_ADDRESS, AccountChangeEntry, K1_VERIFIER_ADDRESS, NONCE_MANAGER_ADDRESS,
-    NativeVerifyResult, OpPooledTransaction, OwnerScope, ParsedSenderAuth, TxEip8130,
-    ValidationError, VerifierTarget, VERIFIER_K1, implicit_eoa_owner_id, intrinsic_gas, lock_slot,
+    ACCOUNT_CONFIG_ADDRESS, AccountChangeEntry, DELEGATE_VERIFIER_ADDRESS, K1_VERIFIER_ADDRESS,
+    NONCE_MANAGER_ADDRESS, NativeVerifyResult, OwnerScope, ParsedSenderAuth,
+    P256_RAW_VERIFIER_ADDRESS, P256_WEBAUTHN_VERIFIER_ADDRESS, TxEip8130, ValidationError,
+    VerifierTarget, VERIFIER_CUSTOM, VERIFIER_K1, implicit_eoa_owner_id, intrinsic_gas, lock_slot,
     nonce_slot, owner_config_slot, parse_owner_config, parse_sender_auth, payer_signature_hash,
     read_sequence, resolve_verifier, sender_signature_hash, sequence_base_slot, try_native_verify,
     validate_expiry, validate_structure, verifier_type_to_address,
 };
 
-use crate::OpPooledTx;
+use crate::{InvalidationKey, OpPooledTx, compute_invalidation_keys};
+
+/// Controls which verifier contracts the mempool will accept in AA transactions.
+///
+/// - `None` (default): all verifiers are accepted.
+/// - `Some(set)`: the set contains allowed verifier addresses. Native verifier
+///   addresses (K1, P256, WebAuthn, Delegate) are always included automatically.
+///   Only custom verifiers (type `0x00`) need explicit allowlisting.
+#[derive(Debug, Clone)]
+pub struct VerifierAllowlist {
+    allowed: HashSet<Address>,
+}
+
+impl VerifierAllowlist {
+    /// Creates an allowlist from custom verifier addresses.
+    ///
+    /// The four native verifier addresses are added automatically.
+    pub fn new(custom_addresses: impl IntoIterator<Item = Address>) -> Self {
+        let mut allowed: HashSet<Address> = custom_addresses.into_iter().collect();
+        allowed.insert(K1_VERIFIER_ADDRESS);
+        allowed.insert(P256_RAW_VERIFIER_ADDRESS);
+        allowed.insert(P256_WEBAUTHN_VERIFIER_ADDRESS);
+        allowed.insert(DELEGATE_VERIFIER_ADDRESS);
+        Self { allowed }
+    }
+
+    /// Returns `true` if the given verifier address is allowed.
+    pub fn is_allowed(&self, address: &Address) -> bool {
+        self.allowed.contains(address)
+    }
+}
 
 /// Successful AA validation outcome, providing the data the txpool needs for
 /// ordering and balance tracking.
@@ -31,6 +63,8 @@ pub struct Eip8130ValidationOutcome {
     /// The resolved sender owner ID (from signature verification).
     /// `B256::ZERO` if the verifier was unsupported and deferred to execution.
     pub sender_owner_id: B256,
+    /// Storage slot dependencies for invalidation tracking.
+    pub invalidation_keys: HashSet<InvalidationKey>,
 }
 
 /// Errors from AA transaction validation.
@@ -62,6 +96,8 @@ pub enum Eip8130ValidationError {
     PayerAuthInvalid(String),
     /// Payer's owner is not authorized in AccountConfig.
     PayerNotAuthorized(String),
+    /// Verifier address is not on the mempool allowlist.
+    VerifierNotAllowed(Address),
     /// Account is locked; config changes are rejected.
     AccountLocked,
     /// Config change sequence does not match on-chain value.
@@ -100,6 +136,7 @@ impl std::fmt::Display for Eip8130ValidationError {
             Self::NonceMismatch { expected, got } => {
                 write!(f, "nonce mismatch (expected={expected}, got={got})")
             }
+            Self::VerifierNotAllowed(addr) => write!(f, "verifier {addr} not on allowlist"),
             Self::SenderAuthInvalid(e) => write!(f, "sender auth invalid: {e}"),
             Self::SenderNotAuthorized(e) => write!(f, "sender not authorized: {e}"),
             Self::PayerAuthInvalid(e) => write!(f, "payer auth invalid: {e}"),
@@ -131,16 +168,12 @@ impl reth_transaction_pool::error::PoolTransactionError for Eip8130ValidationErr
     }
 }
 
-/// Decodes `TxEip8130` from a 2718-encoded pool transaction.
+/// Extracts `TxEip8130` from a pool transaction, avoiding re-encode/re-decode.
 fn decode_tx_eip8130<Tx: OpPooledTx>(transaction: &Tx) -> Result<TxEip8130, Eip8130ValidationError> {
-    let encoded = transaction.encoded_2718();
-    let bytes: &[u8] = encoded.as_ref();
-    let pooled = OpPooledTransaction::decode_2718(&mut &bytes[..])
-        .map_err(|e| Eip8130ValidationError::DecodeFailed(e.to_string()))?;
-    match pooled {
-        OpPooledTransaction::Eip8130(sealed) => Ok(sealed.into_inner()),
-        _ => Err(Eip8130ValidationError::DecodeFailed("not an AA transaction".into())),
-    }
+    transaction
+        .as_eip8130()
+        .cloned()
+        .ok_or_else(|| Eip8130ValidationError::DecodeFailed("not an AA transaction".into()))
 }
 
 /// Reads a storage slot from a state provider, returning U256::ZERO if absent.
@@ -166,6 +199,25 @@ fn read_owner_config_from_state(
     let slot = owner_config_slot(account, owner_id);
     let value = read_storage(state, ACCOUNT_CONFIG_ADDRESS, slot)?;
     Ok(parse_owner_config(B256::from(value.to_be_bytes::<32>())))
+}
+
+/// Extracts the custom verifier address from an auth blob, if present.
+///
+/// Returns `Some(address)` when the first byte is `VERIFIER_CUSTOM` (0x00) and
+/// at least 20 address bytes follow. Returns `None` for native verifier types,
+/// empty blobs, or blobs that are too short for a valid custom verifier.
+fn extract_custom_verifier_address(auth: &Bytes) -> Option<Address> {
+    if auth.is_empty() {
+        return None;
+    }
+    if auth[0] != VERIFIER_CUSTOM {
+        return None;
+    }
+    // 1 byte type + at least 20 bytes address
+    if auth.len() < 21 {
+        return None;
+    }
+    Some(Address::from_slice(&auth[1..21]))
 }
 
 /// Validates `sender_auth` for an AA transaction.
@@ -384,6 +436,7 @@ pub fn validate_eip8130_transaction<Tx, Client>(
     transaction: &Tx,
     block_timestamp: u64,
     client: &Client,
+    verifier_allowlist: Option<&VerifierAllowlist>,
 ) -> Result<Eip8130ValidationOutcome, Eip8130ValidationError>
 where
     Tx: OpPooledTx + Transaction,
@@ -401,6 +454,26 @@ where
         }
         other => Eip8130ValidationError::Structural(other),
     })?;
+
+    // 2b. Verifier allowlist — reject custom verifiers not on the list.
+    //     Native types (0x01–0x04) are always allowed. Only custom verifier
+    //     addresses (type 0x00) are checked against the allowlist.
+    if let Some(allowlist) = verifier_allowlist {
+        if !tx.is_eoa() {
+            if let Some(addr) = extract_custom_verifier_address(&tx.sender_auth) {
+                if !allowlist.is_allowed(&addr) {
+                    return Err(Eip8130ValidationError::VerifierNotAllowed(addr));
+                }
+            }
+        }
+        if tx.payer != Address::ZERO && tx.payer != tx.effective_sender() {
+            if let Some(addr) = extract_custom_verifier_address(&tx.payer_auth) {
+                if !allowlist.is_allowed(&addr) {
+                    return Err(Eip8130ValidationError::VerifierNotAllowed(addr));
+                }
+            }
+        }
+    }
 
     // 3. Open state provider for storage reads
     let state = client
@@ -484,5 +557,72 @@ where
         });
     }
 
-    Ok(Eip8130ValidationOutcome { balance, state_nonce: tx.nonce_sequence, sender_owner_id })
+    // 11. Compute invalidation keys for the state-diff based eviction index
+    let invalidation_keys = compute_invalidation_keys(
+        &tx,
+        Some(sender_owner_id).filter(|id| *id != B256::ZERO),
+        None,
+    );
+
+    Ok(Eip8130ValidationOutcome {
+        balance,
+        state_nonce: tx.nonce_sequence,
+        sender_owner_id,
+        invalidation_keys,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn allowlist_includes_native_verifiers() {
+        let allowlist = VerifierAllowlist::new(std::iter::empty());
+        assert!(allowlist.is_allowed(&K1_VERIFIER_ADDRESS));
+        assert!(allowlist.is_allowed(&P256_RAW_VERIFIER_ADDRESS));
+        assert!(allowlist.is_allowed(&P256_WEBAUTHN_VERIFIER_ADDRESS));
+        assert!(allowlist.is_allowed(&DELEGATE_VERIFIER_ADDRESS));
+    }
+
+    #[test]
+    fn allowlist_rejects_unknown_custom() {
+        let allowlist = VerifierAllowlist::new(std::iter::empty());
+        let unknown = Address::repeat_byte(0xAB);
+        assert!(!allowlist.is_allowed(&unknown));
+    }
+
+    #[test]
+    fn allowlist_accepts_configured_custom() {
+        let custom = Address::repeat_byte(0xAB);
+        let allowlist = VerifierAllowlist::new([custom]);
+        assert!(allowlist.is_allowed(&custom));
+    }
+
+    #[test]
+    fn extract_custom_verifier_from_auth() {
+        let mut auth = vec![VERIFIER_CUSTOM];
+        let addr = Address::repeat_byte(0xCC);
+        auth.extend_from_slice(addr.as_slice());
+        auth.extend_from_slice(&[0xDD; 32]);
+        let result = extract_custom_verifier_address(&Bytes::from(auth));
+        assert_eq!(result, Some(addr));
+    }
+
+    #[test]
+    fn extract_returns_none_for_native_type() {
+        let auth = Bytes::from(vec![VERIFIER_K1, 0xAA, 0xBB]);
+        assert_eq!(extract_custom_verifier_address(&auth), None);
+    }
+
+    #[test]
+    fn extract_returns_none_for_empty() {
+        assert_eq!(extract_custom_verifier_address(&Bytes::new()), None);
+    }
+
+    #[test]
+    fn extract_returns_none_for_short_custom() {
+        let auth = Bytes::from(vec![VERIFIER_CUSTOM, 0x01, 0x02]);
+        assert_eq!(extract_custom_verifier_address(&auth), None);
+    }
 }

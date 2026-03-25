@@ -15,6 +15,8 @@ mod alloy_compat;
 
 #[cfg(feature = "evm")]
 mod evm_compat;
+#[cfg(feature = "evm")]
+pub use evm_compat::build_eip8130_parts;
 
 #[cfg(feature = "reth")]
 mod reth_compat;

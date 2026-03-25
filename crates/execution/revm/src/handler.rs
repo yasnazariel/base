@@ -135,10 +135,14 @@ where
             return Err(OpTransactionError::MissingEnvelopedTx.into());
         }
 
-        // AA transactions skip mainnet env validation (different intrinsic gas
-        // model, no legacy nonce/code checks). Structural + signature validation
-        // already happened in the mempool.
+        // AA transactions require BASE_V1. Reject if the spec is not active.
         if tx_type == EIP8130_TX_TYPE {
+            if !evm.ctx().cfg().spec().is_enabled_in(OpSpecId::BASE_V1) {
+                return Err(OpTransactionError::Base(
+                    InvalidTransaction::Str("EIP-8130 AA transactions require BASE_V1".into()),
+                )
+                .into());
+            }
             return Ok(());
         }
 
@@ -412,8 +416,10 @@ where
         let tx_succeeded = any_phase_succeeded || deploy_only_success;
 
         // Emit a system log with per-phase statuses so they survive in the receipt's
-        // log list and can be recovered at RPC time for multi-phase transactions.
-        if any_phase_succeeded {
+        // log list and can be recovered at RPC time. Always emitted when phases
+        // exist so `extract_phase_statuses_from_logs` returns authoritative data
+        // regardless of the tx outcome.
+        if !phase_results.is_empty() {
             evm.ctx()
                 .journal_mut()
                 .log(phase_statuses_system_log(TX_CONTEXT_ADDRESS, &phase_results));

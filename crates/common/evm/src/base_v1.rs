@@ -1,15 +1,16 @@
 use alloy_evm::Database;
 use alloy_primitives::{Address, Bytes};
 use base_alloy_consensus::{NONCE_MANAGER_ADDRESS, TX_CONTEXT_ADDRESS};
-use base_alloy_upgrades::BaseUpgrades;
+use base_alloy_chains::BaseUpgrades;
 use revm::{DatabaseCommit, primitives::HashMap, state::Bytecode};
 
 /// Precompile addresses that need stub bytecode at activation.
 ///
 /// Only native precompiles (NonceManager, TxContext) are included. Deployed
 /// contracts (AccountConfiguration, verifiers, DefaultAccount) receive their
-/// real bytecode via the `Deploy.s.sol` forge script and must NOT have stubs
-/// placed here — doing so would prevent CREATE2 deployment.
+/// real bytecode via `TxDeposit` upgrade transactions at hardfork activation
+/// (see `crates/consensus/upgrades/src/base_v1.rs`). On devnets they are
+/// deployed by `deploy-8130.sh` since BASE_V1 is active from genesis.
 const AA_PRECOMPILE_ADDRESSES: [Address; 2] = [NONCE_MANAGER_ADDRESS, TX_CONTEXT_ADDRESS];
 
 /// Stub bytecode deployed to precompile addresses.

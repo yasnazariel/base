@@ -16,6 +16,7 @@ use core::fmt::Debug;
 use alloy_consensus::{
     BlockHeader as _, EMPTY_OMMER_ROOT_HASH, constants::MAXIMUM_EXTRA_DATA_SIZE,
 };
+use alloy_eips::eip2718::Typed2718;
 use alloy_primitives::B64;
 use base_alloy_chains::BaseUpgrades;
 use base_alloy_consensus::DepositReceipt;
@@ -114,6 +115,17 @@ where
         // Check transaction root
         if let Err(error) = block.ensure_transaction_root_valid() {
             return Err(ConsensusError::BodyTransactionRootDiff(error.into()));
+        }
+
+        // Reject blocks containing EIP-8130 AA transactions before BASE_V1.
+        if !self.chain_spec.is_base_v1_active_at_timestamp(block.timestamp()) {
+            const EIP8130_TX_TYPE: u8 = 0x05;
+            if block.body().transactions().iter().any(|tx| tx.ty() == EIP8130_TX_TYPE) {
+                return Err(ConsensusError::Other(format!(
+                    "block {} contains EIP-8130 transaction before BASE_V1 activation",
+                    block.number(),
+                )));
+            }
         }
 
         // Check empty shanghai-withdrawals

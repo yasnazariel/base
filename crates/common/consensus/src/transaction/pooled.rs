@@ -92,13 +92,19 @@ impl OpPooledTransaction {
     }
 
     /// Converts the transaction into the ethereum [`TxEnvelope`].
-    pub fn into_envelope(self) -> TxEnvelope {
+    ///
+    /// Returns `Err` for EIP-8130 AA transactions which have no Ethereum
+    /// equivalent.
+    pub fn try_into_envelope(self) -> Result<TxEnvelope, ValueError<Self>> {
         match self {
-            Self::Legacy(tx) => tx.into(),
-            Self::Eip2930(tx) => tx.into(),
-            Self::Eip1559(tx) => tx.into(),
-            Self::Eip7702(tx) => tx.into(),
-            Self::Eip8130(_) => panic!("AA transactions cannot be converted to ethereum TxEnvelope"),
+            Self::Legacy(tx) => Ok(tx.into()),
+            Self::Eip2930(tx) => Ok(tx.into()),
+            Self::Eip1559(tx) => Ok(tx.into()),
+            Self::Eip7702(tx) => Ok(tx.into()),
+            Self::Eip8130(tx) => Err(ValueError::new(
+                Self::Eip8130(tx),
+                "AA transactions cannot be converted to ethereum TxEnvelope",
+            )),
         }
     }
 
@@ -176,16 +182,19 @@ impl From<Sealed<TxEip8130>> for OpPooledTransaction {
     }
 }
 
-impl From<OpPooledTransaction> for alloy_consensus::transaction::PooledTransaction {
-    fn from(value: OpPooledTransaction) -> Self {
+impl TryFrom<OpPooledTransaction> for alloy_consensus::transaction::PooledTransaction {
+    type Error = ValueError<OpPooledTransaction>;
+
+    fn try_from(value: OpPooledTransaction) -> Result<Self, Self::Error> {
         match value {
-            OpPooledTransaction::Legacy(tx) => tx.into(),
-            OpPooledTransaction::Eip2930(tx) => tx.into(),
-            OpPooledTransaction::Eip1559(tx) => tx.into(),
-            OpPooledTransaction::Eip7702(tx) => tx.into(),
-            OpPooledTransaction::Eip8130(_) => {
-                panic!("AA transactions cannot be converted to ethereum PooledTransaction")
-            }
+            OpPooledTransaction::Legacy(tx) => Ok(tx.into()),
+            OpPooledTransaction::Eip2930(tx) => Ok(tx.into()),
+            OpPooledTransaction::Eip1559(tx) => Ok(tx.into()),
+            OpPooledTransaction::Eip7702(tx) => Ok(tx.into()),
+            OpPooledTransaction::Eip8130(tx) => Err(ValueError::new(
+                OpPooledTransaction::Eip8130(tx),
+                "AA transactions cannot be converted to ethereum PooledTransaction",
+            )),
         }
     }
 }

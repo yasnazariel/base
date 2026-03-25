@@ -6,19 +6,15 @@
 //!   - `NonceManager` (`0x…aa02`)  — 2D nonce reads
 //!   - `TxContext`     (`0x…aa03`)  — AA transaction metadata
 //!
-//! **Predeploy candidate** (can be injected at genesis once AccountConfig
-//! address is finalized; currently deployed alongside AccountConfig via the
-//! same forge script):
-//!   - `DefaultAccount` (`0x…aa04`) — wallet implementation for auto-delegation
-//!
-//! **Deployed contracts** (Solidity, deployed via CREATE2 with `salt = 0`):
+//! **Deployed contracts** (Solidity, deployed at BASE_V1 activation via
+//! `TxDeposit` upgrade transactions — see `base_consensus_upgrades::BaseV1`):
 //!   - `AccountConfiguration` — owner registrations, account creation, locks
 //!   - `K1Verifier`, `P256Verifier`, `WebAuthnVerifier`, `DelegateVerifier`
+//!   - `DefaultAccount` — wallet implementation for EIP-7702 auto-delegation
 //!
-//! Deployed contract addresses are deterministic (CREATE2 from the deploy
-//! script in `contracts/eip-8130/script/Deploy.s.sol`). The constants below
-//! are provisional values used during development; run `deploy-8130.sh` and
-//! update these to match the actual deterministic addresses.
+//! All deployed contract addresses are deterministic: `Deployers::BASE_V1_*.create(0)`.
+//! On devnets with BASE_V1 active from genesis, the derivation pipeline injects
+//! the upgrade deposit transactions at block 0.
 
 use alloy_primitives::{Address, address};
 
@@ -32,31 +28,37 @@ pub const NONCE_MANAGER_ADDRESS: Address = address!("0x0000000000000000000000000
 /// `owner_id`, phase index, and call metadata during execution.
 pub const TX_CONTEXT_ADDRESS: Address = address!("0x000000000000000000000000000000000000aa03");
 
-// ── Predeploy (bytecode placed at genesis) ────────────────────────
+// ── Deployed contracts (TxDeposit at BASE_V1 activation) ─────────
+//
+// All addresses are deterministic: `Deployers::BASE_V1_*.create(0)`.
+// See `crates/consensus/upgrades/src/base_v1.rs` for the deposit
+// transactions that deploy these contracts.
+//
+// On devnets where BASE_V1 is active from genesis, these are deployed
+// by the derivation pipeline's upgrade transactions at block 0.
 
 /// Default account (wallet) implementation contract. Bare EOAs that submit
 /// AA transactions are auto-delegated to this address via EIP-7702.
-pub const DEFAULT_ACCOUNT_ADDRESS: Address = address!("0xb080bA38C82F824137A12Db1Ac53baeDa70e4a03");
-
-// ── Deployed contracts (CREATE2, addresses are provisional) ───────
+pub const DEFAULT_ACCOUNT_ADDRESS: Address =
+    address!("0xAb4eE49EE97e49807e180BD5Fb9D9F35783b84F2");
 
 /// Account configuration system contract.
 /// Manages owner registrations, account creation, config changes, and locks.
-///
-/// Deployed via `Deploy.s.sol` with `salt = 0`.
-pub const ACCOUNT_CONFIG_ADDRESS: Address = address!("0x0F127193b72E0f8546A6F4E471b6F8241900932B");
+pub const ACCOUNT_CONFIG_ADDRESS: Address =
+    address!("0xf946601D5424118A4e4054BB0B13133f216b4FeE");
 
 /// K1 (secp256k1 ECDSA) verifier contract.
-pub const K1_VERIFIER_ADDRESS: Address = address!("0x167Ad053B3d786C6a6dC90aCa456DE98625EE31C");
+pub const K1_VERIFIER_ADDRESS: Address =
+    address!("0x5Be482Da3E457aB3b439B184532224EC42c6b8Db");
 
 /// P256 raw ECDSA verifier contract.
 pub const P256_RAW_VERIFIER_ADDRESS: Address =
-    address!("0x0D8D9D476D39764D9C0eC19449497FE1F39c673B");
+    address!("0x6751c7ED0C58319e75437f8E6Dafa2d7F6b8306F");
 
 /// P256 WebAuthn verifier contract.
 pub const P256_WEBAUTHN_VERIFIER_ADDRESS: Address =
-    address!("0x895650b7dd7C5Bd1c31006A7790b353A8dB73F7D");
+    address!("0x3572bb3F611a40DDcA70e5b55Cc797D58357AD44");
 
 /// Delegate verifier contract (1-hop delegation).
 pub const DELEGATE_VERIFIER_ADDRESS: Address =
-    address!("0x1Bc0F6e1496420590fD4981Dd7b844525F32B1D1");
+    address!("0xc758A89C53542164aaB7f6439e8c8cAcf628fF62");

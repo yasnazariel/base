@@ -53,6 +53,9 @@ pub use isthmus::Isthmus;
 mod jovian;
 pub use jovian::Jovian;
 
+mod base_v1;
+pub use base_v1::BaseV1;
+
 mod utils;
 pub use utils::UpgradeCalldata;
 

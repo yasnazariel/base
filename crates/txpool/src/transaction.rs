@@ -12,7 +12,8 @@ use alloy_eips::{
     eip7702::SignedAuthorization,
 };
 use alloy_primitives::{Address, B256, Bytes, TxHash, TxKind, U256};
-use base_alloy_consensus::OpTransactionSigned;
+use base_alloy_consensus::{OpEip8130Transaction, TxEip8130};
+use base_execution_primitives::OpTransactionSigned;
 use c_kzg::KzgSettings;
 use reth_primitives_traits::{InMemorySize, SignedTransaction};
 use reth_transaction_pool::{
@@ -324,16 +325,28 @@ where
 pub trait OpPooledTx: PoolTransaction + DataAvailabilitySized {
     /// Returns the EIP-2718 encoded bytes of the transaction.
     fn encoded_2718(&self) -> Cow<'_, Bytes>;
+
+    /// Returns a reference to the inner [`TxEip8130`] if this is an AA transaction.
+    ///
+    /// This avoids the costly re-encode/re-decode cycle that `encoded_2718` +
+    /// `OpPooledTransaction::decode_2718` would require.
+    fn as_eip8130(&self) -> Option<&TxEip8130> {
+        None
+    }
 }
 
 impl<Cons, Pooled> OpPooledTx for BasePooledTransaction<Cons, Pooled>
 where
-    Cons: SignedTransaction + From<Pooled>,
+    Cons: SignedTransaction + From<Pooled> + OpEip8130Transaction,
     Pooled: SignedTransaction + TryFrom<Cons>,
     <Pooled as TryFrom<Cons>>::Error: core::error::Error,
 {
     fn encoded_2718(&self) -> Cow<'_, Bytes> {
         Cow::Borrowed(self.encoded_2718())
+    }
+
+    fn as_eip8130(&self) -> Option<&TxEip8130> {
+        self.inner.transaction().inner().as_eip8130().map(|sealed| sealed.inner())
     }
 }
 

@@ -22,7 +22,7 @@ use reth_transaction_pool::{
 
 use base_alloy_consensus::AA_TX_TYPE_ID;
 
-use crate::OpPooledTx;
+use crate::{Eip8130InvalidationIndex, OpPooledTx, VerifierAllowlist};
 
 /// Tracks additional infos for the current block.
 #[derive(Debug, Default)]
@@ -51,6 +51,14 @@ pub struct OpTransactionValidator<Client, Tx, Evm> {
     /// derived from the tracked L1 block info that is extracted from the first transaction in the
     /// L2 block.
     require_l1_data_gas_fee: bool,
+    /// EIP-8130 verifier allowlist. `None` means all verifiers are accepted.
+    /// When set, only native verifiers and the configured custom verifier
+    /// addresses are accepted into the mempool.
+    verifier_allowlist: Option<Arc<VerifierAllowlist>>,
+    /// Shared index of storage-slot dependencies for pending AA transactions,
+    /// used by the invalidation maintenance task to evict transactions whose
+    /// underlying state has changed.
+    invalidation_index: Arc<RwLock<Eip8130InvalidationIndex>>,
 }
 
 impl<Client, Tx, Evm> OpTransactionValidator<Client, Tx, Evm> {
@@ -82,6 +90,11 @@ impl<Client, Tx, Evm> OpTransactionValidator<Client, Tx, Evm> {
     /// to cover the L1 gas fee.
     pub const fn requires_l1_data_gas_fee(&self) -> bool {
         self.require_l1_data_gas_fee
+    }
+
+    /// Sets the EIP-8130 verifier allowlist.
+    pub fn with_verifier_allowlist(self, allowlist: VerifierAllowlist) -> Self {
+        Self { verifier_allowlist: Some(Arc::new(allowlist)), ..self }
     }
 }
 
@@ -119,7 +132,17 @@ where
             inner: Arc::new(inner),
             block_info: Arc::new(block_info),
             require_l1_data_gas_fee: true,
+            verifier_allowlist: None,
+            invalidation_index: Arc::new(RwLock::new(Eip8130InvalidationIndex::default())),
         }
+    }
+
+    /// Returns a shared reference to the EIP-8130 invalidation index.
+    ///
+    /// Pass this to [`maintain_eip8130_invalidation`] so the maintenance task
+    /// can read the same index that the validator populates.
+    pub fn invalidation_index(&self) -> Arc<RwLock<Eip8130InvalidationIndex>> {
+        Arc::clone(&self.invalidation_index)
     }
 
     /// Update the L1 block info for the given header and system transaction, if any.
@@ -186,15 +209,25 @@ where
                 &transaction,
                 self.block_timestamp(),
                 self.client(),
+                self.verifier_allowlist.as_deref(),
             ) {
-                Ok(outcome) => TransactionValidationOutcome::Valid {
-                    balance: outcome.balance,
-                    state_nonce: outcome.state_nonce,
-                    transaction: ValidTransaction::Valid(transaction),
-                    propagate: true,
-                    bytecode_hash: None,
-                    authorities: None,
-                },
+                Ok(outcome) => {
+                    if !outcome.invalidation_keys.is_empty() {
+                        let tx_hash = *transaction.hash();
+                        self.invalidation_index.write().insert(
+                            tx_hash,
+                            outcome.invalidation_keys,
+                        );
+                    }
+                    TransactionValidationOutcome::Valid {
+                        balance: outcome.balance,
+                        state_nonce: outcome.state_nonce,
+                        transaction: ValidTransaction::Valid(transaction),
+                        propagate: true,
+                        bytecode_hash: None,
+                        authorities: None,
+                    }
+                }
                 Err(e) => {
                     tracing::debug!(target: "txpool", error = %e, "EIP-8130 transaction validation failed");
                     TransactionValidationOutcome::Invalid(

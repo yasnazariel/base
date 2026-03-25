@@ -1,16 +1,35 @@
-//! FAL-based invalidation for EIP-8130 Account Abstraction transactions.
+//! State-diff based invalidation for EIP-8130 Account Abstraction transactions.
 //!
 //! Tracks which storage slots each pending AA transaction depends on, so that
-//! when a block's First-Access-List (FAL) reports touched slots, the affected
-//! transactions can be efficiently identified and evicted from the mempool.
+//! when a block's state diff reports changed slots, the affected transactions
+//! can be efficiently identified and evicted from the mempool.
+//!
+//! # Wiring
+//!
+//! [`maintain_eip8130_invalidation`] is the main maintenance loop. It listens
+//! for [`CanonStateNotification`] events, extracts storage changes, and removes
+//! invalidated transactions from the pool. The shared
+//! [`Eip8130InvalidationIndex`] is populated by `OpTransactionValidator` during
+//! validation and read by the maintenance task.
+//!
+//! TODO: When Block Access Lists (BAL) become available, pass them to the
+//! index for mass invalidation instead of relying solely on state diffs.
 
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use alloy_primitives::{Address, B256, U256};
 use base_alloy_consensus::{
-    AccountChangeEntry, TxEip8130, nonce_slot, owner_config_slot,
-    ACCOUNT_CONFIG_ADDRESS, NONCE_MANAGER_ADDRESS,
+    AccountChangeEntry, ACCOUNT_CONFIG_ADDRESS, NONCE_MANAGER_ADDRESS, TxEip8130, nonce_slot,
+    owner_config_slot,
 };
+use futures::StreamExt;
+use parking_lot::RwLock;
+use reth_node_api::NodePrimitives;
+use reth_provider::CanonStateNotification;
+use reth_transaction_pool::TransactionPool;
+use tokio_stream::wrappers::BroadcastStream;
+use tracing::{debug, trace, warn};
 
 /// A (contract address, storage slot) pair that an AA transaction depends on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -76,6 +95,29 @@ impl Eip8130InvalidationIndex {
     /// Returns true if there are no tracked transactions.
     pub fn is_empty(&self) -> bool {
         self.tx_to_keys.is_empty()
+    }
+
+    /// Returns all tracked transaction hashes.
+    pub fn tracked_tx_hashes(&self) -> impl Iterator<Item = &B256> {
+        self.tx_to_keys.keys()
+    }
+
+    /// Removes all transactions whose hashes are NOT in the given live set.
+    ///
+    /// Returns the number of stale entries pruned.
+    pub fn prune_stale(&mut self, live: &HashSet<B256>) -> usize {
+        let stale: Vec<B256> = self
+            .tx_to_keys
+            .keys()
+            .filter(|hash| !live.contains(*hash))
+            .copied()
+            .collect();
+
+        let count = stale.len();
+        for hash in stale {
+            self.remove(&hash);
+        }
+        count
     }
 }
 
@@ -163,9 +205,118 @@ pub fn process_fal(
     fal: &[(Address, B256)],
     index: &Eip8130InvalidationIndex,
 ) -> HashSet<B256> {
-    let keys: Vec<InvalidationKey> =
-        fal.iter().map(|(address, slot)| InvalidationKey { address: *address, slot: *slot }).collect();
-    index.invalidated_by(&keys)
+    let mut result = HashSet::new();
+    for &(address, slot) in fal {
+        let key = InvalidationKey { address, slot };
+        if let Some(txs) = index.lookup(&key) {
+            result.extend(txs);
+        }
+    }
+    result
+}
+
+/// How often (in blocks) the stale-entry pruning pass runs.
+const PRUNE_INTERVAL_BLOCKS: u64 = 16;
+
+/// Maintenance loop that evicts EIP-8130 transactions from the pool when the
+/// storage slots they depend on change.
+///
+/// Listens to [`CanonStateNotification`] events and, for each committed block,
+/// extracts storage changes for the two AA system contracts
+/// ([`ACCOUNT_CONFIG_ADDRESS`] and [`NONCE_MANAGER_ADDRESS`]). Matching
+/// transactions are removed from both the pool and the shared invalidation
+/// index.
+pub async fn maintain_eip8130_invalidation<P, N>(
+    pool: P,
+    mut events: BroadcastStream<CanonStateNotification<N>>,
+    index: Arc<RwLock<Eip8130InvalidationIndex>>,
+) where
+    P: TransactionPool + 'static,
+    N: NodePrimitives,
+{
+    let mut blocks_since_prune: u64 = 0;
+
+    loop {
+        let notification = match events.next().await {
+            Some(Ok(notification)) => notification,
+            Some(Err(tokio_stream::wrappers::errors::BroadcastStreamRecvError::Lagged(n))) => {
+                warn!(
+                    missed = n,
+                    "canon state stream lagged, some blocks were not checked for AA invalidation"
+                );
+                continue;
+            }
+            None => break,
+        };
+
+        blocks_since_prune += 1;
+
+        // Fast path: skip everything when the index is empty.
+        if index.read().is_empty() {
+            continue;
+        }
+
+        let committed = notification.committed();
+        let execution_outcome = committed.execution_outcome();
+
+        let mut touched: Vec<(Address, B256)> = Vec::new();
+        for (addr, acc) in execution_outcome.bundle_accounts_iter() {
+            if addr != ACCOUNT_CONFIG_ADDRESS && addr != NONCE_MANAGER_ADDRESS {
+                continue;
+            }
+            for (key, _slot) in acc.storage.iter() {
+                touched.push((addr, B256::from(*key)));
+            }
+        }
+
+        if !touched.is_empty() {
+            // Single write-lock for both lookup + eviction to avoid
+            // read→drop→write lock churn.
+            let invalidated = {
+                let mut idx = index.write();
+                let invalidated = process_fal(&touched, &idx);
+                for tx_hash in &invalidated {
+                    idx.remove(tx_hash);
+                }
+                invalidated
+            };
+
+            if invalidated.is_empty() {
+                trace!(
+                    touched_slots = touched.len(),
+                    "AA storage changes did not match any pending transactions"
+                );
+            } else {
+                debug!(
+                    count = invalidated.len(),
+                    touched_slots = touched.len(),
+                    "evicting invalidated AA transactions"
+                );
+                pool.remove_transactions(invalidated.into_iter().collect());
+            }
+        }
+
+        // Periodically prune stale index entries for transactions the pool
+        // has already dropped (replaced, capacity eviction, expiry).
+        if blocks_since_prune >= PRUNE_INTERVAL_BLOCKS {
+            blocks_since_prune = 0;
+
+            let idx_guard = index.read();
+            if !idx_guard.is_empty() {
+                let live: HashSet<B256> = idx_guard
+                    .tracked_tx_hashes()
+                    .filter(|hash| pool.get(hash).is_some())
+                    .copied()
+                    .collect();
+                drop(idx_guard);
+
+                let pruned = index.write().prune_stale(&live);
+                if pruned > 0 {
+                    debug!(pruned, "pruned stale AA invalidation index entries");
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -289,6 +440,71 @@ mod tests {
         let fal = vec![(NONCE_MANAGER_ADDRESS, nonce_key_slot)];
         let invalidated = process_fal(&fal, &index);
         assert!(invalidated.contains(&tx_hash));
+    }
+
+    #[test]
+    fn prune_stale_removes_dead_entries() {
+        let mut index = Eip8130InvalidationIndex::default();
+        let from = Address::repeat_byte(0x42);
+
+        let tx1 = make_simple_tx(from, 0);
+        let hash1 = B256::repeat_byte(0x01);
+        index.insert(hash1, compute_invalidation_keys(&tx1, None, None));
+
+        let tx2 = make_simple_tx(from, 1);
+        let hash2 = B256::repeat_byte(0x02);
+        index.insert(hash2, compute_invalidation_keys(&tx2, None, None));
+
+        assert_eq!(index.len(), 2);
+
+        // Only hash1 is still "live" in the pool
+        let live: HashSet<B256> = [hash1].into_iter().collect();
+        let pruned = index.prune_stale(&live);
+
+        assert_eq!(pruned, 1);
+        assert_eq!(index.len(), 1);
+        assert!(index.tx_to_keys.contains_key(&hash1));
+        assert!(!index.tx_to_keys.contains_key(&hash2));
+    }
+
+    #[test]
+    fn prune_stale_no_op_when_all_live() {
+        let mut index = Eip8130InvalidationIndex::default();
+        let from = Address::repeat_byte(0x42);
+
+        let tx1 = make_simple_tx(from, 0);
+        let hash1 = B256::repeat_byte(0x01);
+        index.insert(hash1, compute_invalidation_keys(&tx1, None, None));
+
+        let live: HashSet<B256> = [hash1].into_iter().collect();
+        let pruned = index.prune_stale(&live);
+
+        assert_eq!(pruned, 0);
+        assert_eq!(index.len(), 1);
+    }
+
+    #[test]
+    fn prune_stale_cleans_key_to_txs_map() {
+        let mut index = Eip8130InvalidationIndex::default();
+        let from = Address::repeat_byte(0x42);
+
+        let tx = make_simple_tx(from, 0);
+        let hash = B256::repeat_byte(0x01);
+        let keys = compute_invalidation_keys(&tx, None, None);
+        index.insert(hash, keys);
+
+        let nonce_key = InvalidationKey {
+            address: NONCE_MANAGER_ADDRESS,
+            slot: nonce_slot(from, U256::ZERO),
+        };
+        assert!(index.lookup(&nonce_key).is_some());
+
+        let live: HashSet<B256> = HashSet::new();
+        let pruned = index.prune_stale(&live);
+
+        assert_eq!(pruned, 1);
+        assert!(index.is_empty());
+        assert!(index.lookup(&nonce_key).is_none());
     }
 
     #[test]

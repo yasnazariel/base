@@ -5,100 +5,168 @@ use alloy_eips::eip7702::SignedAuthorization;
 use alloy_network_primitives::TransactionBuilder7702;
 use alloy_primitives::{Address, Bytes, ChainId, Signature, TxKind, U256};
 use alloy_rpc_types_eth::{AccessList, TransactionInput, TransactionRequest};
-use base_alloy_consensus::{OpTxEnvelope, OpTypedTransaction, TxEip8130, TxDeposit};
+use base_alloy_consensus::{
+    AA_TX_TYPE_ID, AccountChangeEntry, Call, OpTxEnvelope, OpTypedTransaction, TxDeposit,
+    TxEip8130,
+};
 use serde::{Deserialize, Serialize};
 
 /// Builder for [`OpTypedTransaction`].
-#[derive(
-    Clone,
-    Debug,
-    Default,
-    PartialEq,
-    Eq,
-    Hash,
-    derive_more::From,
-    derive_more::AsRef,
-    derive_more::AsMut,
-    Serialize,
-    Deserialize,
-)]
-#[serde(transparent)]
-pub struct OpTransactionRequest(TransactionRequest);
+///
+/// Extends the standard [`TransactionRequest`] with EIP-8130 AA fields so that
+/// `eth_estimateGas` / `eth_call` can drive AA execution.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct OpTransactionRequest {
+    /// Standard Ethereum transaction request fields.
+    #[serde(flatten)]
+    inner: TransactionRequest,
+
+    /// EIP-8130 2D nonce key (uint192).
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "nonceKey")]
+    pub nonce_key: Option<U256>,
+
+    /// Block timestamp after which this transaction is invalid. `0` = no expiry.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "alloy_serde::quantity::opt"
+    )]
+    pub expiry: Option<u64>,
+
+    /// EIP-8130 payer address. `Address::ZERO` means self-pay.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payer: Option<Address>,
+
+    /// EIP-8130 sender authentication data.
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "senderAuth")]
+    pub sender_auth: Option<Bytes>,
+
+    /// EIP-8130 payer authentication data.
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "payerAuth")]
+    pub payer_auth: Option<Bytes>,
+
+    /// EIP-8130 phased call batches. Each inner `Vec` is one atomic phase.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub calls: Option<Vec<Vec<Call>>>,
+
+    /// EIP-8130 account creation and configuration change entries.
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "accountChanges")]
+    pub account_changes: Option<Vec<AccountChangeEntry>>,
+}
 
 impl OpTransactionRequest {
+    /// Creates a new request wrapping the given [`TransactionRequest`].
+    pub fn new(inner: TransactionRequest) -> Self {
+        Self { inner, ..Default::default() }
+    }
+
+    /// Returns `true` if this request targets an EIP-8130 AA transaction.
+    pub fn is_eip8130(&self) -> bool {
+        self.inner.transaction_type == Some(AA_TX_TYPE_ID)
+            || self.calls.is_some()
+            || self.account_changes.is_some()
+    }
+
+    /// Attempts to build a [`TxEip8130`] from the AA-specific fields.
+    pub fn build_eip8130(&self) -> Option<TxEip8130> {
+        if !self.is_eip8130() {
+            return None;
+        }
+        Some(TxEip8130 {
+            chain_id: self.inner.chain_id.unwrap_or_default(),
+            from: self.inner.from.unwrap_or_default(),
+            nonce_key: self.nonce_key.unwrap_or_default(),
+            nonce_sequence: self.inner.nonce.unwrap_or_default(),
+            expiry: self.expiry.unwrap_or_default(),
+            max_priority_fee_per_gas: self.inner.max_priority_fee_per_gas.unwrap_or_default(),
+            max_fee_per_gas: self.inner.max_fee_per_gas.unwrap_or_default(),
+            gas_limit: self.inner.gas.unwrap_or_default(),
+            authorization_list: self
+                .inner
+                .authorization_list
+                .clone()
+                .unwrap_or_default(),
+            account_changes: self.account_changes.clone().unwrap_or_default(),
+            calls: self.calls.clone().unwrap_or_default(),
+            payer: self.payer.unwrap_or_default(),
+            sender_auth: self.sender_auth.clone().unwrap_or_default(),
+            payer_auth: self.payer_auth.clone().unwrap_or_default(),
+        })
+    }
+
     /// Sets the `from` field in the call to the provided address
     #[inline]
     pub const fn from(mut self, from: Address) -> Self {
-        self.0.from = Some(from);
+        self.inner.from = Some(from);
         self
     }
 
     /// Sets the transactions type for the transactions.
     #[doc(alias = "tx_type")]
     pub const fn transaction_type(mut self, transaction_type: u8) -> Self {
-        self.0.transaction_type = Some(transaction_type);
+        self.inner.transaction_type = Some(transaction_type);
         self
     }
 
     /// Sets the gas limit for the transaction.
     pub const fn gas_limit(mut self, gas_limit: u64) -> Self {
-        self.0.gas = Some(gas_limit);
+        self.inner.gas = Some(gas_limit);
         self
     }
 
     /// Sets the nonce for the transaction.
     pub const fn nonce(mut self, nonce: u64) -> Self {
-        self.0.nonce = Some(nonce);
+        self.inner.nonce = Some(nonce);
         self
     }
 
     /// Sets the maximum fee per gas for the transaction.
     pub const fn max_fee_per_gas(mut self, max_fee_per_gas: u128) -> Self {
-        self.0.max_fee_per_gas = Some(max_fee_per_gas);
+        self.inner.max_fee_per_gas = Some(max_fee_per_gas);
         self
     }
 
     /// Sets the maximum priority fee per gas for the transaction.
     pub const fn max_priority_fee_per_gas(mut self, max_priority_fee_per_gas: u128) -> Self {
-        self.0.max_priority_fee_per_gas = Some(max_priority_fee_per_gas);
+        self.inner.max_priority_fee_per_gas = Some(max_priority_fee_per_gas);
         self
     }
 
     /// Sets the recipient address for the transaction.
     #[inline]
     pub const fn to(mut self, to: Address) -> Self {
-        self.0.to = Some(TxKind::Call(to));
+        self.inner.to = Some(TxKind::Call(to));
         self
     }
 
     /// Sets the value (amount) for the transaction.
     pub const fn value(mut self, value: U256) -> Self {
-        self.0.value = Some(value);
+        self.inner.value = Some(value);
         self
     }
 
     /// Sets the chain ID for the transaction.
     pub const fn chain_id(mut self, chain_id: ChainId) -> Self {
-        self.0.chain_id = Some(chain_id);
+        self.inner.chain_id = Some(chain_id);
         self
     }
 
     /// Sets the input data as deploy (CREATE) bytecode.
     pub fn deploy_code(mut self, code: impl Into<Bytes>) -> Self {
-        self.0.to = Some(TxKind::Create);
-        self.0.input.input = Some(code.into());
+        self.inner.to = Some(TxKind::Create);
+        self.inner.input.input = Some(code.into());
         self
     }
 
     /// Sets the access list for the transaction.
     pub fn access_list(mut self, access_list: AccessList) -> Self {
-        self.0.access_list = Some(access_list);
+        self.inner.access_list = Some(access_list);
         self
     }
 
     /// Sets the input data for the transaction.
     pub fn input(mut self, input: TransactionInput) -> Self {
-        self.0.input = input;
+        self.inner.input = input;
         self
     }
 
@@ -109,7 +177,12 @@ impl OpTransactionRequest {
     /// EIP-1559 transactions.
     #[allow(clippy::result_large_err)]
     pub fn build_typed_tx(self) -> Result<OpTypedTransaction, Self> {
-        let tx = self.0.build_typed_tx().map_err(Self)?;
+        if let Some(tx) = self.build_eip8130() {
+            return Ok(OpTypedTransaction::Eip8130(tx));
+        }
+
+        let Self { inner, .. } = self;
+        let tx = inner.build_typed_tx().map_err(|inner| Self { inner, ..Default::default() })?;
         match tx {
             TypedTransaction::Legacy(tx) => Ok(OpTypedTransaction::Legacy(tx)),
             TypedTransaction::Eip1559(tx) => Ok(OpTypedTransaction::Eip1559(tx)),
@@ -133,9 +206,27 @@ impl OpTransactionRequest {
     }
 }
 
+impl AsRef<TransactionRequest> for OpTransactionRequest {
+    fn as_ref(&self) -> &TransactionRequest {
+        &self.inner
+    }
+}
+
+impl AsMut<TransactionRequest> for OpTransactionRequest {
+    fn as_mut(&mut self) -> &mut TransactionRequest {
+        &mut self.inner
+    }
+}
+
+impl From<TransactionRequest> for OpTransactionRequest {
+    fn from(inner: TransactionRequest) -> Self {
+        Self::new(inner)
+    }
+}
+
 impl From<OpTransactionRequest> for TransactionRequest {
     fn from(value: OpTransactionRequest) -> Self {
-        value.0
+        value.inner
     }
 }
 
@@ -152,7 +243,7 @@ impl From<TxDeposit> for OpTransactionRequest {
             input,
         } = tx;
 
-        Self(TransactionRequest {
+        Self::new(TransactionRequest {
             from: Some(from),
             to: Some(to),
             value: Some(value),
@@ -172,9 +263,16 @@ impl From<Sealed<TxDeposit>> for OpTransactionRequest {
 impl From<TxEip8130> for OpTransactionRequest {
     fn from(tx: TxEip8130) -> Self {
         let from = (!tx.is_eoa()).then_some(tx.from);
+        let nonce_key = Some(tx.nonce_key);
+        let expiry = Some(tx.expiry);
+        let payer = Some(tx.payer);
+        let sender_auth = Some(tx.sender_auth.clone());
+        let payer_auth = Some(tx.payer_auth.clone());
+        let calls = Some(tx.calls.clone());
+        let account_changes = Some(tx.account_changes.clone());
         let mut inner = TransactionRequest::from_transaction(tx);
         inner.from = from;
-        Self(inner)
+        Self { inner, nonce_key, expiry, payer, sender_auth, payer_auth, calls, account_changes }
     }
 }
 
@@ -197,17 +295,17 @@ where
         let mut inner: TransactionRequest = value.strip_signature().into();
         inner.from = from;
 
-        Self(inner)
+        Self::new(inner)
     }
 }
 
 impl From<OpTypedTransaction> for OpTransactionRequest {
     fn from(tx: OpTypedTransaction) -> Self {
         match tx {
-            OpTypedTransaction::Legacy(tx) => Self(tx.into()),
-            OpTypedTransaction::Eip2930(tx) => Self(tx.into()),
-            OpTypedTransaction::Eip1559(tx) => Self(tx.into()),
-            OpTypedTransaction::Eip7702(tx) => Self(tx.into()),
+            OpTypedTransaction::Legacy(tx) => Self::new(tx.into()),
+            OpTypedTransaction::Eip2930(tx) => Self::new(tx.into()),
+            OpTypedTransaction::Eip1559(tx) => Self::new(tx.into()),
+            OpTypedTransaction::Eip7702(tx) => Self::new(tx.into()),
             OpTypedTransaction::Eip8130(tx) => tx.into(),
             OpTypedTransaction::Deposit(tx) => tx.into(),
         }

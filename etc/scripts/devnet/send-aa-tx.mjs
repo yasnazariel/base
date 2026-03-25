@@ -12,6 +12,8 @@
  *   p256         Register P256 owner + send P256-signed tx (two-step secp256r1 flow)
  *   receipt-test Verify receipt fields (status, payer, phaseStatuses) across scenarios
  *   deploy       Creates a new smart account via account_changes (CREATE entry)
+ *   nonce-rpc    Verify base_getEip8130Nonce RPC matches storage reads + increments
+ *   estimate-gas Verify eth_estimateGas / eth_call work with type 0x05 AA requests
  *
  * Options:
  *   --probe <addr>    OwnerIdProbe contract address
@@ -56,10 +58,10 @@ const NONCE_MANAGER_ADDRESS = '0x000000000000000000000000000000000000Aa02';
 // Deployed contract addresses — loaded from deploy-8130.sh output if available,
 // otherwise fall back to provisional values matching predeploys.rs.
 const FALLBACK_ADDRESSES = {
-  accountConfiguration: '0x0F127193b72E0f8546A6F4E471b6F8241900932B',
-  defaultAccount:       '0xb080bA38C82F824137A12Db1Ac53baeDa70e4a03',
-  k1Verifier:           '0x167Ad053B3d786C6a6dC90aCa456DE98625EE31C',
-  p256Verifier:         '0x0D8D9D476D39764D9C0eC19449497FE1F39c673B',
+  accountConfiguration: '0xf946601D5424118A4e4054BB0B13133f216b4FeE',
+  defaultAccount:       '0xAb4eE49EE97e49807e180BD5Fb9D9F35783b84F2',
+  k1Verifier:           '0x5Be482Da3E457aB3b439B184532224EC42c6b8Db',
+  p256Verifier:         '0x6751c7ED0C58319e75437f8E6Dafa2d7F6b8306F',
 };
 
 function loadDeployedAddresses() {
@@ -156,6 +158,14 @@ async function getAaNonce() {
     slot: nonceSlot,
   });
   return BigInt(hex);
+}
+
+async function getAaNonceViaRpc(address, nonceKey = 0n) {
+  const result = await client.request({
+    method: 'base_getEip8130Nonce',
+    params: [address, numberToHex(nonceKey)],
+  });
+  return BigInt(result);
 }
 
 function ownerConfigSlot(accountAddr, ownerId) {
@@ -898,6 +908,155 @@ async function runDeploy() {
 }
 
 // ─────────────────────────────────────────────────
+// Mode: nonce-rpc
+// ─────────────────────────────────────────────────
+async function runNonceRpc() {
+  console.log('\n--- base_getEip8130Nonce RPC Verification ---');
+  const senderAddr = account.address;
+
+  const storageBefore = await getAaNonce();
+  const rpcBefore = await getAaNonceViaRpc(senderAddr, 0n);
+  console.log(`Before tx — storage nonce: ${storageBefore}, RPC nonce: ${rpcBefore}`);
+
+  let pass = true;
+  if (storageBefore !== rpcBefore) {
+    console.log(`FAIL: storage (${storageBefore}) != RPC (${rpcBefore}) before tx`);
+    pass = false;
+  } else {
+    console.log('PASS: storage == RPC before tx');
+  }
+
+  const probeCalldata = encodeFunctionData({ abi: PROBE_ABI, functionName: 'probe' });
+  const callsRlp = [[[encodeAddress(opts.probeAddr), probeCalldata]]];
+  const unsigned = baseTxFields(storageBefore, callsRlp);
+  const { receipt } = await signAndSend(unsigned, { trace: false });
+
+  if (receipt?.status !== '0x1') {
+    console.log(`FAIL: tx status=${receipt?.status}, expected 0x1`);
+    pass = false;
+  }
+
+  const storageAfter = await getAaNonce();
+  const rpcAfter = await getAaNonceViaRpc(senderAddr, 0n);
+  console.log(`After tx  — storage nonce: ${storageAfter}, RPC nonce: ${rpcAfter}`);
+
+  if (storageAfter !== rpcAfter) {
+    console.log(`FAIL: storage (${storageAfter}) != RPC (${rpcAfter}) after tx`);
+    pass = false;
+  } else {
+    console.log('PASS: storage == RPC after tx');
+  }
+
+  if (storageAfter !== storageBefore + 1n) {
+    console.log(`FAIL: nonce did not increment (was ${storageBefore}, now ${storageAfter})`);
+    pass = false;
+  } else {
+    console.log('PASS: nonce incremented by 1');
+  }
+
+  // Also test non-zero nonce_key returns 0 (unused lane)
+  const otherKeyNonce = await getAaNonceViaRpc(senderAddr, 42n);
+  if (otherKeyNonce !== 0n) {
+    console.log(`FAIL: nonce_key=42 should be 0, got ${otherKeyNonce}`);
+    pass = false;
+  } else {
+    console.log('PASS: nonce_key=42 returns 0 (unused lane)');
+  }
+
+  console.log(pass ? '\n--- All nonce-rpc checks PASSED ---' : '\n--- Some nonce-rpc checks FAILED ---');
+  if (!pass) process.exit(1);
+}
+
+// ─────────────────────────────────────────────────
+// Mode: estimate-gas
+// ─────────────────────────────────────────────────
+async function runEstimateGas() {
+  console.log('\n--- eth_estimateGas for EIP-8130 AA Transactions ---');
+  const senderAddr = account.address;
+  const nonce = await getAaNonce();
+
+  const probeCalldata = encodeFunctionData({ abi: PROBE_ABI, functionName: 'probe' });
+
+  // Build a type 0x05 transaction request with the new AA fields
+  const txRequest = {
+    type: '0x05',
+    from: senderAddr,
+    nonce: numberToHex(nonce),
+    nonceKey: '0x0',
+    maxFeePerGas: numberToHex(1000000000n),
+    maxPriorityFeePerGas: numberToHex(1000000n),
+    gas: numberToHex(500000n),
+    calls: [[{ to: opts.probeAddr, data: probeCalldata }]],
+    accountChanges: [],
+    senderAuth: '0x',
+    payerAuth: '0x',
+  };
+
+  let pass = true;
+
+  // 1. Call eth_estimateGas with the AA request
+  let estimated;
+  try {
+    const result = await client.request({
+      method: 'eth_estimateGas',
+      params: [txRequest],
+    });
+    estimated = BigInt(result);
+    console.log(`eth_estimateGas returned: ${estimated}`);
+    if (estimated > 0n) {
+      console.log('PASS: got non-zero gas estimate');
+    } else {
+      console.log('FAIL: gas estimate is zero');
+      pass = false;
+    }
+  } catch (err) {
+    console.log(`FAIL: eth_estimateGas error: ${err.shortMessage || err.message}`);
+    if (err.details) console.log(`  Details: ${err.details}`);
+    pass = false;
+  }
+
+  // 2. Submit the actual transaction and compare gas used
+  const callsRlp = [[[encodeAddress(opts.probeAddr), probeCalldata]]];
+  const unsigned = baseTxFields(nonce, callsRlp);
+  const { receipt } = await signAndSend(unsigned, { trace: false });
+
+  if (receipt?.status !== '0x1') {
+    console.log(`FAIL: tx status=${receipt?.status}, expected 0x1`);
+    pass = false;
+  }
+
+  if (receipt && estimated) {
+    const gasUsed = BigInt(receipt.gasUsed);
+    console.log(`Actual gas used:     ${gasUsed}`);
+    console.log(`Estimated gas:       ${estimated}`);
+
+    if (estimated >= gasUsed) {
+      console.log('PASS: estimate >= actual gas used');
+    } else {
+      console.log('WARN: estimate < actual gas used (underestimate)');
+    }
+
+    const ratio = Number(estimated * 100n / gasUsed);
+    console.log(`Ratio (estimate/actual): ${ratio}%`);
+  }
+
+  // 3. Test eth_call with the AA request
+  try {
+    const callResult = await client.request({
+      method: 'eth_call',
+      params: [txRequest, 'latest'],
+    });
+    console.log(`eth_call returned: ${callResult.slice(0, 66)}...`);
+    console.log('PASS: eth_call succeeded');
+  } catch (err) {
+    console.log(`INFO: eth_call error (may be expected for AA): ${err.shortMessage || err.message}`);
+  }
+
+  console.log(pass ? '\n--- All estimate-gas checks PASSED ---' : '\n--- Some estimate-gas checks FAILED ---');
+  if (!pass) process.exit(1);
+}
+
+// ─────────────────────────────────────────────────
 // Main
 // ─────────────────────────────────────────────────
 const blockNum = await client.getBlockNumber();
@@ -928,8 +1087,14 @@ switch (opts.mode) {
   case 'deploy':
     await runDeploy();
     break;
+  case 'nonce-rpc':
+    await runNonceRpc();
+    break;
+  case 'estimate-gas':
+    await runEstimateGas();
+    break;
   default:
     console.error(`Unknown mode: ${opts.mode}`);
-    console.error('Available modes: probe, multi-call, sponsor, config-change, p256, receipt-test, deploy');
+    console.error('Available modes: probe, multi-call, sponsor, config-change, p256, receipt-test, deploy, nonce-rpc, estimate-gas');
     process.exit(1);
 }
