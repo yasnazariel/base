@@ -131,7 +131,8 @@ mod tests {
 
     #[test]
     fn admin_error_set_log_level_uses_invalid_params_code() {
-        let err = BatcherAdminApiServerImpl::admin_error(AdminError::SetLogLevel("bad".to_string()));
+        let err =
+            BatcherAdminApiServerImpl::admin_error(AdminError::SetLogLevel("bad".to_string()));
         assert_eq!(err.code(), -32602);
     }
 }

@@ -7,7 +7,8 @@ use std::sync::Arc;
 /// The setter receives the raw level string from the JSON-RPC caller and is
 /// responsible for parsing it and applying it to the global subscriber. An
 /// error from the setter is surfaced as [`AdminError::SetLogLevel`].
-pub type LogSetter = Arc<dyn Fn(&str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> + Send + Sync>;
+pub type LogSetter =
+    Arc<dyn Fn(&str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> + Send + Sync>;
 
 use tokio::sync::{mpsc, oneshot};
 
@@ -211,11 +212,12 @@ mod tests {
         use std::sync::atomic::{AtomicBool, Ordering};
         let called = Arc::new(AtomicBool::new(false));
         let called_clone = Arc::clone(&called);
-        let setter: Arc<dyn Fn(&str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> + Send + Sync> =
-            Arc::new(move |_level: &str| {
-                called_clone.store(true, Ordering::Relaxed);
-                Ok(())
-            });
+        let setter: Arc<
+            dyn Fn(&str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> + Send + Sync,
+        > = Arc::new(move |_level: &str| {
+            called_clone.store(true, Ordering::Relaxed);
+            Ok(())
+        });
         let (handle, _rx) = AdminHandle::channel();
         let handle = handle.with_log_setter(setter);
         handle.set_log_level("debug".to_string()).unwrap();
@@ -224,8 +226,9 @@ mod tests {
 
     #[test]
     fn set_log_level_returns_set_log_level_error_on_setter_failure() {
-        let setter: Arc<dyn Fn(&str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> + Send + Sync> =
-            Arc::new(|_: &str| Err("bad level".into()));
+        let setter: Arc<
+            dyn Fn(&str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> + Send + Sync,
+        > = Arc::new(|_: &str| Err("bad level".into()));
         let (handle, _rx) = AdminHandle::channel();
         let handle = handle.with_log_setter(setter);
         let err = handle.set_log_level("notavalidlevel".to_string()).unwrap_err();

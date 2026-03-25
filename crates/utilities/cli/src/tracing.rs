@@ -1,13 +1,11 @@
 //! Tracing subscriber initialization for CLI applications.
 
 use std::{
-    fmt,
-    io,
+    fmt, io,
     sync::{Arc, Once},
 };
 
-use tracing::Subscriber;
-use tracing::level_filters::LevelFilter;
+use tracing::{Subscriber, level_filters::LevelFilter};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{
     EnvFilter, Layer,
@@ -156,9 +154,7 @@ impl LogConfig {
                 )
                 .from_env_lossy()
                 .add_directive("discv5=error".parse().expect("valid directive"));
-            reload_handle
-                .reload(new_filter)
-                .map_err(|e| eyre::eyre!("reload failed: {}", e))
+            reload_handle.reload(new_filter).map_err(|e| eyre::eyre!("reload failed: {}", e))
         });
 
         Ok(LogReloadHandle { setter })

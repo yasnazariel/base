@@ -34,7 +34,8 @@ pub(crate) struct Cli {
 impl Cli {
     /// Run the batcher CLI.
     pub(crate) fn run(self) -> eyre::Result<()> {
-        let log_reload = LogConfig::from(self.args.logging.clone()).init_tracing_subscriber_with_reload()?;
+        let log_reload =
+            LogConfig::from(self.args.logging.clone()).init_tracing_subscriber_with_reload()?;
         base_cli_utils::MetricsConfig::from(self.args.metrics.clone()).init_with(|| {
             base_cli_utils::register_version_metrics!();
         })?;
