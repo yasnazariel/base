@@ -99,8 +99,12 @@ pub struct Eip8130Parts {
     /// Whether the tx includes a create entry (determines auto-delegation skip).
     pub has_create_entry: bool,
     /// Gas charged for sender + payer native signature verification.
-    /// Deducted from the gas limit before execution begins.
     pub verification_gas: u64,
+    /// Full AA intrinsic gas cost, replacing revm's standard 21,000 base.
+    /// Includes: AA_BASE_COST + calldata + auth SLOADs + verification gas +
+    /// nonce key (cold) + bytecode + config changes. Used by the handler's
+    /// `validate_initial_tx_gas` override.
+    pub aa_intrinsic_gas: u64,
     /// Auto-delegation code (`0xef0100 || DEFAULT_ACCOUNT_ADDRESS`) if applicable.
     /// Empty if auto-delegation is not needed.
     pub auto_delegation_code: Bytes,

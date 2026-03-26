@@ -16,8 +16,8 @@ use crate::{
     ACCOUNT_CONFIG_ADDRESS, AccountChangeEntry, OpTxEnvelope, OwnerScope, TxDeposit, TxEip8130,
     VERIFIER_CUSTOM, VerifierGasCosts, auto_delegation_code, config_change_sequence,
     config_change_writes, delegate_inner_verifier_type, derive_account_address,
-    encode_verify_call, owner_registration_writes, payer_signature_hash, sender_signature_hash,
-    total_verification_gas,
+    encode_verify_call, intrinsic_gas_with_costs, owner_registration_writes,
+    payer_signature_hash, sender_signature_hash, total_verification_gas,
 };
 #[cfg(feature = "native-verifier")]
 use crate::{
@@ -204,6 +204,9 @@ pub fn build_eip8130_parts_with_costs(
         None
     };
 
+    let aa_intrinsic_gas =
+        intrinsic_gas_with_costs(tx, false /* cold nonce — worst case */, tx.chain_id, costs);
+
     Eip8130Parts {
         sender,
         payer,
@@ -212,6 +215,7 @@ pub fn build_eip8130_parts_with_costs(
         nonce_key: tx.nonce_key,
         has_create_entry,
         verification_gas,
+        aa_intrinsic_gas,
         auto_delegation_code: auto_delegation_code(),
         pre_writes,
         sequence_updates,

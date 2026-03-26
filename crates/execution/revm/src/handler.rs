@@ -204,6 +204,24 @@ where
         self.mainnet.validate_env(evm)
     }
 
+    fn validate_initial_tx_gas(
+        &self,
+        evm: &mut Self::Evm,
+    ) -> Result<InitialAndFloorGas, Self::Error> {
+        if evm.ctx().tx().tx_type() == EIP8130_TX_TYPE {
+            let aa_gas = evm.ctx().tx().eip8130_parts().aa_intrinsic_gas;
+            if aa_gas > evm.ctx().tx().gas_limit() {
+                return Err(InvalidTransaction::CallGasCostMoreThanGasLimit {
+                    gas_limit: evm.ctx().tx().gas_limit(),
+                    initial_gas: aa_gas,
+                }
+                .into());
+            }
+            return Ok(InitialAndFloorGas::new(aa_gas, 0));
+        }
+        self.mainnet.validate_initial_tx_gas(evm)
+    }
+
     fn validate_against_state_and_deduct_caller(
         &self,
         evm: &mut Self::Evm,
@@ -395,11 +413,7 @@ where
         let eip8130 = evm.ctx().tx().eip8130_parts().clone();
         let sender = evm.ctx().tx().caller();
 
-        // Deduct native verifier gas (sender + payer signature verification).
-        // This cost is computed during `build_eip8130_parts` from the
-        // `VerifierGasCosts` table and is not covered by the mainnet handler's
-        // standard intrinsic gas calculation.
-        let mut gas_remaining = gas_limit.saturating_sub(eip8130.verification_gas);
+        let mut gas_remaining = gas_limit;
         let mut phase_results = Vec::with_capacity(eip8130.call_phases.len());
 
         // Ensure sender is loaded in the journal state for sub-call transfers.
@@ -1402,6 +1416,7 @@ mod tests {
         let sender = Address::from([0x11; 20]);
         let target = Address::from([0x22; 20]);
 
+        let aa_intrinsic = 25_000u64;
         let gas_limit = 100_000u64;
         let result = run_eip8130_tx(
             sender,
@@ -1409,6 +1424,7 @@ mod tests {
             Eip8130Parts {
                 sender,
                 payer: sender,
+                aa_intrinsic_gas: aa_intrinsic,
                 call_phases: vec![vec![Eip8130Call {
                     to: target,
                     data: Bytes::new(),
@@ -1419,7 +1435,7 @@ mod tests {
             gas_limit,
         );
         assert!(result.is_success());
-        assert!(result.gas_used() > 0, "some gas should be spent");
+        assert!(result.gas_used() >= aa_intrinsic, "at least intrinsic gas should be charged");
         assert!(result.gas_used() <= gas_limit, "cannot spend more than limit");
     }
 

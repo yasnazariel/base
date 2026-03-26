@@ -60,12 +60,12 @@ const NONCE_MANAGER_ADDRESS = '0x000000000000000000000000000000000000Aa02';
 // Deployed contract addresses — loaded from deploy-8130.sh output if available,
 // otherwise fall back to provisional values matching predeploys.rs.
 const FALLBACK_ADDRESSES = {
-  accountConfiguration: '0xf946601D5424118A4e4054BB0B13133f216b4FeE',
-  defaultAccount:       '0xAb4eE49EE97e49807e180BD5Fb9D9F35783b84F2',
-  k1Verifier:           '0x5Be482Da3E457aB3b439B184532224EC42c6b8Db',
-  p256Verifier:         '0x6751c7ED0C58319e75437f8E6Dafa2d7F6b8306F',
-  webAuthnVerifier:     '0x3572bb3F611a40DDcA70e5b55Cc797D58357AD44',
-  delegateVerifier:     '0xc758A89C53542164aaB7f6439e8c8cAcf628fF62',
+  accountConfiguration: '0x0F127193b72E0f8546A6F4E471b6F8241900932B',
+  defaultAccount:       '0xb080bA38C82F824137A12Db1Ac53baeDa70e4a03',
+  k1Verifier:           '0x167Ad053B3d786C6a6dC90aCa456DE98625EE31C',
+  p256Verifier:         '0x0D8D9D476D39764D9C0eC19449497FE1F39c673B',
+  webAuthnVerifier:     '0x895650b7dd7C5Bd1c31006A7790b353A8dB73F7D',
+  delegateVerifier:     '0x1Bc0F6e1496420590fD4981Dd7b844525F32B1D1',
 };
 
 function loadDeployedAddresses() {
