@@ -42,7 +42,7 @@ use super::core::{DriverConfig, RecoveredState};
 use crate::{
     constants::{NO_PARENT_INDEX, PROPOSAL_TIMEOUT, RECOVERY_SCAN_CONCURRENCY},
     error::ProposerError,
-    metrics::Metrics as ProposerMetrics,
+    Metrics,
     output_proposer::{OutputProposer, is_game_already_exists},
 };
 
@@ -820,7 +820,7 @@ where
                     // this proof so the pipeline re-proves with a (potentially
                     // different, registered) enclave on the next attempt.
                     warn!(target_block, "TEE signer is not valid on-chain, discarding proof");
-                    proposer_metrics::Metrics::tee_signer_invalid_total().increment(1);
+                    Metrics::tee_signer_invalid_total().increment(1);
                     return Err(SubmitAction::Discard(ProposerError::Internal(
                         "TEE signer not registered on-chain".into(),
                     )));
@@ -860,7 +860,7 @@ where
         {
             Ok(Ok(())) => {
                 info!(target_block, "Dispute game created successfully");
-                proposer_metrics::Metrics::l2_output_proposals_total().increment(1);
+                Metrics::l2_output_proposals_total().increment(1);
                 Ok(())
             }
             Ok(Err(e)) => {

@@ -21,9 +21,6 @@ base_metrics::define_metrics! {
     #[describe("Duration of the sequencer block building seal task")]
     sequencer_block_building_seal_task_duration: gauge,
 
-    #[describe("Duration of the sequencer conductor commitment")]
-    sequencer_conductor_commitment_duration: gauge,
-
     #[describe("Total count of sequenced transactions")]
     sequencer_total_transactions_sequenced: counter,
 

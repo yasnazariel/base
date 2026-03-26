@@ -5,41 +5,41 @@ base_metrics::define_metrics! {
 
     #[describe("Number of cache hits in chain provider")]
     #[label("cache", cache)]
-    chain_cache_hits: gauge,
+    chain_cache_hits: counter,
 
     #[describe("Number of cache misses in chain provider")]
     #[label("cache", cache)]
-    chain_cache_misses: gauge,
+    chain_cache_misses: counter,
 
     #[describe("Number of RPC calls made by chain provider")]
     #[label("method", method)]
-    chain_rpc_calls: gauge,
+    chain_rpc_calls: counter,
 
     #[describe("Number of RPC errors in chain provider")]
     #[label("method", method)]
-    chain_rpc_errors: gauge,
+    chain_rpc_errors: counter,
 
     #[describe("Number of requests made to beacon client")]
     #[label("method", method)]
-    beacon_requests: gauge,
+    beacon_requests: counter,
 
     #[describe("Number of errors in beacon client requests")]
     #[label("method", method)]
-    beacon_errors: gauge,
+    beacon_errors: counter,
 
     #[describe("Number of requests made to L2 chain provider")]
     #[label("method", method)]
-    l2_chain_requests: gauge,
+    l2_chain_requests: counter,
 
     #[describe("Number of errors in L2 chain provider requests")]
     #[label("method", method)]
-    l2_chain_errors: gauge,
+    l2_chain_errors: counter,
 
     #[describe("Number of blob sidecar fetches")]
-    blob_fetches: gauge,
+    blob_fetches: counter,
 
     #[describe("Number of blob sidecar fetch errors")]
-    blob_fetch_errors: gauge,
+    blob_fetch_errors: counter,
 
     #[describe("Duration of provider requests in seconds")]
     #[label("method", method)]

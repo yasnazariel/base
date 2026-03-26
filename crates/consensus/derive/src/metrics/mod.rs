@@ -44,7 +44,7 @@ base_metrics::define_metrics! {
 
     #[describe("The read batches")]
     #[label("type", batch_type)]
-    read_batches: gauge,
+    read_batches: counter,
 
     #[describe("The total number of pipeline steps on the derivation pipeline")]
     pipeline_steps: gauge,
@@ -74,7 +74,7 @@ base_metrics::define_metrics! {
 
     #[describe("The validity of the batch being processed")]
     #[label("validity", validity)]
-    batch_validity: gauge,
+    batch_validity: counter,
 
     #[describe("The time it takes to validate a span batch")]
     check_batch_prefix_duration: histogram,

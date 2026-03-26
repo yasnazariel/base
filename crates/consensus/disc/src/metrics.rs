@@ -5,10 +5,10 @@ base_metrics::define_metrics! {
 
     #[describe("Events received by the discv5 service")]
     #[label("type", event_type)]
-    discovery_events: gauge,
+    discovery_events: counter,
 
     #[describe("Requests made to find a node through the discv5 peer discovery service")]
-    find_node_requests: gauge,
+    find_node_requests: counter,
 
     #[describe("Observations of elapsed time to store ENRs in the on-disk bootstore")]
     enr_store_time: histogram,
