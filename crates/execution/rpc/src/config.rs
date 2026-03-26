@@ -41,11 +41,7 @@ fn sanitize_system_contracts_for_fork(
         SystemContract::HistoryStorage => {
             chain_spec.is_isthmus_active_at_timestamp(activation_time)
         }
-        // Base does not support L1-style deposit, consolidation, or withdrawal request contracts.
-        SystemContract::ConsolidationRequestPredeploy
-        | SystemContract::DepositContract
-        | SystemContract::WithdrawalRequestPredeploy => false,
-        // Reject any unknown/future system contracts by default.
+        // Base only supports BeaconRoots and HistoryStorage; reject everything else.
         _ => false,
     });
 }

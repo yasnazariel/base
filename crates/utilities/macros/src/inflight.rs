@@ -55,6 +55,13 @@ impl InflightCounter {
 }
 
 #[cfg(not(feature = "metrics"))]
+impl Default for InflightCounter {
+    fn default() -> Self {
+        Self
+    }
+}
+
+#[cfg(not(feature = "metrics"))]
 impl InflightCounter {
     /// Creates a no-op guard.
     #[inline]
