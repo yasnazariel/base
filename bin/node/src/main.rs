@@ -28,6 +28,19 @@ fn main() {
     let cli = base_cli_utils::parse_cli!(NodeCli);
 
     cli.run(|builder, args| async move {
+        // Register metric descriptions now that the Prometheus recorder is installed.
+        base_flashblocks::Metrics::describe();
+        base_metering::Metrics::describe();
+        base_txpool_tracing::Metrics::describe();
+        base_execution_trie::BlockMetrics::describe();
+        base_execution_trie::OperationMetrics::describe();
+        base_execution_trie::PrunerMetrics::describe();
+        base_execution_rpc::SequencerMetrics::describe();
+        base_execution_rpc::EthApiExtMetrics::describe();
+        base_execution_rpc::DebugApiExtRpcMetrics::describe();
+        base_txpool::ConsumerMetrics::describe();
+        base_txpool::BuilderApiMetrics::describe();
+
         let mut runner = BaseNodeRunner::new(args.rollup_args.clone());
 
         // Create flashblocks config first so we can share its state with metering

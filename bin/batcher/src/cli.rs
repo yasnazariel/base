@@ -36,6 +36,7 @@ impl Cli {
     pub(crate) fn run(self) -> eyre::Result<()> {
         LogConfig::from(self.args.logging.clone()).init_tracing_subscriber()?;
         base_cli_utils::MetricsConfig::from(self.args.metrics.clone()).init_with(|| {
+            base_batcher_encoder::BatcherMetrics::describe();
             base_cli_utils::register_version_metrics!();
         })?;
         RuntimeManager::run_until_ctrl_c(self.args.exec())

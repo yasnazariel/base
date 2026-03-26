@@ -47,7 +47,9 @@ async fn main() -> anyhow::Result<()> {
     let metrics_addr = cli.metrics.addr;
     let metrics_port = cli.metrics.port;
     base_cli_utils::MetricsConfig::from(cli.metrics)
-        .init()
+        .init_with(|| {
+            ingress_rpc_lib::Metrics::describe();
+        })
         .expect("Failed to install Prometheus exporter");
 
     info!(

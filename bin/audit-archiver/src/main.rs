@@ -75,7 +75,9 @@ async fn main() -> Result<()> {
         .expect("Failed to initialize tracing");
 
     base_cli_utils::MetricsConfig::from(args.metrics.clone())
-        .init()
+        .init_with(|| {
+            audit_archiver_lib::Metrics::describe();
+        })
         .expect("Failed to install Prometheus exporter");
 
     info!(

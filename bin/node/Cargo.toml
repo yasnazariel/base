@@ -19,10 +19,13 @@ workspace = true
 # workspace
 base-cli-utils.workspace = true
 base-txpool-rpc.workspace = true
+base-txpool.workspace = true
 base-flashblocks = { workspace = true, features = ["metrics"] }
 base-node-runner.workspace = true
 base-tx-forwarding.workspace = true
+base-execution-rpc.workspace = true
 base-metering = { workspace = true, features = ["metrics"] }
+base-execution-trie = { workspace = true, features = ["metrics"] }
 base-txpool-tracing = { workspace = true, features = ["metrics"] }
 base-flashblocks-node.workspace = true
 base-proofs-extension.workspace = true

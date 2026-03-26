@@ -32,7 +32,8 @@ pub use block_metrics::BlockMetrics;
 pub mod metrics;
 #[cfg(feature = "metrics")]
 pub use metrics::{
-    OpProofsHashedAccountCursor, OpProofsHashedStorageCursor, OpProofsStorage, OpProofsTrieCursor,
+    OpProofsHashedAccountCursor, OpProofsHashedStorageCursor, OpProofsStorage,
+    OpProofsTrieCursor, OperationMetrics,
 };
 
 #[cfg(not(feature = "metrics"))]
@@ -58,5 +59,5 @@ pub use error::{OpProofsStorageError, OpProofsStorageResult};
 mod prune;
 pub use prune::{
     OpProofStoragePruner, OpProofStoragePrunerResult, OpProofStoragePrunerTask, PrunerError,
-    PrunerOutput,
+    PrunerMetrics, PrunerOutput,
 };

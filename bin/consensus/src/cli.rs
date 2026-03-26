@@ -143,6 +143,7 @@ impl Follow {
             base_consensus_derive::Metrics::describe();
             base_consensus_derive::GenesisMetrics::describe();
             base_consensus_providers::Metrics::describe();
+            base_consensus_rpc::Metrics::describe();
             base_cli_utils::register_version_metrics!();
         })?;
 
@@ -310,6 +311,7 @@ impl Node {
             base_consensus_derive::Metrics::describe();
             base_consensus_derive::GenesisMetrics::describe();
             base_consensus_providers::Metrics::describe();
+            base_consensus_rpc::Metrics::describe();
             base_cli_utils::register_version_metrics!();
         })?;
 

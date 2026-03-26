@@ -186,7 +186,8 @@ async fn main() {
             builder = builder.add_global_label(key, value);
         }
 
-        builder.install().expect("failed to setup Prometheus endpoint")
+        builder.install().expect("failed to setup Prometheus endpoint");
+        websocket_proxy::Metrics::describe();
     }
 
     // Validate that we have at least one upstream URI

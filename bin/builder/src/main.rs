@@ -25,6 +25,8 @@ fn main() {
     let cli = base_cli_utils::parse_cli!(BuilderCli);
 
     cli.run(|builder, builder_args| async move {
+        base_builder_publish::PublishingMetrics::describe();
+
         let rollup_args = builder_args.rollup_args.clone();
 
         let metering_provider: base_builder_core::SharedMeteringProvider =

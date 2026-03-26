@@ -35,6 +35,7 @@ base-consensus-derive = { workspace = true, features = ["metrics"] }
 base-consensus-engine = { workspace = true, features = ["metrics"] }
 base-consensus-gossip = { workspace = true, features = ["metrics"] }
 base-consensus-providers = { workspace = true, features = ["metrics"] }
+base-consensus-rpc = { workspace = true, features = ["metrics"] }
 
 # cli
 strum.workspace = true

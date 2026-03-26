@@ -205,7 +205,7 @@ macro_rules! __define_metric_fn {
         #[cfg(feature = "metrics")]
         #[allow(unused)]
         pub fn $field($lp1: impl Into<::metrics::SharedString>, $lp2: impl Into<::metrics::SharedString>) -> ::metrics::$ret {
-            ::metrics::$macro_name!(concat!($scope, "_", stringify!($field)), $lk1 => $lp1.into(), $lk2 => $lp2.into())
+            ::metrics::$macro_name!(concat!($scope, ".", stringify!($field)), $lk1 => $lp1.into(), $lk2 => $lp2.into())
         }
 
         #[cfg(not(feature = "metrics"))]
@@ -220,7 +220,7 @@ macro_rules! __define_metric_fn {
         #[cfg(feature = "metrics")]
         #[allow(unused)]
         pub fn $field($lp: impl Into<::metrics::SharedString>) -> ::metrics::$ret {
-            ::metrics::$macro_name!(concat!($scope, "_", stringify!($field)), $lk => $lp.into())
+            ::metrics::$macro_name!(concat!($scope, ".", stringify!($field)), $lk => $lp.into())
         }
 
         #[cfg(not(feature = "metrics"))]
@@ -235,7 +235,7 @@ macro_rules! __define_metric_fn {
         #[cfg(feature = "metrics")]
         #[allow(unused)]
         pub fn $field() -> ::metrics::$ret {
-            ::metrics::$macro_name!(concat!($scope, "_", stringify!($field)))
+            ::metrics::$macro_name!(concat!($scope, ".", stringify!($field)))
         }
 
         #[cfg(not(feature = "metrics"))]
@@ -252,13 +252,13 @@ macro_rules! __define_metric_fn {
 #[macro_export]
 macro_rules! __describe_metric {
     ($scope:expr, $field:ident, counter, $desc:expr) => {
-        ::metrics::describe_counter!(concat!($scope, "_", stringify!($field)), $desc);
+        ::metrics::describe_counter!(concat!($scope, ".", stringify!($field)), $desc);
     };
     ($scope:expr, $field:ident, gauge, $desc:expr) => {
-        ::metrics::describe_gauge!(concat!($scope, "_", stringify!($field)), $desc);
+        ::metrics::describe_gauge!(concat!($scope, ".", stringify!($field)), $desc);
     };
     ($scope:expr, $field:ident, histogram, $desc:expr) => {
-        ::metrics::describe_histogram!(concat!($scope, "_", stringify!($field)), $desc);
+        ::metrics::describe_histogram!(concat!($scope, ".", stringify!($field)), $desc);
     };
     // No description — skip.
     ($scope:expr, $field:ident, $kind:ident) => {};

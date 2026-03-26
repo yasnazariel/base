@@ -62,7 +62,10 @@ impl ChallengerService {
         // ── 2. Metrics recorder (if enabled) ─────────────────────────────────
         config
             .metrics
-            .init()
+            .init_with(|| {
+                ChallengerMetrics::describe();
+                base_cli_utils::register_version_metrics!();
+            })
             .map_err(|e| eyre::eyre!("failed to install Prometheus recorder: {e}"))?;
 
         ChallengerMetrics::record_startup(env!("CARGO_PKG_VERSION"));

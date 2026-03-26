@@ -5,7 +5,7 @@ mod pruner;
 pub use pruner::OpProofStoragePruner;
 
 mod metrics;
-pub(crate) use metrics::PrunerMetrics;
+pub use metrics::PrunerMetrics;
 
 mod task;
 pub use task::OpProofStoragePrunerTask;

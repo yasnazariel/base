@@ -317,6 +317,7 @@ impl Cli {
         // ── 2. Metrics recorder (if enabled) ─────────────────────────────────
         metrics_config
             .init_with(|| {
+                RegistrarMetrics::describe();
                 base_cli_utils::register_version_metrics!();
                 RegistrarMetrics::record_startup(env!("CARGO_PKG_VERSION"));
             })
