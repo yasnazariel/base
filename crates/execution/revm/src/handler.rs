@@ -324,20 +324,22 @@ where
 
             journal.load_account(NONCE_MANAGER_ADDRESS)?;
             let current_seq = journal.sload(NONCE_MANAGER_ADDRESS, slot)?.data;
-            let expected = U256::from(nonce_sequence);
-            if current_seq != expected {
-                if current_seq > expected {
-                    return Err(InvalidTransaction::NonceTooLow {
-                        tx: nonce_sequence,
-                        state: current_seq.as_limbs()[0],
+            if !cfg.is_nonce_check_disabled() {
+                let expected = U256::from(nonce_sequence);
+                if current_seq != expected {
+                    if current_seq > expected {
+                        return Err(InvalidTransaction::NonceTooLow {
+                            tx: nonce_sequence,
+                            state: current_seq.as_limbs()[0],
+                        }
+                        .into());
+                    } else {
+                        return Err(InvalidTransaction::NonceTooHigh {
+                            tx: nonce_sequence,
+                            state: current_seq.as_limbs()[0],
+                        }
+                        .into());
                     }
-                    .into());
-                } else {
-                    return Err(InvalidTransaction::NonceTooHigh {
-                        tx: nonce_sequence,
-                        state: current_seq.as_limbs()[0],
-                    }
-                    .into());
                 }
             }
             journal.sstore(NONCE_MANAGER_ADDRESS, slot, U256::from(nonce_sequence + 1))?;
