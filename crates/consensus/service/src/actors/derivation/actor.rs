@@ -15,10 +15,9 @@ use tokio::{select, sync::mpsc};
 use tokio_util::sync::{CancellationToken, WaitForCancellationFuture};
 
 use crate::{
-    Metrics,
     CancellableContext, DerivationActorRequest, DerivationEngineClient, DerivationState,
-    DerivationStateMachine, DerivationStateTransitionError, DerivationStateUpdate, NodeActor,
-    actors::derivation::L2Finalizer,
+    DerivationStateMachine, DerivationStateTransitionError, DerivationStateUpdate, Metrics,
+    NodeActor, actors::derivation::L2Finalizer,
 };
 
 /// The [`NodeActor`] for the derivation sub-routine.
