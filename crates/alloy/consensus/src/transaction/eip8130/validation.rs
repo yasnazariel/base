@@ -19,19 +19,6 @@ use super::{
     tx::TxEip8130,
 };
 
-/// Result of a successful AA transaction validation.
-#[derive(Debug, Clone)]
-pub struct ValidationResult {
-    /// The resolved sender address.
-    pub sender: Address,
-    /// The authenticated owner ID for the sender.
-    pub sender_owner_id: B256,
-    /// The effective payer (sender if self-pay).
-    pub payer: Address,
-    /// The authenticated owner ID for the payer (same as sender for self-pay).
-    pub payer_owner_id: Option<B256>,
-}
-
 /// Errors that can occur during AA transaction validation.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ValidationError {

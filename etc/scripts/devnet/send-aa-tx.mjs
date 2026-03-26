@@ -10,6 +10,7 @@
  *   sponsor      Sponsored tx: separate payer signs with AA_PAYER_TYPE, verifies gas billing
  *   config-change  Authorize a new owner via ConfigChangeEntry, verify storage + sequence
  *   p256         Register P256 owner + send P256-signed tx (two-step secp256r1 flow)
+ *   webauthn     Register WebAuthn owner + send WebAuthn-signed tx (P256 + assertion envelope)
  *   receipt-test Verify receipt fields (status, payer, phaseStatuses) across scenarios
  *   deploy       Creates a new smart account via account_changes (CREATE entry)
  *   nonce-rpc    Verify base_getEip8130Nonce RPC matches storage reads + increments
@@ -43,6 +44,7 @@ import { privateKeyToAccount } from 'viem/accounts';
 import { p256 as p256curve } from '@noble/curves/p256';
 
 import { readFileSync } from 'fs';
+import { createHash } from 'crypto';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -62,6 +64,8 @@ const FALLBACK_ADDRESSES = {
   defaultAccount:       '0xAb4eE49EE97e49807e180BD5Fb9D9F35783b84F2',
   k1Verifier:           '0x5Be482Da3E457aB3b439B184532224EC42c6b8Db',
   p256Verifier:         '0x6751c7ED0C58319e75437f8E6Dafa2d7F6b8306F',
+  webAuthnVerifier:     '0x3572bb3F611a40DDcA70e5b55Cc797D58357AD44',
+  delegateVerifier:     '0xc758A89C53542164aaB7f6439e8c8cAcf628fF62',
 };
 
 function loadDeployedAddresses() {
@@ -79,10 +83,12 @@ function loadDeployedAddresses() {
 }
 
 const DEPLOYED = loadDeployedAddresses();
-const ACCOUNT_CONFIG_ADDRESS = DEPLOYED.accountConfiguration;
-const DEFAULT_ACCOUNT_ADDR   = DEPLOYED.defaultAccount;
-const K1_VERIFIER_ADDRESS    = DEPLOYED.k1Verifier;
-const P256_VERIFIER_ADDRESS  = DEPLOYED.p256Verifier;
+const ACCOUNT_CONFIG_ADDRESS  = DEPLOYED.accountConfiguration;
+const DEFAULT_ACCOUNT_ADDR    = DEPLOYED.defaultAccount;
+const K1_VERIFIER_ADDRESS     = DEPLOYED.k1Verifier;
+const P256_VERIFIER_ADDRESS   = DEPLOYED.p256Verifier;
+const WEBAUTHN_VERIFIER_ADDRESS = DEPLOYED.webAuthnVerifier;
+const DELEGATE_VERIFIER_ADDRESS = DEPLOYED.delegateVerifier;
 
 const SENDER_KEY = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d';
 const PAYER_KEY  = '0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a';
@@ -702,6 +708,160 @@ async function runP256() {
 }
 
 // ─────────────────────────────────────────────────
+// Mode: webauthn
+// ─────────────────────────────────────────────────
+
+function sha256(data) {
+  return createHash('sha256').update(data).digest();
+}
+
+function base64UrlEncode(buf) {
+  return Buffer.from(buf)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+async function runWebAuthn() {
+  console.log('\n--- WebAuthn (P256) Verification E2E ---');
+
+  const p256PrivateKey = p256curve.utils.randomPrivateKey();
+  const p256PubUncompressed = p256curve.getPublicKey(p256PrivateKey, false);
+  const p256PubRaw = p256PubUncompressed.slice(1);
+  const p256OwnerId = keccak256(toHex(p256PubRaw));
+
+  console.log(`P256 public key:     ${toHex(p256PubRaw).slice(0, 40)}...`);
+  console.log(`P256 owner ID:       ${p256OwnerId}`);
+  console.log(`WebAuthn verifier:   ${WEBAUTHN_VERIFIER_ADDRESS}`);
+
+  // Step 1: Register WebAuthn owner via config change (K1-signed)
+  console.log('\n--- Step 1: Register WebAuthn owner ---');
+
+  const nonce1 = await getAaNonce();
+  const seqSlotHash = sequenceSlot(account.address);
+  const packedSeq = await client.getStorageAt({
+    address: ACCOUNT_CONFIG_ADDRESS,
+    slot: seqSlotHash,
+  });
+  const currentSeq = BigInt(packedSeq || '0x0') & ((1n << 64n) - 1n);
+
+  const operation = {
+    opType: 1,
+    verifier: WEBAUTHN_VERIFIER_ADDRESS,
+    ownerId: p256OwnerId,
+    scope: 0,
+  };
+
+  const digest = configChangeDigest(account.address, 0n, currentSeq, [operation]);
+  const authSig = await account.sign({ hash: digest });
+  const authorizerAuth = concat([toHex(0x01, { size: 1 }), authSig]);
+
+  const configChangeRlp = [
+    toHex(0x01, { size: 1 }),
+    encodeUint(0n),
+    encodeUint(currentSeq),
+    [
+      [
+        toHex(0x01, { size: 1 }),
+        encodeAddress(WEBAUTHN_VERIFIER_ADDRESS),
+        p256OwnerId,
+        '0x',
+      ],
+    ],
+    authorizerAuth,
+  ];
+
+  const setupCalldata = encodeFunctionData({ abi: PROBE_ABI, functionName: 'probe' });
+  const setupCallsRlp = [
+    [[encodeAddress(opts.probeAddr), setupCalldata]],
+  ];
+
+  const unsigned1 = baseTxFields(nonce1, setupCallsRlp, [configChangeRlp]);
+  const { receipt: receipt1 } = await signAndSend(unsigned1, { trace: false });
+  console.log(`Config change tx status: ${receipt1?.status}`);
+
+  const ownerSlotHash = ownerConfigSlot(account.address, p256OwnerId);
+  const ownerConfig = await client.getStorageAt({
+    address: ACCOUNT_CONFIG_ADDRESS,
+    slot: ownerSlotHash,
+  });
+  const verifierHex = '0x' + ownerConfig.slice(-40);
+  console.log(`Owner config verifier: ${verifierHex}`);
+
+  if (verifierHex.toLowerCase() !== WEBAUTHN_VERIFIER_ADDRESS.toLowerCase()) {
+    console.log('FAILED: WebAuthn verifier not registered correctly');
+    return;
+  }
+  console.log('SUCCESS: WebAuthn owner registered in AccountConfig');
+
+  // Step 2: Send AA tx signed with WebAuthn P256 assertion
+  console.log('\n--- Step 2: Send WebAuthn-signed AA tx ---');
+
+  const nonce2 = await getAaNonce();
+  const probeCalldata = encodeFunctionData({ abi: PROBE_ABI, functionName: 'probe' });
+  const callsRlp = [
+    [[encodeAddress(opts.probeAddr), probeCalldata]],
+  ];
+
+  const webauthnSenderAuth = (sigHash) => {
+    const challengeBytes = Buffer.from(sigHash.slice(2), 'hex');
+    const challenge = base64UrlEncode(challengeBytes);
+
+    const rpIdHash = sha256(Buffer.from('localhost'));
+    const flags = Buffer.from([0x05]); // UP + UV
+    const signCount = Buffer.alloc(4);
+    const authenticatorData = Buffer.concat([rpIdHash, flags, signCount]);
+
+    const clientDataJSON = JSON.stringify({
+      type: 'webauthn.get',
+      challenge,
+      origin: 'http://localhost:3000',
+      crossOrigin: false,
+    });
+    const clientDataBytes = Buffer.from(clientDataJSON, 'utf-8');
+
+    const clientDataHash = sha256(clientDataBytes);
+    const signedData = Buffer.concat([authenticatorData, clientDataHash]);
+    const signedDataHash = sha256(signedData);
+
+    const sig = p256curve.sign(signedDataHash, p256PrivateKey, { lowS: true });
+    const rBytes = sig.r.toString(16).padStart(64, '0');
+    const sBytes = sig.s.toString(16).padStart(64, '0');
+
+    const clientDataLenBuf = Buffer.alloc(4);
+    clientDataLenBuf.writeUInt32BE(clientDataBytes.length);
+
+    // Envelope: pubKey(64) || authenticatorData(37) || clientDataJSONLen(4, BE) || clientDataJSON || sig(64)
+    const envelope = Buffer.concat([
+      Buffer.from(p256PubRaw),
+      authenticatorData,
+      clientDataLenBuf,
+      clientDataBytes,
+      Buffer.from(rBytes + sBytes, 'hex'),
+    ]);
+
+    return concat([
+      toHex(0x03, { size: 1 }),
+      toHex(envelope),
+    ]);
+  };
+
+  const unsigned2 = baseTxFields(nonce2, callsRlp);
+  const { receipt: receipt2 } = await signAndSend(unsigned2, {
+    trace: opts.trace,
+    customSenderAuth: webauthnSenderAuth,
+  });
+
+  console.log('\n--- WebAuthn Verification Results ---');
+  if (receipt2?.status === '0x1') {
+    console.log('SUCCESS: WebAuthn-signed AA transaction executed!');
+  } else {
+    console.log(`FAILED: status=${receipt2?.status || 'unknown'}`);
+  }
+}
+
+// ─────────────────────────────────────────────────
 // Mode: receipt-test
 // ─────────────────────────────────────────────────
 async function runReceiptTest() {
@@ -1081,6 +1241,9 @@ switch (opts.mode) {
   case 'p256':
     await runP256();
     break;
+  case 'webauthn':
+    await runWebAuthn();
+    break;
   case 'receipt-test':
     await runReceiptTest();
     break;
@@ -1095,6 +1258,6 @@ switch (opts.mode) {
     break;
   default:
     console.error(`Unknown mode: ${opts.mode}`);
-    console.error('Available modes: probe, multi-call, sponsor, config-change, p256, receipt-test, deploy, nonce-rpc, estimate-gas');
+    console.error('Available modes: probe, multi-call, sponsor, config-change, p256, webauthn, receipt-test, deploy, nonce-rpc, estimate-gas');
     process.exit(1);
 }

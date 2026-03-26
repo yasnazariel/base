@@ -9,14 +9,14 @@
 
 mod eip8130_invalidation;
 pub use eip8130_invalidation::{
-    Eip8130InvalidationIndex, InvalidationKey, compute_invalidation_keys,
-    maintain_eip8130_invalidation, process_fal,
+    DEFAULT_MAX_PAYER_PENDING, Eip8130InvalidationIndex, InvalidationKey,
+    compute_invalidation_keys, maintain_eip8130_invalidation, process_fal,
 };
 
 mod eip8130_validate;
 pub use eip8130_validate::{
-    Eip8130ValidationError, Eip8130ValidationOutcome, VerifierAllowlist,
-    validate_eip8130_transaction,
+    DEFAULT_CUSTOM_VERIFIER_GAS_LIMIT, Eip8130ValidationError, Eip8130ValidationOutcome,
+    VerifierAllowlist, validate_eip8130_transaction,
 };
 
 mod validator;

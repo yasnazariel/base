@@ -68,6 +68,38 @@ fn aa_nonce_slot(account: Address, nonce_key: U256) -> U256 {
     U256::from_be_bytes(keccak256(buf).0)
 }
 
+/// Owner config base storage slot in AccountConfig (slot index 0).
+///
+/// `keccak256(owner_id . keccak256(account . 0))`
+const OWNER_CONFIG_BASE_SLOT: U256 = U256::ZERO;
+
+/// Computes the AccountConfig storage slot for `owner_config(account, owner_id)`.
+///
+/// Mirrors [`base_alloy_consensus::owner_config_slot`] to avoid a cyclic dependency.
+fn aa_owner_config_slot(account: Address, owner_id: U256) -> U256 {
+    let inner = {
+        let mut buf = [0u8; 64];
+        buf[12..32].copy_from_slice(account.as_slice());
+        let base_bytes = OWNER_CONFIG_BASE_SLOT.to_be_bytes::<32>();
+        buf[32..64].copy_from_slice(&base_bytes);
+        keccak256(buf)
+    };
+    let mut buf = [0u8; 64];
+    buf[..32].copy_from_slice(&owner_id.to_be_bytes::<32>());
+    buf[32..64].copy_from_slice(inner.as_slice());
+    U256::from_be_bytes(keccak256(buf).0)
+}
+
+/// Parses a packed owner_config word into `(verifier_address, scope)`.
+///
+/// Layout: `[scope(1) | zeros(11) | verifier(20)]` (big-endian 32 bytes).
+fn parse_owner_config_word(word: U256) -> (Address, u8) {
+    let bytes = word.to_be_bytes::<32>();
+    let scope = bytes[0];
+    let verifier = Address::from_slice(&bytes[12..32]);
+    (verifier, scope)
+}
+
 /// Base handler extends the [`Handler`] with Base-specific logic.
 #[derive(Debug, Clone)]
 pub struct OpHandler<EVM, ERROR, FRAME> {
@@ -143,6 +175,29 @@ where
                 )
                 .into());
             }
+
+            let ctx = evm.ctx();
+            let basefee = ctx.block().basefee() as u128;
+            let max_fee = ctx.tx().max_fee_per_gas();
+            let max_priority = ctx.tx().max_priority_fee_per_gas().unwrap_or(0);
+
+            if max_fee < basefee {
+                return Err(OpTransactionError::Base(
+                    InvalidTransaction::Str(
+                        "EIP-8130: max_fee_per_gas below base fee".into(),
+                    ),
+                )
+                .into());
+            }
+            if max_priority > max_fee {
+                return Err(OpTransactionError::Base(
+                    InvalidTransaction::Str(
+                        "EIP-8130: max_priority_fee_per_gas exceeds max_fee_per_gas".into(),
+                    ),
+                )
+                .into());
+            }
+
             return Ok(());
         }
 
@@ -340,11 +395,92 @@ where
         let eip8130 = evm.ctx().tx().eip8130_parts().clone();
         let sender = evm.ctx().tx().caller();
 
-        let mut gas_remaining = gas_limit;
+        // Deduct native verifier gas (sender + payer signature verification).
+        // This cost is computed during `build_eip8130_parts` from the
+        // `VerifierGasCosts` table and is not covered by the mainnet handler's
+        // standard intrinsic gas calculation.
+        let mut gas_remaining = gas_limit.saturating_sub(eip8130.verification_gas);
         let mut phase_results = Vec::with_capacity(eip8130.call_phases.len());
 
         // Ensure sender is loaded in the journal state for sub-call transfers.
         evm.ctx().journal_mut().load_account(sender)?;
+
+        // --- Custom verifier STATICCALL verification ---
+        // When a custom verifier is used (type 0x00), we STATICCALL the verifier
+        // contract on-chain to get the authenticated owner_id, then validate it
+        // against the on-chain owner_config in AccountConfig.
+        let verify_calls = [
+            eip8130.sender_verify_call.as_ref(),
+            eip8130.payer_verify_call.as_ref(),
+        ];
+        for verify_call in verify_calls.into_iter().flatten() {
+            evm.ctx().journal_mut().load_account(verify_call.verifier)?;
+
+            let call_gas = gas_remaining;
+            let call_inputs = CallInputs {
+                input: CallInput::Bytes(verify_call.calldata.clone()),
+                return_memory_offset: 0..0,
+                gas_limit: call_gas,
+                bytecode_address: verify_call.verifier,
+                known_bytecode: None,
+                target_address: verify_call.verifier,
+                caller: sender,
+                value: CallValue::Transfer(U256::ZERO),
+                scheme: CallScheme::StaticCall,
+                is_static: true,
+            };
+
+            let frame_init = FrameInit {
+                depth: 0,
+                memory: {
+                    let ctx = evm.ctx();
+                    let mut mem =
+                        SharedMemory::new_with_buffer(ctx.local().shared_memory_buffer().clone());
+                    mem.set_memory_limit(ctx.cfg().memory_limit());
+                    mem
+                },
+                frame_input: FrameInput::Call(Box::new(call_inputs)),
+            };
+
+            let result = self.mainnet.run_exec_loop(evm, frame_init)?;
+            let used = call_gas.saturating_sub(result.gas().remaining());
+            gas_remaining = gas_remaining.saturating_sub(used);
+
+            if !result.interpreter_result().result.is_ok() {
+                return Err(ERROR::from_string(
+                    "custom verifier STATICCALL failed".into(),
+                ));
+            }
+
+            let output = result.interpreter_result().output.as_ref();
+            if output.len() < 32 {
+                return Err(ERROR::from_string(
+                    "custom verifier returned invalid owner_id (< 32 bytes)".into(),
+                ));
+            }
+            let mut owner_id_bytes = [0u8; 32];
+            owner_id_bytes.copy_from_slice(&output[..32]);
+            let owner_id = U256::from_be_bytes(owner_id_bytes);
+
+            evm.ctx().journal_mut().load_account(ACCOUNT_CONFIG_ADDRESS)?;
+            let slot = aa_owner_config_slot(verify_call.account, owner_id);
+            let config_word =
+                evm.ctx().journal_mut().sload(ACCOUNT_CONFIG_ADDRESS, slot)?.data;
+            let (on_chain_verifier, scope) = parse_owner_config_word(config_word);
+
+            if on_chain_verifier != verify_call.verifier {
+                return Err(ERROR::from_string(format!(
+                    "custom verifier mismatch: expected {}, got {}",
+                    verify_call.verifier, on_chain_verifier
+                )));
+            }
+            if scope != 0 && (scope & verify_call.required_scope) == 0 {
+                return Err(ERROR::from_string(format!(
+                    "owner lacks required scope bit 0x{:02x}",
+                    verify_call.required_scope
+                )));
+            }
+        }
 
         for phase in &eip8130.call_phases {
             let checkpoint = evm.ctx().journal_mut().checkpoint();
@@ -1064,7 +1200,10 @@ mod tests {
     // EIP-8130 handler execution tests
     // -----------------------------------------------------------------------
 
-    use crate::{Eip8130Call, Eip8130CodePlacement, Eip8130Parts, decode_phase_statuses};
+    use crate::{
+        Eip8130Call, Eip8130CodePlacement, Eip8130Parts, Eip8130VerifyCall,
+        decode_phase_statuses,
+    };
 
     /// Builds an EVM with EIP-8130 parts and runs the full handler flow,
     /// returning the execution result.
@@ -1358,5 +1497,277 @@ mod tests {
             U256::from_be_bytes(owner_id.0),
             "slot0 should store owner_id"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // Custom verifier STATICCALL tests
+    // -----------------------------------------------------------------------
+
+    /// Builds bytecode that returns a fixed 32-byte value (owner_id).
+    ///
+    /// Bytecode: PUSH32 <id> | PUSH1 0 | MSTORE | PUSH1 32 | PUSH1 0 | RETURN
+    fn make_verifier_bytecode(owner_id: B256) -> Bytecode {
+        let mut code = vec![0x7f]; // PUSH32
+        code.extend_from_slice(owner_id.as_slice());
+        code.extend_from_slice(&[
+            0x60, 0x00, // PUSH1 0
+            0x52, // MSTORE
+            0x60, 0x20, // PUSH1 32
+            0x60, 0x00, // PUSH1 0
+            0xF3, // RETURN
+        ]);
+        Bytecode::new_legacy(Bytes::from(code))
+    }
+
+    /// Packs `(verifier_address, scope)` into the 32-byte word format used by
+    /// AccountConfig's owner_config mapping.
+    fn pack_owner_config(verifier: Address, scope: u8) -> U256 {
+        let mut bytes = [0u8; 32];
+        bytes[0] = scope;
+        bytes[12..32].copy_from_slice(verifier.as_slice());
+        U256::from_be_bytes(bytes)
+    }
+
+    #[test]
+    fn test_eip8130_custom_verifier_staticcall_succeeds() {
+        let sender = Address::from([0x11; 20]);
+        let target = Address::from([0x22; 20]);
+        let verifier = Address::from([0xAA; 20]);
+        let owner_id = B256::from([0xBB; 32]);
+
+        let owner_config_slot =
+            aa_owner_config_slot(sender, U256::from_be_bytes(owner_id.0));
+        let packed_config = pack_owner_config(verifier, 0x00); // scope=0 = unrestricted
+
+        let mut db = InMemoryDB::default();
+        db.insert_account_info(
+            sender,
+            AccountInfo { balance: U256::from(10_000_000), ..Default::default() },
+        );
+        db.insert_account_info(
+            NONCE_MANAGER_ADDRESS,
+            AccountInfo { code: Some(Bytecode::new_legacy(bytes!("FE"))), ..Default::default() },
+        );
+        db.insert_account_info(
+            verifier,
+            AccountInfo {
+                code: Some(make_verifier_bytecode(owner_id)),
+                ..Default::default()
+            },
+        );
+        db.insert_account_info(
+            target,
+            AccountInfo { code: Some(Bytecode::new_legacy(bytes!("00"))), ..Default::default() },
+        );
+        db.insert_account_info(
+            ACCOUNT_CONFIG_ADDRESS,
+            AccountInfo::default(),
+        );
+        let acfg = db.load_account(ACCOUNT_CONFIG_ADDRESS).unwrap();
+        acfg.storage.insert(owner_config_slot, packed_config);
+
+        let calldata = Bytes::from(vec![0xCA; 36]); // dummy calldata
+
+        let mut tx = OpTransaction::builder()
+            .base(
+                TxEnv::builder()
+                    .tx_type(Some(0x05))
+                    .caller(sender)
+                    .gas_limit(200_000)
+                    .kind(TxKind::Call(sender)),
+            )
+            .enveloped_tx(Some(bytes!("05FACADE")))
+            .build_fill();
+        tx.eip8130 = Eip8130Parts {
+            sender,
+            payer: sender,
+            call_phases: vec![vec![Eip8130Call {
+                to: target,
+                data: Bytes::new(),
+                value: U256::ZERO,
+            }]],
+            sender_verify_call: Some(Eip8130VerifyCall {
+                verifier,
+                calldata,
+                account: sender,
+                required_scope: 0x02, // SENDER
+            }),
+            ..Default::default()
+        };
+
+        let ctx = Context::op()
+            .with_db(db)
+            .with_tx(tx)
+            .with_chain(L1BlockInfo {
+                l2_block: Some(U256::ZERO),
+                operator_fee_scalar: Some(U256::ZERO),
+                operator_fee_constant: Some(U256::ZERO),
+                ..Default::default()
+            })
+            .with_cfg(CfgEnv::new_with_spec(OpSpecId::BASE_V1));
+        let mut evm = ctx.build_op();
+
+        let mut handler =
+            OpHandler::<_, EVMError<_, OpTransactionError>, EthFrame<EthInterpreter>>::new();
+        let result = handler.run(&mut evm).unwrap();
+        assert!(result.is_success(), "custom verifier STATICCALL should succeed");
+
+        let statuses = decode_phase_statuses(result.output().unwrap());
+        assert_eq!(statuses, vec![true]);
+    }
+
+    #[test]
+    fn test_eip8130_custom_verifier_wrong_verifier_fails() {
+        let sender = Address::from([0x11; 20]);
+        let verifier = Address::from([0xAA; 20]);
+        let wrong_verifier = Address::from([0xCC; 20]); // different from expected
+        let owner_id = B256::from([0xBB; 32]);
+
+        let owner_config_slot =
+            aa_owner_config_slot(sender, U256::from_be_bytes(owner_id.0));
+        // Store a DIFFERENT verifier in owner_config than what the tx specifies
+        let packed_config = pack_owner_config(wrong_verifier, 0x00);
+
+        let mut db = InMemoryDB::default();
+        db.insert_account_info(
+            sender,
+            AccountInfo { balance: U256::from(10_000_000), ..Default::default() },
+        );
+        db.insert_account_info(
+            NONCE_MANAGER_ADDRESS,
+            AccountInfo { code: Some(Bytecode::new_legacy(bytes!("FE"))), ..Default::default() },
+        );
+        db.insert_account_info(
+            verifier,
+            AccountInfo {
+                code: Some(make_verifier_bytecode(owner_id)),
+                ..Default::default()
+            },
+        );
+        db.insert_account_info(
+            ACCOUNT_CONFIG_ADDRESS,
+            AccountInfo::default(),
+        );
+        let acfg = db.load_account(ACCOUNT_CONFIG_ADDRESS).unwrap();
+        acfg.storage.insert(owner_config_slot, packed_config);
+
+        let calldata = Bytes::from(vec![0xCA; 36]);
+
+        let mut tx = OpTransaction::builder()
+            .base(
+                TxEnv::builder()
+                    .tx_type(Some(0x05))
+                    .caller(sender)
+                    .gas_limit(200_000)
+                    .kind(TxKind::Call(sender)),
+            )
+            .enveloped_tx(Some(bytes!("05FACADE")))
+            .build_fill();
+        tx.eip8130 = Eip8130Parts {
+            sender,
+            payer: sender,
+            call_phases: vec![],
+            sender_verify_call: Some(Eip8130VerifyCall {
+                verifier,
+                calldata,
+                account: sender,
+                required_scope: 0x02,
+            }),
+            ..Default::default()
+        };
+
+        let ctx = Context::op()
+            .with_db(db)
+            .with_tx(tx)
+            .with_chain(L1BlockInfo {
+                l2_block: Some(U256::ZERO),
+                operator_fee_scalar: Some(U256::ZERO),
+                operator_fee_constant: Some(U256::ZERO),
+                ..Default::default()
+            })
+            .with_cfg(CfgEnv::new_with_spec(OpSpecId::BASE_V1));
+        let mut evm = ctx.build_op();
+
+        let mut handler =
+            OpHandler::<_, EVMError<_, OpTransactionError>, EthFrame<EthInterpreter>>::new();
+        let result = handler.run(&mut evm);
+        assert!(result.is_err(), "mismatched verifier should cause an error");
+    }
+
+    #[test]
+    fn test_eip8130_custom_verifier_wrong_scope_fails() {
+        let sender = Address::from([0x11; 20]);
+        let verifier = Address::from([0xAA; 20]);
+        let owner_id = B256::from([0xBB; 32]);
+
+        let owner_config_slot =
+            aa_owner_config_slot(sender, U256::from_be_bytes(owner_id.0));
+        // Scope = PAYER (0x04), but required is SENDER (0x02) → should fail
+        let packed_config = pack_owner_config(verifier, 0x04);
+
+        let mut db = InMemoryDB::default();
+        db.insert_account_info(
+            sender,
+            AccountInfo { balance: U256::from(10_000_000), ..Default::default() },
+        );
+        db.insert_account_info(
+            NONCE_MANAGER_ADDRESS,
+            AccountInfo { code: Some(Bytecode::new_legacy(bytes!("FE"))), ..Default::default() },
+        );
+        db.insert_account_info(
+            verifier,
+            AccountInfo {
+                code: Some(make_verifier_bytecode(owner_id)),
+                ..Default::default()
+            },
+        );
+        db.insert_account_info(
+            ACCOUNT_CONFIG_ADDRESS,
+            AccountInfo::default(),
+        );
+        let acfg = db.load_account(ACCOUNT_CONFIG_ADDRESS).unwrap();
+        acfg.storage.insert(owner_config_slot, packed_config);
+
+        let calldata = Bytes::from(vec![0xCA; 36]);
+
+        let mut tx = OpTransaction::builder()
+            .base(
+                TxEnv::builder()
+                    .tx_type(Some(0x05))
+                    .caller(sender)
+                    .gas_limit(200_000)
+                    .kind(TxKind::Call(sender)),
+            )
+            .enveloped_tx(Some(bytes!("05FACADE")))
+            .build_fill();
+        tx.eip8130 = Eip8130Parts {
+            sender,
+            payer: sender,
+            call_phases: vec![],
+            sender_verify_call: Some(Eip8130VerifyCall {
+                verifier,
+                calldata,
+                account: sender,
+                required_scope: 0x02, // SENDER
+            }),
+            ..Default::default()
+        };
+
+        let ctx = Context::op()
+            .with_db(db)
+            .with_tx(tx)
+            .with_chain(L1BlockInfo {
+                l2_block: Some(U256::ZERO),
+                operator_fee_scalar: Some(U256::ZERO),
+                operator_fee_constant: Some(U256::ZERO),
+                ..Default::default()
+            })
+            .with_cfg(CfgEnv::new_with_spec(OpSpecId::BASE_V1));
+        let mut evm = ctx.build_op();
+
+        let mut handler =
+            OpHandler::<_, EVMError<_, OpTransactionError>, EthFrame<EthInterpreter>>::new();
+        let result = handler.run(&mut evm);
+        assert!(result.is_err(), "wrong scope should cause an error");
     }
 }

@@ -8,7 +8,7 @@ use base_alloy_chains::BaseUpgrades;
 use base_execution_evm::RethL1BlockInfo;
 use base_revm::L1BlockInfo;
 use parking_lot::RwLock;
-use reth_chainspec::ChainSpecProvider;
+use reth_chainspec::{ChainSpecProvider, EthChainSpec};
 use reth_evm::ConfigureEvm;
 use reth_primitives_traits::{
     Block, BlockBody, BlockTy, GotExpected, SealedBlock,
@@ -55,6 +55,8 @@ pub struct OpTransactionValidator<Client, Tx, Evm> {
     /// When set, only native verifiers and the configured custom verifier
     /// addresses are accepted into the mempool.
     verifier_allowlist: Option<Arc<VerifierAllowlist>>,
+    /// Gas limit for custom verifier STATICCALL in the txpool EVM.
+    custom_verifier_gas_limit: u64,
     /// Shared index of storage-slot dependencies for pending AA transactions,
     /// used by the invalidation maintenance task to evict transactions whose
     /// underlying state has changed.
@@ -96,6 +98,11 @@ impl<Client, Tx, Evm> OpTransactionValidator<Client, Tx, Evm> {
     pub fn with_verifier_allowlist(self, allowlist: VerifierAllowlist) -> Self {
         Self { verifier_allowlist: Some(Arc::new(allowlist)), ..self }
     }
+
+    /// Sets the gas limit for custom verifier STATICCALL in the txpool EVM.
+    pub fn with_custom_verifier_gas_limit(self, gas_limit: u64) -> Self {
+        Self { custom_verifier_gas_limit: gas_limit, ..self }
+    }
 }
 
 impl<Client, Tx, Evm> OpTransactionValidator<Client, Tx, Evm>
@@ -133,6 +140,7 @@ where
             block_info: Arc::new(block_info),
             require_l1_data_gas_fee: true,
             verifier_allowlist: None,
+            custom_verifier_gas_limit: crate::DEFAULT_CUSTOM_VERIFIER_GAS_LIMIT,
             invalidation_index: Arc::new(RwLock::new(Eip8130InvalidationIndex::default())),
         }
     }
@@ -208,17 +216,71 @@ where
             return match crate::validate_eip8130_transaction(
                 &transaction,
                 self.block_timestamp(),
+                self.chain_spec().chain().id(),
                 self.client(),
                 self.verifier_allowlist.as_deref(),
+                self.custom_verifier_gas_limit,
             ) {
                 Ok(outcome) => {
+                    if let Some(payer) = outcome.sponsored_payer {
+                        let count = self.invalidation_index.read().payer_pending_count(&payer);
+                        if count >= crate::DEFAULT_MAX_PAYER_PENDING {
+                            return TransactionValidationOutcome::Invalid(
+                                transaction,
+                                reth_transaction_pool::error::InvalidPoolTransactionError::other(
+                                    crate::Eip8130ValidationError::PayerPendingLimitExceeded {
+                                        payer,
+                                        count,
+                                        limit: crate::DEFAULT_MAX_PAYER_PENDING,
+                                    },
+                                ),
+                            );
+                        }
+                    }
+
                     if !outcome.invalidation_keys.is_empty() {
                         let tx_hash = *transaction.hash();
                         self.invalidation_index.write().insert(
                             tx_hash,
                             outcome.invalidation_keys,
+                            outcome.sponsored_payer,
                         );
                     }
+
+                    if self.requires_l1_data_gas_fee() {
+                        let mut l1_info = self.block_info.l1_block_info.read().clone();
+                        let encoded = transaction.encoded_2718();
+                        match l1_info.l1_tx_data_fee(
+                            self.chain_spec(),
+                            self.block_timestamp(),
+                            &encoded,
+                            false,
+                        ) {
+                            Ok(l1_cost) => {
+                                let total = transaction.cost().saturating_add(l1_cost);
+                                if total > outcome.balance {
+                                    return TransactionValidationOutcome::Invalid(
+                                        transaction,
+                                        InvalidTransactionError::InsufficientFunds(
+                                            GotExpected {
+                                                got: outcome.balance,
+                                                expected: total,
+                                            }
+                                            .into(),
+                                        )
+                                        .into(),
+                                    );
+                                }
+                            }
+                            Err(err) => {
+                                return TransactionValidationOutcome::Error(
+                                    *transaction.hash(),
+                                    Box::new(err),
+                                );
+                            }
+                        }
+                    }
+
                     TransactionValidationOutcome::Valid {
                         balance: outcome.balance,
                         state_nonce: outcome.state_nonce,

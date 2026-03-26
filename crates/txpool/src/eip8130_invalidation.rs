@@ -40,21 +40,38 @@ pub struct InvalidationKey {
     pub slot: B256,
 }
 
+/// Default maximum number of pending sponsored AA transactions per payer address.
+pub const DEFAULT_MAX_PAYER_PENDING: usize = 16;
+
 /// Index that maps invalidation keys to the set of transaction hashes that
-/// depend on them.
+/// depend on them. Also tracks per-payer pending counts for sponsored AA txs.
 #[derive(Debug, Default)]
 pub struct Eip8130InvalidationIndex {
     key_to_txs: HashMap<InvalidationKey, HashSet<B256>>,
     tx_to_keys: HashMap<B256, HashSet<InvalidationKey>>,
+    tx_to_payer: HashMap<B256, Address>,
+    payer_counts: HashMap<Address, usize>,
 }
 
 impl Eip8130InvalidationIndex {
     /// Inserts a transaction and its invalidation keys into the index.
-    pub fn insert(&mut self, tx_hash: B256, keys: HashSet<InvalidationKey>) {
+    ///
+    /// If `payer` is `Some`, tracks the payer for pending-count enforcement.
+    /// Pass `Some(payer)` for sponsored AA txs where payer != sender.
+    pub fn insert(
+        &mut self,
+        tx_hash: B256,
+        keys: HashSet<InvalidationKey>,
+        payer: Option<Address>,
+    ) {
         for key in &keys {
             self.key_to_txs.entry(*key).or_default().insert(tx_hash);
         }
         self.tx_to_keys.insert(tx_hash, keys);
+        if let Some(addr) = payer {
+            self.tx_to_payer.insert(tx_hash, addr);
+            *self.payer_counts.entry(addr).or_default() += 1;
+        }
     }
 
     /// Returns the set of transaction hashes affected by the given key.
@@ -74,6 +91,14 @@ impl Eip8130InvalidationIndex {
                 }
             }
         }
+        if let Some(payer) = self.tx_to_payer.remove(tx_hash) {
+            if let Some(count) = self.payer_counts.get_mut(&payer) {
+                *count = count.saturating_sub(1);
+                if *count == 0 {
+                    self.payer_counts.remove(&payer);
+                }
+            }
+        }
     }
 
     /// Returns all transaction hashes invalidated by any of the given keys.
@@ -85,6 +110,11 @@ impl Eip8130InvalidationIndex {
             }
         }
         result
+    }
+
+    /// Returns the number of pending sponsored txs for a given payer.
+    pub fn payer_pending_count(&self, payer: &Address) -> usize {
+        self.payer_counts.get(payer).copied().unwrap_or(0)
     }
 
     /// Returns the number of tracked transactions.
@@ -354,7 +384,7 @@ mod tests {
 
         let mut keys = HashSet::new();
         keys.insert(key);
-        index.insert(tx_hash, keys);
+        index.insert(tx_hash, keys, None);
 
         assert_eq!(index.len(), 1);
         assert!(index.lookup(&key).unwrap().contains(&tx_hash));
@@ -434,7 +464,7 @@ mod tests {
         let tx = make_simple_tx(from, 0);
         let tx_hash = B256::repeat_byte(0x01);
         let keys = compute_invalidation_keys(&tx, None, None);
-        index.insert(tx_hash, keys);
+        index.insert(tx_hash, keys, None);
 
         let nonce_key_slot = nonce_slot(from, U256::ZERO);
         let fal = vec![(NONCE_MANAGER_ADDRESS, nonce_key_slot)];
@@ -449,11 +479,11 @@ mod tests {
 
         let tx1 = make_simple_tx(from, 0);
         let hash1 = B256::repeat_byte(0x01);
-        index.insert(hash1, compute_invalidation_keys(&tx1, None, None));
+        index.insert(hash1, compute_invalidation_keys(&tx1, None, None), None);
 
         let tx2 = make_simple_tx(from, 1);
         let hash2 = B256::repeat_byte(0x02);
-        index.insert(hash2, compute_invalidation_keys(&tx2, None, None));
+        index.insert(hash2, compute_invalidation_keys(&tx2, None, None), None);
 
         assert_eq!(index.len(), 2);
 
@@ -474,7 +504,7 @@ mod tests {
 
         let tx1 = make_simple_tx(from, 0);
         let hash1 = B256::repeat_byte(0x01);
-        index.insert(hash1, compute_invalidation_keys(&tx1, None, None));
+        index.insert(hash1, compute_invalidation_keys(&tx1, None, None), None);
 
         let live: HashSet<B256> = [hash1].into_iter().collect();
         let pruned = index.prune_stale(&live);
@@ -491,7 +521,7 @@ mod tests {
         let tx = make_simple_tx(from, 0);
         let hash = B256::repeat_byte(0x01);
         let keys = compute_invalidation_keys(&tx, None, None);
-        index.insert(hash, keys);
+        index.insert(hash, keys, None);
 
         let nonce_key = InvalidationKey {
             address: NONCE_MANAGER_ADDRESS,
@@ -515,10 +545,38 @@ mod tests {
         let tx = make_simple_tx(from, 0);
         let tx_hash = B256::repeat_byte(0x01);
         let keys = compute_invalidation_keys(&tx, None, None);
-        index.insert(tx_hash, keys);
+        index.insert(tx_hash, keys, None);
 
         let fal = vec![(NONCE_MANAGER_ADDRESS, B256::repeat_byte(0xFF))];
         let invalidated = process_fal(&fal, &index);
         assert!(invalidated.is_empty());
+    }
+
+    #[test]
+    fn payer_pending_count_tracked() {
+        let mut index = Eip8130InvalidationIndex::default();
+        let payer = Address::repeat_byte(0xBB);
+        let hash1 = B256::repeat_byte(0x01);
+        let hash2 = B256::repeat_byte(0x02);
+
+        index.insert(hash1, HashSet::new(), Some(payer));
+        assert_eq!(index.payer_pending_count(&payer), 1);
+
+        index.insert(hash2, HashSet::new(), Some(payer));
+        assert_eq!(index.payer_pending_count(&payer), 2);
+
+        index.remove(&hash1);
+        assert_eq!(index.payer_pending_count(&payer), 1);
+
+        index.remove(&hash2);
+        assert_eq!(index.payer_pending_count(&payer), 0);
+    }
+
+    #[test]
+    fn self_pay_does_not_track_payer() {
+        let mut index = Eip8130InvalidationIndex::default();
+        let hash = B256::repeat_byte(0x01);
+        index.insert(hash, HashSet::new(), None);
+        assert_eq!(index.payer_counts.len(), 0);
     }
 }

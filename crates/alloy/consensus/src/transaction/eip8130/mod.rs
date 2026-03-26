@@ -10,6 +10,7 @@ pub use constants::{
     CONFIG_CHANGE_OP_GAS, CONFIG_CHANGE_SKIP_GAS, EOA_AUTH_GAS, DEPLOYMENT_HEADER_SIZE,
     MAX_SIGNATURE_SIZE, NONCE_KEY_COLD_GAS, NONCE_KEY_WARM_GAS, SLOAD_GAS, VERIFIER_CUSTOM,
     VERIFIER_DELEGATE, VERIFIER_K1, VERIFIER_P256_RAW, VERIFIER_P256_WEBAUTHN,
+    VerifierGasCosts,
 };
 
 mod types;
@@ -29,8 +30,9 @@ pub use signature::{
 
 mod gas;
 pub use gas::{
-    account_changes_cost, bytecode_cost, intrinsic_gas, nonce_key_cost, payer_auth_cost,
-    sender_auth_cost, tx_payload_cost,
+    account_changes_cost, bytecode_cost, delegate_inner_verifier_type, intrinsic_gas,
+    intrinsic_gas_with_costs, nonce_key_cost, payer_auth_cost, payer_verification_gas,
+    sender_auth_cost, sender_verification_gas, total_verification_gas, tx_payload_cost,
 };
 
 mod address;
@@ -71,10 +73,9 @@ pub use accessors::{
 mod execution;
 #[cfg(feature = "evm")]
 pub use execution::{
-    Eip8130ExecutionPlan, BalanceTransfer, CodePlacement, ExecutionCall, PhaseResult,
-    SequenceUpdateInfo, StorageWrite, TxContextValues, auto_delegation_code,
-    build_execution_calls, config_change_sequence, config_change_writes, gas_refund,
-    max_gas_cost, nonce_increment_write, owner_registration_writes,
+    CodePlacement, ExecutionCall, PhaseResult, SequenceUpdateInfo, StorageWrite, TxContextValues,
+    auto_delegation_code, build_execution_calls, config_change_sequence, config_change_writes,
+    gas_refund, max_gas_cost, nonce_increment_write, owner_registration_writes,
 };
 
 #[cfg(feature = "evm")]
@@ -88,10 +89,10 @@ pub use precompiles::{
 mod validation;
 #[cfg(feature = "evm")]
 pub use validation::{
-    ValidationError, ValidationResult, check_lock_state, check_payer_authorization,
-    check_sender_authorization, decode_verify_return, encode_verify_call, implicit_eoa_owner_id,
-    resolve_sender, validate_config_change_sequences, validate_expiry, validate_nonce,
-    validate_structure, verifier_type_to_address,
+    ValidationError, check_lock_state, check_payer_authorization, check_sender_authorization,
+    decode_verify_return, encode_verify_call, implicit_eoa_owner_id, resolve_sender,
+    validate_config_change_sequences, validate_expiry, validate_nonce, validate_structure,
+    verifier_type_to_address,
 };
 
 #[cfg(feature = "native-verifier")]

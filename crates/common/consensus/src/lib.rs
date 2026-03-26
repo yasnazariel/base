@@ -16,7 +16,7 @@ mod alloy_compat;
 #[cfg(feature = "evm")]
 mod evm_compat;
 #[cfg(feature = "evm")]
-pub use evm_compat::build_eip8130_parts;
+pub use evm_compat::{build_eip8130_parts, build_eip8130_parts_with_costs};
 
 #[cfg(feature = "reth")]
 mod reth_compat;
@@ -42,21 +42,22 @@ pub use transaction::{
     OpTypedTransaction, Owner, OwnerScope, P256_RAW_VERIFIER_ADDRESS,
     P256_WEBAUTHN_VERIFIER_ADDRESS, ParsedSenderAuth, SEQUENCE_BASE_SLOT, SLOAD_GAS,
     TX_CONTEXT_ADDRESS, TxEip8130, TxDeposit, VERIFIER_CUSTOM, VERIFIER_DELEGATE, VERIFIER_K1,
-    VERIFIER_P256_RAW, VERIFIER_P256_WEBAUTHN, VerifierTarget, account_changes_cost,
-    bytecode_cost, create2_address, deployment_code, deployment_header, derive_account_address,
-    effective_salt, encode_owner_config, intrinsic_gas, lock_slot, nonce_key_cost, nonce_slot,
-    owner_config_slot, parse_owner_config, payer_auth_cost, payer_signature_hash,
-    parse_sender_auth, resolve_verifier, sender_auth_cost, sender_signature_hash,
-    read_sequence, sequence_base_slot, sequence_slot, tx_payload_cost, write_sequence,
-    CHANGE_TYPE_CONFIG, CHANGE_TYPE_CREATE,
+    VERIFIER_P256_RAW, VERIFIER_P256_WEBAUTHN, VerifierGasCosts, VerifierTarget,
+    account_changes_cost, bytecode_cost, create2_address, delegate_inner_verifier_type,
+    deployment_code, deployment_header, derive_account_address, effective_salt,
+    encode_owner_config, intrinsic_gas, intrinsic_gas_with_costs, lock_slot,
+    nonce_key_cost, nonce_slot, owner_config_slot, parse_owner_config, payer_auth_cost,
+    payer_signature_hash, payer_verification_gas, parse_sender_auth, resolve_verifier,
+    sender_auth_cost, sender_signature_hash, sender_verification_gas,
+    read_sequence, sequence_base_slot, sequence_slot, total_verification_gas, tx_payload_cost,
+    write_sequence, CHANGE_TYPE_CONFIG, CHANGE_TYPE_CREATE,
     OP_AUTHORIZE_OWNER, OP_REVOKE_OWNER,
 };
 #[cfg(feature = "evm")]
 pub use transaction::{
-    Eip8130ExecutionPlan, BalanceTransfer, CodePlacement, ExecutionCall, LockState, NONCE_MANAGER_GAS,
-    PhaseResult, PrecompileError, SequenceUpdateInfo, TX_CONTEXT_GAS,
-    StorageWrite, TxContextValues, ValidationError, ValidationResult, auto_delegation_code,
-    build_execution_calls, check_lock_state, check_payer_authorization,
+    CodePlacement, ExecutionCall, LockState, NONCE_MANAGER_GAS, PhaseResult, PrecompileError,
+    SequenceUpdateInfo, StorageWrite, TX_CONTEXT_GAS, TxContextValues, ValidationError,
+    auto_delegation_code, build_execution_calls, check_lock_state, check_payer_authorization,
     check_sender_authorization, config_change_sequence, config_change_writes,
     decode_verify_return, encode_verify_call, gas_refund, handle_nonce_manager,
     handle_tx_context, implicit_eoa_owner_id, increment_nonce_op, is_owner_authorized,

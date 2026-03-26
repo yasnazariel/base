@@ -1,18 +1,32 @@
 //! Native Rust verification for known verifier types.
 //!
 //! Provides a fast-path for mempool validation: known verifier types
-//! (K1, P256_RAW) are verified using pure-Rust crypto instead of
-//! spinning up an EVM STATICCALL. P256_WEBAUTHN is structurally
-//! validated (envelope format, challenge match) but defers full
-//! cryptographic verification to execution because the public key
-//! is not embedded in the auth envelope. Custom verifiers and
-//! delegate always fall back to the on-chain STATICCALL path.
+//! (K1, P256_RAW, P256_WEBAUTHN, DELEGATE) are verified using pure-Rust
+//! crypto instead of spinning up an EVM STATICCALL. Custom verifiers
+//! (0x00) fall back to the on-chain STATICCALL path.
+//!
+//! ## Delegate (0x04)
+//!
+//! Single-hop delegation: the auth blob is `inner_type || inner_data...`.
+//! `try_native_verify` dispatches to the inner verifier. Nested delegation
+//! (delegate-within-delegate) is rejected.
+//!
+//! ## WebAuthn (0x03)
+//!
+//! Full P256 cryptographic verification over the WebAuthn assertion
+//! envelope. The auth data layout (after the 0x03 type byte):
+//! `publicKey(64) || authenticatorData(37+) || clientDataJSONLen(4, BE) || clientDataJSON || signature(64)`
+//!
+//! The signed message is `sha256(authenticatorData || sha256(clientDataJSON))`.
 
 use alloy_primitives::{Address, B256, Bytes};
 use k256::ecdsa::{RecoveryId, Signature as K256Signature, VerifyingKey};
 use p256::ecdsa::{Signature as P256Signature, VerifyingKey as P256VerifyingKey};
+use sha2::{Digest, Sha256};
 
-use super::constants::{VERIFIER_K1, VERIFIER_P256_RAW, VERIFIER_P256_WEBAUTHN};
+use super::constants::{
+    VERIFIER_DELEGATE, VERIFIER_K1, VERIFIER_P256_RAW, VERIFIER_P256_WEBAUTHN,
+};
 
 /// Outcome of a native verification attempt.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -55,6 +69,15 @@ pub enum NativeVerifyError {
     /// WebAuthn clientDataJSON does not contain the expected challenge.
     #[error("WebAuthn clientDataJSON missing or mismatched challenge")]
     WebAuthnChallengeMismatch,
+    /// WebAuthn P256 signature does not verify.
+    #[error("WebAuthn P256 signature verification failed: {0}")]
+    WebAuthnSignatureInvalid(String),
+    /// Delegate auth blob is too short (needs at least inner_type + inner_data).
+    #[error("delegate auth too short ({0} bytes, need at least 2)")]
+    DelegateTooShort(usize),
+    /// Nested delegation (delegate wrapping delegate) is not allowed.
+    #[error("nested delegation is not allowed")]
+    DelegateNested,
 }
 
 /// Attempts native verification for a known verifier type.
@@ -63,9 +86,9 @@ pub enum NativeVerifyError {
 /// - `data`: The auth data after the type byte (`sender_auth[1..]`).
 /// - `hash`: The signature hash (sender or payer).
 ///
-/// Returns [`NativeVerifyResult::Unsupported`] for custom (0x00), WebAuthn
-/// (0x03), and delegate (0x04) verifiers, signaling the caller to use
-/// the EVM STATICCALL path instead.
+/// Returns [`NativeVerifyResult::Unsupported`] only for custom verifiers
+/// (0x00) and unknown types, signaling the caller to use the EVM
+/// STATICCALL path.
 pub fn try_native_verify(
     verifier_type: u8,
     data: &Bytes,
@@ -74,7 +97,8 @@ pub fn try_native_verify(
     match verifier_type {
         VERIFIER_K1 => verify_k1(data, hash),
         VERIFIER_P256_RAW => verify_p256_raw(data, hash),
-        VERIFIER_P256_WEBAUTHN => validate_webauthn_structure(data, hash),
+        VERIFIER_P256_WEBAUTHN => verify_webauthn(data, hash),
+        VERIFIER_DELEGATE => verify_delegate(data, hash),
         _ => NativeVerifyResult::Unsupported,
     }
 }
@@ -111,9 +135,7 @@ fn verify_k1(data: &Bytes, hash: B256) -> NativeVerifyResult {
         }
     };
 
-    let recid = match RecoveryId::new(recovery_id != 0, false) {
-        id => id,
-    };
+    let recid = RecoveryId::new(recovery_id != 0, false);
 
     let recovered_key = match VerifyingKey::recover_from_prehash(hash.as_slice(), &signature, recid)
     {
@@ -153,67 +175,71 @@ fn verify_p256_raw(data: &Bytes, hash: B256) -> NativeVerifyResult {
     let pubkey_bytes = &data[..64];
     let sig_bytes = &data[64..128];
 
-    let mut uncompressed = [0u8; 65];
-    uncompressed[0] = 0x04;
-    uncompressed[1..].copy_from_slice(pubkey_bytes);
-
-    let verifying_key = match P256VerifyingKey::from_sec1_bytes(&uncompressed) {
-        Ok(key) => key,
-        Err(e) => {
-            return NativeVerifyResult::Invalid(NativeVerifyError::P256VerificationFailed(
-                e.to_string(),
-            ));
+    match verify_p256_signature(pubkey_bytes, hash.as_slice(), sig_bytes) {
+        Ok(()) => {
+            let owner_id = alloy_primitives::keccak256(pubkey_bytes);
+            NativeVerifyResult::Verified(owner_id)
         }
-    };
-
-    let signature = match P256Signature::from_slice(sig_bytes) {
-        Ok(sig) => sig,
-        Err(e) => {
-            return NativeVerifyResult::Invalid(NativeVerifyError::P256VerificationFailed(
-                e.to_string(),
-            ));
-        }
-    };
-
-    use p256::ecdsa::signature::hazmat::PrehashVerifier;
-    match verifying_key.verify_prehash(hash.as_slice(), &signature) {
-        Ok(()) => {}
-        Err(e) => {
-            return NativeVerifyResult::Invalid(NativeVerifyError::P256VerificationFailed(
-                e.to_string(),
-            ));
-        }
+        Err(e) => NativeVerifyResult::Invalid(NativeVerifyError::P256VerificationFailed(e)),
     }
-
-    let owner_id = alloy_primitives::keccak256(pubkey_bytes);
-    NativeVerifyResult::Verified(owner_id)
 }
 
+/// Shared P256 signature verification: parses the key and signature,
+/// then verifies against the given prehash message.
+fn verify_p256_signature(pubkey_raw: &[u8], message: &[u8], sig_bytes: &[u8]) -> Result<(), String> {
+    let mut uncompressed = [0u8; 65];
+    uncompressed[0] = 0x04;
+    uncompressed[1..].copy_from_slice(pubkey_raw);
+
+    let verifying_key =
+        P256VerifyingKey::from_sec1_bytes(&uncompressed).map_err(|e| e.to_string())?;
+
+    let signature = P256Signature::from_slice(sig_bytes).map_err(|e| e.to_string())?;
+
+    use p256::ecdsa::signature::hazmat::PrehashVerifier;
+    verifying_key
+        .verify_prehash(message, &signature)
+        .map_err(|e| e.to_string())
+}
+
+// ── WebAuthn ───────────────────────────────────────────────────────
+
+/// Raw P256 public key length (x || y, no 0x04 prefix).
+const P256_PUBKEY_LEN: usize = 64;
 /// Minimum authenticator data: 32-byte rpIdHash + 1-byte flags + 4-byte signCount.
 const MIN_AUTHENTICATOR_DATA_LEN: usize = 37;
 /// P256 signature: r(32) || s(32).
 const P256_SIG_LEN: usize = 64;
-/// clientDataJSON length prefix.
+/// clientDataJSON length prefix (big-endian u32).
 const CLIENT_DATA_LEN_PREFIX: usize = 4;
 
-/// WebAuthn P256 structural validation.
+/// Full WebAuthn P256 verification.
 ///
-/// Envelope layout (after the 0x03 type byte):
-/// `authenticatorData(37+) || clientDataJSONLength(4, big-endian) || clientDataJSON || signature(64)`
+/// Data layout (after the 0x03 type byte):
+/// `publicKey(64) || authenticatorData(37+) || clientDataJSONLength(4, BE) || clientDataJSON || signature(64)`
 ///
-/// Full cryptographic verification requires the public key (stored on-chain),
-/// so this function validates the envelope structure and challenge, then
-/// returns [`NativeVerifyResult::Unsupported`] to defer the P256 signature
-/// check to execution. If the envelope is malformed, returns
-/// [`NativeVerifyResult::Invalid`] to reject the tx early.
-fn validate_webauthn_structure(data: &Bytes, expected_hash: B256) -> NativeVerifyResult {
-    let min_len = MIN_AUTHENTICATOR_DATA_LEN + CLIENT_DATA_LEN_PREFIX + P256_SIG_LEN;
+/// Verification steps:
+/// 1. Parse public key, authenticator data, clientDataJSON, and signature
+/// 2. Validate clientDataJSON contains `base64url(hash)` as the challenge
+/// 3. Compute `message = sha256(authenticatorData || sha256(clientDataJSON))`
+/// 4. Verify P256 signature over `message` using public key
+/// 5. Return `Verified(keccak256(publicKey))`
+fn verify_webauthn(data: &Bytes, expected_hash: B256) -> NativeVerifyResult {
+    let min_len =
+        P256_PUBKEY_LEN + MIN_AUTHENTICATOR_DATA_LEN + CLIENT_DATA_LEN_PREFIX + P256_SIG_LEN;
     if data.len() < min_len {
         return NativeVerifyResult::Invalid(NativeVerifyError::WebAuthnTooShort(data.len()));
     }
 
+    let pubkey_bytes = &data[..P256_PUBKEY_LEN];
+    let rest = &data[P256_PUBKEY_LEN..];
+
     let client_data_len_offset = MIN_AUTHENTICATOR_DATA_LEN;
-    let len_bytes: [u8; 4] = data[client_data_len_offset..client_data_len_offset + 4]
+    if rest.len() < client_data_len_offset + CLIENT_DATA_LEN_PREFIX {
+        return NativeVerifyResult::Invalid(NativeVerifyError::WebAuthnTooShort(data.len()));
+    }
+
+    let len_bytes: [u8; 4] = rest[client_data_len_offset..client_data_len_offset + 4]
         .try_into()
         .unwrap();
     let client_data_len = u32::from_be_bytes(len_bytes) as usize;
@@ -222,13 +248,16 @@ fn validate_webauthn_structure(data: &Bytes, expected_hash: B256) -> NativeVerif
     let client_data_end = client_data_start + client_data_len;
     let expected_total = client_data_end + P256_SIG_LEN;
 
-    if data.len() < expected_total {
+    if rest.len() < expected_total {
         return NativeVerifyResult::Invalid(NativeVerifyError::WebAuthnClientDataOverflow(
             client_data_len,
         ));
     }
 
-    let client_data_bytes = &data[client_data_start..client_data_end];
+    let authenticator_data = &rest[..client_data_len_offset];
+    let client_data_bytes = &rest[client_data_start..client_data_end];
+    let sig_bytes = &rest[client_data_end..client_data_end + P256_SIG_LEN];
+
     let client_data_str = match core::str::from_utf8(client_data_bytes) {
         Ok(s) => s,
         Err(_) => {
@@ -241,8 +270,22 @@ fn validate_webauthn_structure(data: &Bytes, expected_hash: B256) -> NativeVerif
         return NativeVerifyResult::Invalid(NativeVerifyError::WebAuthnChallengeMismatch);
     }
 
-    // Structure is valid; defer full P256 cryptographic verification to execution.
-    NativeVerifyResult::Unsupported
+    // message = sha256(authenticatorData || sha256(clientDataJSON))
+    let client_data_hash = Sha256::digest(client_data_bytes);
+    let mut hasher = Sha256::new();
+    hasher.update(authenticator_data);
+    hasher.update(client_data_hash);
+    let message = hasher.finalize();
+
+    match verify_p256_signature(pubkey_bytes, &message, sig_bytes) {
+        Ok(()) => {
+            let owner_id = alloy_primitives::keccak256(pubkey_bytes);
+            NativeVerifyResult::Verified(owner_id)
+        }
+        Err(e) => {
+            NativeVerifyResult::Invalid(NativeVerifyError::WebAuthnSignatureInvalid(e))
+        }
+    }
 }
 
 /// Base64url-encodes bytes without padding (WebAuthn challenge format).
@@ -272,6 +315,30 @@ fn base64_url_encode(bytes: &[u8]) -> alloc::string::String {
     out
 }
 
+// ── Delegate ───────────────────────────────────────────────────────
+
+/// Delegate (1-hop) verification.
+///
+/// `data` layout (after the 0x04 type byte):
+/// `inner_verifier_type(1) || inner_auth_data(...)`
+///
+/// Dispatches to the inner verifier's native path. Nested delegation
+/// (inner type = 0x04) is rejected.
+fn verify_delegate(data: &Bytes, hash: B256) -> NativeVerifyResult {
+    if data.len() < 2 {
+        return NativeVerifyResult::Invalid(NativeVerifyError::DelegateTooShort(data.len()));
+    }
+
+    let inner_type = data[0];
+
+    if inner_type == VERIFIER_DELEGATE {
+        return NativeVerifyResult::Invalid(NativeVerifyError::DelegateNested);
+    }
+
+    let inner_data = Bytes::copy_from_slice(&data[1..]);
+    try_native_verify(inner_type, &inner_data, hash)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -285,15 +352,6 @@ mod tests {
 
         assert_eq!(
             try_native_verify(0x00, &data, hash),
-            NativeVerifyResult::Unsupported,
-        );
-        // 0x03 (WebAuthn) now does structural validation — short data returns Invalid.
-        assert!(matches!(
-            try_native_verify(0x03, &data, hash),
-            NativeVerifyResult::Invalid(NativeVerifyError::WebAuthnTooShort(65)),
-        ));
-        assert_eq!(
-            try_native_verify(0x04, &data, hash),
             NativeVerifyResult::Unsupported,
         );
         assert_eq!(
@@ -409,14 +467,25 @@ mod tests {
         }
     }
 
-    fn build_webauthn_envelope(hash: B256, tamper_challenge: bool) -> Bytes {
-        let authenticator_data = vec![0xAA; 37];
+    // ── WebAuthn tests ─────────────────────────────────────────────
+
+    fn build_webauthn_envelope(
+        hash: B256,
+        signing_key: &p256::ecdsa::SigningKey,
+        tamper_challenge: bool,
+    ) -> Bytes {
+        let pk_uncompressed = P256VerifyingKey::from(signing_key).to_encoded_point(false);
+        let pk_raw = &pk_uncompressed.as_bytes()[1..];
+
+        let authenticator_data = vec![0xAA; MIN_AUTHENTICATOR_DATA_LEN];
 
         let challenge_b64 = base64_url_encode(hash.as_slice());
         let client_data_json = if tamper_challenge {
-            r#"{"type":"webauthn.get","challenge":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","origin":"https://example.com"}"#
+            alloc::format!(
+                r#"{{"type":"webauthn.get","challenge":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","origin":"https://example.com"}}"#,
+            )
         } else {
-            &alloc::format!(
+            alloc::format!(
                 r#"{{"type":"webauthn.get","challenge":"{}","origin":"https://example.com"}}"#,
                 challenge_b64,
             )
@@ -425,13 +494,22 @@ mod tests {
         let cd_bytes = client_data_json.as_bytes();
         let cd_len = (cd_bytes.len() as u32).to_be_bytes();
 
-        let signature = vec![0xBB; 64];
+        // sign: sha256(authenticatorData || sha256(clientDataJSON))
+        let client_data_hash = Sha256::digest(cd_bytes);
+        let mut hasher = Sha256::new();
+        hasher.update(&authenticator_data);
+        hasher.update(client_data_hash);
+        let message = hasher.finalize();
+
+        use p256::ecdsa::signature::hazmat::PrehashSigner;
+        let (sig, _): (P256Signature, _) = signing_key.sign_prehash(&message).unwrap();
 
         let mut envelope = Vec::new();
+        envelope.extend_from_slice(pk_raw);
         envelope.extend_from_slice(&authenticator_data);
         envelope.extend_from_slice(&cd_len);
         envelope.extend_from_slice(cd_bytes);
-        envelope.extend_from_slice(&signature);
+        envelope.extend_from_slice(&sig.to_bytes());
         Bytes::from(envelope)
     }
 
@@ -446,19 +524,33 @@ mod tests {
     }
 
     #[test]
-    fn webauthn_valid_structure_returns_unsupported() {
+    fn webauthn_valid_signature_verifies() {
+        use p256::ecdsa::SigningKey as P256SigningKey;
+
+        let signing_key = P256SigningKey::random(&mut OsRng);
+        let pk_uncompressed = P256VerifyingKey::from(&signing_key).to_encoded_point(false);
+        let pk_raw = &pk_uncompressed.as_bytes()[1..];
+
         let hash = keccak256(b"webauthn test");
-        let data = build_webauthn_envelope(hash, false);
-        assert_eq!(
-            try_native_verify(VERIFIER_P256_WEBAUTHN, &data, hash),
-            NativeVerifyResult::Unsupported,
-        );
+        let data = build_webauthn_envelope(hash, &signing_key, false);
+
+        let result = try_native_verify(VERIFIER_P256_WEBAUTHN, &data, hash);
+        match &result {
+            NativeVerifyResult::Verified(owner_id) => {
+                let expected = keccak256(pk_raw);
+                assert_eq!(*owner_id, expected);
+            }
+            other => panic!("expected Verified, got {:?}", other),
+        }
     }
 
     #[test]
     fn webauthn_wrong_challenge_returns_invalid() {
+        use p256::ecdsa::SigningKey as P256SigningKey;
+
+        let signing_key = P256SigningKey::random(&mut OsRng);
         let hash = keccak256(b"webauthn test");
-        let data = build_webauthn_envelope(hash, true);
+        let data = build_webauthn_envelope(hash, &signing_key, true);
         assert!(matches!(
             try_native_verify(VERIFIER_P256_WEBAUTHN, &data, hash),
             NativeVerifyResult::Invalid(NativeVerifyError::WebAuthnChallengeMismatch),
@@ -466,15 +558,162 @@ mod tests {
     }
 
     #[test]
+    fn webauthn_wrong_key_returns_invalid() {
+        use p256::ecdsa::SigningKey as P256SigningKey;
+
+        let key_a = P256SigningKey::random(&mut OsRng);
+        let key_b = P256SigningKey::random(&mut OsRng);
+
+        let hash = keccak256(b"webauthn wrong key");
+        // Build envelope signed by key_a
+        let data = build_webauthn_envelope(hash, &key_a, false);
+
+        // Replace the public key with key_b's, keeping key_a's signature
+        let pk_b = P256VerifyingKey::from(&key_b).to_encoded_point(false);
+        let pk_b_raw = &pk_b.as_bytes()[1..];
+        let mut tampered = pk_b_raw.to_vec();
+        tampered.extend_from_slice(&data[P256_PUBKEY_LEN..]);
+
+        let result = try_native_verify(
+            VERIFIER_P256_WEBAUTHN,
+            &Bytes::from(tampered),
+            hash,
+        );
+        assert!(matches!(
+            result,
+            NativeVerifyResult::Invalid(NativeVerifyError::WebAuthnSignatureInvalid(_)),
+        ));
+    }
+
+    #[test]
     fn webauthn_overflow_client_data_returns_invalid() {
         let hash = B256::repeat_byte(0xDD);
-        let mut data = vec![0u8; 37];
+        let mut data = vec![0u8; P256_PUBKEY_LEN + MIN_AUTHENTICATOR_DATA_LEN];
         data.extend_from_slice(&[0xFF, 0xFF, 0xFF, 0xFF]); // 4GB length
-        data.extend_from_slice(&[0u8; 64]); // signature
+        data.extend_from_slice(&[0u8; P256_SIG_LEN]);
         assert!(matches!(
             try_native_verify(VERIFIER_P256_WEBAUTHN, &Bytes::from(data), hash),
             NativeVerifyResult::Invalid(NativeVerifyError::WebAuthnClientDataOverflow(_)),
         ));
+    }
+
+    // ── Delegate tests ─────────────────────────────────────────────
+
+    #[test]
+    fn delegate_k1_verifies_inner_signature() {
+        use k256::ecdsa::{SigningKey, signature::hazmat::PrehashSigner};
+
+        let signing_key = SigningKey::random(&mut OsRng);
+        let verifying_key = VerifyingKey::from(&signing_key);
+
+        let hash = keccak256(b"delegate k1 test");
+        let (signature, recid) = signing_key.sign_prehash(hash.as_slice()).unwrap();
+
+        // delegate data: inner_type(K1=0x01) || k1_sig(65)
+        let mut data = Vec::new();
+        data.push(VERIFIER_K1);
+        data.extend_from_slice(&signature.to_bytes());
+        data.push(recid.to_byte());
+
+        let result = try_native_verify(VERIFIER_DELEGATE, &Bytes::from(data), hash);
+        match &result {
+            NativeVerifyResult::Verified(owner_id) => {
+                let pk_bytes = verifying_key.to_encoded_point(false);
+                let expected_addr = address_from_pubkey(pk_bytes.as_bytes());
+                let mut expected_owner_id = [0u8; 32];
+                expected_owner_id[..20].copy_from_slice(expected_addr.as_slice());
+                assert_eq!(*owner_id, B256::from(expected_owner_id));
+            }
+            other => panic!("expected Verified, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn delegate_p256_verifies_inner_signature() {
+        use p256::ecdsa::{SigningKey as P256SigningKey, signature::hazmat::PrehashSigner};
+
+        let signing_key = P256SigningKey::random(&mut OsRng);
+        let verifying_key = P256VerifyingKey::from(&signing_key);
+
+        let hash = keccak256(b"delegate p256 test");
+        let (signature, _): (P256Signature, _) =
+            signing_key.sign_prehash(hash.as_slice()).unwrap();
+
+        let pk_uncompressed = verifying_key.to_encoded_point(false);
+        let pk_raw = &pk_uncompressed.as_bytes()[1..];
+
+        // delegate data: inner_type(P256=0x02) || pubkey(64) || sig(64)
+        let mut data = Vec::new();
+        data.push(VERIFIER_P256_RAW);
+        data.extend_from_slice(pk_raw);
+        data.extend_from_slice(&signature.to_bytes());
+
+        let result = try_native_verify(VERIFIER_DELEGATE, &Bytes::from(data), hash);
+        match &result {
+            NativeVerifyResult::Verified(owner_id) => {
+                let expected = keccak256(pk_raw);
+                assert_eq!(*owner_id, expected);
+            }
+            other => panic!("expected Verified, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn delegate_webauthn_verifies_inner_signature() {
+        use p256::ecdsa::SigningKey as P256SigningKey;
+
+        let signing_key = P256SigningKey::random(&mut OsRng);
+        let pk_uncompressed = P256VerifyingKey::from(&signing_key).to_encoded_point(false);
+        let pk_raw = &pk_uncompressed.as_bytes()[1..];
+
+        let hash = keccak256(b"delegate webauthn test");
+        let webauthn_data = build_webauthn_envelope(hash, &signing_key, false);
+
+        // delegate data: inner_type(WebAuthn=0x03) || webauthn_envelope
+        let mut data = Vec::new();
+        data.push(VERIFIER_P256_WEBAUTHN);
+        data.extend_from_slice(&webauthn_data);
+
+        let result = try_native_verify(VERIFIER_DELEGATE, &Bytes::from(data), hash);
+        match &result {
+            NativeVerifyResult::Verified(owner_id) => {
+                let expected = keccak256(pk_raw);
+                assert_eq!(*owner_id, expected);
+            }
+            other => panic!("expected Verified, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn delegate_nested_returns_invalid() {
+        // inner_type = DELEGATE (0x04)
+        let data = Bytes::from(vec![VERIFIER_DELEGATE, VERIFIER_K1, 0xAA]);
+        let hash = B256::repeat_byte(0xEE);
+        assert!(matches!(
+            try_native_verify(VERIFIER_DELEGATE, &data, hash),
+            NativeVerifyResult::Invalid(NativeVerifyError::DelegateNested),
+        ));
+    }
+
+    #[test]
+    fn delegate_too_short_returns_invalid() {
+        let data = Bytes::from(vec![0x01]);
+        let hash = B256::repeat_byte(0xFF);
+        assert!(matches!(
+            try_native_verify(VERIFIER_DELEGATE, &data, hash),
+            NativeVerifyResult::Invalid(NativeVerifyError::DelegateTooShort(1)),
+        ));
+    }
+
+    #[test]
+    fn delegate_custom_inner_returns_unsupported() {
+        let mut data = vec![0x00]; // CUSTOM inner type
+        data.extend_from_slice(&[0xCC; 20]); // fake address
+        let hash = B256::repeat_byte(0xAA);
+        assert_eq!(
+            try_native_verify(VERIFIER_DELEGATE, &Bytes::from(data), hash),
+            NativeVerifyResult::Unsupported,
+        );
     }
 
     #[test]

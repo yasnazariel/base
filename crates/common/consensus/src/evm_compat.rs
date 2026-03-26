@@ -8,19 +8,20 @@ use alloy_evm::{FromRecoveredTx, FromTxWithEncoded};
 use alloy_primitives::{Address, B256, Bytes, U256};
 use base_revm::{
     DepositTransactionParts, Eip8130Call, Eip8130CodePlacement, Eip8130Parts,
-    Eip8130SequenceUpdate, Eip8130StorageWrite, OpTransaction,
+    Eip8130SequenceUpdate, Eip8130StorageWrite, Eip8130VerifyCall, OpTransaction,
 };
 use revm::context::TxEnv;
 
 use crate::{
-    ACCOUNT_CONFIG_ADDRESS, AccountChangeEntry, OpTxEnvelope, TxDeposit, TxEip8130,
-    auto_delegation_code, config_change_sequence, config_change_writes, derive_account_address,
-    owner_registration_writes,
+    ACCOUNT_CONFIG_ADDRESS, AccountChangeEntry, OpTxEnvelope, OwnerScope, TxDeposit, TxEip8130,
+    VERIFIER_CUSTOM, VerifierGasCosts, auto_delegation_code, config_change_sequence,
+    config_change_writes, delegate_inner_verifier_type, derive_account_address,
+    encode_verify_call, owner_registration_writes, payer_signature_hash, sender_signature_hash,
+    total_verification_gas,
 };
 #[cfg(feature = "native-verifier")]
 use crate::{
-    NativeVerifyResult, ParsedSenderAuth, VERIFIER_K1, parse_sender_auth, sender_signature_hash,
-    try_native_verify,
+    NativeVerifyResult, ParsedSenderAuth, VERIFIER_K1, parse_sender_auth, try_native_verify,
 };
 
 #[cfg(feature = "native-verifier")]
@@ -53,11 +54,85 @@ fn derive_sender_owner_id(_tx: &TxEip8130) -> B256 {
     B256::ZERO
 }
 
+/// Verifies the payer's signature and returns the payer `owner_id`.
+///
+/// For self-pay transactions returns `B256::ZERO`. For sponsored transactions,
+/// the first byte of `payer_auth` identifies the verifier type; the remaining
+/// bytes are passed to the native verifier.
+#[cfg(feature = "native-verifier")]
+fn derive_payer_owner_id(tx: &TxEip8130) -> B256 {
+    if tx.is_self_pay() || tx.payer_auth.is_empty() {
+        return B256::ZERO;
+    }
+
+    let verifier_type = tx.payer_auth[0];
+    let data = Bytes::copy_from_slice(&tx.payer_auth[1..]);
+    let sig_hash = payer_signature_hash(tx);
+
+    match try_native_verify(verifier_type, &data, sig_hash) {
+        NativeVerifyResult::Verified(owner_id) => owner_id,
+        NativeVerifyResult::Invalid(_) | NativeVerifyResult::Unsupported => B256::ZERO,
+    }
+}
+
+#[cfg(not(feature = "native-verifier"))]
+fn derive_payer_owner_id(_tx: &TxEip8130) -> B256 {
+    B256::ZERO
+}
+
+/// Builds a [`Eip8130VerifyCall`] for a custom verifier auth blob.
+///
+/// Returns `None` for native verifiers (type != 0x00) or empty blobs.
+/// For custom verifiers: extracts the verifier address and remaining data,
+/// then ABI-encodes `IVerifier.verify(hash, data)`.
+fn build_verify_call(
+    auth: &[u8],
+    sig_hash: B256,
+    account: Address,
+    required_scope: u8,
+) -> Option<Eip8130VerifyCall> {
+    if auth.is_empty() || auth[0] != VERIFIER_CUSTOM {
+        return None;
+    }
+    if auth.len() < 21 {
+        return None;
+    }
+    let verifier = Address::from_slice(&auth[1..21]);
+    let data = Bytes::copy_from_slice(&auth[21..]);
+    let calldata = encode_verify_call(sig_hash, &data);
+    Some(Eip8130VerifyCall { verifier, calldata, account, required_scope })
+}
+
 /// Build [`Eip8130Parts`] from a decoded [`TxEip8130`] for use by the handler.
-pub fn build_eip8130_parts(tx: &TxEip8130) -> Eip8130Parts {
-    let sender = tx.effective_sender();
-    let payer = tx.effective_payer();
+///
+/// `recovered_caller` is the ecrecovered sender address. For EOA mode
+/// (`from == Address::ZERO`) this is the address derived from ecrecover;
+/// for configured mode it equals `tx.from`.
+///
+/// Uses [`VerifierGasCosts::BASE_V1`] for verification gas computation.
+/// Call [`build_eip8130_parts_with_costs`] to supply custom gas costs.
+pub fn build_eip8130_parts(tx: &TxEip8130, recovered_caller: Address) -> Eip8130Parts {
+    build_eip8130_parts_with_costs(tx, recovered_caller, &VerifierGasCosts::BASE_V1)
+}
+
+/// Build [`Eip8130Parts`] from a decoded [`TxEip8130`] with explicit gas costs.
+///
+/// `recovered_caller` is the ecrecovered sender address. For EOA mode
+/// it overrides `tx.from` (which is `Address::ZERO`). For self-pay
+/// transactions, the payer is also set to `recovered_caller`.
+pub fn build_eip8130_parts_with_costs(
+    tx: &TxEip8130,
+    recovered_caller: Address,
+    costs: &VerifierGasCosts,
+) -> Eip8130Parts {
+    let sender = recovered_caller;
+    let payer = if tx.is_self_pay() { recovered_caller } else { tx.payer };
     let owner_id = derive_sender_owner_id(tx);
+    let payer_owner_id = derive_payer_owner_id(tx);
+
+    let sender_inner = delegate_inner_verifier_type(&tx.sender_auth);
+    let payer_inner = delegate_inner_verifier_type(&tx.payer_auth);
+    let verification_gas = total_verification_gas(tx, costs, sender_inner, payer_inner);
 
     let has_create_entry =
         tx.account_changes.iter().any(|e| matches!(e, AccountChangeEntry::Create(_)));
@@ -115,17 +190,35 @@ pub fn build_eip8130_parts(tx: &TxEip8130) -> Eip8130Parts {
         })
         .collect();
 
+    let sender_verify_call = if !tx.is_eoa() {
+        let sig_hash = sender_signature_hash(tx);
+        build_verify_call(&tx.sender_auth, sig_hash, sender, OwnerScope::SENDER)
+    } else {
+        None
+    };
+
+    let payer_verify_call = if !tx.is_self_pay() && !tx.payer_auth.is_empty() {
+        let sig_hash = payer_signature_hash(tx);
+        build_verify_call(&tx.payer_auth, sig_hash, payer, OwnerScope::PAYER)
+    } else {
+        None
+    };
+
     Eip8130Parts {
         sender,
         payer,
         owner_id,
+        payer_owner_id,
         nonce_key: tx.nonce_key,
         has_create_entry,
+        verification_gas,
         auto_delegation_code: auto_delegation_code(),
         pre_writes,
         sequence_updates,
         code_placements,
         call_phases,
+        sender_verify_call,
+        payer_verify_call,
     }
 }
 
@@ -233,7 +326,7 @@ impl FromTxWithEncoded<OpTxEnvelope> for OpTransaction<TxEnv> {
                 eip8130: Default::default(),
             },
             OpTxEnvelope::Eip8130(tx) => {
-                let eip8130 = build_eip8130_parts(tx.inner());
+                let eip8130 = build_eip8130_parts(tx.inner(), caller);
                 Self {
                     base: TxEnv::from_recovered_tx(&OpTxEnvelope::Eip8130(tx.clone()), caller),
                     enveloped_tx: Some(encoded),

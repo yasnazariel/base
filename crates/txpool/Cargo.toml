@@ -28,7 +28,9 @@ reth-primitives-traits.workspace = true
 reth-transaction-pool.workspace = true
 
 # revm
+revm.workspace = true
 base-revm.workspace = true
+reth-revm.workspace = true
 
 base-alloy-flz.workspace = true
 base-alloy-chains.workspace = true

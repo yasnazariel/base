@@ -37,17 +37,6 @@ pub struct StorageWrite {
     pub value: U256,
 }
 
-/// Balance transfer operation.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BalanceTransfer {
-    /// Source address (balance decreases).
-    pub from: Address,
-    /// Destination address (balance increases).
-    pub to: Address,
-    /// Amount to transfer.
-    pub amount: U256,
-}
-
 /// Code placement operation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CodePlacement {
@@ -68,36 +57,6 @@ pub struct ExecutionCall {
     pub data: Bytes,
     /// Value to send (always 0 for AA calls, value transfers happen via CALL).
     pub value: U256,
-}
-
-/// Represents the complete execution plan for an AA transaction.
-///
-/// The plan is built from a validated `TxEip8130` and contains all the operations
-/// that need to be applied to the state.
-#[derive(Debug, Clone)]
-pub struct Eip8130ExecutionPlan {
-    /// The sender address.
-    pub sender: Address,
-    /// The payer address.
-    pub payer: Address,
-    /// The authenticated owner ID.
-    pub owner_id: B256,
-    /// Maximum gas cost to deduct from payer.
-    pub max_gas_cost: U256,
-    /// Gas limit for execution.
-    pub gas_limit: u64,
-    /// Pre-execution storage writes (nonce increment, owner registration, etc.).
-    pub pre_writes: Vec<StorageWrite>,
-    /// Whether to auto-delegate the sender to DEFAULT_ACCOUNT_ADDRESS.
-    pub auto_delegate: bool,
-    /// Account creation entry (if any).
-    pub create_entry: Option<CreateEntry>,
-    /// Config change entries to apply.
-    pub config_changes: Vec<ConfigChangeEntry>,
-    /// Transaction context values to populate.
-    pub tx_context: TxContextValues,
-    /// Phased calls to execute.
-    pub call_phases: Vec<Vec<ExecutionCall>>,
 }
 
 /// Values to populate in the TX context precompile.

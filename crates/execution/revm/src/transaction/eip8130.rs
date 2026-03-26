@@ -92,10 +92,15 @@ pub struct Eip8130Parts {
     pub payer: Address,
     /// Authenticated owner identifier from sender auth.
     pub owner_id: B256,
+    /// Authenticated owner identifier from payer auth (zero if self-pay).
+    pub payer_owner_id: B256,
     /// Nonce key for 2D nonce slot calculation.
     pub nonce_key: U256,
     /// Whether the tx includes a create entry (determines auto-delegation skip).
     pub has_create_entry: bool,
+    /// Gas charged for sender + payer native signature verification.
+    /// Deducted from the gas limit before execution begins.
+    pub verification_gas: u64,
     /// Auto-delegation code (`0xef0100 || DEFAULT_ACCOUNT_ADDRESS`) if applicable.
     /// Empty if auto-delegation is not needed.
     pub auto_delegation_code: Bytes,
@@ -107,6 +112,27 @@ pub struct Eip8130Parts {
     pub code_placements: Vec<Eip8130CodePlacement>,
     /// Phased call batches. Each inner `Vec` is one atomic phase.
     pub call_phases: Vec<Vec<Eip8130Call>>,
+    /// Pre-encoded STATICCALL for custom sender verifier. `None` for native
+    /// verifiers (K1, P256, WebAuthn, Delegate) whose verification happens
+    /// off-chain. When `Some`, the handler must STATICCALL the verifier
+    /// contract before executing call phases.
+    pub sender_verify_call: Option<Eip8130VerifyCall>,
+    /// Pre-encoded STATICCALL for custom payer verifier. Same semantics.
+    pub payer_verify_call: Option<Eip8130VerifyCall>,
+}
+
+/// Pre-encoded data for a STATICCALL to `IVerifier.verify(hash, data)`.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Eip8130VerifyCall {
+    /// The verifier contract address.
+    pub verifier: Address,
+    /// ABI-encoded `IVerifier.verify(hash, data)` calldata.
+    pub calldata: Bytes,
+    /// The account whose owner_config to check the returned owner_id against.
+    pub account: Address,
+    /// Required scope bit for the owner (`OwnerScope::SENDER` or `PAYER`).
+    pub required_scope: u8,
 }
 
 /// Encodes phase results into the output bytes of an AA transaction.
@@ -224,8 +250,10 @@ mod tests {
         assert_eq!(parts.sender, Address::ZERO);
         assert_eq!(parts.payer, Address::ZERO);
         assert_eq!(parts.owner_id, B256::ZERO);
+        assert_eq!(parts.payer_owner_id, B256::ZERO);
         assert_eq!(parts.nonce_key, U256::ZERO);
         assert!(!parts.has_create_entry);
+        assert_eq!(parts.verification_gas, 0);
         assert!(parts.auto_delegation_code.is_empty());
         assert!(parts.pre_writes.is_empty());
         assert!(parts.call_phases.is_empty());

@@ -45,8 +45,8 @@ impl<Block: BlockEnvironment> TryIntoTxEnv<OpRevm<TxEnv>, Block> for OpTransacti
         evm_env: &EvmEnv<Spec, Block>,
     ) -> Result<OpRevm<TxEnv>, Self::Err> {
         if let Some(aa_tx) = self.build_eip8130() {
-            let eip8130 = build_eip8130_parts(&aa_tx);
-            let sender = aa_tx.effective_sender();
+            let sender = self.as_ref().from.unwrap_or_else(|| aa_tx.effective_sender());
+            let eip8130 = build_eip8130_parts(&aa_tx, sender);
             let mut base: TxEnv = self.as_ref().clone().try_into_tx_env(evm_env)?;
             base.tx_type = aa_tx.ty();
             base.caller = sender;
