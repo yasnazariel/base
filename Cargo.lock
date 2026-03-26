@@ -2643,7 +2643,6 @@ dependencies = [
  "alloy-primitives",
  "alloy-provider",
  "alloy-rpc-types-eth",
- "alloy-signer",
  "base-alloy-consensus",
  "base-alloy-rpc-types",
  "reth-rpc-convert",
