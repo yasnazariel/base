@@ -102,8 +102,11 @@ pub struct Eip8130Parts {
     pub verification_gas: u64,
     /// Full AA intrinsic gas cost, replacing revm's standard 21,000 base.
     /// Includes: AA_BASE_COST + calldata + auth SLOADs + verification gas +
-    /// nonce key (cold) + bytecode + config changes. Used by the handler's
-    /// `validate_initial_tx_gas` override.
+    /// nonce key (cold worst-case) + bytecode + config changes.
+    ///
+    /// `validate_initial_tx_gas` uses this value as a conservative upper bound.
+    /// `execution()` adjusts by `NONCE_COLD_WARM_DELTA` when `nonce_sequence > 0`
+    /// (warm nonce key is cheaper than cold).
     pub aa_intrinsic_gas: u64,
     /// Auto-delegation code (`0xef0100 || DEFAULT_ACCOUNT_ADDRESS`) if applicable.
     /// Empty if auto-delegation is not needed.

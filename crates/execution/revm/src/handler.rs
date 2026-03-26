@@ -39,6 +39,10 @@ use crate::{
 /// EIP-8130 AA transaction type byte.
 const EIP8130_TX_TYPE: u8 = 0x05;
 
+/// Gas delta between a cold and warm nonce key SSTORE (22,100 − 5,000).
+/// Subtracted from `aa_intrinsic_gas` when `nonce_sequence > 0` (warm).
+const NONCE_COLD_WARM_DELTA: u64 = 17_100;
+
 /// AccountConfiguration deployed contract address.
 /// Must match the CREATE2 address from `Deploy.s.sol` (salt = 0).
 const ACCOUNT_CONFIG_ADDRESS: Address = Address::new([
@@ -314,13 +318,29 @@ where
             let sender_has_code = sender_account.account().info.code_hash != keccak256([]);
             drop(sender_account);
 
-            // --- Nonce increment in NonceManager ---
+            // --- Nonce validation and increment in NonceManager ---
             let nonce_key = eip8130.nonce_key;
             let slot = aa_nonce_slot(sender, nonce_key);
-            let new_nonce = U256::from(nonce_sequence + 1);
 
             journal.load_account(NONCE_MANAGER_ADDRESS)?;
-            journal.sstore(NONCE_MANAGER_ADDRESS, slot, new_nonce)?;
+            let current_seq = journal.sload(NONCE_MANAGER_ADDRESS, slot)?.data;
+            let expected = U256::from(nonce_sequence);
+            if current_seq != expected {
+                if current_seq > expected {
+                    return Err(InvalidTransaction::NonceTooLow {
+                        tx: nonce_sequence,
+                        state: current_seq.as_limbs()[0],
+                    }
+                    .into());
+                } else {
+                    return Err(InvalidTransaction::NonceTooHigh {
+                        tx: nonce_sequence,
+                        state: current_seq.as_limbs()[0],
+                    }
+                    .into());
+                }
+            }
+            journal.sstore(NONCE_MANAGER_ADDRESS, slot, U256::from(nonce_sequence + 1))?;
 
             // --- Auto-delegate bare EOAs ---
             // If sender has no code and there's no create entry deploying new
@@ -409,9 +429,18 @@ where
             return self.mainnet.execution(evm, init_and_floor_gas);
         }
 
-        let gas_limit = evm.ctx().tx().gas_limit().saturating_sub(init_and_floor_gas.initial_gas);
         let eip8130 = evm.ctx().tx().eip8130_parts().clone();
         let sender = evm.ctx().tx().caller();
+
+        // aa_intrinsic_gas was computed with cold nonce (worst case).
+        // If nonce_sequence > 0 the nonce key was warm; subtract the delta.
+        let nonce_is_warm = evm.ctx().tx().nonce() > 0;
+        let effective_intrinsic = if nonce_is_warm {
+            eip8130.aa_intrinsic_gas.saturating_sub(NONCE_COLD_WARM_DELTA)
+        } else {
+            eip8130.aa_intrinsic_gas
+        };
+        let gas_limit = evm.ctx().tx().gas_limit().saturating_sub(effective_intrinsic);
 
         let mut gas_remaining = gas_limit;
         let mut phase_results = Vec::with_capacity(eip8130.call_phases.len());
@@ -1437,6 +1466,141 @@ mod tests {
         assert!(result.is_success());
         assert!(result.gas_used() >= aa_intrinsic, "at least intrinsic gas should be charged");
         assert!(result.gas_used() <= gas_limit, "cannot spend more than limit");
+    }
+
+    #[test]
+    fn test_eip8130_warm_nonce_reduces_intrinsic_gas() {
+        let sender = Address::from([0x11; 20]);
+        let target = Address::from([0x22; 20]);
+        let nonce_seq: u64 = 5;
+        let aa_intrinsic_cold = 40_000u64;
+        let gas_limit = 200_000u64;
+
+        let nonce_key = U256::ZERO;
+        let slot = aa_nonce_slot(sender, nonce_key);
+
+        let mut db = InMemoryDB::default();
+        db.insert_account_info(
+            sender,
+            AccountInfo { balance: U256::from(10_000_000), ..Default::default() },
+        );
+        db.insert_account_info(
+            NONCE_MANAGER_ADDRESS,
+            AccountInfo { code: Some(Bytecode::new_legacy(bytes!("FE"))), ..Default::default() },
+        );
+        db.insert_account_info(
+            target,
+            AccountInfo { code: Some(Bytecode::new_legacy(bytes!("00"))), ..Default::default() },
+        );
+        db.insert_account_storage(NONCE_MANAGER_ADDRESS, slot, U256::from(nonce_seq))
+            .unwrap();
+
+        let mut tx = OpTransaction::builder()
+            .base(
+                TxEnv::builder()
+                    .tx_type(Some(0x05))
+                    .caller(sender)
+                    .gas_limit(gas_limit)
+                    .kind(TxKind::Call(sender)),
+            )
+            .enveloped_tx(Some(bytes!("05FACADE")))
+            .build_fill();
+        tx.base.nonce = nonce_seq;
+        tx.eip8130 = Eip8130Parts {
+            sender,
+            payer: sender,
+            nonce_key,
+            aa_intrinsic_gas: aa_intrinsic_cold,
+            call_phases: vec![vec![Eip8130Call {
+                to: target,
+                data: Bytes::new(),
+                value: U256::ZERO,
+            }]],
+            ..Default::default()
+        };
+
+        let ctx = Context::op()
+            .with_db(db)
+            .with_tx(tx)
+            .with_chain(L1BlockInfo {
+                l2_block: Some(U256::ZERO),
+                operator_fee_scalar: Some(U256::ZERO),
+                operator_fee_constant: Some(U256::ZERO),
+                ..Default::default()
+            })
+            .with_cfg(CfgEnv::new_with_spec(OpSpecId::BASE_V1));
+        let mut evm = ctx.build_op();
+        let mut handler =
+            OpHandler::<_, EVMError<_, OpTransactionError>, EthFrame<EthInterpreter>>::new();
+        let result = handler.run(&mut evm).unwrap();
+
+        let effective_intrinsic = aa_intrinsic_cold - NONCE_COLD_WARM_DELTA;
+        assert!(result.is_success());
+        assert!(
+            result.gas_used() >= effective_intrinsic,
+            "warm nonce: gas_used ({}) >= effective intrinsic ({})",
+            result.gas_used(),
+            effective_intrinsic,
+        );
+        assert!(
+            result.gas_used() < aa_intrinsic_cold,
+            "warm nonce should save gas vs cold: gas_used ({}) < cold intrinsic ({})",
+            result.gas_used(),
+            aa_intrinsic_cold,
+        );
+    }
+
+    #[test]
+    fn test_eip8130_nonce_mismatch_rejected() {
+        let sender = Address::from([0x11; 20]);
+        let nonce_key = U256::ZERO;
+        let slot = aa_nonce_slot(sender, nonce_key);
+
+        let mut db = InMemoryDB::default();
+        db.insert_account_info(
+            sender,
+            AccountInfo { balance: U256::from(10_000_000), ..Default::default() },
+        );
+        db.insert_account_info(
+            NONCE_MANAGER_ADDRESS,
+            AccountInfo { code: Some(Bytecode::new_legacy(bytes!("FE"))), ..Default::default() },
+        );
+        db.insert_account_storage(NONCE_MANAGER_ADDRESS, slot, U256::from(3u64)).unwrap();
+
+        let mut tx = OpTransaction::builder()
+            .base(
+                TxEnv::builder()
+                    .tx_type(Some(0x05))
+                    .caller(sender)
+                    .gas_limit(200_000)
+                    .kind(TxKind::Call(sender)),
+            )
+            .enveloped_tx(Some(bytes!("05FACADE")))
+            .build_fill();
+        tx.base.nonce = 5; // state has 3, tx says 5 → NonceTooHigh
+        tx.eip8130 = Eip8130Parts {
+            sender,
+            payer: sender,
+            nonce_key,
+            aa_intrinsic_gas: 25_000,
+            ..Default::default()
+        };
+
+        let ctx = Context::op()
+            .with_db(db)
+            .with_tx(tx)
+            .with_chain(L1BlockInfo {
+                l2_block: Some(U256::ZERO),
+                operator_fee_scalar: Some(U256::ZERO),
+                operator_fee_constant: Some(U256::ZERO),
+                ..Default::default()
+            })
+            .with_cfg(CfgEnv::new_with_spec(OpSpecId::BASE_V1));
+        let mut evm = ctx.build_op();
+        let mut handler =
+            OpHandler::<_, EVMError<_, OpTransactionError>, EthFrame<EthInterpreter>>::new();
+        let result = handler.run(&mut evm);
+        assert!(result.is_err(), "mismatched nonce should reject the transaction");
     }
 
     #[test]
