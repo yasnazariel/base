@@ -32,8 +32,8 @@ pub use block_metrics::BlockMetrics;
 pub mod metrics;
 #[cfg(feature = "metrics")]
 pub use metrics::{
-    OpProofsHashedAccountCursor, OpProofsHashedStorageCursor, OpProofsStorage,
-    OpProofsTrieCursor, OperationMetrics,
+    OpProofsHashedAccountCursor, OpProofsHashedStorageCursor, OpProofsStorage, OpProofsTrieCursor,
+    OperationMetrics,
 };
 
 #[cfg(not(feature = "metrics"))]

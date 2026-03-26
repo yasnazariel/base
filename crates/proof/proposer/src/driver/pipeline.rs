@@ -40,9 +40,9 @@ use tracing::{debug, error, info, warn};
 
 use super::core::{DriverConfig, RecoveredState};
 use crate::{
+    Metrics,
     constants::{NO_PARENT_INDEX, PROPOSAL_TIMEOUT, RECOVERY_SCAN_CONCURRENCY},
     error::ProposerError,
-    Metrics,
     output_proposer::{OutputProposer, is_game_already_exists},
 };
 

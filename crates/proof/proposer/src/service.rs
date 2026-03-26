@@ -49,10 +49,13 @@ pub async fn run(config: ProposerConfig) -> Result<()> {
     let signal_handle = RuntimeManager::install_signal_handler(cancel.clone());
 
     // ── 2. Metrics recorder and HTTP server (if enabled) ─────────────────
-    config.metrics.init_with(|| {
-        crate::Metrics::describe();
-        base_cli_utils::register_version_metrics!();
-    }).wrap_err("failed to install Prometheus recorder")?;
+    config
+        .metrics
+        .init_with(|| {
+            crate::Metrics::describe();
+            base_cli_utils::register_version_metrics!();
+        })
+        .wrap_err("failed to install Prometheus recorder")?;
 
     // ── 3. Create RPC clients ────────────────────────────────────────────
     let l1_config = L1ClientConfig::new(config.l1_eth_rpc.clone())
