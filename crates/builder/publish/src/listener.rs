@@ -27,7 +27,7 @@ impl Debug for Listener {
 
 impl Listener {
     /// Creates a new [`Listener`] from an already-bound [`TcpListener`].
-    pub fn new(
+    pub const fn new(
         listener: TcpListener,
         receiver: Receiver<Utf8Bytes>,
         cancel: CancellationToken,

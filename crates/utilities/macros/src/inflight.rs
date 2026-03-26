@@ -64,7 +64,7 @@ impl InflightCounter {
 
     /// No-op.
     #[inline]
-    pub fn set_outcome(&mut self, _outcome: &'static str) {}
+    pub const fn set_outcome(&mut self, _outcome: &'static str) {}
 }
 
 #[cfg(feature = "metrics")]

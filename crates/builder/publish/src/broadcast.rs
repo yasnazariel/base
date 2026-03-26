@@ -33,7 +33,7 @@ impl Debug for BroadcastLoop {
 
 impl BroadcastLoop {
     /// Creates a new [`BroadcastLoop`].
-    pub fn new(
+    pub const fn new(
         stream: WebSocketStream<TcpStream>,
         cancel: CancellationToken,
         blocks: broadcast::Receiver<Utf8Bytes>,
