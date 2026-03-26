@@ -45,6 +45,8 @@ fn sanitize_system_contracts_for_fork(
         SystemContract::ConsolidationRequestPredeploy
         | SystemContract::DepositContract
         | SystemContract::WithdrawalRequestPredeploy => false,
+        // Reject any unknown/future system contracts by default.
+        _ => false,
     });
 }
 
@@ -159,7 +161,7 @@ mod tests {
         sanitize_system_contracts_for_fork(&chain_spec, &mut fork_config);
 
         assert_eq!(
-            fork_config.system_contracts.keys().copied().collect::<Vec<_>>(),
+            fork_config.system_contracts.keys().cloned().collect::<Vec<_>>(),
             vec![SystemContract::BeaconRoots]
         );
     }
@@ -172,7 +174,7 @@ mod tests {
         sanitize_system_contracts_for_fork(&chain_spec, &mut fork_config);
 
         assert_eq!(
-            fork_config.system_contracts.keys().copied().collect::<Vec<_>>(),
+            fork_config.system_contracts.keys().cloned().collect::<Vec<_>>(),
             vec![SystemContract::BeaconRoots, SystemContract::HistoryStorage]
         );
     }

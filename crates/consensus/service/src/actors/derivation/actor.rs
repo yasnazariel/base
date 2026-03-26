@@ -14,9 +14,8 @@ use thiserror::Error;
 use tokio::{select, sync::mpsc};
 use tokio_util::sync::{CancellationToken, WaitForCancellationFuture};
 
-#[cfg(feature = "metrics")]
-use crate::Metrics;
 use crate::{
+    Metrics,
     CancellableContext, DerivationActorRequest, DerivationEngineClient, DerivationState,
     DerivationStateMachine, DerivationStateTransitionError, DerivationStateUpdate, NodeActor,
     actors::derivation::L2Finalizer,
