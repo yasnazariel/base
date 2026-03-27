@@ -104,9 +104,8 @@ pub struct Eip8130Parts {
     /// Includes: AA_BASE_COST + calldata + auth SLOADs + verification gas +
     /// nonce key (cold worst-case) + bytecode + config changes.
     ///
-    /// `validate_initial_tx_gas` uses this value as a conservative upper bound.
-    /// `execution()` adjusts by `NONCE_COLD_WARM_DELTA` when `nonce_sequence > 0`
-    /// (warm nonce key is cheaper than cold).
+    /// Both `validate_initial_tx_gas` and `execution()` use this value.
+    /// During estimation the handler adds calldata overhead for missing auth blobs.
     pub aa_intrinsic_gas: u64,
     /// Auto-delegation code (`0xef0100 || DEFAULT_ACCOUNT_ADDRESS`) if applicable.
     /// Empty if auto-delegation is not needed.
@@ -126,6 +125,11 @@ pub struct Eip8130Parts {
     pub sender_verify_call: Option<Eip8130VerifyCall>,
     /// Pre-encoded STATICCALL for custom payer verifier. Same semantics.
     pub payer_verify_call: Option<Eip8130VerifyCall>,
+    /// `true` when `sender_auth` was empty (e.g. during `eth_estimateGas`).
+    /// The handler uses this to add calldata overhead during gas estimation.
+    pub sender_auth_empty: bool,
+    /// `true` when `payer_auth` was empty on a sponsored transaction.
+    pub payer_auth_empty: bool,
 }
 
 /// Pre-encoded data for a STATICCALL to `IVerifier.verify(hash, data)`.

@@ -206,6 +206,8 @@ impl reth_transaction_pool::error::PoolTransactionError for Eip8130ValidationErr
                 | Self::ChainIdMismatch { .. }
                 | Self::CustomVerifierCallFailed(_)
                 | Self::VerifierEip7702Delegated(_)
+                | Self::SenderAuthInvalid(_)
+                | Self::PayerAuthInvalid(_)
         )
     }
 
@@ -450,12 +452,14 @@ fn validate_sender_authorization(
 }
 
 /// Validates `payer_auth` for a sponsored AA transaction.
+///
+/// Returns the authenticated payer `owner_id` on success.
 fn validate_payer(
     tx: &TxEip8130,
     payer: Address,
     state: &dyn reth_storage_api::StateProvider,
     custom_verifier_gas_limit: u64,
-) -> Result<(), Eip8130ValidationError> {
+) -> Result<B256, Eip8130ValidationError> {
     if tx.payer_auth.is_empty() {
         return Err(Eip8130ValidationError::PayerAuthInvalid(
             "payer_auth is empty for sponsored tx".into(),
@@ -483,7 +487,7 @@ fn validate_payer(
                 OwnerScope::PAYER,
                 OwnerRole::Payer,
             )?;
-            Ok(())
+            Ok(owner_id)
         }
         NativeVerifyResult::Invalid(e) => Err(Eip8130ValidationError::PayerAuthInvalid(e.to_string())),
         NativeVerifyResult::Unsupported => {
@@ -496,8 +500,7 @@ fn validate_payer(
                 OwnerScope::PAYER,
                 OwnerRole::Payer,
                 custom_verifier_gas_limit,
-            )?;
-            Ok(())
+            )
         }
     }
 }
@@ -729,9 +732,11 @@ where
 
     // 10. Payer resolution and authorization
     let payer = if tx.is_self_pay() { sender } else { tx.payer };
-    if payer != sender {
-        validate_payer(&tx, payer, &*state, custom_verifier_gas_limit)?;
-    }
+    let payer_owner_id = if payer != sender {
+        Some(validate_payer(&tx, payer, &*state, custom_verifier_gas_limit)?)
+    } else {
+        None
+    };
 
     // 11. Balance check — payer must cover max gas cost
     let max_gas_cost =
@@ -750,8 +755,9 @@ where
     // 12. Compute invalidation keys for the state-diff based eviction index
     let invalidation_keys = compute_invalidation_keys(
         &tx,
+        sender,
         Some(sender_owner_id).filter(|id| *id != B256::ZERO),
-        None,
+        payer_owner_id.filter(|id| *id != B256::ZERO),
     );
 
     let sponsored_payer = if payer != sender { Some(payer) } else { None };

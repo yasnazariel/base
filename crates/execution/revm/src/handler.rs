@@ -29,8 +29,8 @@ use revm::{
 };
 
 use crate::{
-    Eip8130PhaseResult, Eip8130TxContext, L1BlockInfo, NONCE_MANAGER_ADDRESS, OpContextTr,
-    OpHaltReason, OpSpecId, TX_CONTEXT_ADDRESS, clear_eip8130_tx_context,
+    Eip8130Parts, Eip8130PhaseResult, Eip8130TxContext, L1BlockInfo, NONCE_MANAGER_ADDRESS,
+    OpContextTr, OpHaltReason, OpSpecId, TX_CONTEXT_ADDRESS, clear_eip8130_tx_context,
     constants::{BASE_FEE_RECIPIENT, L1_FEE_RECIPIENT, OPERATOR_FEE_RECIPIENT},
     encode_phase_statuses, phase_statuses_system_log, set_eip8130_tx_context,
     transaction::{DEPOSIT_TRANSACTION_TYPE, OpTransactionError, OpTxTr},
@@ -39,8 +39,18 @@ use crate::{
 /// EIP-8130 AA transaction type byte.
 const EIP8130_TX_TYPE: u8 = 0x05;
 
-/// Gas delta between a cold and warm nonce key SSTORE (22,100 − 5,000).
-/// Subtracted from `aa_intrinsic_gas` when `nonce_sequence > 0` (warm).
+/// Estimated calldata gas for a K1 auth blob missing during gas estimation.
+///
+/// K1 auth = 66 bytes (type + 64-byte signature + recovery byte).
+/// In RLP, that adds ~67 bytes vs the 1-byte encoding of an empty bytes field.
+/// 67 bytes × 16 gas/byte (non-zero) ≈ 1,072, rounded up for safety.
+const ESTIMATION_AUTH_CALLDATA_GAS: u64 = 1_100;
+
+/// Gas delta between cold and warm nonce key SSTORE costs.
+///
+/// `aa_intrinsic_gas` always uses the cold worst-case (22,100). When the nonce
+/// channel has been used before the SSTORE cost is only 5,000, so the handler
+/// gives back this delta to the call phases at execution time.
 const NONCE_COLD_WARM_DELTA: u64 = 17_100;
 
 /// AccountConfiguration deployed contract address.
@@ -102,6 +112,20 @@ fn parse_owner_config_word(word: U256) -> (Address, u8) {
     let scope = bytes[0];
     let verifier = Address::from_slice(&bytes[12..32]);
     (verifier, scope)
+}
+
+/// Extra gas to reserve during `eth_estimateGas` for auth blob calldata that
+/// will be present in the real transaction but is absent in the estimation
+/// request (which uses empty `senderAuth` / `payerAuth`).
+fn estimation_calldata_overhead(parts: &Eip8130Parts) -> u64 {
+    let mut overhead = 0;
+    if parts.sender_auth_empty {
+        overhead += ESTIMATION_AUTH_CALLDATA_GAS;
+    }
+    if parts.payer_auth_empty {
+        overhead += ESTIMATION_AUTH_CALLDATA_GAS;
+    }
+    overhead
 }
 
 /// Base handler extends the [`Handler`] with Base-specific logic.
@@ -181,25 +205,29 @@ where
             }
 
             let ctx = evm.ctx();
-            let basefee = ctx.block().basefee() as u128;
-            let max_fee = ctx.tx().max_fee_per_gas();
-            let max_priority = ctx.tx().max_priority_fee_per_gas().unwrap_or(0);
 
-            if max_fee < basefee {
-                return Err(OpTransactionError::Base(
-                    InvalidTransaction::Str(
-                        "EIP-8130: max_fee_per_gas below base fee".into(),
-                    ),
-                )
-                .into());
-            }
-            if max_priority > max_fee {
-                return Err(OpTransactionError::Base(
-                    InvalidTransaction::Str(
-                        "EIP-8130: max_priority_fee_per_gas exceeds max_fee_per_gas".into(),
-                    ),
-                )
-                .into());
+            if !ctx.cfg().is_base_fee_check_disabled() {
+                let basefee = ctx.block().basefee() as u128;
+                let max_fee = ctx.tx().max_fee_per_gas();
+                let max_priority = ctx.tx().max_priority_fee_per_gas().unwrap_or(0);
+
+                if max_fee < basefee {
+                    return Err(OpTransactionError::Base(
+                        InvalidTransaction::Str(
+                            "EIP-8130: max_fee_per_gas below base fee".into(),
+                        ),
+                    )
+                    .into());
+                }
+                if max_priority > max_fee {
+                    return Err(OpTransactionError::Base(
+                        InvalidTransaction::Str(
+                            "EIP-8130: max_priority_fee_per_gas exceeds max_fee_per_gas"
+                                .into(),
+                        ),
+                    )
+                    .into());
+                }
             }
 
             return Ok(());
@@ -213,15 +241,24 @@ where
         evm: &mut Self::Evm,
     ) -> Result<InitialAndFloorGas, Self::Error> {
         if evm.ctx().tx().tx_type() == EIP8130_TX_TYPE {
-            let aa_gas = evm.ctx().tx().eip8130_parts().aa_intrinsic_gas;
-            if aa_gas > evm.ctx().tx().gas_limit() {
+            let ctx = evm.ctx();
+            let parts = ctx.tx().eip8130_parts();
+            let aa_gas = parts.aa_intrinsic_gas;
+            let calldata_overhead = estimation_calldata_overhead(parts);
+            let is_estimation = ctx.cfg().is_base_fee_check_disabled();
+            let gas_limit = ctx.tx().gas_limit();
+
+            let effective_gas =
+                if is_estimation { aa_gas + calldata_overhead } else { aa_gas };
+
+            if effective_gas > gas_limit {
                 return Err(InvalidTransaction::CallGasCostMoreThanGasLimit {
-                    gas_limit: evm.ctx().tx().gas_limit(),
-                    initial_gas: aa_gas,
+                    gas_limit,
+                    initial_gas: effective_gas,
                 }
                 .into());
             }
-            return Ok(InitialAndFloorGas::new(aa_gas, 0));
+            return Ok(InitialAndFloorGas::new(effective_gas, 0));
         }
         self.mainnet.validate_initial_tx_gas(evm)
     }
@@ -324,7 +361,11 @@ where
 
             journal.load_account(NONCE_MANAGER_ADDRESS)?;
             let current_seq = journal.sload(NONCE_MANAGER_ADDRESS, slot)?.data;
-            if !cfg.is_nonce_check_disabled() {
+
+            let skip_nonce_check =
+                cfg.is_nonce_check_disabled() || cfg.is_base_fee_check_disabled();
+
+            if !skip_nonce_check {
                 let expected = U256::from(nonce_sequence);
                 if current_seq != expected {
                     if current_seq > expected {
@@ -342,7 +383,12 @@ where
                     }
                 }
             }
-            journal.sstore(NONCE_MANAGER_ADDRESS, slot, U256::from(nonce_sequence + 1))?;
+            let next_seq = if skip_nonce_check {
+                current_seq + U256::from(1)
+            } else {
+                U256::from(nonce_sequence + 1)
+            };
+            journal.sstore(NONCE_MANAGER_ADDRESS, slot, next_seq)?;
 
             // --- Auto-delegate bare EOAs ---
             // If sender has no code and there's no create entry deploying new
@@ -434,15 +480,38 @@ where
         let eip8130 = evm.ctx().tx().eip8130_parts().clone();
         let sender = evm.ctx().tx().caller();
 
-        // aa_intrinsic_gas was computed with cold nonce (worst case).
-        // If nonce_sequence > 0 the nonce key was warm; subtract the delta.
-        let nonce_is_warm = evm.ctx().tx().nonce() > 0;
-        let effective_intrinsic = if nonce_is_warm {
-            eip8130.aa_intrinsic_gas.saturating_sub(NONCE_COLD_WARM_DELTA)
+        // In estimation / eth_call mode we skip signature verification and
+        // config validation since dummy (empty) auth blobs are expected.
+        let is_estimation = evm.ctx().cfg().is_base_fee_check_disabled();
+
+        // Determine whether the nonce channel is warm (previously used).
+        // validate_against_state_and_deduct_caller already incremented the
+        // nonce, so the current slot value is `original + 1`. If > 1 the
+        // original was non-zero → warm SSTORE.
+        //
+        // Only adjust for real transactions — during estimation the handler
+        // must stay consistent with validate_initial_tx_gas (which always
+        // uses cold gas) so the binary search doesn't break.
+        let nonce_warm_adjustment = if !is_estimation {
+            let nonce_slot = aa_nonce_slot(sender, eip8130.nonce_key);
+            let nonce_value =
+                evm.ctx().journal_mut().sload(NONCE_MANAGER_ADDRESS, nonce_slot)?.data;
+            if nonce_value > U256::from(1) { NONCE_COLD_WARM_DELTA } else { 0 }
         } else {
-            eip8130.aa_intrinsic_gas
+            0
         };
-        let gas_limit = evm.ctx().tx().gas_limit().saturating_sub(effective_intrinsic);
+
+        // Deduct the same intrinsic gas that validate_initial_tx_gas reported,
+        // then give back the warm-nonce delta (if applicable). During
+        // estimation, also reserve calldata gas for the auth blobs that will
+        // be present in the real transaction.
+        let overhead = if is_estimation { estimation_calldata_overhead(&eip8130) } else { 0 };
+        let gas_limit = evm
+            .ctx()
+            .tx()
+            .gas_limit()
+            .saturating_sub(eip8130.aa_intrinsic_gas + overhead)
+            .saturating_add(nonce_warm_adjustment);
 
         let mut gas_remaining = gas_limit;
         let mut phase_results = Vec::with_capacity(eip8130.call_phases.len());
@@ -454,83 +523,89 @@ where
         // When a custom verifier is used (type 0x00), we STATICCALL the verifier
         // contract on-chain to get the authenticated owner_id, then validate it
         // against the on-chain owner_config in AccountConfig.
-        let verify_calls = [
-            eip8130.sender_verify_call.as_ref(),
-            eip8130.payer_verify_call.as_ref(),
-        ];
-        for verify_call in verify_calls.into_iter().flatten() {
-            evm.ctx().journal_mut().load_account(verify_call.verifier)?;
+        if !is_estimation {
+            let verify_calls = [
+                eip8130.sender_verify_call.as_ref(),
+                eip8130.payer_verify_call.as_ref(),
+            ];
+            for verify_call in verify_calls.into_iter().flatten() {
+                evm.ctx().journal_mut().load_account(verify_call.verifier)?;
 
-            let call_gas = gas_remaining;
-            let call_inputs = CallInputs {
-                input: CallInput::Bytes(verify_call.calldata.clone()),
-                return_memory_offset: 0..0,
-                gas_limit: call_gas,
-                bytecode_address: verify_call.verifier,
-                known_bytecode: None,
-                target_address: verify_call.verifier,
-                caller: sender,
-                value: CallValue::Transfer(U256::ZERO),
-                scheme: CallScheme::StaticCall,
-                is_static: true,
-            };
+                let call_gas = gas_remaining;
+                let call_inputs = CallInputs {
+                    input: CallInput::Bytes(verify_call.calldata.clone()),
+                    return_memory_offset: 0..0,
+                    gas_limit: call_gas,
+                    bytecode_address: verify_call.verifier,
+                    known_bytecode: None,
+                    target_address: verify_call.verifier,
+                    caller: sender,
+                    value: CallValue::Transfer(U256::ZERO),
+                    scheme: CallScheme::StaticCall,
+                    is_static: true,
+                };
 
-            let frame_init = FrameInit {
-                depth: 0,
-                memory: {
-                    let ctx = evm.ctx();
-                    let mut mem =
-                        SharedMemory::new_with_buffer(ctx.local().shared_memory_buffer().clone());
-                    mem.set_memory_limit(ctx.cfg().memory_limit());
-                    mem
-                },
-                frame_input: FrameInput::Call(Box::new(call_inputs)),
-            };
+                let frame_init = FrameInit {
+                    depth: 0,
+                    memory: {
+                        let ctx = evm.ctx();
+                        let mut mem = SharedMemory::new_with_buffer(
+                            ctx.local().shared_memory_buffer().clone(),
+                        );
+                        mem.set_memory_limit(ctx.cfg().memory_limit());
+                        mem
+                    },
+                    frame_input: FrameInput::Call(Box::new(call_inputs)),
+                };
 
-            let result = self.mainnet.run_exec_loop(evm, frame_init)?;
-            let used = call_gas.saturating_sub(result.gas().remaining());
-            gas_remaining = gas_remaining.saturating_sub(used);
+                let result = self.mainnet.run_exec_loop(evm, frame_init)?;
+                let used = call_gas.saturating_sub(result.gas().remaining());
+                gas_remaining = gas_remaining.saturating_sub(used);
 
-            if !result.interpreter_result().result.is_ok() {
-                return Err(ERROR::from_string(
-                    "custom verifier STATICCALL failed".into(),
-                ));
-            }
+                if !result.interpreter_result().result.is_ok() {
+                    return Err(ERROR::from_string(
+                        "custom verifier STATICCALL failed".into(),
+                    ));
+                }
 
-            let output = result.interpreter_result().output.as_ref();
-            if output.len() < 32 {
-                return Err(ERROR::from_string(
-                    "custom verifier returned invalid owner_id (< 32 bytes)".into(),
-                ));
-            }
-            let mut owner_id_bytes = [0u8; 32];
-            owner_id_bytes.copy_from_slice(&output[..32]);
-            let owner_id = U256::from_be_bytes(owner_id_bytes);
+                let output = result.interpreter_result().output.as_ref();
+                if output.len() < 32 {
+                    return Err(ERROR::from_string(
+                        "custom verifier returned invalid owner_id (< 32 bytes)".into(),
+                    ));
+                }
+                let mut owner_id_bytes = [0u8; 32];
+                owner_id_bytes.copy_from_slice(&output[..32]);
+                let owner_id = U256::from_be_bytes(owner_id_bytes);
 
-            evm.ctx().journal_mut().load_account(ACCOUNT_CONFIG_ADDRESS)?;
-            let slot = aa_owner_config_slot(verify_call.account, owner_id);
-            let config_word =
-                evm.ctx().journal_mut().sload(ACCOUNT_CONFIG_ADDRESS, slot)?.data;
-            let (on_chain_verifier, scope) = parse_owner_config_word(config_word);
+                evm.ctx().journal_mut().load_account(ACCOUNT_CONFIG_ADDRESS)?;
+                let slot = aa_owner_config_slot(verify_call.account, owner_id);
+                let config_word =
+                    evm.ctx().journal_mut().sload(ACCOUNT_CONFIG_ADDRESS, slot)?.data;
+                let (on_chain_verifier, scope) = parse_owner_config_word(config_word);
 
-            if on_chain_verifier != verify_call.verifier {
-                return Err(ERROR::from_string(format!(
-                    "custom verifier mismatch: expected {}, got {}",
-                    verify_call.verifier, on_chain_verifier
-                )));
-            }
-            if scope != 0 && (scope & verify_call.required_scope) == 0 {
-                return Err(ERROR::from_string(format!(
-                    "owner lacks required scope bit 0x{:02x}",
-                    verify_call.required_scope
-                )));
+                if on_chain_verifier != verify_call.verifier {
+                    return Err(ERROR::from_string(format!(
+                        "custom verifier mismatch: expected {}, got {}",
+                        verify_call.verifier, on_chain_verifier
+                    )));
+                }
+                if scope != 0 && (scope & verify_call.required_scope) == 0 {
+                    return Err(ERROR::from_string(format!(
+                        "owner lacks required scope bit 0x{:02x}",
+                        verify_call.required_scope
+                    )));
+                }
             }
         }
+
+        let mut accumulated_refunds: i64 = 0;
 
         for phase in &eip8130.call_phases {
             let checkpoint = evm.ctx().journal_mut().checkpoint();
             let mut phase_ok = true;
             let phase_gas_start = gas_remaining;
+            let mut phase_refunds: i64 = 0;
 
             for call in phase {
                 if gas_remaining == 0 {
@@ -570,6 +645,7 @@ where
                 let call_result = self.mainnet.run_exec_loop(evm, frame_init)?;
                 let call_gas_used = call_gas.saturating_sub(call_result.gas().remaining());
                 gas_remaining = gas_remaining.saturating_sub(call_gas_used);
+                phase_refunds += call_result.gas().refunded();
 
                 if !call_result.interpreter_result().result.is_ok() {
                     phase_ok = false;
@@ -577,7 +653,9 @@ where
                 }
             }
 
-            if !phase_ok {
+            if phase_ok {
+                accumulated_refunds += phase_refunds;
+            } else {
                 evm.ctx().journal_mut().checkpoint_revert(checkpoint);
             }
 
@@ -594,7 +672,8 @@ where
         let deploy_only_success =
             phase_results.is_empty() && !eip8130.code_placements.is_empty();
 
-        let tx_succeeded = any_phase_succeeded || deploy_only_success;
+        let tx_succeeded =
+            is_estimation || any_phase_succeeded || deploy_only_success;
 
         // Emit a system log with per-phase statuses so they survive in the receipt's
         // log list and can be recovered at RPC time. Always emitted when phases
@@ -608,6 +687,9 @@ where
 
         let mut result_gas = Gas::new_spent(evm.ctx().tx().gas_limit());
         result_gas.erase_cost(gas_remaining);
+        if accumulated_refunds > 0 {
+            result_gas.record_refund(accumulated_refunds);
+        }
 
         let output = encode_phase_statuses(&phase_results);
 
@@ -1536,17 +1618,17 @@ mod tests {
             OpHandler::<_, EVMError<_, OpTransactionError>, EthFrame<EthInterpreter>>::new();
         let result = handler.run(&mut evm).unwrap();
 
-        let effective_intrinsic = aa_intrinsic_cold - NONCE_COLD_WARM_DELTA;
         assert!(result.is_success());
+        let warm_intrinsic = aa_intrinsic_cold - NONCE_COLD_WARM_DELTA;
         assert!(
-            result.gas_used() >= effective_intrinsic,
-            "warm nonce: gas_used ({}) >= effective intrinsic ({})",
+            result.gas_used() >= warm_intrinsic,
+            "gas_used ({}) >= warm intrinsic gas ({})",
             result.gas_used(),
-            effective_intrinsic,
+            warm_intrinsic,
         );
         assert!(
             result.gas_used() < aa_intrinsic_cold,
-            "warm nonce should save gas vs cold: gas_used ({}) < cold intrinsic ({})",
+            "warm nonce should use less gas ({}) than cold ({})",
             result.gas_used(),
             aa_intrinsic_cold,
         );

@@ -155,18 +155,24 @@ impl Eip8130InvalidationIndex {
 ///
 /// A state change to any of these slots should trigger re-validation or eviction.
 ///
+/// `resolved_sender` is the effective sender address (ecrecovered for EOA mode,
+/// `tx.from` for configured mode). This must be passed because `tx.from` is
+/// `Address::ZERO` in EOA mode.
+///
 /// When available, pass the resolved `sender_owner_id` and `payer_owner_id`
 /// from validation to track the exact owner config slots. Falls back to a
 /// hash-based proxy when `None`.
 pub fn compute_invalidation_keys(
     tx: &TxEip8130,
+    resolved_sender: Address,
     resolved_sender_owner_id: Option<B256>,
     resolved_payer_owner_id: Option<B256>,
 ) -> HashSet<InvalidationKey> {
     let mut keys = HashSet::new();
+    let sender = resolved_sender;
 
-    // 1. Nonce slot — the sender's 2D nonce at (from, nonce_key)
-    let nonce_key_slot = nonce_slot(tx.from, U256::from(tx.nonce_key));
+    // 1. Nonce slot — the sender's 2D nonce at (sender, nonce_key)
+    let nonce_key_slot = nonce_slot(sender, U256::from(tx.nonce_key));
     keys.insert(InvalidationKey { address: NONCE_MANAGER_ADDRESS, slot: nonce_key_slot });
 
     // 2. Sender owner config slot — use the resolved owner_id if available
@@ -176,14 +182,14 @@ pub fn compute_invalidation_keys(
         let owner_id = resolved_sender_owner_id.unwrap_or_else(|| {
             alloy_primitives::keccak256(&tx.sender_auth)
         });
-        let config_slot = owner_config_slot(tx.from, owner_id);
+        let config_slot = owner_config_slot(sender, owner_id);
         keys.insert(InvalidationKey { address: ACCOUNT_CONFIG_ADDRESS, slot: config_slot });
     }
 
     // 3. Payer owner config — if there's a separate payer, their owner
     //    authorization can be revoked, invalidating the tx.
     let payer = tx.payer;
-    if payer != Address::ZERO && payer != tx.from && !tx.payer_auth.is_empty() {
+    if payer != Address::ZERO && payer != sender && !tx.payer_auth.is_empty() {
         let payer_owner_id = resolved_payer_owner_id.unwrap_or_else(|| {
             alloy_primitives::keccak256(&tx.payer_auth)
         });
@@ -199,16 +205,16 @@ pub fn compute_invalidation_keys(
             AccountChangeEntry::Create(create) => {
                 let deployer_hash = alloy_primitives::keccak256(
                     [
-                        tx.from.as_slice(),
+                        sender.as_slice(),
                         create.user_salt.as_slice(),
                         &alloy_primitives::keccak256(&create.bytecode).0,
                     ]
                     .concat(),
                 );
-                keys.insert(InvalidationKey { address: tx.from, slot: deployer_hash });
+                keys.insert(InvalidationKey { address: sender, slot: deployer_hash });
             }
             AccountChangeEntry::ConfigChange(_cc) => {
-                let lock_key_slot = base_alloy_consensus::lock_slot(tx.from);
+                let lock_key_slot = base_alloy_consensus::lock_slot(sender);
                 keys.insert(InvalidationKey {
                     address: ACCOUNT_CONFIG_ADDRESS,
                     slot: lock_key_slot,
@@ -216,7 +222,7 @@ pub fn compute_invalidation_keys(
 
                 // Both multichain and local sequences are packed into a single
                 // slot, so watching the base slot covers both chain_id variants.
-                let seq_slot = base_alloy_consensus::sequence_base_slot(tx.from);
+                let seq_slot = base_alloy_consensus::sequence_base_slot(sender);
                 keys.insert(InvalidationKey {
                     address: ACCOUNT_CONFIG_ADDRESS,
                     slot: seq_slot,
@@ -398,7 +404,7 @@ mod tests {
     fn compute_keys_includes_nonce_slot() {
         let from = Address::repeat_byte(0x42);
         let tx = make_simple_tx(from, 0);
-        let keys = compute_invalidation_keys(&tx, None, None);
+        let keys = compute_invalidation_keys(&tx, from, None, None);
 
         let expected_slot = nonce_slot(from, U256::ZERO);
         assert!(keys.contains(&InvalidationKey {
@@ -428,7 +434,7 @@ mod tests {
             ..Default::default()
         };
 
-        let keys = compute_invalidation_keys(&tx, None, None);
+        let keys = compute_invalidation_keys(&tx, from, None, None);
         let lock_key = base_alloy_consensus::lock_slot(from);
         assert!(keys.contains(&InvalidationKey {
             address: ACCOUNT_CONFIG_ADDRESS,
@@ -451,9 +457,33 @@ mod tests {
             ..Default::default()
         };
 
-        let keys = compute_invalidation_keys(&tx, None, None);
+        let keys = compute_invalidation_keys(&tx, from, None, None);
         // Should have nonce key + at least one create-related key
         assert!(keys.len() >= 2);
+    }
+
+    #[test]
+    fn compute_keys_uses_resolved_sender_for_eoa() {
+        let resolved = Address::repeat_byte(0xAA);
+        let tx = TxEip8130 {
+            chain_id: 1,
+            from: Address::ZERO,
+            sender_auth: Bytes::from(vec![0u8; 65]),
+            ..Default::default()
+        };
+        let keys = compute_invalidation_keys(&tx, resolved, None, None);
+
+        let expected_slot = nonce_slot(resolved, U256::ZERO);
+        assert!(keys.contains(&InvalidationKey {
+            address: NONCE_MANAGER_ADDRESS,
+            slot: expected_slot,
+        }));
+
+        let wrong_slot = nonce_slot(Address::ZERO, U256::ZERO);
+        assert!(!keys.contains(&InvalidationKey {
+            address: NONCE_MANAGER_ADDRESS,
+            slot: wrong_slot,
+        }));
     }
 
     #[test]
@@ -463,7 +493,7 @@ mod tests {
         let from = Address::repeat_byte(0x42);
         let tx = make_simple_tx(from, 0);
         let tx_hash = B256::repeat_byte(0x01);
-        let keys = compute_invalidation_keys(&tx, None, None);
+        let keys = compute_invalidation_keys(&tx, from, None, None);
         index.insert(tx_hash, keys, None);
 
         let nonce_key_slot = nonce_slot(from, U256::ZERO);
@@ -479,11 +509,11 @@ mod tests {
 
         let tx1 = make_simple_tx(from, 0);
         let hash1 = B256::repeat_byte(0x01);
-        index.insert(hash1, compute_invalidation_keys(&tx1, None, None), None);
+        index.insert(hash1, compute_invalidation_keys(&tx1, from, None, None), None);
 
         let tx2 = make_simple_tx(from, 1);
         let hash2 = B256::repeat_byte(0x02);
-        index.insert(hash2, compute_invalidation_keys(&tx2, None, None), None);
+        index.insert(hash2, compute_invalidation_keys(&tx2, from, None, None), None);
 
         assert_eq!(index.len(), 2);
 
@@ -504,7 +534,7 @@ mod tests {
 
         let tx1 = make_simple_tx(from, 0);
         let hash1 = B256::repeat_byte(0x01);
-        index.insert(hash1, compute_invalidation_keys(&tx1, None, None), None);
+        index.insert(hash1, compute_invalidation_keys(&tx1, from, None, None), None);
 
         let live: HashSet<B256> = [hash1].into_iter().collect();
         let pruned = index.prune_stale(&live);
@@ -520,7 +550,7 @@ mod tests {
 
         let tx = make_simple_tx(from, 0);
         let hash = B256::repeat_byte(0x01);
-        let keys = compute_invalidation_keys(&tx, None, None);
+        let keys = compute_invalidation_keys(&tx, from, None, None);
         index.insert(hash, keys, None);
 
         let nonce_key = InvalidationKey {
@@ -544,7 +574,7 @@ mod tests {
         let from = Address::repeat_byte(0x42);
         let tx = make_simple_tx(from, 0);
         let tx_hash = B256::repeat_byte(0x01);
-        let keys = compute_invalidation_keys(&tx, None, None);
+        let keys = compute_invalidation_keys(&tx, from, None, None);
         index.insert(tx_hash, keys, None);
 
         let fal = vec![(NONCE_MANAGER_ADDRESS, B256::repeat_byte(0xFF))];

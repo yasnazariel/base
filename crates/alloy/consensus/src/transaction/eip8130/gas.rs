@@ -101,6 +101,9 @@ pub fn payer_auth_cost(tx: &TxEip8130) -> u64 {
 /// For EOA mode, the verifier type is implicitly K1. For configured owners,
 /// the first byte of `sender_auth` identifies the verifier type.
 ///
+/// When `sender_auth` is empty (e.g. during `eth_estimateGas` with dummy auth),
+/// defaults to K1 gas so that gas estimates are not underestimated.
+///
 /// The `inner_verifier_type` is only used for DELEGATE; the caller must
 /// resolve the delegation target and provide the inner type byte.
 pub fn sender_verification_gas(
@@ -108,10 +111,8 @@ pub fn sender_verification_gas(
     costs: &VerifierGasCosts,
     inner_verifier_type: Option<u8>,
 ) -> u64 {
-    if tx.is_eoa() {
+    if tx.is_eoa() || tx.sender_auth.is_empty() {
         costs.gas_for_verifier(VERIFIER_K1, None)
-    } else if tx.sender_auth.is_empty() {
-        0
     } else {
         costs.gas_for_verifier(tx.sender_auth[0], inner_verifier_type)
     }
@@ -119,14 +120,18 @@ pub fn sender_verification_gas(
 
 /// Gas charged for native cryptographic verification of the payer's signature.
 ///
-/// Returns 0 for self-pay transactions.
+/// Returns 0 for self-pay transactions. When `payer_auth` is empty on a
+/// sponsored transaction (e.g. during `eth_estimateGas`), defaults to K1 gas.
 pub fn payer_verification_gas(
     tx: &TxEip8130,
     costs: &VerifierGasCosts,
     inner_verifier_type: Option<u8>,
 ) -> u64 {
-    if tx.is_self_pay() || tx.payer_auth.is_empty() {
+    if tx.is_self_pay() {
         return 0;
+    }
+    if tx.payer_auth.is_empty() {
+        return costs.gas_for_verifier(VERIFIER_K1, None);
     }
     let verifier_type = tx.payer_auth[0];
     costs.gas_for_verifier(verifier_type, inner_verifier_type)
@@ -367,6 +372,26 @@ mod tests {
             sender_verification_gas(&tx, &costs, Some(0x02)),
             3_000 + 9_500,
         );
+    }
+
+    #[test]
+    fn sender_verification_gas_empty_auth_defaults_to_k1() {
+        let tx = TxEip8130 {
+            from: Address::repeat_byte(1),
+            sender_auth: Bytes::new(),
+            ..Default::default()
+        };
+        assert_eq!(sender_verification_gas(&tx, &VerifierGasCosts::BASE_V1, None), 6_000);
+    }
+
+    #[test]
+    fn payer_verification_gas_empty_auth_defaults_to_k1() {
+        let tx = TxEip8130 {
+            payer: Address::repeat_byte(0xCC),
+            payer_auth: Bytes::new(),
+            ..Default::default()
+        };
+        assert_eq!(payer_verification_gas(&tx, &VerifierGasCosts::BASE_V1, None), 6_000);
     }
 
     #[test]

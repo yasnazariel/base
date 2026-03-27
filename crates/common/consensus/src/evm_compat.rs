@@ -207,6 +207,9 @@ pub fn build_eip8130_parts_with_costs(
     let aa_intrinsic_gas =
         intrinsic_gas_with_costs(tx, false /* cold nonce — worst case */, tx.chain_id, costs);
 
+    let sender_auth_empty = !tx.is_eoa() && tx.sender_auth.is_empty();
+    let payer_auth_empty = !tx.is_self_pay() && tx.payer_auth.is_empty();
+
     Eip8130Parts {
         sender,
         payer,
@@ -223,6 +226,8 @@ pub fn build_eip8130_parts_with_costs(
         call_phases,
         sender_verify_call,
         payer_verify_call,
+        sender_auth_empty,
+        payer_auth_empty,
     }
 }
 
