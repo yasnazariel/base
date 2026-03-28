@@ -491,7 +491,7 @@ async function runSponsor() {
 // ─────────────────────────────────────────────────
 async function runConfigChange() {
   const newOwnerAddr = '0x90F79bf6EB2c4f870365E785982E1f101E93b906';
-  const newOwnerId = padHex(newOwnerAddr.toLowerCase(), { size: 32, dir: 'left' });
+  const newOwnerId = padHex(newOwnerAddr.toLowerCase(), { size: 32, dir: 'right' });
 
   console.log('\n--- Config Change: Authorize New Owner ---');
   console.log(`Account:     ${account.address}`);
@@ -884,15 +884,15 @@ async function runReceiptTest() {
   }
   if (pass) console.log('PASS: status=1, payer=sender, phaseStatuses=[true]');
 
-  // Test 2: Two-phase mixed — probe succeeds, invalid call to AccountConfig reverts.
-  // Phase 0: probe() — succeeds. Phase 1: call AccountConfig with invalid selector — reverts
-  // (AccountConfig is a real Solidity contract with no fallback).
+  // Test 2: Two-phase mixed — probe succeeds, call to NonceManager reverts.
+  // Phase 0: probe() — succeeds. Phase 1: call NonceManager (0xfe INVALID opcode) — reverts.
+  // Note: AccountConfig has no code (pure storage), so calls to it succeed silently.
   console.log('\n=== Test 2: Mixed phase results ===');
   const nonce2 = await getAaNonce();
   const invalidCalldata = '0xdeadbeef';
   const calls2 = [
     [[encodeAddress(opts.probeAddr), probeCalldata]],
-    [[encodeAddress(ACCOUNT_CONFIG_ADDRESS), invalidCalldata]],
+    [[encodeAddress(NONCE_MANAGER_ADDRESS), invalidCalldata]],
   ];
   const unsigned2 = baseTxFields(nonce2, calls2);
   const { receipt: r2 } = await signAndSend(unsigned2, { trace: false });
@@ -953,7 +953,8 @@ async function runDeploy() {
   console.log(`AA nonce (key=0): ${nonce}`);
 
   // Derive owner_id for the sender (implicit EOA owner: bytes32(bytes20(sender)))
-  const ownerId = padHex(account.address.toLowerCase(), { size: 32, dir: 'left' });
+  // Left-aligned per Solidity: bytes32(bytes20(address)) — right-padded with zeros.
+  const ownerId = padHex(account.address.toLowerCase(), { size: 32, dir: 'right' });
   console.log(`Owner ID:        ${ownerId}`);
   console.log(`K1 Verifier:     ${K1_VERIFIER_ADDRESS}`);
   console.log(`AccountConfig:   ${ACCOUNT_CONFIG_ADDRESS}`);

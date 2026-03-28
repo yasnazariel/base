@@ -150,6 +150,14 @@ fn estimation_calldata_overhead(parts: &Eip8130Parts) -> u64 {
     overhead
 }
 
+/// Creates an `InvalidTransaction` error from a message string.
+///
+/// Produces `EVMError::Transaction(OpTransactionError::Base(InvalidTransaction::Str(...)))`,
+/// which the block builder catches and skips (rather than aborting the flashblock).
+fn eip8130_invalid_tx<ERROR: From<OpTransactionError>>(msg: impl Into<std::borrow::Cow<'static, str>>) -> ERROR {
+    OpTransactionError::Base(InvalidTransaction::Str(msg.into())).into()
+}
+
 /// Validates that `owner_id` is registered in AccountConfig with the expected
 /// verifier address and required scope. Returns `Err` on mismatch.
 fn validate_owner_config<EVM, ERROR>(
@@ -161,7 +169,7 @@ fn validate_owner_config<EVM, ERROR>(
 ) -> Result<(), ERROR>
 where
     EVM: EvmTr<Context: OpContextTr>,
-    ERROR: EvmTrError<EVM> + FromStringError,
+    ERROR: EvmTrError<EVM> + From<OpTransactionError>,
 {
     evm.ctx().journal_mut().load_account(ACCOUNT_CONFIG_ADDRESS)?;
     let slot = aa_owner_config_slot(account, owner_id);
@@ -170,12 +178,12 @@ where
     let (on_chain_verifier, scope) = parse_owner_config_word(config_word);
 
     if on_chain_verifier != expected_verifier {
-        return Err(ERROR::from_string(format!(
+        return Err(eip8130_invalid_tx::<ERROR>(format!(
             "verifier mismatch: expected {expected_verifier}, got {on_chain_verifier}"
         )));
     }
     if scope != 0 && (scope & required_scope) == 0 {
-        return Err(ERROR::from_string(format!(
+        return Err(eip8130_invalid_tx::<ERROR>(format!(
             "owner lacks required scope bit 0x{required_scope:02x}"
         )));
     }
@@ -195,7 +203,7 @@ fn validate_native_verifier_owner<EVM, ERROR>(
 ) -> Result<(), ERROR>
 where
     EVM: EvmTr<Context: OpContextTr>,
-    ERROR: EvmTrError<EVM> + FromStringError,
+    ERROR: EvmTrError<EVM> + From<OpTransactionError>,
 {
     let owner_id_uint = U256::from_be_bytes(owner_id.0);
 
@@ -213,12 +221,12 @@ where
         return Ok(());
     }
     if on_chain_verifier == Address::ZERO {
-        return Err(ERROR::from_string(
-            "native verifier owner revoked (config cleared)".into(),
+        return Err(eip8130_invalid_tx::<ERROR>(
+            "native verifier owner revoked (config cleared)",
         ));
     }
     if scope != 0 && (scope & required_scope) == 0 {
-        return Err(ERROR::from_string(format!(
+        return Err(eip8130_invalid_tx::<ERROR>(format!(
             "native verifier owner lacks required scope 0x{required_scope:02x}"
         )));
     }
@@ -233,12 +241,12 @@ where
         let (inner_verifier, inner_scope) = parse_owner_config_word(inner_word);
 
         if inner_verifier == Address::ZERO {
-            return Err(ERROR::from_string(
-                "delegate inner verifier owner revoked".into(),
+            return Err(eip8130_invalid_tx::<ERROR>(
+                "delegate inner verifier owner revoked",
             ));
         }
         if inner_scope != 0 && (inner_scope & required_scope) == 0 {
-            return Err(ERROR::from_string(format!(
+            return Err(eip8130_invalid_tx::<ERROR>(format!(
                 "delegate inner owner lacks required scope 0x{required_scope:02x}"
             )));
         }
@@ -261,7 +269,7 @@ fn validate_config_change_preconditions<EVM, ERROR>(
 ) -> Result<(), ERROR>
 where
     EVM: EvmTr<Context: OpContextTr>,
-    ERROR: EvmTrError<EVM> + FromStringError,
+    ERROR: EvmTrError<EVM> + From<OpTransactionError>,
 {
     if eip8130.sequence_updates.is_empty() && eip8130.config_writes.is_empty() {
         return Ok(());
@@ -273,8 +281,8 @@ where
     let lock_slot = aa_lock_slot(sender);
     let lock_word = evm.ctx().journal_mut().sload(ACCOUNT_CONFIG_ADDRESS, lock_slot)?.data;
     if lock_word.to_be_bytes::<32>()[0] != 0 {
-        return Err(ERROR::from_string(
-            "config changes not allowed: account is locked".into(),
+        return Err(eip8130_invalid_tx::<ERROR>(
+            "config changes not allowed: account is locked",
         ));
     }
 
@@ -290,19 +298,19 @@ where
 
     for upd in &eip8130.sequence_updates {
         let tx_sequence = upd.new_value.checked_sub(1).ok_or_else(|| {
-            ERROR::from_string("invalid config change sequence (underflow)".into())
+            eip8130_invalid_tx::<ERROR>("invalid config change sequence (underflow)")
         })?;
 
         if upd.is_multichain {
             if tx_sequence != expected_multichain {
-                return Err(ERROR::from_string(format!(
+                return Err(eip8130_invalid_tx::<ERROR>(format!(
                     "config change sequence mismatch: expected {expected_multichain}, got {tx_sequence}"
                 )));
             }
             expected_multichain = upd.new_value;
         } else {
             if tx_sequence != expected_local {
-                return Err(ERROR::from_string(format!(
+                return Err(eip8130_invalid_tx::<ERROR>(format!(
                     "config change sequence mismatch: expected {expected_local}, got {tx_sequence}"
                 )));
             }
@@ -338,7 +346,7 @@ fn validate_authorizer_chain<EVM, ERROR, FRAME>(
 ) -> Result<(), ERROR>
 where
     EVM: EvmTr<Context: OpContextTr, Frame = FRAME>,
-    ERROR: EvmTrError<EVM> + FromStringError,
+    ERROR: EvmTrError<EVM> + From<OpTransactionError>,
     FRAME: FrameTr<FrameResult = FrameResult, FrameInit = FrameInit>,
 {
     use std::collections::HashMap;
@@ -393,15 +401,15 @@ where
             *verification_gas_used = verification_gas_used.saturating_add(used);
 
             if !result.interpreter_result().result.is_ok() {
-                return Err(ERROR::from_string(
-                    "config change authorizer STATICCALL failed".into(),
+                return Err(eip8130_invalid_tx::<ERROR>(
+                    "config change authorizer STATICCALL failed",
                 ));
             }
 
             let output = result.interpreter_result().output.as_ref();
             if output.len() < 32 {
-                return Err(ERROR::from_string(
-                    "config change authorizer returned invalid owner_id".into(),
+                return Err(eip8130_invalid_tx::<ERROR>(
+                    "config change authorizer returned invalid owner_id",
                 ));
             }
             let mut bytes = [0u8; 32];
@@ -413,8 +421,8 @@ where
         };
 
         if owner_id.is_zero() {
-            return Err(ERROR::from_string(
-                "config change authorizer returned zero owner_id".into(),
+            return Err(eip8130_invalid_tx::<ERROR>(
+                "config change authorizer returned zero owner_id",
             ));
         }
 
@@ -426,19 +434,32 @@ where
             let slot = aa_owner_config_slot(sender, owner_id);
             let config_word =
                 evm.ctx().journal_mut().sload(ACCOUNT_CONFIG_ADDRESS, slot)?.data;
-            let (on_chain_verifier, scope) = parse_owner_config_word(config_word);
 
-            if on_chain_verifier == Address::ZERO {
-                return Err(ERROR::from_string(
-                    "config change authorizer owner not found on-chain".into(),
-                ));
+            if config_word == U256::ZERO {
+                // Uninitialized slot — bare EOA with no explicit owner_config.
+                // Accept only if the owner_id matches the sender's implicit
+                // owner_id (bytes32(bytes20(sender))), which has unrestricted scope.
+                // Left-aligned per Solidity: bytes32(bytes20(address)).
+                let implicit_owner_id = {
+                    let mut buf = [0u8; 32];
+                    buf[..20].copy_from_slice(sender.as_slice());
+                    U256::from_be_bytes(buf)
+                };
+                owner_id == implicit_owner_id
+            } else {
+                let (on_chain_verifier, scope) = parse_owner_config_word(config_word);
+                if on_chain_verifier == Address::ZERO {
+                    return Err(eip8130_invalid_tx::<ERROR>(
+                        "config change authorizer owner revoked",
+                    ));
+                }
+                scope == 0 || (scope & crate::constants::OWNER_SCOPE_CONFIG) != 0
             }
-            scope == 0 || (scope & crate::constants::OWNER_SCOPE_CONFIG) != 0
         };
 
         if !has_config_scope {
-            return Err(ERROR::from_string(
-                "config change authorizer lacks CONFIG scope".into(),
+            return Err(eip8130_invalid_tx::<ERROR>(
+                "config change authorizer lacks CONFIG scope",
             ));
         }
 
@@ -757,13 +778,12 @@ where
                             state: current_seq.as_limbs()[0],
                         }
                         .into());
-                    } else {
-                        return Err(InvalidTransaction::NonceTooHigh {
-                            tx: nonce_sequence,
-                            state: current_seq.as_limbs()[0],
-                        }
-                        .into());
                     }
+                    return Err(InvalidTransaction::NonceTooHigh {
+                        tx: nonce_sequence,
+                        state: current_seq.as_limbs()[0],
+                    }
+                    .into());
                 }
             }
             let next_seq = if skip_nonce_check {
@@ -943,15 +963,15 @@ where
                 verification_gas_used = verification_gas_used.saturating_add(used);
 
                 if !result.interpreter_result().result.is_ok() {
-                    return Err(ERROR::from_string(
-                        "custom verifier STATICCALL failed".into(),
+                    return Err(eip8130_invalid_tx::<ERROR>(
+                        "custom verifier STATICCALL failed",
                     ));
                 }
 
                 let output = result.interpreter_result().output.as_ref();
                 if output.len() < 32 {
-                    return Err(ERROR::from_string(
-                        "custom verifier returned invalid owner_id (< 32 bytes)".into(),
+                    return Err(eip8130_invalid_tx::<ERROR>(
+                        "custom verifier returned invalid owner_id (< 32 bytes)",
                     ));
                 }
                 let mut owner_id_bytes = [0u8; 32];
