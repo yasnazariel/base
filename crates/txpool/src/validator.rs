@@ -1,9 +1,19 @@
-use std::sync::{
-    Arc,
-    atomic::{AtomicU64, Ordering},
+//! Optimism-aware transaction validator wrapping Reth's [`EthTransactionValidator`].
+//!
+//! [`OpTransactionValidator`] validates incoming transactions against both
+//! standard Ethereum rules and Optimism / EIP-8130 specific constraints,
+//! routing 2D-nonce AA transactions into the [`Eip8130Pool`] side-pool.
+
+use std::{
+    collections::HashSet,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
 };
 
 use alloy_consensus::{BlockHeader, Transaction};
+use alloy_primitives::B256;
 use base_alloy_chains::BaseUpgrades;
 use base_execution_evm::RethL1BlockInfo;
 use base_revm::L1BlockInfo;
@@ -20,9 +30,12 @@ use reth_transaction_pool::{
     TransactionValidator, validate::ValidTransaction,
 };
 
-use base_alloy_consensus::AA_TX_TYPE_ID;
+use base_alloy_consensus::{AA_TX_TYPE_ID, nonce_slot};
 
-use crate::{Eip8130InvalidationIndex, OpPooledTx, VerifierAllowlist};
+use crate::{
+    Eip8130InvalidationIndex, Eip8130Pool, Eip8130PoolConfig, Eip8130TxId, OpPooledTx,
+    SharedEip8130Pool, VerifierAllowlist, is_2d_nonce,
+};
 
 /// Tracks additional infos for the current block.
 #[derive(Debug, Default)]
@@ -61,6 +74,15 @@ pub struct OpTransactionValidator<Client, Tx, Evm> {
     /// used by the invalidation maintenance task to evict transactions whose
     /// underlying state has changed.
     invalidation_index: Arc<RwLock<Eip8130InvalidationIndex>>,
+    /// 2D nonce pool for AA transactions with `nonce_key != 0`.
+    /// These transactions bypass the standard Reth pool (which would collide
+    /// on `(sender, nonce_sequence)`) and are stored here instead.
+    eip8130_pool: SharedEip8130Pool<Tx>,
+    /// Set of keccak256 bytecode hashes considered "trusted" for payer
+    /// accounts. When the sender is locked and the payer's deployed bytecode
+    /// matches one of these hashes, the sender gets the highest throughput
+    /// tier in the 2D nonce pool.
+    trusted_payer_bytecodes: HashSet<B256>,
 }
 
 impl<Client, Tx, Evm> OpTransactionValidator<Client, Tx, Evm> {
@@ -99,9 +121,26 @@ impl<Client, Tx, Evm> OpTransactionValidator<Client, Tx, Evm> {
         Self { verifier_allowlist: Some(Arc::new(allowlist)), ..self }
     }
 
+    /// Sets the trusted payer bytecode hashes for elevated throughput tiers.
+    ///
+    /// When a sender is locked and the payer's deployed bytecode hash matches
+    /// one of these, the sender qualifies for the highest throughput tier in
+    /// the 2D nonce pool.
+    pub fn with_trusted_payer_bytecodes(self, hashes: HashSet<B256>) -> Self {
+        Self { trusted_payer_bytecodes: hashes, ..self }
+    }
+
     /// Sets the gas limit for custom verifier STATICCALL in the txpool EVM.
     pub fn with_custom_verifier_gas_limit(self, gas_limit: u64) -> Self {
         Self { custom_verifier_gas_limit: gas_limit, ..self }
+    }
+
+    /// Overrides the EIP-8130 pool configuration (throughput limits, TTL, etc).
+    pub fn with_eip8130_pool_config(self, config: Eip8130PoolConfig) -> Self {
+        Self {
+            eip8130_pool: Arc::new(Eip8130Pool::with_config(config)),
+            ..self
+        }
     }
 }
 
@@ -109,7 +148,7 @@ impl<Client, Tx, Evm> OpTransactionValidator<Client, Tx, Evm>
 where
     Client:
         ChainSpecProvider<ChainSpec: BaseUpgrades> + StateProviderFactory + BlockReaderIdExt + Sync,
-    Tx: EthPoolTransaction + OpPooledTx,
+    Tx: EthPoolTransaction + OpPooledTx + Clone,
     Evm: ConfigureEvm,
 {
     /// Create a new [`OpTransactionValidator`].
@@ -142,6 +181,8 @@ where
             verifier_allowlist: None,
             custom_verifier_gas_limit: crate::DEFAULT_CUSTOM_VERIFIER_GAS_LIMIT,
             invalidation_index: Arc::new(RwLock::new(Eip8130InvalidationIndex::default())),
+            eip8130_pool: Arc::new(Eip8130Pool::new()),
+            trusted_payer_bytecodes: HashSet::new(),
         }
     }
 
@@ -151,6 +192,14 @@ where
     /// can read the same index that the validator populates.
     pub fn invalidation_index(&self) -> Arc<RwLock<Eip8130InvalidationIndex>> {
         Arc::clone(&self.invalidation_index)
+    }
+
+    /// Returns a shared reference to the EIP-8130 2D nonce pool.
+    ///
+    /// AA transactions with `nonce_key != 0` are stored here instead of the
+    /// standard Reth pool to avoid `(sender, nonce_sequence)` collisions.
+    pub fn eip8130_pool(&self) -> SharedEip8130Pool<Tx> {
+        Arc::clone(&self.eip8130_pool)
     }
 
     /// Update the L1 block info for the given header and system transaction, if any.
@@ -220,6 +269,7 @@ where
                 self.client(),
                 self.verifier_allowlist.as_deref(),
                 self.custom_verifier_gas_limit,
+                &self.trusted_payer_bytecodes,
             ) {
                 Ok(outcome) => {
                     if let Some(payer) = outcome.sponsored_payer {
@@ -278,6 +328,38 @@ where
                                     Box::new(err),
                                 );
                             }
+                        }
+                    }
+
+                    // Route AA txs with nonce_key != 0 to the 2D nonce pool to
+                    // avoid collisions in the standard pool's (sender, nonce) key.
+                    let nonce_key = outcome.nonce_key;
+                    if is_2d_nonce(nonce_key) {
+                        let sender = transaction.sender();
+                        let nonce_storage_slot = nonce_slot(sender, nonce_key);
+                        let id = Eip8130TxId {
+                            sender,
+                            nonce_key,
+                            nonce_sequence: outcome.state_nonce,
+                        };
+                        if let Err(err) = self.eip8130_pool.add_transaction(
+                            id,
+                            transaction.clone(),
+                            origin,
+                            nonce_storage_slot,
+                            outcome.sender_throughput_tier,
+                        ) {
+                            tracing::debug!(
+                                target: "txpool",
+                                error = %err,
+                                "EIP-8130 2D pool rejected transaction"
+                            );
+                            return TransactionValidationOutcome::Invalid(
+                                transaction,
+                                reth_transaction_pool::error::InvalidPoolTransactionError::other(
+                                    err,
+                                ),
+                            );
                         }
                     }
 
@@ -369,7 +451,7 @@ impl<Client, Tx, Evm> TransactionValidator for OpTransactionValidator<Client, Tx
 where
     Client:
         ChainSpecProvider<ChainSpec: BaseUpgrades> + StateProviderFactory + BlockReaderIdExt + Sync,
-    Tx: EthPoolTransaction + OpPooledTx,
+    Tx: EthPoolTransaction + OpPooledTx + Clone,
     Evm: ConfigureEvm,
 {
     type Transaction = Tx;

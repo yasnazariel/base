@@ -15,17 +15,18 @@ use alloy_primitives::{Address, B256, Bytes, U256};
 use reth_storage_api::StateProviderFactory;
 
 use base_alloy_consensus::{
-    ACCOUNT_CONFIG_ADDRESS, AccountChangeEntry, DELEGATE_VERIFIER_ADDRESS, K1_VERIFIER_ADDRESS,
+    ACCOUNT_CONFIG_ADDRESS, AccountChangeEntry, CUSTOM_VERIFIER_GAS_CAP,
+    DELEGATE_VERIFIER_ADDRESS, K1_VERIFIER_ADDRESS, MAX_CONFIG_OPS_PER_TX,
     NONCE_MANAGER_ADDRESS, NativeVerifyResult, OwnerScope, ParsedSenderAuth,
     P256_RAW_VERIFIER_ADDRESS, P256_WEBAUTHN_VERIFIER_ADDRESS, TxEip8130, ValidationError,
-    VerifierTarget, VERIFIER_CUSTOM, VERIFIER_K1, encode_verify_call, implicit_eoa_owner_id,
-    intrinsic_gas, lock_slot, nonce_slot, owner_config_slot, parse_owner_config,
-    parse_sender_auth, payer_signature_hash, read_sequence, resolve_verifier,
+    VerifierTarget, VERIFIER_CUSTOM, VERIFIER_K1, config_change_digest, encode_verify_call,
+    implicit_eoa_owner_id, intrinsic_gas, lock_slot, nonce_slot, owner_config_slot,
+    parse_owner_config, parse_sender_auth, payer_signature_hash, read_sequence, resolve_verifier,
     sender_signature_hash, sequence_base_slot, try_native_verify, validate_expiry,
     validate_structure, verifier_type_to_address,
 };
 
-use crate::{InvalidationKey, OpPooledTx, compute_invalidation_keys};
+use crate::{InvalidationKey, OpPooledTx, SenderThroughputTier, compute_invalidation_keys};
 
 /// Controls which verifier contracts the mempool will accept in AA transactions.
 ///
@@ -65,6 +66,9 @@ pub struct Eip8130ValidationOutcome {
     pub balance: U256,
     /// The sender's current nonce_sequence (used for txpool nonce ordering).
     pub state_nonce: u64,
+    /// The nonce key from the transaction. Used by the 2D nonce pool to
+    /// route transactions with `nonce_key != 0` to the dedicated pool.
+    pub nonce_key: U256,
     /// The resolved sender owner ID (from native signature verification).
     pub sender_owner_id: B256,
     /// Storage slot dependencies for invalidation tracking.
@@ -72,6 +76,9 @@ pub struct Eip8130ValidationOutcome {
     /// The resolved payer address. `None` for self-pay transactions.
     /// Used for payer pending count tracking.
     pub sponsored_payer: Option<Address>,
+    /// Throughput tier for the sender, derived from the sender's lock state
+    /// and the payer's bytecode trustworthiness.
+    pub sender_throughput_tier: SenderThroughputTier,
 }
 
 /// Errors from AA transaction validation.
@@ -116,6 +123,17 @@ pub enum Eip8130ValidationError {
     CustomVerifierCallFailed(String),
     /// Custom verifier has EIP-7702 delegation bytecode prefix.
     VerifierEip7702Delegated(Address),
+    /// Config change authorizer auth is invalid.
+    AuthorizerAuthInvalid(String),
+    /// Config change authorizer lacks CONFIG scope or is not a recognized owner.
+    AuthorizerNotAuthorized(String),
+    /// Too many config operations in a single transaction.
+    TooManyConfigOperations {
+        /// Number of operations in the transaction.
+        count: usize,
+        /// Maximum allowed.
+        limit: usize,
+    },
     /// Account is locked; config changes are rejected.
     AccountLocked,
     /// Config change sequence does not match on-chain value.
@@ -177,6 +195,11 @@ impl std::fmt::Display for Eip8130ValidationError {
             Self::SenderNotAuthorized(e) => write!(f, "sender not authorized: {e}"),
             Self::PayerAuthInvalid(e) => write!(f, "payer auth invalid: {e}"),
             Self::PayerNotAuthorized(e) => write!(f, "payer not authorized: {e}"),
+            Self::AuthorizerAuthInvalid(e) => write!(f, "authorizer auth invalid: {e}"),
+            Self::AuthorizerNotAuthorized(e) => write!(f, "authorizer not authorized: {e}"),
+            Self::TooManyConfigOperations { count, limit } => {
+                write!(f, "too many config operations ({count}/{limit})")
+            }
             Self::AccountLocked => write!(f, "account is locked"),
             Self::SequenceMismatch { expected, got } => {
                 write!(f, "config change sequence mismatch (expected={expected}, got={got})")
@@ -208,6 +231,8 @@ impl reth_transaction_pool::error::PoolTransactionError for Eip8130ValidationErr
                 | Self::VerifierEip7702Delegated(_)
                 | Self::SenderAuthInvalid(_)
                 | Self::PayerAuthInvalid(_)
+                | Self::AuthorizerAuthInvalid(_)
+                | Self::TooManyConfigOperations { .. }
         )
     }
 
@@ -305,10 +330,9 @@ fn resolve_sender_address(tx: &TxEip8130) -> Result<(Address, B256), Eip8130Vali
 
 /// Default gas limit for custom verifier STATICCALLs in the txpool.
 ///
-/// Caps how much gas a custom verifier contract can consume during
-/// mempool validation. Override via
-/// [`OpTransactionValidator::with_custom_verifier_gas_limit`].
-pub const DEFAULT_CUSTOM_VERIFIER_GAS_LIMIT: u64 = 100_000;
+/// Matches [`CUSTOM_VERIFIER_GAS_CAP`] from the consensus layer.
+/// Override via [`OpTransactionValidator::with_custom_verifier_gas_limit`].
+pub const DEFAULT_CUSTOM_VERIFIER_GAS_LIMIT: u64 = CUSTOM_VERIFIER_GAS_CAP;
 
 /// Executes a custom verifier's `IVerifier.verify(hash, data)` via a
 /// lightweight EVM STATICCALL and validates the returned owner_id against
@@ -576,11 +600,12 @@ fn check_owner_authorized(
     ))
 }
 
-/// Distinguishes between sender and payer roles for error reporting.
+/// Distinguishes between sender, payer, and authorizer roles for error reporting.
 #[derive(Debug, Clone, Copy)]
 enum OwnerRole {
     Sender,
     Payer,
+    Authorizer,
 }
 
 impl OwnerRole {
@@ -588,8 +613,162 @@ impl OwnerRole {
         match self {
             Self::Sender => Eip8130ValidationError::SenderNotAuthorized(detail),
             Self::Payer => Eip8130ValidationError::PayerNotAuthorized(detail),
+            Self::Authorizer => Eip8130ValidationError::AuthorizerNotAuthorized(detail),
         }
     }
+
+}
+
+/// Validates the authorizer chain for config change entries at mempool time.
+///
+/// For each `ConfigChangeEntry`:
+/// 1. Computes the config change digest.
+/// 2. Parses `authorizer_auth` and verifies the signature (native or custom).
+/// 3. Checks the authenticated owner_id has CONFIG scope in `owner_config`.
+/// 4. Tracks pending additions in-memory for chained authorization.
+///
+/// Also validates authorizer custom verifiers against the allowlist and
+/// rejects verifiers with EIP-7702 delegation bytecode.
+fn validate_authorizer_chain(
+    tx: &TxEip8130,
+    sender: Address,
+    state: &dyn reth_storage_api::StateProvider,
+    verifier_allowlist: Option<&VerifierAllowlist>,
+    custom_verifier_gas_limit: u64,
+) -> Result<(), Eip8130ValidationError> {
+    use std::collections::HashMap;
+
+    let mut pending_owners: HashMap<B256, (Address, u8)> = HashMap::new();
+
+    for entry in &tx.account_changes {
+        let cc = match entry {
+            AccountChangeEntry::ConfigChange(cc) => cc,
+            _ => continue,
+        };
+
+        if cc.authorizer_auth.is_empty() {
+            return Err(Eip8130ValidationError::AuthorizerAuthInvalid(
+                "authorizer_auth is empty on config change entry".into(),
+            ));
+        }
+
+        let digest = config_change_digest(sender, cc);
+        let verifier_type = cc.authorizer_auth[0];
+        let data = Bytes::copy_from_slice(&cc.authorizer_auth[1..]);
+
+        // Allowlist check for custom authorizer verifiers.
+        if let Some(allowlist) = verifier_allowlist {
+            if let Some(addr) = extract_custom_verifier_address(&cc.authorizer_auth) {
+                if !allowlist.is_allowed(&addr) {
+                    return Err(Eip8130ValidationError::VerifierNotAllowed(addr));
+                }
+            }
+        }
+
+        // EIP-7702 delegation check for custom authorizer verifiers.
+        if let Some(addr) = extract_custom_verifier_address(&cc.authorizer_auth) {
+            if let Ok(Some(code)) = state.account_code(&addr) {
+                if code.original_bytes().starts_with(&[0xef, 0x01, 0x00]) {
+                    return Err(Eip8130ValidationError::VerifierEip7702Delegated(addr));
+                }
+            }
+        }
+
+        let target = resolve_verifier(verifier_type, &data)
+            .map_err(|e| Eip8130ValidationError::AuthorizerAuthInvalid(e.into()))?;
+
+        let (verifier_address, verify_data) = match &target {
+            VerifierTarget::Native { verifier_type, data } => {
+                let addr = verifier_type_to_address(*verifier_type).ok_or_else(|| {
+                    Eip8130ValidationError::AuthorizerAuthInvalid(
+                        "unknown native verifier".into(),
+                    )
+                })?;
+                (addr, data.clone())
+            }
+            VerifierTarget::Custom { verifier_address, data } => {
+                (*verifier_address, data.clone())
+            }
+        };
+
+        let result = try_native_verify(verifier_type, &verify_data, digest);
+        let owner_id = match result {
+            NativeVerifyResult::Verified(id) => {
+                check_owner_authorized_with_pending(
+                    state,
+                    sender,
+                    id,
+                    verifier_address,
+                    OwnerScope::CONFIG,
+                    &pending_owners,
+                )?;
+                id
+            }
+            NativeVerifyResult::Invalid(e) => {
+                return Err(Eip8130ValidationError::AuthorizerAuthInvalid(e.to_string()));
+            }
+            NativeVerifyResult::Unsupported => {
+                verify_custom_via_evm(
+                    state,
+                    verifier_address,
+                    digest,
+                    &verify_data,
+                    sender,
+                    OwnerScope::CONFIG,
+                    OwnerRole::Authorizer,
+                    custom_verifier_gas_limit,
+                )?
+            }
+        };
+
+        // Track pending additions/revocations for chaining.
+        for op in &cc.operations {
+            if op.op_type == 0x01 {
+                pending_owners.insert(op.owner_id, (op.verifier, op.scope));
+            } else if op.op_type == 0x02 {
+                pending_owners.remove(&op.owner_id);
+            }
+        }
+
+        let _ = owner_id; // used for scope check above
+    }
+
+    Ok(())
+}
+
+/// Like [`check_owner_authorized`] but also checks pending additions from
+/// earlier config change entries in the chain. Pending owners take priority
+/// over on-chain state, enabling chained authorization within a single tx.
+fn check_owner_authorized_with_pending(
+    state: &dyn reth_storage_api::StateProvider,
+    account: Address,
+    owner_id: B256,
+    expected_verifier: Address,
+    required_scope: u8,
+    pending_owners: &std::collections::HashMap<B256, (Address, u8)>,
+) -> Result<(), Eip8130ValidationError> {
+    if let Some((verifier, scope)) = pending_owners.get(&owner_id) {
+        if *verifier != expected_verifier {
+            return Err(Eip8130ValidationError::AuthorizerNotAuthorized(format!(
+                "pending owner verifier mismatch: expected {expected_verifier}, got {verifier}"
+            )));
+        }
+        if *scope != 0 && (*scope & required_scope) == 0 {
+            return Err(Eip8130ValidationError::AuthorizerNotAuthorized(format!(
+                "pending owner lacks required scope 0x{required_scope:02x}"
+            )));
+        }
+        return Ok(());
+    }
+
+    check_owner_authorized(
+        state,
+        account,
+        owner_id,
+        expected_verifier,
+        required_scope,
+        OwnerRole::Authorizer,
+    )
 }
 
 /// Full AA transaction validation pipeline for the mempool.
@@ -604,6 +783,7 @@ pub fn validate_eip8130_transaction<Tx, Client>(
     client: &Client,
     verifier_allowlist: Option<&VerifierAllowlist>,
     custom_verifier_gas_limit: u64,
+    trusted_payer_bytecodes: &HashSet<B256>,
 ) -> Result<Eip8130ValidationOutcome, Eip8130ValidationError>
 where
     Tx: OpPooledTx + Transaction,
@@ -698,32 +878,68 @@ where
         }
     }
 
-    // 7. Config change sequence validation
-    for entry in &tx.account_changes {
-        if let AccountChangeEntry::ConfigChange(change) = entry {
-            let seq_slot = sequence_base_slot(sender);
-            let packed = read_storage(&*state, ACCOUNT_CONFIG_ADDRESS, seq_slot)?;
-            let is_multichain = change.chain_id == 0;
-            let expected = read_sequence(packed, is_multichain);
-            if change.sequence != expected {
-                return Err(Eip8130ValidationError::SequenceMismatch {
-                    expected,
-                    got: change.sequence,
-                });
+    // 7. Config change validation: operation count limit, sequence check,
+    //    and authorizer chain verification.
+    let total_config_ops: usize = tx
+        .account_changes
+        .iter()
+        .filter_map(|e| match e {
+            AccountChangeEntry::ConfigChange(cc) => Some(cc.operations.len()),
+            _ => None,
+        })
+        .sum();
+    if total_config_ops > MAX_CONFIG_OPS_PER_TX {
+        return Err(Eip8130ValidationError::TooManyConfigOperations {
+            count: total_config_ops,
+            limit: MAX_CONFIG_OPS_PER_TX,
+        });
+    }
+
+    if has_config_changes {
+        let seq_slot = sequence_base_slot(sender);
+        let packed = read_storage(&*state, ACCOUNT_CONFIG_ADDRESS, seq_slot)?;
+        let mut expected_multichain = read_sequence(packed, true);
+        let mut expected_local = read_sequence(packed, false);
+
+        for entry in &tx.account_changes {
+            if let AccountChangeEntry::ConfigChange(change) = entry {
+                if change.chain_id == 0 {
+                    if change.sequence != expected_multichain {
+                        return Err(Eip8130ValidationError::SequenceMismatch {
+                            expected: expected_multichain,
+                            got: change.sequence,
+                        });
+                    }
+                    expected_multichain = expected_multichain.saturating_add(1);
+                } else {
+                    if change.sequence != expected_local {
+                        return Err(Eip8130ValidationError::SequenceMismatch {
+                            expected: expected_local,
+                            got: change.sequence,
+                        });
+                    }
+                    expected_local = expected_local.saturating_add(1);
+                }
             }
         }
     }
 
-    // 8. Intrinsic gas — gas_limit must cover the minimum execution cost.
-    //    Nonce key is "warm" if the current sequence > 0 (channel already used).
-    let nonce_key_is_warm = current_nonce > 0;
-    let min_gas = intrinsic_gas(&tx, nonce_key_is_warm, tx.chain_id);
-    if tx.gas_limit < min_gas {
-        return Err(Eip8130ValidationError::IntrinsicGasTooLow {
-            intrinsic: min_gas,
-            gas_limit: tx.gas_limit,
-        });
+    // 7b. Authorizer chain validation for config changes.
+    if has_config_changes {
+        validate_authorizer_chain(
+            &tx,
+            sender,
+            &*state,
+            verifier_allowlist,
+            custom_verifier_gas_limit,
+        )?;
     }
+
+    // 8. Compute intrinsic gas for the balance check. `gas_limit` is the
+    //    sender's execution-only budget, so we don't compare it against
+    //    intrinsic gas. Nonce key is "warm" if the current sequence > 0.
+    let nonce_key_is_warm = current_nonce > 0;
+    let aa_intrinsic_gas = intrinsic_gas(&tx, nonce_key_is_warm, tx.chain_id);
 
     // 9. Sender authorization (checks owner_config for the resolved sender)
     let sender_owner_id = validate_sender_authorization(
@@ -738,9 +954,24 @@ where
         None
     };
 
-    // 11. Balance check — payer must cover max gas cost
-    let max_gas_cost =
-        U256::from(tx.gas_limit).saturating_mul(U256::from(tx.max_fee_per_gas));
+    // 11. Balance check — payer must cover max gas cost.
+    //     Total = (intrinsic + custom_verifier_cap + execution_gas_limit) * max_fee_per_gas
+    let sender_is_custom = !tx.is_eoa()
+        && !tx.sender_auth.is_empty()
+        && tx.sender_auth[0] == VERIFIER_CUSTOM;
+    let payer_is_custom = !tx.is_self_pay()
+        && !tx.payer_auth.is_empty()
+        && tx.payer_auth[0] == VERIFIER_CUSTOM;
+    let authorizer_is_custom = tx.account_changes.iter().any(|e| {
+        matches!(e, AccountChangeEntry::ConfigChange(cc)
+            if !cc.authorizer_auth.is_empty() && cc.authorizer_auth[0] == VERIFIER_CUSTOM)
+    });
+    let has_custom_verifier = sender_is_custom || payer_is_custom || authorizer_is_custom;
+    let verifier_gas_cap =
+        if has_custom_verifier { CUSTOM_VERIFIER_GAS_CAP } else { 0u64 };
+    let total_gas =
+        U256::from(aa_intrinsic_gas) + U256::from(verifier_gas_cap) + U256::from(tx.gas_limit);
+    let max_gas_cost = total_gas.saturating_mul(U256::from(tx.max_fee_per_gas));
     let balance = state
         .account_balance(&payer)
         .map_err(|e| Eip8130ValidationError::StateError(e.to_string()))?
@@ -762,13 +993,69 @@ where
 
     let sponsored_payer = if payer != sender { Some(payer) } else { None };
 
+    // 13. Determine sender throughput tier for the 2D nonce pool.
+    //     Read the lock state only when we haven't already (step 6 reads it
+    //     only when there are config changes).
+    let sender_throughput_tier = compute_sender_throughput_tier(
+        sender,
+        payer,
+        &*state,
+        trusted_payer_bytecodes,
+    );
+
     Ok(Eip8130ValidationOutcome {
         balance,
         state_nonce: tx.nonce_sequence,
+        nonce_key: tx.nonce_key,
         sender_owner_id,
         invalidation_keys,
         sponsored_payer,
+        sender_throughput_tier,
     })
+}
+
+/// Determines the [`SenderThroughputTier`] by reading the sender's lock state
+/// and, when the sender is locked, checking whether the payer has trusted
+/// bytecode.
+///
+/// Returns [`SenderThroughputTier::Default`] on any state-read error so that
+/// failures degrade gracefully to the standard limit.
+fn compute_sender_throughput_tier(
+    sender: Address,
+    payer: Address,
+    state: &dyn reth_storage_api::StateProvider,
+    trusted_payer_bytecodes: &HashSet<B256>,
+) -> SenderThroughputTier {
+    let lock_slot_key = lock_slot(sender);
+    let lock_value = match read_storage(state, ACCOUNT_CONFIG_ADDRESS, lock_slot_key) {
+        Ok(v) => v,
+        Err(_) => return SenderThroughputTier::Default,
+    };
+
+    let sender_locked = lock_value.to_be_bytes::<32>()[0] != 0;
+    if !sender_locked {
+        return SenderThroughputTier::Default;
+    }
+
+    if trusted_payer_bytecodes.is_empty() {
+        return SenderThroughputTier::Locked;
+    }
+
+    // For the highest tier, check the payer's bytecode hash against the
+    // trusted set. In the self-pay case the payer IS the sender.
+    let payer_code_hash = match state.account_code(&payer) {
+        Ok(Some(code)) => {
+            use alloy_primitives::keccak256;
+            keccak256(code.original_bytes())
+        }
+        _ => return SenderThroughputTier::Locked,
+    };
+
+    if trusted_payer_bytecodes.contains(&payer_code_hash) {
+        SenderThroughputTier::LockedTrustedPayer
+    } else {
+        SenderThroughputTier::Locked
+    }
 }
 
 #[cfg(test)]

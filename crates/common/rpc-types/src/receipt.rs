@@ -31,7 +31,10 @@ pub struct Eip8130ReceiptFields {
     /// The address that paid for gas (may differ from `from` in sponsored txs).
     pub payer: alloy_primitives::Address,
     /// Per-phase execution status. `true` = success, `false` = revert.
-    pub phase_statuses: alloc::vec::Vec<bool>,
+    /// `None` for legacy receipts where individual phase outcomes could not
+    /// be determined (the system log was missing and the tx had mixed results).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phase_statuses: Option<alloc::vec::Vec<bool>>,
 }
 
 impl alloy_network_primitives::ReceiptResponse for OpTransactionReceipt {

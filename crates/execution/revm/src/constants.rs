@@ -66,3 +66,30 @@ pub const BASE_FEE_RECIPIENT: Address = address!("0x4200000000000000000000000000
 
 /// The address of the `L1Block` contract.
 pub const L1_BLOCK_CONTRACT: Address = address!("0x4200000000000000000000000000000000000015");
+
+// ---------------------------------------------------------------------------
+// EIP-8130 owner scope bitmask (mirrors base_alloy_consensus::OwnerScope)
+// ---------------------------------------------------------------------------
+
+/// Owner scope bit: allowed to sign as the sender.
+pub const OWNER_SCOPE_SENDER: u8 = 0x02;
+
+/// Owner scope bit: allowed to sign as the payer.
+pub const OWNER_SCOPE_PAYER: u8 = 0x04;
+
+/// Owner scope bit: allowed to authorize config changes.
+pub const OWNER_SCOPE_CONFIG: u8 = 0x08;
+
+/// Maximum number of calls across all EIP-8130 phases.
+///
+/// Mirrors `base_alloy_consensus::MAX_CALLS_PER_TX` and is enforced again at
+/// inclusion time as a defense-in-depth check.
+pub const MAX_CALLS_PER_TX: usize = 100;
+
+/// Maximum number of account-change units in one EIP-8130 transaction.
+///
+/// Mirrors `base_alloy_consensus::MAX_ACCOUNT_CHANGES_PER_TX`.
+pub const MAX_ACCOUNT_CHANGES_PER_TX: usize = 10;
+
+/// DELEGATE verifier type byte.
+pub const VERIFIER_DELEGATE: u8 = 0x04;

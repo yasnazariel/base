@@ -3,7 +3,7 @@
 use core::convert::Infallible;
 
 use alloy_consensus::{SignableTransaction, error::ValueError};
-use alloy_eips::eip2718::Typed2718;
+use alloy_eips::eip2718::{Encodable2718, Typed2718};
 use alloy_evm::{
     EvmEnv,
     env::BlockEnvironment,
@@ -47,6 +47,7 @@ impl<Block: BlockEnvironment> TryIntoTxEnv<OpRevm<TxEnv>, Block> for OpTransacti
         if let Some(aa_tx) = self.build_eip8130() {
             let sender = self.as_ref().from.unwrap_or_else(|| aa_tx.effective_sender());
             let eip8130 = build_eip8130_parts(&aa_tx, sender);
+            let enveloped_tx = Bytes::from(aa_tx.encoded_2718());
             let mut base: TxEnv = self.as_ref().clone().try_into_tx_env(evm_env)?;
             base.tx_type = aa_tx.ty();
             base.caller = sender;
@@ -56,12 +57,12 @@ impl<Block: BlockEnvironment> TryIntoTxEnv<OpRevm<TxEnv>, Block> for OpTransacti
             base.data = Bytes::new();
             base.gas_price = aa_tx.max_fee_per_gas;
             base.gas_priority_fee = Some(aa_tx.max_priority_fee_per_gas);
-            if !aa_tx.authorization_list.is_empty() {
-                base.set_signed_authorization(aa_tx.authorization_list);
-            }
+            // NOTE: authorization_list is intentionally not copied to TxEnv for
+            // AA (type 0x05) transactions. The AA handler applies auto-delegation
+            // directly and does not invoke revm's standard EIP-7702 processing.
             return Ok(OpRevm {
                 base,
-                enveloped_tx: Some(Bytes::new()),
+                enveloped_tx: Some(enveloped_tx),
                 deposit: Default::default(),
                 eip8130,
             });

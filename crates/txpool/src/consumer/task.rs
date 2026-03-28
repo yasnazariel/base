@@ -1,19 +1,25 @@
 use std::{fmt, sync::Arc};
 
-use reth_transaction_pool::{PoolTransaction, TransactionPool, ValidPoolTransaction};
+use reth_transaction_pool::{
+    EthPoolTransaction, TransactionPool, ValidPoolTransaction,
+};
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, trace};
+
+use crate::{MergedBestTransactions, SharedEip8130Pool};
 
 use super::{config::ConsumerConfig, metrics::Metrics, validator::RecentlySent};
 
 /// Background consumer that drains the pool and broadcasts transactions.
 ///
-/// Each iteration creates a fresh `best_transactions()` snapshot, skips
-/// recently-sent hashes, and broadcasts new transactions. Downstream
-/// forwarders (one per builder) each subscribe to receive every transaction.
+/// Each iteration creates a fresh `best_transactions()` snapshot from both
+/// the standard pool and the EIP-8130 2D nonce pool, skips recently-sent
+/// hashes, and broadcasts new transactions. Downstream forwarders (one per
+/// builder) each subscribe to receive every transaction.
 pub struct Consumer<P: TransactionPool> {
     pool: P,
+    eip8130_pool: SharedEip8130Pool<P::Transaction>,
     config: ConsumerConfig,
     recently_sent: RecentlySent,
     sender: broadcast::Sender<Arc<ValidPoolTransaction<P::Transaction>>>,
@@ -23,17 +29,18 @@ pub struct Consumer<P: TransactionPool> {
 impl<P> Consumer<P>
 where
     P: TransactionPool + 'static,
-    P::Transaction: PoolTransaction,
+    P::Transaction: EthPoolTransaction + Clone,
 {
     /// Creates a new consumer.
     pub fn new(
         pool: P,
+        eip8130_pool: SharedEip8130Pool<P::Transaction>,
         config: ConsumerConfig,
         sender: broadcast::Sender<Arc<ValidPoolTransaction<P::Transaction>>>,
         cancel: CancellationToken,
     ) -> Self {
         let recently_sent = RecentlySent::new(config.resend_after);
-        Self { pool, config, recently_sent, sender, cancel }
+        Self { pool, eip8130_pool, config, recently_sent, sender, cancel }
     }
 
     /// Blocking loop — runs until the [`CancellationToken`] is cancelled.
@@ -50,9 +57,11 @@ where
             let mut txs_sent: u64 = 0;
             let mut txs_ignored: u64 = 0;
 
-            let best_txs = self.pool.best_transactions();
+            let standard_best = self.pool.best_transactions();
+            let eip8130_best = self.eip8130_pool.best_transactions();
+            let merged = MergedBestTransactions::new(standard_best, eip8130_best);
 
-            for tx in best_txs {
+            for tx in merged {
                 if self.cancel.is_cancelled() {
                     info!("consumer cancelled during iteration");
                     return;

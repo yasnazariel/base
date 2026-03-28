@@ -516,7 +516,7 @@ mod evm_integration {
         Call, TxEip8130,
         execution::{
             TxContextValues, auto_delegation_code, build_execution_calls, gas_refund,
-            max_gas_cost, nonce_increment_write,
+            max_execution_gas_cost, nonce_increment_write,
         },
         predeploys::NONCE_MANAGER_ADDRESS,
         precompiles::{PrecompileError, TX_CONTEXT_GAS, handle_tx_context},
@@ -609,7 +609,7 @@ mod evm_integration {
     #[test]
     fn max_cost() {
         let tx = simple_tx(Address::repeat_byte(0xAA));
-        assert_eq!(max_gas_cost(&tx), U256::from(tx.max_fee_per_gas) * U256::from(tx.gas_limit));
+        assert_eq!(max_execution_gas_cost(&tx), U256::from(tx.max_fee_per_gas) * U256::from(tx.gas_limit));
     }
 
     #[test]

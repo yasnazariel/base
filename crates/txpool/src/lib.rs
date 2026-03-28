@@ -13,6 +13,15 @@ pub use eip8130_invalidation::{
     compute_invalidation_keys, maintain_eip8130_invalidation, process_fal,
 };
 
+mod eip8130_pool;
+pub use eip8130_pool::{
+    BestEip8130Transactions, Eip8130Pool, Eip8130PoolConfig, Eip8130PoolError,
+    Eip8130SequenceId, Eip8130TxId, SenderThroughputTier, SharedEip8130Pool, is_2d_nonce,
+};
+
+mod best;
+pub use best::MergedBestTransactions;
+
 mod eip8130_validate;
 pub use eip8130_validate::{
     DEFAULT_CUSTOM_VERIFIER_GAS_LIMIT, Eip8130ValidationError, Eip8130ValidationOutcome,
@@ -51,8 +60,44 @@ pub use wire::ValidatedTransaction;
 
 pub mod estimated_da_size;
 
-use reth_transaction_pool::{Pool, TransactionValidationTaskExecutor};
+use reth_transaction_pool::{
+    BlobStore, EthPoolTransaction, Pool, TransactionOrdering,
+    TransactionValidationTaskExecutor,
+};
 
 /// Type alias for default Base transaction pool
 pub type OpTransactionPool<Client, S, Evm, T = BasePooledTransaction, O = BaseOrdering<T>> =
     Pool<TransactionValidationTaskExecutor<OpTransactionValidator<Client, T, Evm>>, O, S>;
+
+/// Trait that exposes the [`SharedEip8130Pool`] from a transaction pool.
+///
+/// Implemented for [`OpTransactionPool`] so that consumers (payload builder,
+/// consumer, invalidation task) can retrieve the 2D nonce pool through a
+/// generic pool reference without needing concrete type knowledge.
+pub trait HasEip8130Pool {
+    /// The pool transaction type.
+    type Tx: EthPoolTransaction;
+    /// Returns a shared reference to the EIP-8130 2D nonce pool.
+    fn eip8130_pool(&self) -> SharedEip8130Pool<Self::Tx>;
+}
+
+impl<Client, Tx, Evm, O, S> HasEip8130Pool
+    for Pool<TransactionValidationTaskExecutor<OpTransactionValidator<Client, Tx, Evm>>, O, S>
+where
+    Client: reth_chainspec::ChainSpecProvider<
+            ChainSpec: base_alloy_chains::BaseUpgrades,
+        > + reth_storage_api::StateProviderFactory
+        + reth_storage_api::BlockReaderIdExt
+        + Sync
+        + 'static,
+    Tx: EthPoolTransaction + OpPooledTx + Clone,
+    Evm: reth_evm::ConfigureEvm + 'static,
+    O: TransactionOrdering<Transaction = Tx>,
+    S: BlobStore,
+{
+    type Tx = Tx;
+
+    fn eip8130_pool(&self) -> SharedEip8130Pool<Tx> {
+        self.validator().validator().eip8130_pool()
+    }
+}

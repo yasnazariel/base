@@ -7,10 +7,11 @@
 mod constants;
 pub use constants::{
     AA_BASE_COST, AA_PAYER_TYPE, AA_TX_TYPE_ID, BYTECODE_BASE_GAS, BYTECODE_PER_BYTE_GAS,
-    CONFIG_CHANGE_OP_GAS, CONFIG_CHANGE_SKIP_GAS, EOA_AUTH_GAS, DEPLOYMENT_HEADER_SIZE,
-    MAX_SIGNATURE_SIZE, NONCE_KEY_COLD_GAS, NONCE_KEY_WARM_GAS, SLOAD_GAS, VERIFIER_CUSTOM,
-    VERIFIER_DELEGATE, VERIFIER_K1, VERIFIER_P256_RAW, VERIFIER_P256_WEBAUTHN,
-    VerifierGasCosts,
+    CONFIG_CHANGE_OP_GAS, CONFIG_CHANGE_SKIP_GAS, CUSTOM_VERIFIER_GAS_CAP, EOA_AUTH_GAS,
+    MAX_ACCOUNT_CHANGES_PER_TX, MAX_CALLS_PER_TX, MAX_CONFIG_OPS_PER_TX,
+    DEPLOYMENT_HEADER_SIZE, MAX_SIGNATURE_SIZE, NONCE_KEY_COLD_GAS, NONCE_KEY_WARM_GAS,
+    SLOAD_GAS, VERIFIER_CUSTOM, VERIFIER_DELEGATE, VERIFIER_K1, VERIFIER_P256_RAW,
+    VERIFIER_P256_WEBAUTHN, VerifierGasCosts,
 };
 
 mod types;
@@ -24,15 +25,16 @@ pub use tx::TxEip8130;
 
 mod signature;
 pub use signature::{
-    ParsedSenderAuth, VerifierTarget, payer_signature_hash, parse_sender_auth, resolve_verifier,
-    sender_signature_hash,
+    ParsedSenderAuth, VerifierTarget, config_change_digest, payer_signature_hash,
+    parse_sender_auth, resolve_verifier, sender_signature_hash,
 };
 
 mod gas;
 pub use gas::{
-    account_changes_cost, bytecode_cost, delegate_inner_verifier_type, intrinsic_gas,
-    intrinsic_gas_with_costs, nonce_key_cost, payer_auth_cost, payer_verification_gas,
-    sender_auth_cost, sender_verification_gas, total_verification_gas, tx_payload_cost,
+    account_change_units, account_changes_cost, authorizer_verification_gas, bytecode_cost,
+    delegate_inner_verifier_type, intrinsic_gas, intrinsic_gas_with_costs, nonce_key_cost,
+    payer_auth_cost, payer_verification_gas, sender_auth_cost, sender_verification_gas,
+    total_verification_gas, tx_payload_cost,
 };
 
 mod address;
@@ -75,7 +77,7 @@ mod execution;
 pub use execution::{
     CodePlacement, ExecutionCall, PhaseResult, SequenceUpdateInfo, StorageWrite, TxContextValues,
     auto_delegation_code, build_execution_calls, config_change_sequence, config_change_writes,
-    gas_refund, max_gas_cost, nonce_increment_write, owner_registration_writes,
+    gas_refund, max_execution_gas_cost, nonce_increment_write, owner_registration_writes,
 };
 
 #[cfg(feature = "evm")]

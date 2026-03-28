@@ -2,7 +2,7 @@
 //! forwarding pipeline on the Base node builder.
 
 use base_node_runner::{BaseNodeExtension, FromExtensionConfig, NodeHooks};
-use base_txpool::{SpawnedConsumer, SpawnedForwarder};
+use base_txpool::{HasEip8130Pool, SpawnedConsumer, SpawnedForwarder};
 use tracing::info;
 
 use crate::TxForwardingConfig;
@@ -40,10 +40,12 @@ impl BaseNodeExtension for TxForwardingExtension {
             );
 
             let pool = ctx.pool().clone();
+            let eip8130_pool = pool.eip8130_pool();
             let consumer_config = config.to_consumer_config();
             let forwarder_config = config.to_forwarder_config();
             let executor = ctx.task_executor;
-            let consumer = SpawnedConsumer::spawn(pool, consumer_config, &executor);
+            let consumer =
+                SpawnedConsumer::spawn(pool, eip8130_pool, consumer_config, &executor);
             let forwarder = SpawnedForwarder::spawn(&consumer.sender, forwarder_config, &executor);
 
             executor.spawn_with_graceful_shutdown_signal(|signal| {

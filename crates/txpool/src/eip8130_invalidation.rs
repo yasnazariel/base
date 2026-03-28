@@ -27,9 +27,11 @@ use futures::StreamExt;
 use parking_lot::RwLock;
 use reth_node_api::NodePrimitives;
 use reth_provider::CanonStateNotification;
-use reth_transaction_pool::TransactionPool;
+use reth_transaction_pool::{PoolTransaction, TransactionPool};
 use tokio_stream::wrappers::BroadcastStream;
 use tracing::{debug, trace, warn};
+
+use crate::Eip8130Pool;
 
 /// A (contract address, storage slot) pair that an AA transaction depends on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -162,6 +164,10 @@ impl Eip8130InvalidationIndex {
 /// When available, pass the resolved `sender_owner_id` and `payer_owner_id`
 /// from validation to track the exact owner config slots. Falls back to a
 /// hash-based proxy when `None`.
+///
+/// `authorizer_owner_ids` provides the resolved owner_id for each config
+/// change entry's authorizer (in order). If the authorizer's owner config
+/// changes, the tx is invalidated.
 pub fn compute_invalidation_keys(
     tx: &TxEip8130,
     resolved_sender: Address,
@@ -222,6 +228,9 @@ pub fn compute_invalidation_keys(
 
                 // Both multichain and local sequences are packed into a single
                 // slot, so watching the base slot covers both chain_id variants.
+                // This also covers authorizer invalidation: if the authorizer
+                // is revoked (a config change on the same account), the
+                // sequence bumps and this slot changes.
                 let seq_slot = base_alloy_consensus::sequence_base_slot(sender);
                 keys.insert(InvalidationKey {
                     address: ACCOUNT_CONFIG_ADDRESS,
@@ -262,12 +271,18 @@ const PRUNE_INTERVAL_BLOCKS: u64 = 16;
 /// ([`ACCOUNT_CONFIG_ADDRESS`] and [`NONCE_MANAGER_ADDRESS`]). Matching
 /// transactions are removed from both the pool and the shared invalidation
 /// index.
-pub async fn maintain_eip8130_invalidation<P, N>(
+///
+/// When `NONCE_MANAGER_ADDRESS` storage slots change, the 2D nonce pool is
+/// also updated: the affected sequence lanes advance their `next_nonce` and
+/// stale transactions are pruned.
+pub async fn maintain_eip8130_invalidation<P, N, T>(
     pool: P,
+    eip8130_pool: Arc<Eip8130Pool<T>>,
     mut events: BroadcastStream<CanonStateNotification<N>>,
     index: Arc<RwLock<Eip8130InvalidationIndex>>,
 ) where
     P: TransactionPool + 'static,
+    T: PoolTransaction + 'static,
     N: NodePrimitives,
 {
     let mut blocks_since_prune: u64 = 0;
@@ -287,27 +302,68 @@ pub async fn maintain_eip8130_invalidation<P, N>(
 
         blocks_since_prune += 1;
 
-        // Fast path: skip everything when the index is empty.
-        if index.read().is_empty() {
-            continue;
-        }
-
         let committed = notification.committed();
         let execution_outcome = committed.execution_outcome();
 
         let mut touched: Vec<(Address, B256)> = Vec::new();
+        let mut nonce_slot_changes: Vec<(B256, U256)> = Vec::new();
+        let mut config_slots: Vec<B256> = Vec::new();
+
         for (addr, acc) in execution_outcome.bundle_accounts_iter() {
-            if addr != ACCOUNT_CONFIG_ADDRESS && addr != NONCE_MANAGER_ADDRESS {
-                continue;
-            }
-            for (key, _slot) in acc.storage.iter() {
-                touched.push((addr, B256::from(*key)));
+            if addr == NONCE_MANAGER_ADDRESS {
+                for (key, slot) in acc.storage.iter() {
+                    let slot_key = B256::from(*key);
+                    touched.push((addr, slot_key));
+                    nonce_slot_changes.push((slot_key, slot.present_value));
+                }
+            } else if addr == ACCOUNT_CONFIG_ADDRESS {
+                for (key, _slot) in acc.storage.iter() {
+                    let slot_key = B256::from(*key);
+                    touched.push((addr, slot_key));
+                    config_slots.push(slot_key);
+                }
             }
         }
 
+        // Invalidate cached throughput tiers when lock slots change.
+        if !config_slots.is_empty() {
+            let n = eip8130_pool.invalidate_tiers_for_lock_slots(&config_slots);
+            if n > 0 {
+                debug!(
+                    invalidated = n,
+                    config_slots = config_slots.len(),
+                    "invalidated sender throughput tiers from lock slot changes"
+                );
+            }
+        }
+
+        // Update 2D nonce pool when nonce storage slots change.
+        // The pool maintains a reverse index from storage slots to sequence
+        // IDs, so we can efficiently find and update the right lanes.
+        if !nonce_slot_changes.is_empty() {
+            let mut nonce_pruned = 0usize;
+            for (slot_key, new_value) in &nonce_slot_changes {
+                if let Some(seq_id) = eip8130_pool.seq_id_for_slot(slot_key) {
+                    let new_nonce: u64 = new_value.try_into().unwrap_or(u64::MAX);
+                    let pruned = eip8130_pool.update_sequence_nonce(&seq_id, new_nonce);
+                    nonce_pruned += pruned.len();
+                }
+            }
+            if nonce_pruned > 0 {
+                debug!(
+                    pruned = nonce_pruned,
+                    slots = nonce_slot_changes.len(),
+                    "advanced 2D nonce pool sequences from chain state"
+                );
+            }
+        }
+
+        // Skip invalidation index lookup when the index is empty.
+        if index.read().is_empty() && touched.is_empty() {
+            continue;
+        }
+
         if !touched.is_empty() {
-            // Single write-lock for both lookup + eviction to avoid
-            // read→drop→write lock churn.
             let invalidated = {
                 let mut idx = index.write();
                 let invalidated = process_fal(&touched, &idx);
@@ -328,6 +384,8 @@ pub async fn maintain_eip8130_invalidation<P, N>(
                     touched_slots = touched.len(),
                     "evicting invalidated AA transactions"
                 );
+                let hash_vec: Vec<B256> = invalidated.iter().copied().collect();
+                eip8130_pool.remove_transactions(&hash_vec);
                 pool.remove_transactions(invalidated.into_iter().collect());
             }
         }
@@ -341,7 +399,9 @@ pub async fn maintain_eip8130_invalidation<P, N>(
             if !idx_guard.is_empty() {
                 let live: HashSet<B256> = idx_guard
                     .tracked_tx_hashes()
-                    .filter(|hash| pool.get(hash).is_some())
+                    .filter(|hash| {
+                        pool.get(hash).is_some() || eip8130_pool.contains(hash)
+                    })
                     .copied()
                     .collect();
                 drop(idx_guard);

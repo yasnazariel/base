@@ -32,7 +32,12 @@ pub const BYTECODE_BASE_GAS: u64 = 32_000;
 /// Per-byte gas for deployed bytecode.
 pub const BYTECODE_PER_BYTE_GAS: u64 = 200;
 
-/// Gas for each config operation that is applied (SSTORE).
+/// Gas for each applied account-change unit (SSTORE).
+///
+/// Account-change units are:
+/// - each config operation in a matching-chain config change,
+/// - each create entry (1 unit),
+/// - each initial owner in a create entry.
 pub const CONFIG_CHANGE_OP_GAS: u64 = 20_000;
 
 /// Gas for each config change entry that is skipped (wrong chain, SLOAD only).
@@ -43,6 +48,32 @@ pub const SLOAD_GAS: u64 = 2_100;
 
 /// Flat gas cost for EOA (ecrecover) authentication.
 pub const EOA_AUTH_GAS: u64 = 6_000;
+
+/// Maximum number of calls across all `calls` phases in one transaction.
+///
+/// Bounds AA execution fanout and prevents oversized phased call graphs from
+/// creating disproportionate mempool/inclusion validation work.
+pub const MAX_CALLS_PER_TX: usize = 100;
+
+/// Maximum number of account-change units in one transaction.
+///
+/// Counting rules:
+/// - each create entry counts as 1,
+/// - each create entry initial owner counts as 1,
+/// - each config operation counts as 1.
+pub const MAX_ACCOUNT_CHANGES_PER_TX: usize = 10;
+
+/// Maximum number of total `ConfigOperation`s across all `ConfigChangeEntry`s
+/// in a single transaction. Bounds the DoS surface of owner change validation.
+pub const MAX_CONFIG_OPS_PER_TX: usize = 5;
+
+/// Maximum gas allowed for a custom verifier STATICCALL.
+///
+/// Custom verifiers (type `0x00`) are metered via an on-chain STATICCALL
+/// whose gas is charged to the payer separately from the sender's
+/// `gas_limit` (which is execution-only). This cap bounds the DoS surface
+/// of arbitrary verifier contracts.
+pub const CUSTOM_VERIFIER_GAS_CAP: u64 = 100_000;
 
 // ---------------------------------------------------------------------------
 // Native verifier type bytes
@@ -69,14 +100,18 @@ pub const VERIFIER_DELEGATE: u8 = 0x04;
 
 /// Configurable gas costs for native signature verification.
 ///
-/// Each verifier type has a fixed gas charge that is deducted from the
-/// transaction's gas limit during intrinsic gas calculation. These costs
-/// account for the CPU work performed by native (Rust) verifiers that
-/// would otherwise be "free" relative to on-chain STATICCALL verification.
+/// Each verifier type has a fixed gas charge included in intrinsic gas.
+/// These costs account for the CPU work performed by native (Rust)
+/// verifiers that would otherwise be "free" relative to on-chain
+/// STATICCALL verification.
 ///
 /// `DELEGATE` acts as a 1-hop indirection: its cost is additive with the
 /// cost of the target verifier it resolves to. For example, a delegate
 /// wrapping K1 costs `DELEGATE + K1 = 3_000 + 6_000 = 9_000`.
+///
+/// Custom verifiers (type `0x00`) return 0 here because their gas is
+/// metered at runtime via STATICCALL, capped at [`CUSTOM_VERIFIER_GAS_CAP`],
+/// and charged to the payer separately from the sender's execution `gas_limit`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct VerifierGasCosts {
     /// secp256k1 ECDSA recovery.

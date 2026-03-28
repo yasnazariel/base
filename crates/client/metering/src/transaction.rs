@@ -1,7 +1,9 @@
 use alloy_consensus::{Transaction, transaction::Recovered};
 use alloy_eips::Encodable2718;
 use alloy_primitives::U256;
-use base_alloy_consensus::{AA_TX_TYPE_ID, TxEip8130};
+use base_alloy_consensus::{
+    AA_TX_TYPE_ID, CUSTOM_VERIFIER_GAS_CAP, TxEip8130, VERIFIER_CUSTOM, intrinsic_gas,
+};
 use base_revm::{L1BlockInfo, OpSpecId};
 use derive_more::Display;
 use reth_primitives_traits::Account;
@@ -53,8 +55,17 @@ pub fn validate_eip8130_tx(
         return Err(TxValidationError::Eip8130Expired(tx.expiry, block_timestamp));
     }
 
-    let max_gas_cost =
-        U256::from(tx.max_fee_per_gas).saturating_mul(U256::from(tx.gas_limit));
+    let aa_intrinsic = intrinsic_gas(tx, false, tx.chain_id);
+    let has_custom = (!tx.is_eoa()
+        && !tx.sender_auth.is_empty()
+        && tx.sender_auth[0] == VERIFIER_CUSTOM)
+        || (!tx.is_self_pay()
+            && !tx.payer_auth.is_empty()
+            && tx.payer_auth[0] == VERIFIER_CUSTOM);
+    let verifier_cap = if has_custom { CUSTOM_VERIFIER_GAS_CAP } else { 0u64 };
+    let total_gas =
+        U256::from(aa_intrinsic) + U256::from(verifier_cap) + U256::from(tx.gas_limit);
+    let max_gas_cost = total_gas.saturating_mul(U256::from(tx.max_fee_per_gas));
     if max_gas_cost > payer_account.balance {
         return Err(TxValidationError::InsufficientFundsForTransfer(
             max_gas_cost,

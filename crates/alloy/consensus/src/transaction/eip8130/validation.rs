@@ -11,7 +11,8 @@ use revm::database::Database;
 use super::{
     OwnerScope,
     accessors::{read_change_sequence, read_lock_state, read_nonce, read_owner_config},
-    constants::MAX_SIGNATURE_SIZE,
+    account_change_units,
+    constants::{MAX_ACCOUNT_CHANGES_PER_TX, MAX_CALLS_PER_TX, MAX_SIGNATURE_SIZE},
     predeploys::{
         DELEGATE_VERIFIER_ADDRESS, K1_VERIFIER_ADDRESS, P256_RAW_VERIFIER_ADDRESS,
         P256_WEBAUTHN_VERIFIER_ADDRESS,
@@ -41,6 +42,24 @@ pub enum ValidationError {
     /// `account_changes` has invalid structure (e.g. create not first).
     #[error("invalid account_changes structure: {0}")]
     InvalidAccountChanges(&'static str),
+
+    /// The transaction has too many calls across all phases.
+    #[error("too many calls in transaction ({count} > {limit})")]
+    TooManyCalls {
+        /// Number of calls in the transaction.
+        count: usize,
+        /// Maximum allowed calls.
+        limit: usize,
+    },
+
+    /// The transaction has too many account-change units.
+    #[error("too many account changes in transaction ({count} > {limit})")]
+    TooManyAccountChanges {
+        /// Number of account-change units in the transaction.
+        count: usize,
+        /// Maximum allowed account-change units.
+        limit: usize,
+    },
 
     /// The transaction has expired.
     #[error("transaction expired (expiry={expiry}, current={current})")]
@@ -127,6 +146,8 @@ pub fn validate_structure(tx: &TxEip8130) -> Result<(), ValidationError> {
     }
 
     validate_account_changes_structure(tx)?;
+    validate_calls_limit(tx)?;
+    validate_account_changes_limit(tx)?;
 
     Ok(())
 }
@@ -153,6 +174,30 @@ fn validate_account_changes_structure(tx: &TxEip8130) -> Result<(), ValidationEr
             }
             AccountChangeEntry::ConfigChange(_) => {}
         }
+    }
+    Ok(())
+}
+
+/// Validates the total call count across all phases.
+fn validate_calls_limit(tx: &TxEip8130) -> Result<(), ValidationError> {
+    let total_calls: usize = tx.calls.iter().map(Vec::len).sum();
+    if total_calls > MAX_CALLS_PER_TX {
+        return Err(ValidationError::TooManyCalls {
+            count: total_calls,
+            limit: MAX_CALLS_PER_TX,
+        });
+    }
+    Ok(())
+}
+
+/// Validates the total account-change units in a transaction.
+fn validate_account_changes_limit(tx: &TxEip8130) -> Result<(), ValidationError> {
+    let total = account_change_units(tx);
+    if total > MAX_ACCOUNT_CHANGES_PER_TX {
+        return Err(ValidationError::TooManyAccountChanges {
+            count: total,
+            limit: MAX_ACCOUNT_CHANGES_PER_TX,
+        });
     }
     Ok(())
 }
@@ -356,6 +401,101 @@ mod tests {
         assert!(matches!(
             validate_structure(&tx),
             Err(ValidationError::NonceKeyTooLarge)
+        ));
+    }
+
+    #[test]
+    fn structure_validation_call_count_limit() {
+        let calls = (0..MAX_CALLS_PER_TX)
+            .map(|_| super::super::types::Call {
+                to: address!("0x2222222222222222222222222222222222222222"),
+                data: Bytes::new(),
+            })
+            .collect();
+        let tx = TxEip8130 {
+            calls: vec![calls],
+            ..Default::default()
+        };
+        assert!(validate_structure(&tx).is_ok());
+    }
+
+    #[test]
+    fn structure_validation_too_many_calls() {
+        let calls = (0..(MAX_CALLS_PER_TX + 1))
+            .map(|_| super::super::types::Call {
+                to: address!("0x2222222222222222222222222222222222222222"),
+                data: Bytes::new(),
+            })
+            .collect();
+        let tx = TxEip8130 {
+            calls: vec![calls],
+            ..Default::default()
+        };
+        assert!(matches!(
+            validate_structure(&tx),
+            Err(ValidationError::TooManyCalls {
+                count,
+                limit
+            }) if count == MAX_CALLS_PER_TX + 1 && limit == MAX_CALLS_PER_TX
+        ));
+    }
+
+    #[test]
+    fn structure_validation_account_changes_limit() {
+        let owners = (0..9)
+            .map(|i| super::super::types::Owner {
+                verifier: address!("0x3333333333333333333333333333333333333333"),
+                owner_id: {
+                    let mut id = [0u8; 32];
+                    id[31] = i as u8;
+                    B256::from(id)
+                },
+                scope: 0,
+            })
+            .collect();
+        let tx = TxEip8130 {
+            account_changes: vec![super::super::types::AccountChangeEntry::Create(
+                super::super::types::CreateEntry {
+                    user_salt: B256::repeat_byte(0xAA),
+                    bytecode: Bytes::new(),
+                    initial_owners: owners,
+                },
+            )],
+            ..Default::default()
+        };
+        assert!(validate_structure(&tx).is_ok());
+    }
+
+    #[test]
+    fn structure_validation_too_many_account_changes() {
+        let owners = (0..10)
+            .map(|i| super::super::types::Owner {
+                verifier: address!("0x3333333333333333333333333333333333333333"),
+                owner_id: {
+                    let mut id = [0u8; 32];
+                    id[31] = i as u8;
+                    B256::from(id)
+                },
+                scope: 0,
+            })
+            .collect();
+        let tx = TxEip8130 {
+            account_changes: vec![super::super::types::AccountChangeEntry::Create(
+                super::super::types::CreateEntry {
+                    user_salt: B256::repeat_byte(0xAA),
+                    bytecode: Bytes::new(),
+                    initial_owners: owners,
+                },
+            )],
+            ..Default::default()
+        };
+        assert!(matches!(
+            validate_structure(&tx),
+            Err(ValidationError::TooManyAccountChanges {
+                count,
+                limit
+            }) if count == MAX_ACCOUNT_CHANGES_PER_TX + 1
+                && limit == MAX_ACCOUNT_CHANGES_PER_TX
         ));
     }
 

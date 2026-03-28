@@ -86,6 +86,8 @@ impl Eip8130SequenceUpdate {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Eip8130Parts {
+    /// Transaction expiry timestamp (`0` means no expiry).
+    pub expiry: u64,
     /// The effective sender address.
     pub sender: Address,
     /// The effective payer address (same as sender if self-pay).
@@ -98,21 +100,49 @@ pub struct Eip8130Parts {
     pub nonce_key: U256,
     /// Whether the tx includes a create entry (determines auto-delegation skip).
     pub has_create_entry: bool,
+    /// Total account-change units in the transaction.
+    ///
+    /// Counting rules:
+    /// - each create entry counts as 1,
+    /// - each create entry initial owner counts as 1,
+    /// - each config operation counts as 1.
+    pub account_change_units: usize,
     /// Gas charged for sender + payer native signature verification.
     pub verification_gas: u64,
-    /// Full AA intrinsic gas cost, replacing revm's standard 21,000 base.
+    /// Full AA intrinsic gas cost (protocol-computed, non-refundable).
     /// Includes: AA_BASE_COST + calldata + auth SLOADs + verification gas +
     /// nonce key (cold worst-case) + bytecode + config changes.
     ///
-    /// Both `validate_initial_tx_gas` and `execution()` use this value.
-    /// During estimation the handler adds calldata overhead for missing auth blobs.
+    /// The sender's `gas_limit` is execution-only; intrinsic gas is added on
+    /// top when computing the revm gas limit. The total revm gas limit is
+    /// `aa_intrinsic_gas + tx.gas_limit`.
     pub aa_intrinsic_gas: u64,
+    /// Portion of `aa_intrinsic_gas` attributable to payer-specific costs
+    /// (`payer_auth_cost` SLOAD + `payer_verification_gas`). The payer's
+    /// verifier calls `getMaxCost()` while still running, so `known_intrinsic`
+    /// for that precompile is `aa_intrinsic_gas - payer_intrinsic_gas`.
+    pub payer_intrinsic_gas: u64,
+    /// Maximum gas for custom verifier STATICCALLs. Charged to the payer
+    /// separately from both intrinsic gas and the sender's execution
+    /// `gas_limit`. Zero when no custom verifiers are used.
+    pub custom_verifier_gas_cap: u64,
+    /// The sender's verifier type byte. Used by the handler at inclusion
+    /// time to re-validate native verifier ownership via owner_config SLOAD.
+    pub sender_verifier_type: u8,
+    /// The payer's verifier type byte (0 for self-pay). Used by the handler
+    /// for payer ownership re-validation at inclusion time.
+    pub payer_verifier_type: u8,
     /// Auto-delegation code (`0xef0100 || DEFAULT_ACCOUNT_ADDRESS`) if applicable.
     /// Empty if auto-delegation is not needed.
     pub auto_delegation_code: Bytes,
-    /// Pre-execution storage writes (nonce increment, owner registration, config changes).
+    /// Pre-execution storage writes for account creation (owner registrations).
+    /// Applied unconditionally in `validate_against_state`.
     pub pre_writes: Vec<Eip8130StorageWrite>,
+    /// Storage writes for config changes (authorize/revoke owners).
+    /// Applied in `execution()` only after authorizer chain validation passes.
+    pub config_writes: Vec<Eip8130StorageWrite>,
     /// Sequence updates requiring read-modify-write on packed storage slots.
+    /// Applied alongside `config_writes` after authorizer validation.
     pub sequence_updates: Vec<Eip8130SequenceUpdate>,
     /// Code placements for account creation (runtime bytecode at CREATE2-derived addresses).
     pub code_placements: Vec<Eip8130CodePlacement>,
@@ -125,11 +155,48 @@ pub struct Eip8130Parts {
     pub sender_verify_call: Option<Eip8130VerifyCall>,
     /// Pre-encoded STATICCALL for custom payer verifier. Same semantics.
     pub payer_verify_call: Option<Eip8130VerifyCall>,
+    /// Per-config-change authorizer validation data. One entry per
+    /// `ConfigChangeEntry` in `account_changes`. The handler validates
+    /// these before applying `pre_writes`.
+    pub authorizer_validations: Vec<Eip8130AuthorizerValidation>,
     /// `true` when `sender_auth` was empty (e.g. during `eth_estimateGas`).
     /// The handler uses this to add calldata overhead during gas estimation.
     pub sender_auth_empty: bool,
     /// `true` when `payer_auth` was empty on a sponsored transaction.
     pub payer_auth_empty: bool,
+}
+
+/// Authorizer validation data for a single config change entry.
+///
+/// The handler uses this to re-validate that the config change was authorized
+/// by an owner with CONFIG scope before applying the pre-writes.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Eip8130AuthorizerValidation {
+    /// Verifier type byte from `authorizer_auth[0]`.
+    pub verifier_type: u8,
+    /// The authenticated owner_id (from native verification at conversion time).
+    /// Zero for custom verifiers (determined at runtime via STATICCALL).
+    pub owner_id: B256,
+    /// STATICCALL data for custom verifiers. `None` for native verifiers.
+    pub verify_call: Option<Eip8130VerifyCall>,
+    /// The operations in this config change (needed for chained validation
+    /// where earlier additions become visible to later authorizers).
+    pub operations: Vec<Eip8130ConfigOp>,
+}
+
+/// Simplified config operation for the handler's in-memory chaining logic.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Eip8130ConfigOp {
+    /// `0x01` = authorize, `0x02` = revoke.
+    pub op_type: u8,
+    /// Verifier contract address.
+    pub verifier: Address,
+    /// Owner identifier.
+    pub owner_id: B256,
+    /// Permission scope bitmask.
+    pub scope: u8,
 }
 
 /// Pre-encoded data for a STATICCALL to `IVerifier.verify(hash, data)`.
@@ -264,6 +331,7 @@ mod tests {
         assert_eq!(parts.payer_owner_id, B256::ZERO);
         assert_eq!(parts.nonce_key, U256::ZERO);
         assert!(!parts.has_create_entry);
+        assert_eq!(parts.account_change_units, 0);
         assert_eq!(parts.verification_gas, 0);
         assert!(parts.auto_delegation_code.is_empty());
         assert!(parts.pre_writes.is_empty());

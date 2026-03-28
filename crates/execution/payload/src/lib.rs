@@ -10,8 +10,8 @@
 extern crate alloc;
 
 pub mod builder;
-pub use builder::OpPayloadBuilder;
 pub mod config;
+pub use builder::{Eip8130PayloadTransactions, OpPayloadBuilder};
 pub mod error;
 pub mod payload;
 pub use payload::{

@@ -31,9 +31,13 @@ pub struct Eip8130TxContext {
     pub payer: Address,
     /// Owner ID from sender authentication.
     pub owner_id: B256,
-    /// Transaction gas limit.
+    /// Execution-only gas limit (the sender's `gas_limit` field).
     pub gas_limit: u64,
-    /// `gas_limit * max_fee_per_gas`.
+    /// `(gas_limit + known_intrinsic) * max_fee_per_gas`.
+    ///
+    /// `known_intrinsic` includes all protocol costs computed so far
+    /// **except** `payer_auth_cost` (the payer verifier may still be
+    /// running when it calls `getMaxCost()`).
     pub max_cost: U256,
     /// Phased call batches.
     pub call_phases: Vec<Vec<Eip8130Call>>,
@@ -57,14 +61,27 @@ pub fn get_eip8130_tx_context() -> Option<Eip8130TxContext> {
     EIP8130_TX_CONTEXT.with(|c| c.borrow().clone())
 }
 
-impl From<(&Eip8130Parts, u64, U256)> for Eip8130TxContext {
-    fn from((parts, gas_limit, max_fee_per_gas): (&Eip8130Parts, u64, U256)) -> Self {
+impl Eip8130TxContext {
+    /// Builds the context from parts and tx fields.
+    ///
+    /// `execution_gas_limit` is the sender's execution-only `gas_limit`.
+    /// `known_intrinsic` is the intrinsic gas minus payer auth costs (since
+    /// the payer verifier may call `getMaxCost()` while still running).
+    pub fn new(
+        parts: &Eip8130Parts,
+        execution_gas_limit: u64,
+        known_intrinsic: u64,
+        max_fee_per_gas: U256,
+    ) -> Self {
+        let total_gas = U256::from(execution_gas_limit)
+            + U256::from(known_intrinsic)
+            + U256::from(parts.custom_verifier_gas_cap);
         Self {
             sender: parts.sender,
             payer: parts.payer,
             owner_id: parts.owner_id,
-            gas_limit,
-            max_cost: U256::from(gas_limit) * max_fee_per_gas,
+            gas_limit: execution_gas_limit,
+            max_cost: total_gas * max_fee_per_gas,
             call_phases: parts.call_phases.clone(),
         }
     }
@@ -425,12 +442,12 @@ where
     } else if selector_bytes == selector(b"getOwnerId()") {
         encode_b256(eip8130.as_ref().map_or([0u8; 32], |p| p.owner_id.0))
     } else if selector_bytes == selector(b"getMaxCost()") {
-        let max_cost = eip8130.as_ref().map_or(U256::ZERO, |_| {
-            U256::from(tx.gas_limit()) * U256::from(tx.max_fee_per_gas())
-        });
+        let max_cost = get_eip8130_tx_context()
+            .map_or(U256::ZERO, |ctx| ctx.max_cost);
         encode_u256(max_cost)
     } else if selector_bytes == selector(b"getGasLimit()") {
-        let gas_limit = eip8130.as_ref().map_or(0u64, |_| tx.gas_limit());
+        let gas_limit = get_eip8130_tx_context()
+            .map_or(0u64, |ctx| ctx.gas_limit);
         encode_u256(U256::from(gas_limit))
     } else if selector_bytes == selector(b"getCalls()") {
         let phases = eip8130.as_ref().map_or(&[][..], |p| &p.call_phases);

@@ -36,6 +36,14 @@ pub fn delegate_inner_verifier_type(auth: &[u8]) -> Option<u8> {
 ///               + account_changes_cost
 /// ```
 ///
+/// Intrinsic gas is protocol-computed and non-refundable. The sender's
+/// `gas_limit` is execution-only (calls); intrinsic gas is charged on top.
+/// Total charge to payer: `effective_gas_price * (intrinsic_gas + execution_gas_used)`.
+///
+/// **Custom verifiers** (type `0x00`) contribute 0 to `verification_gas`
+/// here because their cost is determined at runtime via STATICCALL, capped
+/// at [`CUSTOM_VERIFIER_GAS_CAP`], and charged to the payer separately.
+///
 /// The `nonce_key_is_warm` parameter indicates whether the nonce channel has been
 /// used before (affects the SSTORE cost). Verification gas uses the default
 /// [`VerifierGasCosts::BASE_V1`] schedule. Delegate inner verifier types are
@@ -60,6 +68,7 @@ pub fn intrinsic_gas_with_costs(
     gas += sender_auth_cost(tx);
     gas += payer_auth_cost(tx);
     gas += total_verification_gas(tx, costs, sender_inner, payer_inner);
+    gas += authorizer_verification_gas(tx, costs);
     gas += nonce_key_cost(nonce_key_is_warm);
     gas += bytecode_cost(tx);
     gas += account_changes_cost(tx, chain_id);
@@ -148,6 +157,30 @@ pub fn total_verification_gas(
         + payer_verification_gas(tx, costs, payer_inner)
 }
 
+/// Gas charged for config change authorizer verification.
+///
+/// Each `ConfigChangeEntry` has an `authorizer_auth` blob signed by an owner
+/// with CONFIG scope. For native verifiers the gas is included in intrinsic;
+/// for custom verifiers (0x00) it returns 0 (metered at runtime via the
+/// shared `CUSTOM_VERIFIER_GAS_CAP` budget).
+///
+/// Also charges an SLOAD per config change for the owner_config read.
+pub fn authorizer_verification_gas(tx: &TxEip8130, costs: &VerifierGasCosts) -> u64 {
+    let mut gas = 0u64;
+    for entry in &tx.account_changes {
+        if let AccountChangeEntry::ConfigChange(cc) = entry {
+            if cc.authorizer_auth.is_empty() {
+                continue;
+            }
+            let verifier_type = cc.authorizer_auth[0];
+            let inner = delegate_inner_verifier_type(&cc.authorizer_auth);
+            gas += costs.gas_for_verifier(verifier_type, inner);
+            gas += SLOAD_GAS; // owner_config read for CONFIG scope check
+        }
+    }
+    gas
+}
+
 /// Nonce key cost: 22 100 for a new channel, 5 000 for an existing one.
 pub fn nonce_key_cost(is_warm: bool) -> u64 {
     if is_warm { NONCE_KEY_WARM_GAS } else { NONCE_KEY_COLD_GAS }
@@ -168,20 +201,43 @@ pub fn bytecode_cost(tx: &TxEip8130) -> u64 {
 
 /// Configuration change cost.
 ///
-/// - Entries targeting the current `chain_id` (or chain_id == 0 for multi-chain): `CONFIG_CHANGE_OP_GAS` per operation.
+/// - Create entry: `CONFIG_CHANGE_OP_GAS * (1 + initial_owners.len())`
+/// - Config entries targeting the current `chain_id` (or chain_id == 0):
+///   `CONFIG_CHANGE_OP_GAS` per operation.
 /// - Entries for a different chain: `CONFIG_CHANGE_SKIP_GAS` (SLOAD to verify and skip).
 pub fn account_changes_cost(tx: &TxEip8130, chain_id: u64) -> u64 {
     let mut gas = 0u64;
     for entry in &tx.account_changes {
-        if let AccountChangeEntry::ConfigChange(cc) = entry {
-            if cc.chain_id == 0 || cc.chain_id == chain_id {
-                gas += CONFIG_CHANGE_OP_GAS * cc.operations.len() as u64;
-            } else {
-                gas += CONFIG_CHANGE_SKIP_GAS;
+        match entry {
+            AccountChangeEntry::Create(create) => {
+                gas += CONFIG_CHANGE_OP_GAS * (1 + create.initial_owners.len() as u64);
+            }
+            AccountChangeEntry::ConfigChange(cc) => {
+                if cc.chain_id == 0 || cc.chain_id == chain_id {
+                    gas += CONFIG_CHANGE_OP_GAS * cc.operations.len() as u64;
+                } else {
+                    gas += CONFIG_CHANGE_SKIP_GAS;
+                }
             }
         }
     }
     gas
+}
+
+/// Counts account-change units in a transaction.
+///
+/// Counting rules:
+/// - each create entry counts as 1,
+/// - each create entry initial owner counts as 1,
+/// - each config operation counts as 1.
+pub fn account_change_units(tx: &TxEip8130) -> usize {
+    tx.account_changes
+        .iter()
+        .map(|entry| match entry {
+            AccountChangeEntry::Create(create) => 1 + create.initial_owners.len(),
+            AccountChangeEntry::ConfigChange(cc) => cc.operations.len(),
+        })
+        .sum()
 }
 
 /// EIP-2028 calldata gas: 16 per non-zero byte, 4 per zero byte.
@@ -191,7 +247,7 @@ fn calldata_gas(data: &[u8]) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use alloy_primitives::{Address, Bytes, U256};
+    use alloy_primitives::{Address, B256, Bytes, U256};
 
     use super::*;
     use crate::transaction::eip8130::types::{ConfigChangeEntry, ConfigOperation, CreateEntry, Owner};
@@ -270,6 +326,77 @@ mod tests {
         };
         let cost = account_changes_cost(&tx, 8453);
         assert_eq!(cost, 2 * CONFIG_CHANGE_OP_GAS + CONFIG_CHANGE_SKIP_GAS);
+    }
+
+    #[test]
+    fn account_changes_cost_includes_create_and_initial_owners() {
+        let tx = TxEip8130 {
+            account_changes: vec![AccountChangeEntry::Create(CreateEntry {
+                user_salt: B256::repeat_byte(0xAA),
+                bytecode: Bytes::new(),
+                initial_owners: vec![
+                    Owner {
+                        verifier: Address::repeat_byte(1),
+                        owner_id: B256::repeat_byte(0x10),
+                        scope: 0,
+                    },
+                    Owner {
+                        verifier: Address::repeat_byte(2),
+                        owner_id: B256::repeat_byte(0x11),
+                        scope: 0,
+                    },
+                ],
+            })],
+            ..Default::default()
+        };
+        // create entry (1) + two initial owners (2) => 3 account-change units
+        assert_eq!(account_changes_cost(&tx, 8453), 3 * CONFIG_CHANGE_OP_GAS);
+    }
+
+    #[test]
+    fn account_change_units_counts_create_keys_and_config_ops() {
+        let tx = TxEip8130 {
+            account_changes: vec![
+                AccountChangeEntry::Create(CreateEntry {
+                    user_salt: B256::repeat_byte(0xAA),
+                    bytecode: Bytes::new(),
+                    initial_owners: vec![
+                        Owner {
+                            verifier: Address::repeat_byte(1),
+                            owner_id: B256::repeat_byte(0x10),
+                            scope: 0,
+                        },
+                        Owner {
+                            verifier: Address::repeat_byte(2),
+                            owner_id: B256::repeat_byte(0x11),
+                            scope: 0,
+                        },
+                    ],
+                }),
+                AccountChangeEntry::ConfigChange(ConfigChangeEntry {
+                    chain_id: 8453,
+                    sequence: 0,
+                    operations: vec![
+                        ConfigOperation {
+                            op_type: 0x01,
+                            verifier: Address::repeat_byte(3),
+                            owner_id: B256::repeat_byte(0x12),
+                            scope: 0,
+                        },
+                        ConfigOperation {
+                            op_type: 0x02,
+                            verifier: Address::repeat_byte(4),
+                            owner_id: B256::repeat_byte(0x13),
+                            scope: 0,
+                        },
+                    ],
+                    authorizer_auth: Bytes::new(),
+                }),
+            ],
+            ..Default::default()
+        };
+        // create(1) + initial owners(2) + config ops(2) = 5
+        assert_eq!(account_change_units(&tx), 5);
     }
 
     #[test]

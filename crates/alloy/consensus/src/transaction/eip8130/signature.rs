@@ -7,7 +7,43 @@ use alloy_primitives::{Address, B256, Bytes, keccak256};
 use super::{
     TxEip8130,
     constants::{VERIFIER_CUSTOM, VERIFIER_DELEGATE, VERIFIER_K1, VERIFIER_P256_RAW, VERIFIER_P256_WEBAUTHN},
+    types::ConfigChangeEntry,
 };
+
+/// Computes the EIP-712 config change authorization digest.
+///
+/// Matches the JS reference in `send-aa-tx.mjs::configChangeDigest()`.
+/// The authorizer (an owner with CONFIG scope) signs this digest to
+/// authorize the operations in a [`ConfigChangeEntry`].
+pub fn config_change_digest(
+    account: Address,
+    change: &ConfigChangeEntry,
+) -> B256 {
+    let typehash = keccak256(
+        "ConfigChange(address account,uint64 chainId,uint64 sequence,\
+         ConfigOperation[] operations)\
+         ConfigOperation(uint8 opType,address verifier,bytes32 ownerId,uint8 scope)",
+    );
+
+    let mut op_hashes = Vec::with_capacity(change.operations.len() * 32);
+    for op in &change.operations {
+        let mut buf = [0u8; 128]; // 4 * 32 bytes
+        buf[31] = op.op_type;
+        buf[44..64].copy_from_slice(op.verifier.as_slice());
+        buf[64..96].copy_from_slice(op.owner_id.as_slice());
+        buf[127] = op.scope;
+        op_hashes.extend_from_slice(keccak256(buf).as_slice());
+    }
+    let operations_hash = keccak256(&op_hashes);
+
+    let mut buf = [0u8; 160]; // 5 * 32 bytes
+    buf[0..32].copy_from_slice(typehash.as_slice());
+    buf[44..64].copy_from_slice(account.as_slice());
+    buf[88..96].copy_from_slice(&change.chain_id.to_be_bytes());
+    buf[120..128].copy_from_slice(&change.sequence.to_be_bytes());
+    buf[128..160].copy_from_slice(operations_hash.as_slice());
+    keccak256(buf)
+}
 
 /// Computed sender signature hash.
 pub fn sender_signature_hash(tx: &TxEip8130) -> B256 {

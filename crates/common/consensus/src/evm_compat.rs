@@ -7,17 +7,20 @@ use alloy_eips::{Encodable2718, Typed2718};
 use alloy_evm::{FromRecoveredTx, FromTxWithEncoded};
 use alloy_primitives::{Address, B256, Bytes, U256};
 use base_revm::{
-    DepositTransactionParts, Eip8130Call, Eip8130CodePlacement, Eip8130Parts,
-    Eip8130SequenceUpdate, Eip8130StorageWrite, Eip8130VerifyCall, OpTransaction,
+    DepositTransactionParts, Eip8130AuthorizerValidation, Eip8130Call, Eip8130CodePlacement,
+    Eip8130ConfigOp, Eip8130Parts, Eip8130SequenceUpdate, Eip8130StorageWrite,
+    Eip8130VerifyCall, OpTransaction,
 };
 use revm::context::TxEnv;
 
 use crate::{
-    ACCOUNT_CONFIG_ADDRESS, AccountChangeEntry, OpTxEnvelope, OwnerScope, TxDeposit, TxEip8130,
-    VERIFIER_CUSTOM, VerifierGasCosts, auto_delegation_code, config_change_sequence,
-    config_change_writes, delegate_inner_verifier_type, derive_account_address,
-    encode_verify_call, intrinsic_gas_with_costs, owner_registration_writes,
-    payer_signature_hash, sender_signature_hash, total_verification_gas,
+    ACCOUNT_CONFIG_ADDRESS, AccountChangeEntry, CUSTOM_VERIFIER_GAS_CAP, OpTxEnvelope, OwnerScope,
+    TxDeposit, TxEip8130, VERIFIER_CUSTOM, VerifierGasCosts, account_change_units,
+    auto_delegation_code,
+    config_change_digest, config_change_sequence, config_change_writes,
+    delegate_inner_verifier_type, derive_account_address, encode_verify_call,
+    intrinsic_gas_with_costs, owner_registration_writes, payer_auth_cost, payer_signature_hash,
+    payer_verification_gas, sender_signature_hash, total_verification_gas,
 };
 #[cfg(feature = "native-verifier")]
 use crate::{
@@ -103,6 +106,115 @@ fn build_verify_call(
     Some(Eip8130VerifyCall { verifier, calldata, account, required_scope })
 }
 
+/// Builds per-config-change authorizer validation data.
+///
+/// For each `ConfigChangeEntry`, computes the config change digest, then:
+/// - **Custom verifier (0x00):** builds an [`Eip8130VerifyCall`] for runtime STATICCALL.
+/// - **Native verifier:** runs `try_native_verify` to obtain the `owner_id`.
+///
+/// Returns one [`Eip8130AuthorizerValidation`] per config change entry.
+#[cfg(feature = "native-verifier")]
+fn build_authorizer_validations(
+    tx: &TxEip8130,
+    sender: Address,
+) -> Vec<Eip8130AuthorizerValidation> {
+    let mut validations = Vec::new();
+    for entry in &tx.account_changes {
+        let cc = match entry {
+            AccountChangeEntry::ConfigChange(cc) => cc,
+            _ => continue,
+        };
+        if cc.authorizer_auth.is_empty() {
+            validations.push(Eip8130AuthorizerValidation::default());
+            continue;
+        }
+
+        let digest = config_change_digest(sender, cc);
+        let verifier_type = cc.authorizer_auth[0];
+
+        let ops: Vec<Eip8130ConfigOp> = cc
+            .operations
+            .iter()
+            .map(|op| Eip8130ConfigOp {
+                op_type: op.op_type,
+                verifier: op.verifier,
+                owner_id: op.owner_id,
+                scope: op.scope,
+            })
+            .collect();
+
+        if verifier_type == VERIFIER_CUSTOM {
+            let verify_call =
+                build_verify_call(&cc.authorizer_auth, digest, sender, OwnerScope::CONFIG);
+            validations.push(Eip8130AuthorizerValidation {
+                verifier_type,
+                owner_id: B256::ZERO,
+                verify_call,
+                operations: ops,
+            });
+        } else {
+            let data = Bytes::copy_from_slice(&cc.authorizer_auth[1..]);
+            let owner_id = match try_native_verify(verifier_type, &data, digest) {
+                NativeVerifyResult::Verified(id) => id,
+                NativeVerifyResult::Invalid(_) | NativeVerifyResult::Unsupported => B256::ZERO,
+            };
+            validations.push(Eip8130AuthorizerValidation {
+                verifier_type,
+                owner_id,
+                verify_call: None,
+                operations: ops,
+            });
+        }
+    }
+    validations
+}
+
+#[cfg(not(feature = "native-verifier"))]
+fn build_authorizer_validations(
+    tx: &TxEip8130,
+    sender: Address,
+) -> Vec<Eip8130AuthorizerValidation> {
+    let mut validations = Vec::new();
+    for entry in &tx.account_changes {
+        let cc = match entry {
+            AccountChangeEntry::ConfigChange(cc) => cc,
+            _ => continue,
+        };
+        if cc.authorizer_auth.is_empty() {
+            validations.push(Eip8130AuthorizerValidation::default());
+            continue;
+        }
+
+        let digest = config_change_digest(sender, cc);
+        let verifier_type = cc.authorizer_auth[0];
+
+        let ops: Vec<Eip8130ConfigOp> = cc
+            .operations
+            .iter()
+            .map(|op| Eip8130ConfigOp {
+                op_type: op.op_type,
+                verifier: op.verifier,
+                owner_id: op.owner_id,
+                scope: op.scope,
+            })
+            .collect();
+
+        let verify_call = if verifier_type == VERIFIER_CUSTOM {
+            build_verify_call(&cc.authorizer_auth, digest, sender, OwnerScope::CONFIG)
+        } else {
+            None
+        };
+
+        validations.push(Eip8130AuthorizerValidation {
+            verifier_type,
+            owner_id: B256::ZERO,
+            verify_call,
+            operations: ops,
+        });
+    }
+    validations
+}
+
 /// Build [`Eip8130Parts`] from a decoded [`TxEip8130`] for use by the handler.
 ///
 /// `recovered_caller` is the ecrecovered sender address. For EOA mode
@@ -136,8 +248,10 @@ pub fn build_eip8130_parts_with_costs(
 
     let has_create_entry =
         tx.account_changes.iter().any(|e| matches!(e, AccountChangeEntry::Create(_)));
+    let total_account_change_units = account_change_units(tx);
 
     let mut pre_writes = Vec::new();
+    let mut config_writes = Vec::new();
     let mut sequence_updates = Vec::new();
     let mut code_placements = Vec::new();
     for entry in &tx.account_changes {
@@ -163,7 +277,7 @@ pub fn build_eip8130_parts_with_costs(
             }
             AccountChangeEntry::ConfigChange(cc) => {
                 for w in config_change_writes(sender, cc) {
-                    pre_writes.push(Eip8130StorageWrite {
+                    config_writes.push(Eip8130StorageWrite {
                         address: w.address,
                         slot: w.slot,
                         value: w.value,
@@ -210,22 +324,56 @@ pub fn build_eip8130_parts_with_costs(
     let sender_auth_empty = !tx.is_eoa() && tx.sender_auth.is_empty();
     let payer_auth_empty = !tx.is_self_pay() && tx.payer_auth.is_empty();
 
+    let payer_intrinsic_gas =
+        payer_auth_cost(tx) + payer_verification_gas(tx, costs, payer_inner);
+
+    let authorizer_validations = build_authorizer_validations(tx, sender);
+
+    let has_custom_authorizer = authorizer_validations
+        .iter()
+        .any(|v| v.verify_call.is_some());
+    let has_custom_verifier =
+        sender_verify_call.is_some() || payer_verify_call.is_some() || has_custom_authorizer;
+    let custom_verifier_gas_cap = if has_custom_verifier { CUSTOM_VERIFIER_GAS_CAP } else { 0 };
+
+    let sender_verifier_type = if tx.is_eoa() {
+        crate::VERIFIER_K1
+    } else if tx.sender_auth.is_empty() {
+        0
+    } else {
+        tx.sender_auth[0]
+    };
+
+    let payer_verifier_type = if tx.is_self_pay() || tx.payer_auth.is_empty() {
+        0
+    } else {
+        tx.payer_auth[0]
+    };
+
     Eip8130Parts {
+        expiry: tx.expiry,
         sender,
         payer,
         owner_id,
         payer_owner_id,
         nonce_key: tx.nonce_key,
         has_create_entry,
+        account_change_units: total_account_change_units,
         verification_gas,
         aa_intrinsic_gas,
+        payer_intrinsic_gas,
+        custom_verifier_gas_cap,
+        sender_verifier_type,
+        payer_verifier_type,
         auto_delegation_code: auto_delegation_code(),
         pre_writes,
+        config_writes,
         sequence_updates,
         code_placements,
         call_phases,
         sender_verify_call,
         payer_verify_call,
+        authorizer_validations,
         sender_auth_empty,
         payer_auth_empty,
     }
@@ -244,10 +392,36 @@ impl FromRecoveredTx<OpTxEnvelope> for TxEnv {
             OpTxEnvelope::Eip7702(tx) => Self::from_recovered_tx(tx.tx(), caller),
             OpTxEnvelope::Eip8130(tx) => {
                 let inner = tx.inner();
-                let mut env = Self {
+                // NOTE: authorization_list is intentionally not copied to TxEnv for
+                // AA (type 0x05) transactions. The AA handler applies auto-delegation
+                // directly and does not invoke revm's standard EIP-7702 processing.
+                //
+                // `gas_limit` in TxEip8130 is execution-only. Revm expects the
+                // total gas limit (intrinsic + verification + execution). We add
+                // intrinsic gas (cold nonce worst-case) and the custom verifier gas
+                // cap. The handler's `validate_initial_tx_gas` deducts intrinsic;
+                // verification gets its own cap separate from execution budget.
+                let aa_intrinsic = intrinsic_gas_with_costs(
+                    inner,
+                    false, // cold nonce — worst case
+                    inner.chain_id,
+                    &VerifierGasCosts::BASE_V1,
+                );
+                let has_custom =
+                    (!inner.is_eoa() && !inner.sender_auth.is_empty() && inner.sender_auth[0] == VERIFIER_CUSTOM)
+                    || (!inner.is_self_pay() && !inner.payer_auth.is_empty() && inner.payer_auth[0] == VERIFIER_CUSTOM)
+                    || inner.account_changes.iter().any(|entry| {
+                        matches!(entry, AccountChangeEntry::ConfigChange(cc)
+                            if !cc.authorizer_auth.is_empty() && cc.authorizer_auth[0] == VERIFIER_CUSTOM)
+                    });
+                let verifier_cap =
+                    if has_custom { CUSTOM_VERIFIER_GAS_CAP } else { 0 };
+                Self {
                     tx_type: inner.ty(),
                     caller,
-                    gas_limit: inner.gas_limit,
+                    gas_limit: aa_intrinsic
+                        .saturating_add(verifier_cap)
+                        .saturating_add(inner.gas_limit),
                     nonce: inner.nonce_sequence,
                     kind: revm::primitives::TxKind::Call(caller),
                     value: alloy_primitives::U256::ZERO,
@@ -255,11 +429,7 @@ impl FromRecoveredTx<OpTxEnvelope> for TxEnv {
                     gas_price: inner.max_fee_per_gas,
                     gas_priority_fee: Some(inner.max_priority_fee_per_gas),
                     ..Default::default()
-                };
-                if !inner.authorization_list.is_empty() {
-                    env.set_signed_authorization(inner.authorization_list.clone());
                 }
-                env
             }
             OpTxEnvelope::Deposit(tx) => Self::from_recovered_tx(tx.inner(), caller),
         }

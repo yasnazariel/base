@@ -24,8 +24,8 @@ use base_execution_rpc::{
 };
 use base_execution_storage::OpStorage;
 use base_txpool::{
-    BaseOrdering, BasePooledTransaction, OpPooledTx, OpTransactionPool, OpTransactionValidator,
-    TimestampedTransaction,
+    BaseOrdering, BasePooledTransaction, HasEip8130Pool, OpPooledTx, OpTransactionPool,
+    OpTransactionValidator, TimestampedTransaction,
 };
 use reth_chainspec::{
     BaseFeeParams, ChainSpecProvider, EthChainSpec, EthereumHardforks, Hardforks,
@@ -1027,12 +1027,20 @@ where
                 <Node::Types as NodeTypes>::ChainSpec,
             >,
         > + 'static,
-    Pool: TransactionPool<Transaction: OpPooledTx<Consensus = TxTy<Node::Types>>> + Unpin + 'static,
+    Pool: TransactionPool<Transaction: OpPooledTx<Consensus = TxTy<Node::Types>> + Clone>
+        + HasEip8130Pool<Tx = Pool::Transaction>
+        + Unpin
+        + 'static,
     Txs: OpPayloadTransactions<Pool::Transaction>,
     Attrs: OpAttributes<Transaction = TxTy<Node::Types>>,
 {
-    type PayloadBuilder =
-        base_execution_payload_builder::OpPayloadBuilder<Pool, Node::Provider, Evm, Txs, Attrs>;
+    type PayloadBuilder = base_execution_payload_builder::OpPayloadBuilder<
+        Pool,
+        Node::Provider,
+        Evm,
+        base_execution_payload_builder::Eip8130PayloadTransactions<Pool::Transaction>,
+        Attrs,
+    >;
 
     async fn build_payload_builder(
         self,
@@ -1040,6 +1048,9 @@ where
         pool: Pool,
         evm_config: Evm,
     ) -> eyre::Result<Self::PayloadBuilder> {
+        let eip8130_txs = base_execution_payload_builder::Eip8130PayloadTransactions::new(
+            pool.eip8130_pool(),
+        );
         let payload_builder =
             base_execution_payload_builder::OpPayloadBuilder::with_builder_config(
                 pool,
@@ -1050,7 +1061,7 @@ where
                     gas_limit_config: self.gas_limit_config.clone(),
                 },
             )
-            .with_transactions(self.best_transactions.clone())
+            .with_transactions(eip8130_txs)
             .set_compute_pending_block(self.compute_pending_block);
         Ok(payload_builder)
     }

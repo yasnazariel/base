@@ -292,12 +292,16 @@ pub struct OpReceiptBuilder {
 /// `extract_phase_statuses_from_logs` should always succeed for new receipts.
 /// This fallback handles legacy receipts where the log was only emitted on
 /// success.
-fn infer_eip8130_phase_statuses(phase_count: usize, tx_success: bool) -> Vec<bool> {
+///
+/// Returns `None` for multi-phase success because `tx_success == true` only
+/// means at least one phase succeeded — individual phase outcomes are
+/// indeterminate without the system log.
+fn infer_eip8130_phase_statuses(phase_count: usize, tx_success: bool) -> Option<Vec<bool>> {
     match (phase_count, tx_success) {
-        (0, _) => Vec::new(),
-        (1, status) => vec![status],
-        (_, false) => vec![false; phase_count],
-        (_, true) => vec![true; phase_count],
+        (0, _) => Some(Vec::new()),
+        (1, status) => Some(vec![status]),
+        (_, false) => Some(vec![false; phase_count]),
+        (_, true) => None,
     }
 }
 
@@ -356,7 +360,7 @@ impl OpReceiptBuilder {
                 core_receipt.inner.logs(),
                 TX_CONTEXT_ADDRESS,
             )
-            .unwrap_or_else(|| {
+            .or_else(|| {
                 infer_eip8130_phase_statuses(tx.calls.len(), core_receipt.inner.status())
             });
             Eip8130ReceiptFields { payer: tx.effective_payer(), phase_statuses }
@@ -390,11 +394,13 @@ mod tests {
 
     #[test]
     fn infer_phase_statuses_rules() {
-        assert_eq!(infer_eip8130_phase_statuses(0, true), Vec::<bool>::new());
-        assert_eq!(infer_eip8130_phase_statuses(1, true), vec![true]);
-        assert_eq!(infer_eip8130_phase_statuses(1, false), vec![false]);
-        assert_eq!(infer_eip8130_phase_statuses(3, false), vec![false, false, false]);
-        assert_eq!(infer_eip8130_phase_statuses(3, true), vec![true, true, true]);
+        assert_eq!(infer_eip8130_phase_statuses(0, true), Some(Vec::<bool>::new()));
+        assert_eq!(infer_eip8130_phase_statuses(1, true), Some(vec![true]));
+        assert_eq!(infer_eip8130_phase_statuses(1, false), Some(vec![false]));
+        assert_eq!(infer_eip8130_phase_statuses(3, false), Some(vec![false, false, false]));
+        // Multi-phase success: individual statuses are indeterminate without
+        // the system log, so the fallback returns None.
+        assert_eq!(infer_eip8130_phase_statuses(3, true), None);
     }
 
     /// OP Mainnet transaction at index 0 in block 124665056.

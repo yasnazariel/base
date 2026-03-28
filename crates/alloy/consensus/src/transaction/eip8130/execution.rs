@@ -196,16 +196,24 @@ pub fn build_execution_calls(tx: &TxEip8130) -> Vec<Vec<ExecutionCall>> {
         .collect()
 }
 
-/// Computes the maximum gas cost for payer deduction.
+/// Computes the execution-only max gas cost.
 ///
-/// `max_cost = gas_limit * max_fee_per_gas`
-pub fn max_gas_cost(tx: &TxEip8130) -> U256 {
+/// `execution_max_cost = gas_limit * max_fee_per_gas`
+///
+/// `gas_limit` is the sender's execution budget. For the full max cost
+/// charged to the payer, callers must also account for
+/// `(intrinsic_gas + custom_verifier_gas_cap) * max_fee_per_gas`.
+pub fn max_execution_gas_cost(tx: &TxEip8130) -> U256 {
     U256::from(tx.gas_limit) * U256::from(tx.max_fee_per_gas)
 }
 
 /// Computes the gas refund for unused gas.
 ///
 /// `refund = (gas_limit - gas_used) * effective_gas_price`
+///
+/// `gas_limit` / `gas_used` are the total values (intrinsic + verification +
+/// execution). Intrinsic gas is non-refundable and is always included in
+/// `gas_used`, so unused execution and verification gas are refunded.
 pub fn gas_refund(gas_limit: u64, gas_used: u64, effective_gas_price: u128) -> U256 {
     let unused = gas_limit.saturating_sub(gas_used);
     U256::from(unused) * U256::from(effective_gas_price)
@@ -224,13 +232,13 @@ mod tests {
     }
 
     #[test]
-    fn max_gas_cost_calculation() {
+    fn max_execution_gas_cost_calculation() {
         let tx = TxEip8130 {
             gas_limit: 100_000,
             max_fee_per_gas: 10,
             ..Default::default()
         };
-        assert_eq!(max_gas_cost(&tx), U256::from(1_000_000));
+        assert_eq!(max_execution_gas_cost(&tx), U256::from(1_000_000));
     }
 
     #[test]
