@@ -27,65 +27,81 @@ COPY . .
 
 FROM source AS client-builder
 ARG PROFILE=release
+ARG RUST_VERSION
+ARG TARGETARCH
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
-    --mount=type=cache,target=/app/target,id=client-target,sharing=locked \
+    --mount=type=cache,target=/app/target,id=client-target-${RUST_VERSION}-${TARGETARCH}-${PROFILE},sharing=locked \
     cargo build --profile $PROFILE --package base-reth-node --bin base-reth-node && \
     cp /app/target/$([ "$PROFILE" = "dev" ] && echo debug || echo "$PROFILE")/base-reth-node /app/base-client
 
 FROM source AS builder-builder
 ARG PROFILE=release
+ARG RUST_VERSION
+ARG TARGETARCH
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
-    --mount=type=cache,target=/app/target,id=builder-target,sharing=locked \
+    --mount=type=cache,target=/app/target,id=builder-target-${RUST_VERSION}-${TARGETARCH}-${PROFILE},sharing=locked \
     cargo build --profile $PROFILE --package base-builder-bin --bin base-builder && \
     cp /app/target/$([ "$PROFILE" = "dev" ] && echo debug || echo "$PROFILE")/base-builder /app/base-builder
 
 FROM source AS consensus-builder
 ARG PROFILE=release
+ARG RUST_VERSION
+ARG TARGETARCH
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
-    --mount=type=cache,target=/app/target,id=consensus-target,sharing=locked \
+    --mount=type=cache,target=/app/target,id=consensus-target-${RUST_VERSION}-${TARGETARCH}-${PROFILE},sharing=locked \
     cargo build --profile $PROFILE --bin base-consensus && \
     cp /app/target/$([ "$PROFILE" = "dev" ] && echo debug || echo "$PROFILE")/base-consensus /app/base-consensus
 
 FROM source AS proposer-builder
 ARG PROFILE=release
+ARG RUST_VERSION
+ARG TARGETARCH
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
-    --mount=type=cache,target=/app/target,id=proposer-target,sharing=locked \
+    --mount=type=cache,target=/app/target,id=proposer-target-${RUST_VERSION}-${TARGETARCH}-${PROFILE},sharing=locked \
     cargo build --profile $PROFILE --package base-proposer-bin --bin base-proposer && \
     cp /app/target/$([ "$PROFILE" = "dev" ] && echo debug || echo "$PROFILE")/base-proposer /app/base-proposer
 
 FROM source AS websocket-proxy-builder
 ARG PROFILE=release
+ARG RUST_VERSION
+ARG TARGETARCH
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
-    --mount=type=cache,target=/app/target,id=websocket-proxy-target,sharing=locked \
+    --mount=type=cache,target=/app/target,id=websocket-proxy-target-${RUST_VERSION}-${TARGETARCH}-${PROFILE},sharing=locked \
     cargo build --profile $PROFILE --package websocket-proxy-bin --bin websocket-proxy && \
     cp /app/target/$([ "$PROFILE" = "dev" ] && echo debug || echo "$PROFILE")/websocket-proxy /app/websocket-proxy
 
 FROM source AS ingress-rpc-builder
 ARG PROFILE=release
+ARG RUST_VERSION
+ARG TARGETARCH
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
-    --mount=type=cache,target=/app/target,id=ingress-rpc-target,sharing=locked \
+    --mount=type=cache,target=/app/target,id=ingress-rpc-target-${RUST_VERSION}-${TARGETARCH}-${PROFILE},sharing=locked \
     cargo build --profile $PROFILE --package ingress-rpc --bin ingress-rpc && \
     cp /app/target/$([ "$PROFILE" = "dev" ] && echo debug || echo "$PROFILE")/ingress-rpc /app/ingress-rpc
 
 FROM source AS audit-archiver-builder
 ARG PROFILE=release
+ARG RUST_VERSION
+ARG TARGETARCH
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
-    --mount=type=cache,target=/app/target,id=audit-archiver-target,sharing=locked \
+    --mount=type=cache,target=/app/target,id=audit-archiver-target-${RUST_VERSION}-${TARGETARCH}-${PROFILE},sharing=locked \
     cargo build --profile $PROFILE --package audit-archiver --bin audit-archiver && \
     cp /app/target/$([ "$PROFILE" = "dev" ] && echo debug || echo "$PROFILE")/audit-archiver /app/audit-archiver
 
 FROM source AS batcher-builder
 ARG PROFILE=release
+ARG RUST_VERSION
+ARG TARGETARCH
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
-    --mount=type=cache,target=/app/target,id=batcher-target,sharing=locked \
+    --mount=type=cache,target=/app/target,id=batcher-target-${RUST_VERSION}-${TARGETARCH}-${PROFILE},sharing=locked \
     cargo build --profile $PROFILE --package base-batcher-bin --bin base-batcher && \
     cp /app/target/$([ "$PROFILE" = "dev" ] && echo debug || echo "$PROFILE")/base-batcher /app/base-batcher
 
