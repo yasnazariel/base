@@ -3945,7 +3945,6 @@ dependencies = [
  "base-execution-primitives",
  "reth-codecs",
  "reth-prune-types",
- "reth-stages-types",
  "reth-storage-api",
 ]
 
