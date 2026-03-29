@@ -48,7 +48,6 @@ use reth_fs_util as fs;
 use reth_network_p2p::headers::client::HeadersClient;
 use reth_node_api::{FullNodeTypes, NodeTypes, NodeTypesWithDB, NodeTypesWithDBAdapter};
 use reth_node_core::{
-    args::DefaultEraHost,
     dirs::{ChainPath, DataDirPath},
     node_config::NodeConfig,
     primitives::BlockHeader,
@@ -72,10 +71,7 @@ use reth_provider::{
 use reth_prune::{PruneModes, PrunerBuilder};
 use reth_rpc_builder::config::RethRpcServerConfig;
 use reth_rpc_layer::JwtSecret;
-use reth_stages::{
-    MetricEvent, PipelineBuilder, PipelineTarget, StageId, sets::DefaultStages,
-    stages::EraImportSource,
-};
+use reth_stages::{MetricEvent, PipelineBuilder, PipelineTarget, StageId, sets::DefaultStages};
 use reth_static_file::StaticFileProducer;
 use reth_tasks::TaskExecutor;
 use reth_tracing::{
@@ -448,7 +444,6 @@ impl<R, ChainSpec: EthChainSpec> LaunchContextWith<Attached<WithConfigs<ChainSpe
         let secret = self.node_config().rpc.auth_jwt_secret(default_jwt_path)?;
         Ok(secret)
     }
-
 }
 
 impl<DB, ChainSpec> LaunchContextWith<Attached<WithConfigs<ChainSpec>, DB>>
@@ -536,7 +531,6 @@ where
                     NoopEvmConfig::<Evm>::default(),
                     self.toml_config().stages.clone(),
                     self.prune_modes(),
-                    None,
                 ))
                 .build(
                     factory.clone(),
@@ -933,12 +927,8 @@ where
     ///
     /// A target block hash if the pipeline is inconsistent, otherwise `None`.
     pub fn check_pipeline_consistency(&self) -> ProviderResult<Option<B256>> {
-        // We skip the era stage if it's not enabled
-        let era_enabled = self.era_import_source().is_some();
-        let mut all_stages =
-            StageId::ALL.into_iter().filter(|id| era_enabled || id != &StageId::Era);
-
         // Get the expected first stage based on config.
+        let mut all_stages = StageId::ALL.into_iter();
         let first_stage = all_stages.next().expect("there must be at least one stage");
 
         // If no target was provided, check if the stages are congruent - check if the
@@ -1031,23 +1021,6 @@ where
             self.node_adapter().clone(),
             installed_exex,
             self.configs().clone(),
-        )
-    }
-
-    /// Creates the ERA import source based on node configuration.
-    ///
-    /// Returns `Some(EraImportSource)` if ERA is enabled in the node config, otherwise `None`.
-    pub fn era_import_source(&self) -> Option<EraImportSource> {
-        let node_config = self.node_config();
-        if !node_config.era.enabled {
-            return None;
-        }
-
-        EraImportSource::maybe_new(
-            node_config.era.source.path.clone(),
-            node_config.era.source.url.clone(),
-            || node_config.chain.chain().kind().default_era_host(),
-            || node_config.datadir().data_dir().join("era").into(),
         )
     }
 

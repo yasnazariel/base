@@ -51,16 +51,10 @@ mod tests {
     #[test]
     fn test_parse_dev_args() {
         let args = CommandParser::<DevArgs>::parse_from(["reth"]).args;
-        assert_eq!(
-            args,
-            DevArgs { dev: false, dev_mnemonic: DEFAULT_MNEMONIC.to_string() }
-        );
+        assert_eq!(args, DevArgs { dev: false, dev_mnemonic: DEFAULT_MNEMONIC.to_string() });
 
         let args = CommandParser::<DevArgs>::parse_from(["reth", "--dev"]).args;
-        assert_eq!(
-            args,
-            DevArgs { dev: true, dev_mnemonic: DEFAULT_MNEMONIC.to_string() }
-        );
+        assert_eq!(args, DevArgs { dev: true, dev_mnemonic: DEFAULT_MNEMONIC.to_string() });
     }
 
     #[test]

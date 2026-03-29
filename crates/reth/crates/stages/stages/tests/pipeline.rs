@@ -204,7 +204,6 @@ where
         evm_config,
         stages_config,
         PruneModes::default(),
-        None,
     );
 
     let pipeline = Pipeline::builder()

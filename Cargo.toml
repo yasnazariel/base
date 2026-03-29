@@ -69,9 +69,6 @@ members = [
   "crates/reth/crates/chainspec",
   "crates/reth/crates/config",
   "crates/reth/crates/e2e-test-utils",
-  "crates/reth/crates/era",
-  "crates/reth/crates/era-downloader",
-  "crates/reth/crates/era-utils",
   "crates/reth/crates/errors",
   "crates/reth/crates/etl",
   "crates/reth/crates/fs-util",
@@ -748,9 +745,6 @@ reth-ecies = { path = "crates/reth/crates/net/ecies" }
 reth-engine-local = { path = "crates/reth/crates/engine/local" }
 reth-engine-service = { path = "crates/reth/crates/engine/service" }
 reth-engine-util = { path = "crates/reth/crates/engine/util" }
-reth-era = { path = "crates/reth/crates/era" }
-reth-era-downloader = { path = "crates/reth/crates/era-downloader" }
-reth-era-utils = { path = "crates/reth/crates/era-utils" }
 reth-eth-wire = { path = "crates/reth/crates/net/eth-wire" }
 reth-eth-wire-types = { path = "crates/reth/crates/net/eth-wire-types" }
 reth-ethereum = { path = "crates/reth/crates/ethereum/reth" }

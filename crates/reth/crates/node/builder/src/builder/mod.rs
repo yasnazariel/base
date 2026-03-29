@@ -36,8 +36,10 @@ use secp256k1::SecretKey;
 use tracing::{info, trace, warn};
 
 use crate::{
-    BlockReaderFor, EngineNodeLauncher, LaunchNode, Node, common::WithConfigs,
-    components::NodeComponentsBuilder, node::FullNode,
+    BlockReaderFor, EngineNodeLauncher, LaunchNode, Node,
+    common::WithConfigs,
+    components::NodeComponentsBuilder,
+    node::FullNode,
     rpc::{RethRpcAddOns, RethRpcServerHandles, RpcContext},
 };
 

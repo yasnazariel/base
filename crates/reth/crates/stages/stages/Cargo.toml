@@ -21,11 +21,7 @@ reth-db.workspace = true
 reth-db-api.workspace = true
 reth-etl.workspace = true
 reth-evm = { workspace = true, features = ["metrics"] }
-reth-era-downloader.workspace = true
-reth-era-utils.workspace = true
-reth-era.workspace = true
 reth-exex.workspace = true
-reth-fs-util.workspace = true
 reth-network-p2p.workspace = true
 reth-primitives-traits = { workspace = true, features = ["serde-bincode-compat"] }
 reth-provider.workspace = true
@@ -62,8 +58,6 @@ rayon.workspace = true
 num-traits.workspace = true
 tempfile = { workspace = true, optional = true }
 bincode = { workspace = true, features = ["serde"] }
-reqwest.workspace = true
-eyre.workspace = true
 
 [dev-dependencies]
 # reth
@@ -94,6 +88,7 @@ assert_matches.workspace = true
 rand.workspace = true
 paste.workspace = true
 tempfile.workspace = true
+eyre.workspace = true
 
 # Stage benchmarks
 criterion = { workspace = true, features = ["async_tokio"] }

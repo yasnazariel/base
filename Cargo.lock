@@ -14166,7 +14166,6 @@ dependencies = [
 name = "reth-cli-commands"
 version = "0.0.0"
 dependencies = [
- "alloy-chains",
  "alloy-consensus",
  "alloy-eips",
  "alloy-primitives",
@@ -14203,13 +14202,9 @@ dependencies = [
  "reth-discv5",
  "reth-downloaders",
  "reth-ecies",
- "reth-era",
- "reth-era-downloader",
- "reth-era-utils",
  "reth-eth-wire",
  "reth-ethereum-cli",
  "reth-ethereum-primitives",
- "reth-etl",
  "reth-evm",
  "reth-exex",
  "reth-fs-util",
@@ -14328,7 +14323,6 @@ dependencies = [
  "serde",
  "tempfile",
  "toml 1.0.7+spec-1.1.0",
- "url",
 ]
 
 [[package]]
@@ -14843,72 +14837,6 @@ dependencies = [
  "reth-storage-api",
  "serde",
  "serde_json",
- "tokio",
- "tokio-util",
- "tracing",
-]
-
-[[package]]
-name = "reth-era"
-version = "0.0.0"
-dependencies = [
- "alloy-consensus",
- "alloy-eips",
- "alloy-primitives",
- "alloy-rlp",
- "ethereum_ssz",
- "ethereum_ssz_derive",
- "eyre",
- "rand 0.9.2",
- "reqwest 0.13.2",
- "reth-era-downloader",
- "reth-ethereum-primitives",
- "snap",
- "tempfile",
- "test-case",
- "thiserror 2.0.18",
- "tokio",
-]
-
-[[package]]
-name = "reth-era-downloader"
-version = "0.0.0"
-dependencies = [
- "alloy-primitives",
- "bytes",
- "eyre",
- "futures",
- "futures-util",
- "reqwest 0.13.2",
- "reth-era",
- "reth-fs-util",
- "sha2 0.10.9",
- "tempfile",
- "test-case",
- "tokio",
-]
-
-[[package]]
-name = "reth-era-utils"
-version = "0.0.0"
-dependencies = [
- "alloy-consensus",
- "alloy-primitives",
- "bytes",
- "eyre",
- "futures-util",
- "reqwest 0.13.2",
- "reth-db-api",
- "reth-db-common",
- "reth-era",
- "reth-era-downloader",
- "reth-etl",
- "reth-fs-util",
- "reth-primitives-traits",
- "reth-provider",
- "reth-stages-types",
- "reth-storage-api",
- "tempfile",
  "tokio",
  "tokio-util",
  "tracing",
@@ -16565,7 +16493,6 @@ dependencies = [
  "paste",
  "rand 0.9.2",
  "rayon",
- "reqwest 0.13.2",
  "reth-chainspec",
  "reth-codecs",
  "reth-config",
@@ -16574,9 +16501,6 @@ dependencies = [
  "reth-db-api",
  "reth-db-common",
  "reth-downloaders",
- "reth-era",
- "reth-era-downloader",
- "reth-era-utils",
  "reth-ethereum-consensus",
  "reth-ethereum-primitives",
  "reth-etl",
@@ -16584,7 +16508,6 @@ dependencies = [
  "reth-evm-ethereum",
  "reth-execution-types",
  "reth-exex",
- "reth-fs-util",
  "reth-network-p2p",
  "reth-network-peers",
  "reth-primitives-traits",

@@ -68,10 +68,6 @@ pub use benchmark_args::BenchmarkArgs;
 mod engine;
 pub use engine::{DefaultEngineValues, EngineArgs};
 
-/// `EraArgs` for configuring ERA files import.
-mod era;
-pub use era::{DefaultEraHost, EraArgs, EraSourceArgs};
-
 /// `StaticFilesArgs` for configuring static files.
 mod static_files;
 pub use static_files::{MINIMAL_BLOCKS_PER_FILE, StaticFilesArgs};

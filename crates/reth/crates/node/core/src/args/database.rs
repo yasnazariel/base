@@ -158,7 +158,9 @@ impl FromStr for ByteSize {
             }
             2 => (parts[0], parts[1]),
             _ => {
-                return Err("Invalid format. Use '<number><unit>' or '<number> <unit>'.".to_string());
+                return Err(
+                    "Invalid format. Use '<number><unit>' or '<number> <unit>'.".to_string()
+                );
             }
         };
 

@@ -7,7 +7,7 @@ use reth_chainspec::{ChainSpec, EthChainSpec, Hardforks};
 use reth_cli::chainspec::ChainSpecParser;
 use reth_cli_commands::{
     common::{CliComponentsBuilder, CliNodeTypes, HeaderMut},
-    config_cmd, db, download, dump_genesis, export_era, import, import_era, init_cmd, init_state,
+    config_cmd, db, download, dump_genesis, import, init_cmd, init_state,
     launcher::FnLauncher,
     node::{self, NoArgs},
     p2p, prune, re_execute, stage,
@@ -281,12 +281,6 @@ pub enum Commands<
     /// This syncs RLP encoded blocks from a file or files.
     #[command(name = "import")]
     Import(import::ImportCommand<C>),
-    /// This syncs ERA encoded blocks from a directory.
-    #[command(name = "import-era")]
-    ImportEra(import_era::ImportEraCommand<C>),
-    /// Exports block to era1 files in a specified directory.
-    #[command(name = "export-era")]
-    ExportEra(export_era::ExportEraCommand<C>),
     /// Dumps genesis block JSON configuration to stdout.
     DumpGenesis(dump_genesis::DumpGenesisCommand<C>),
     /// Database debugging utilities
@@ -342,8 +336,6 @@ impl<C: ChainSpecParser, Ext: clap::Args + fmt::Debug, SubCmd: Subcommand + fmt:
             Self::Init(cmd) => cmd.chain_spec(),
             Self::InitState(cmd) => cmd.chain_spec(),
             Self::Import(cmd) => cmd.chain_spec(),
-            Self::ExportEra(cmd) => cmd.chain_spec(),
-            Self::ImportEra(cmd) => cmd.chain_spec(),
             Self::DumpGenesis(cmd) => cmd.chain_spec(),
             Self::Db(cmd) => cmd.chain_spec(),
             Self::Download(cmd) => cmd.chain_spec(),
