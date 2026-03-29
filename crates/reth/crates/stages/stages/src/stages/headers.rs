@@ -128,8 +128,12 @@ where
             }
 
             let sealed_header: SealedHeader<Downloader::Header> =
-                bincode::deserialize::<serde_bincode_compat::SealedHeader<'_, _>>(&header_buf)
-                    .map_err(|err| StageError::Fatal(Box::new(err)))?
+                bincode::serde::decode_from_slice::<serde_bincode_compat::SealedHeader<'_, _>, _>(
+                    &header_buf,
+                    bincode::config::legacy(),
+                )
+                .map(|(header, _)| header)
+                .map_err(|err| StageError::Fatal(Box::new(err)))?
                     .into();
 
             let (header, header_hash) = sealed_header.split_ref();
@@ -249,9 +253,10 @@ where
                         self.header_collector.insert(
                             header_number,
                             Bytes::from(
-                                bincode::serialize(&serde_bincode_compat::SealedHeader::from(
-                                    &header,
-                                ))
+                                bincode::serde::encode_to_vec(
+                                    &serde_bincode_compat::SealedHeader::from(&header),
+                                    bincode::config::legacy(),
+                                )
                                 .map_err(|err| StageError::Fatal(Box::new(err)))?,
                             ),
                         )?;

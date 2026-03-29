@@ -1,6 +1,14 @@
 use std::path::PathBuf;
 use thiserror::Error;
 
+#[derive(Error, Debug)]
+pub enum BincodeError {
+    #[error(transparent)]
+    Encode(#[from] bincode::error::EncodeError),
+    #[error(transparent)]
+    Decode(#[from] bincode::error::DecodeError),
+}
+
 /// Errors associated with [`crate::NippyJar`].
 #[derive(Error, Debug)]
 pub enum NippyJarError {
@@ -22,7 +30,7 @@ pub enum NippyJarError {
 
     /// An error occurred during serialization/deserialization with Bincode.
     #[error(transparent)]
-    Bincode(#[from] Box<bincode::ErrorKind>),
+    Bincode(#[from] BincodeError),
 
     /// An error occurred with the Elias-Fano encoding/decoding process.
     #[error(transparent)]

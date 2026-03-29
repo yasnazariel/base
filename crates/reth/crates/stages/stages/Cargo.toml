@@ -61,7 +61,7 @@ itertools.workspace = true
 rayon.workspace = true
 num-traits.workspace = true
 tempfile = { workspace = true, optional = true }
-bincode.workspace = true
+bincode = { workspace = true, features = ["serde"] }
 reqwest.workspace = true
 eyre.workspace = true
 

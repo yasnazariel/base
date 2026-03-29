@@ -1969,8 +1969,20 @@ pub mod serde_bincode_compat {
         };
         use alloy_primitives::{B256, U256};
         use reth_primitives_traits::Account;
+        use serde::de::DeserializeOwned;
         use serde::{Deserialize, Serialize};
         use serde_with::serde_as;
+
+        fn roundtrip<T>(value: &T) -> T
+        where
+            T: Serialize + DeserializeOwned,
+        {
+            let encoded = bincode::serde::encode_to_vec(value, bincode::config::legacy()).unwrap();
+            let (decoded, _) =
+                bincode::serde::decode_from_slice::<T, _>(&encoded, bincode::config::legacy())
+                    .unwrap();
+            decoded
+        }
 
         #[test]
         fn test_hashed_post_state_bincode_roundtrip() {
@@ -1982,18 +1994,15 @@ pub mod serde_bincode_compat {
             }
 
             let mut data = Data { hashed_state: HashedPostState::default() };
-            let encoded = bincode::serialize(&data).unwrap();
-            let decoded: Data = bincode::deserialize(&encoded).unwrap();
+            let decoded: Data = roundtrip(&data);
             assert_eq!(decoded, data);
 
             data.hashed_state.accounts.insert(B256::random(), Some(Account::default()));
-            let encoded = bincode::serialize(&data).unwrap();
-            let decoded: Data = bincode::deserialize(&encoded).unwrap();
+            let decoded: Data = roundtrip(&data);
             assert_eq!(decoded, data);
 
             data.hashed_state.storages.insert(B256::random(), HashedStorage::default());
-            let encoded = bincode::serialize(&data).unwrap();
-            let decoded: Data = bincode::deserialize(&encoded).unwrap();
+            let decoded: Data = roundtrip(&data);
             assert_eq!(decoded, data);
         }
 
@@ -2007,18 +2016,15 @@ pub mod serde_bincode_compat {
             }
 
             let mut data = Data { hashed_storage: HashedStorage::default() };
-            let encoded = bincode::serialize(&data).unwrap();
-            let decoded: Data = bincode::deserialize(&encoded).unwrap();
+            let decoded: Data = roundtrip(&data);
             assert_eq!(decoded, data);
 
             data.hashed_storage.wiped = true;
-            let encoded = bincode::serialize(&data).unwrap();
-            let decoded: Data = bincode::deserialize(&encoded).unwrap();
+            let decoded: Data = roundtrip(&data);
             assert_eq!(decoded, data);
 
             data.hashed_storage.storage.insert(B256::random(), U256::from(1));
-            let encoded = bincode::serialize(&data).unwrap();
-            let decoded: Data = bincode::deserialize(&encoded).unwrap();
+            let decoded: Data = roundtrip(&data);
             assert_eq!(decoded, data);
         }
 
@@ -2032,16 +2038,14 @@ pub mod serde_bincode_compat {
             }
 
             let mut data = Data { hashed_state: HashedPostStateSorted::default() };
-            let encoded = bincode::serialize(&data).unwrap();
-            let decoded: Data = bincode::deserialize(&encoded).unwrap();
+            let decoded: Data = roundtrip(&data);
             assert_eq!(decoded, data);
 
             data.hashed_state.accounts.push((B256::random(), Some(Account::default())));
             data.hashed_state
                 .accounts
                 .push((B256::random(), Some(Account { nonce: 1, ..Default::default() })));
-            let encoded = bincode::serialize(&data).unwrap();
-            let decoded: Data = bincode::deserialize(&encoded).unwrap();
+            let decoded: Data = roundtrip(&data);
             assert_eq!(decoded, data);
 
             data.hashed_state.storages.insert(
@@ -2051,8 +2055,7 @@ pub mod serde_bincode_compat {
                     wiped: false,
                 },
             );
-            let encoded = bincode::serialize(&data).unwrap();
-            let decoded: Data = bincode::deserialize(&encoded).unwrap();
+            let decoded: Data = roundtrip(&data);
             assert_eq!(decoded, data);
         }
 
@@ -2068,18 +2071,15 @@ pub mod serde_bincode_compat {
             let mut data = Data {
                 hashed_storage: HashedStorageSorted { storage_slots: Vec::new(), wiped: false },
             };
-            let encoded = bincode::serialize(&data).unwrap();
-            let decoded: Data = bincode::deserialize(&encoded).unwrap();
+            let decoded: Data = roundtrip(&data);
             assert_eq!(decoded, data);
 
             data.hashed_storage.wiped = true;
-            let encoded = bincode::serialize(&data).unwrap();
-            let decoded: Data = bincode::deserialize(&encoded).unwrap();
+            let decoded: Data = roundtrip(&data);
             assert_eq!(decoded, data);
 
             data.hashed_storage.storage_slots.push((B256::random(), U256::from(1)));
-            let encoded = bincode::serialize(&data).unwrap();
-            let decoded: Data = bincode::deserialize(&encoded).unwrap();
+            let decoded: Data = roundtrip(&data);
             assert_eq!(decoded, data);
         }
     }

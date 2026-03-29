@@ -565,8 +565,12 @@ pub(super) mod serde_bincode_compat {
                 },
             };
 
-            let encoded = bincode::serialize(&data).unwrap();
-            let decoded = bincode::deserialize::<Data<Receipt>>(&encoded).unwrap();
+            let encoded = bincode::serde::encode_to_vec(&data, bincode::config::legacy()).unwrap();
+            let (decoded, _) = bincode::serde::decode_from_slice::<Data<Receipt>, _>(
+                &encoded,
+                bincode::config::legacy(),
+            )
+            .unwrap();
             assert_eq!(decoded, data);
         }
     }

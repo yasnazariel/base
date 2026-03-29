@@ -214,12 +214,19 @@ impl<H: NippyJarHeader> NippyJar<H> {
 
     /// Deserializes an instance of [`Self`] from a [`Read`] type.
     pub fn load_from_reader<R: Read>(reader: R) -> Result<Self, NippyJarError> {
-        Ok(bincode::deserialize_from(reader)?)
+        let mut reader = reader;
+        Ok(
+            bincode::serde::decode_from_std_read(&mut reader, bincode::config::legacy())
+                .map_err(crate::error::BincodeError::from)?,
+        )
     }
 
     /// Serializes an instance of [`Self`] to a [`Write`] type.
     pub fn save_to_writer<W: Write>(&self, writer: W) -> Result<(), NippyJarError> {
-        Ok(bincode::serialize_into(writer, self)?)
+        let mut writer = writer;
+        bincode::serde::encode_into_std_write(self, &mut writer, bincode::config::legacy())
+            .map_err(crate::error::BincodeError::from)?;
+        Ok(())
     }
 
     /// Returns the path for the data file
@@ -494,7 +501,9 @@ mod tests {
             buf
         );
 
-        let mut read_jar = bincode::deserialize_from::<_, NippyJar>(&buf[..]).unwrap();
+        let mut read_jar =
+            bincode::serde::decode_from_std_read::<NippyJar, _, _>(&mut &buf[..], bincode::config::legacy())
+                .unwrap();
         // Path is not ser/de
         read_jar.path = file.path().to_path_buf();
         assert_eq!(jar, read_jar);

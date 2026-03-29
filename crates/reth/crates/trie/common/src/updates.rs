@@ -1378,7 +1378,19 @@ pub mod serde_bincode_compat {
         };
         use alloy_primitives::B256;
         use serde::{Deserialize, Serialize};
+        use serde::de::DeserializeOwned;
         use serde_with::serde_as;
+
+        fn roundtrip<T>(value: &T) -> T
+        where
+            T: Serialize + DeserializeOwned,
+        {
+            let encoded = bincode::serde::encode_to_vec(value, bincode::config::legacy()).unwrap();
+            let (decoded, _) =
+                bincode::serde::decode_from_slice::<T, _>(&encoded, bincode::config::legacy())
+                    .unwrap();
+            decoded
+        }
 
         #[test]
         fn test_trie_updates_bincode_roundtrip() {
@@ -1390,28 +1402,24 @@ pub mod serde_bincode_compat {
             }
 
             let mut data = Data { trie_updates: TrieUpdates::default() };
-            let encoded = bincode::serialize(&data).unwrap();
-            let decoded: Data = bincode::deserialize(&encoded).unwrap();
+            let decoded: Data = roundtrip(&data);
             assert_eq!(decoded, data);
 
             data.trie_updates
                 .removed_nodes
                 .insert(Nibbles::from_nibbles_unchecked([0x0b, 0x0e, 0x0e, 0x0f]));
-            let encoded = bincode::serialize(&data).unwrap();
-            let decoded: Data = bincode::deserialize(&encoded).unwrap();
+            let decoded: Data = roundtrip(&data);
             assert_eq!(decoded, data);
 
             data.trie_updates.account_nodes.insert(
                 Nibbles::from_nibbles_unchecked([0x0d, 0x0e, 0x0a, 0x0d]),
                 BranchNodeCompact::default(),
             );
-            let encoded = bincode::serialize(&data).unwrap();
-            let decoded: Data = bincode::deserialize(&encoded).unwrap();
+            let decoded: Data = roundtrip(&data);
             assert_eq!(decoded, data);
 
             data.trie_updates.storage_tries.insert(B256::default(), StorageTrieUpdates::default());
-            let encoded = bincode::serialize(&data).unwrap();
-            let decoded: Data = bincode::deserialize(&encoded).unwrap();
+            let decoded: Data = roundtrip(&data);
             assert_eq!(decoded, data);
         }
 
@@ -1425,23 +1433,20 @@ pub mod serde_bincode_compat {
             }
 
             let mut data = Data { trie_updates: StorageTrieUpdates::default() };
-            let encoded = bincode::serialize(&data).unwrap();
-            let decoded: Data = bincode::deserialize(&encoded).unwrap();
+            let decoded: Data = roundtrip(&data);
             assert_eq!(decoded, data);
 
             data.trie_updates
                 .removed_nodes
                 .insert(Nibbles::from_nibbles_unchecked([0x0b, 0x0e, 0x0e, 0x0f]));
-            let encoded = bincode::serialize(&data).unwrap();
-            let decoded: Data = bincode::deserialize(&encoded).unwrap();
+            let decoded: Data = roundtrip(&data);
             assert_eq!(decoded, data);
 
             data.trie_updates.storage_nodes.insert(
                 Nibbles::from_nibbles_unchecked([0x0d, 0x0e, 0x0a, 0x0d]),
                 BranchNodeCompact::default(),
             );
-            let encoded = bincode::serialize(&data).unwrap();
-            let decoded: Data = bincode::deserialize(&encoded).unwrap();
+            let decoded: Data = roundtrip(&data);
             assert_eq!(decoded, data);
         }
 
@@ -1455,30 +1460,26 @@ pub mod serde_bincode_compat {
             }
 
             let mut data = Data { trie_updates: TrieUpdatesSorted::default() };
-            let encoded = bincode::serialize(&data).unwrap();
-            let decoded: Data = bincode::deserialize(&encoded).unwrap();
+            let decoded: Data = roundtrip(&data);
             assert_eq!(decoded, data);
 
             data.trie_updates.account_nodes.push((
                 Nibbles::from_nibbles_unchecked([0x0d, 0x0e, 0x0a, 0x0d]),
                 Some(BranchNodeCompact::default()),
             ));
-            let encoded = bincode::serialize(&data).unwrap();
-            let decoded: Data = bincode::deserialize(&encoded).unwrap();
+            let decoded: Data = roundtrip(&data);
             assert_eq!(decoded, data);
 
             data.trie_updates
                 .account_nodes
                 .push((Nibbles::from_nibbles_unchecked([0x0f, 0x0f, 0x0f, 0x0f]), None));
-            let encoded = bincode::serialize(&data).unwrap();
-            let decoded: Data = bincode::deserialize(&encoded).unwrap();
+            let decoded: Data = roundtrip(&data);
             assert_eq!(decoded, data);
 
             data.trie_updates
                 .storage_tries
                 .insert(B256::default(), StorageTrieUpdatesSorted::default());
-            let encoded = bincode::serialize(&data).unwrap();
-            let decoded: Data = bincode::deserialize(&encoded).unwrap();
+            let decoded: Data = roundtrip(&data);
             assert_eq!(decoded, data);
         }
 
@@ -1492,28 +1493,24 @@ pub mod serde_bincode_compat {
             }
 
             let mut data = Data { trie_updates: StorageTrieUpdatesSorted::default() };
-            let encoded = bincode::serialize(&data).unwrap();
-            let decoded: Data = bincode::deserialize(&encoded).unwrap();
+            let decoded: Data = roundtrip(&data);
             assert_eq!(decoded, data);
 
             data.trie_updates.storage_nodes.push((
                 Nibbles::from_nibbles_unchecked([0x0d, 0x0e, 0x0a, 0x0d]),
                 Some(BranchNodeCompact::default()),
             ));
-            let encoded = bincode::serialize(&data).unwrap();
-            let decoded: Data = bincode::deserialize(&encoded).unwrap();
+            let decoded: Data = roundtrip(&data);
             assert_eq!(decoded, data);
 
             data.trie_updates
                 .storage_nodes
                 .push((Nibbles::from_nibbles_unchecked([0x0a, 0x0a, 0x0a, 0x0a]), None));
-            let encoded = bincode::serialize(&data).unwrap();
-            let decoded: Data = bincode::deserialize(&encoded).unwrap();
+            let decoded: Data = roundtrip(&data);
             assert_eq!(decoded, data);
 
             data.trie_updates.is_deleted = true;
-            let encoded = bincode::serialize(&data).unwrap();
-            let decoded: Data = bincode::deserialize(&encoded).unwrap();
+            let decoded: Data = roundtrip(&data);
             assert_eq!(decoded, data);
         }
     }

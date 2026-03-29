@@ -4,4 +4,3 @@ group_imports = "StdExternalCrate"
 use_small_heuristics = "Max"
 trailing_comma = "Vertical"
 use_field_init_shorthand = true
-ignore = ["crates/reth"]
