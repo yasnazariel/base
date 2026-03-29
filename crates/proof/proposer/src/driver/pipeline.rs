@@ -306,6 +306,18 @@ where
             )
         })?;
 
+        if cursor > safe_head {
+            info!(
+                next_target_block = cursor,
+                safe_head,
+                block_interval = self.config.driver.block_interval,
+                recovered_block = recovered.l2_block_number,
+                blocks_until_dispatchable = cursor.saturating_sub(safe_head),
+                "Waiting for safe head to advance before dispatching proofs"
+            );
+            return Ok(());
+        }
+
         let mut start_block = recovered.l2_block_number;
         let mut start_output = recovered.output_root;
 
@@ -502,6 +514,14 @@ where
             }
         };
 
+        info!(
+            recovered_block = state.l2_block_number,
+            safe_head,
+            game_index = state.game_index,
+            using_anchor = (state.game_index == crate::NO_PARENT_INDEX),
+            "Recovery complete"
+        );
+
         Some((state, safe_head))
     }
 
@@ -591,14 +611,14 @@ where
             return Ok(state);
         }
 
-        debug!(
+        info!(
             game_type = self.config.driver.game_type,
             searched = search_count,
-            "No games found for our game type, falling back to anchor state registry"
+            "No games found for configured game type, falling back to anchor state registry"
         );
 
         let anchor = self.anchor_registry.get_anchor_root().await?;
-        debug!(
+        info!(
             l2_block_number = anchor.l2_block_number,
             root = ?anchor.root,
             "Recovered state from anchor state registry"
