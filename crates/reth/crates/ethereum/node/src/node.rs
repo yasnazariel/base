@@ -6,7 +6,6 @@ use alloy_eips::{eip7840::BlobParams, merge::EPOCH_SLOTS};
 use alloy_network::Ethereum;
 use alloy_rpc_types_engine::ExecutionData;
 use reth_chainspec::{ChainSpec, EthChainSpec, EthereumHardforks, Hardforks};
-use reth_engine_local::LocalPayloadAttributesBuilder;
 use reth_engine_primitives::EngineTypes;
 use reth_ethereum_consensus::EthBeaconConsensus;
 use reth_ethereum_engine_primitives::{
@@ -18,11 +17,10 @@ use reth_evm::{
 };
 use reth_network::{NetworkHandle, PeersInfo, primitives::BasicNetworkPrimitives};
 use reth_node_api::{
-    AddOnsContext, FullNodeComponents, HeaderTy, NodeAddOns, NodePrimitives,
-    PayloadAttributesBuilder, PrimitivesTy, TxTy,
+    AddOnsContext, FullNodeComponents, HeaderTy, NodeAddOns, NodePrimitives, PrimitivesTy, TxTy,
 };
 use reth_node_builder::{
-    BuilderContext, DebugNode, Node, NodeAdapter,
+    BuilderContext, Node, NodeAdapter,
     components::{
         BasicPayloadServiceBuilder, ComponentsBuilder, ConsensusBuilder, ExecutorBuilder,
         NetworkBuilder, PoolBuilder, TxPoolBuilder,
@@ -400,20 +398,6 @@ where
 
     fn add_ons(&self) -> Self::AddOns {
         EthereumAddOns::default()
-    }
-}
-
-impl<N: FullNodeComponents<Types = Self>> DebugNode<N> for EthereumNode {
-    type RpcBlock = alloy_rpc_types_eth::Block;
-
-    fn rpc_to_primitive_block(rpc_block: Self::RpcBlock) -> reth_ethereum_primitives::Block {
-        rpc_block.into_consensus().convert_transactions()
-    }
-
-    fn local_payload_attributes_builder(
-        chain_spec: &Self::ChainSpec,
-    ) -> impl PayloadAttributesBuilder<<Self::Payload as PayloadTypes>::PayloadAttributes> {
-        LocalPayloadAttributesBuilder::new(Arc::new(chain_spec.clone()))
     }
 }
 

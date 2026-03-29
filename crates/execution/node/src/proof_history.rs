@@ -87,7 +87,7 @@ pub async fn launch_node_with_proof_history(
     }
 
     // In all cases (with or without proofs), launch the node.
-    let handle = node_builder.launch_with_debug_capabilities().await?;
+    let handle = node_builder.launch().await?;
     handle.node_exit_future.await
 }
 /// Spawns a task that periodically reports metrics for the proofs DB.

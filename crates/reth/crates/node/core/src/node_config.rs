@@ -12,7 +12,6 @@ use alloy_primitives::{B256, BlockNumber, U256};
 use eyre::eyre;
 use reth_chainspec::{ChainSpec, EthChainSpec, MAINNET};
 use reth_config::config::PruneConfig;
-use reth_engine_local::MiningMode;
 pub use reth_engine_primitives::{
     DEFAULT_MEMORY_BLOCK_BUFFER_TARGET, DEFAULT_PERSISTENCE_THRESHOLD, DEFAULT_RESERVED_CPU_CORES,
 };
@@ -25,7 +24,6 @@ use reth_storage_api::{
     StorageSettings,
 };
 use reth_storage_errors::provider::ProviderResult;
-use reth_transaction_pool::TransactionPool;
 use serde::{Serialize, de::DeserializeOwned};
 use tracing::*;
 
@@ -567,17 +565,6 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
         }
     }
 
-    /// Returns the [`MiningMode`] intended for --dev mode.
-    pub fn dev_mining_mode<Pool>(&self, pool: Pool) -> MiningMode<Pool>
-    where
-        Pool: TransactionPool + Unpin,
-    {
-        if let Some(interval) = self.dev.block_time {
-            MiningMode::interval(interval)
-        } else {
-            MiningMode::instant(pool, self.dev.block_max_transactions)
-        }
-    }
 }
 
 impl Default for NodeConfig<ChainSpec> {

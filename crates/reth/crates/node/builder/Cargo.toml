@@ -16,13 +16,11 @@ workspace = true
 reth-chain-state.workspace = true
 reth-chainspec.workspace = true
 reth-config.workspace = true
-reth-consensus-debug-client.workspace = true
 reth-consensus.workspace = true
 reth-db = { workspace = true, features = ["mdbx"] }
 reth-db-api.workspace = true
 reth-db-common.workspace = true
 reth-downloaders.workspace = true
-reth-engine-local.workspace = true
 reth-engine-primitives.workspace = true
 reth-engine-service.workspace = true
 reth-engine-tree.workspace = true
@@ -61,7 +59,6 @@ reth-node-ethstats.workspace = true
 ## ethereum
 alloy-consensus.workspace = true
 alloy-primitives.workspace = true
-alloy-provider.workspace = true
 alloy-rpc-types = { workspace = true, features = ["engine"] }
 alloy-eips = { workspace = true, features = ["kzg"] }
 alloy-rpc-types-engine.workspace = true
@@ -81,7 +78,6 @@ parking_lot.workspace = true
 jsonrpsee.workspace = true
 fdlimit.workspace = true
 rayon.workspace = true
-serde_json.workspace = true
 
 # tracing
 tracing.workspace = true
@@ -125,7 +121,6 @@ test-utils = [
 op = [
     "reth-db/op",
     "reth-db-api/op",
-    "reth-engine-local/op",
     "reth-evm/op",
     "reth-primitives-traits/op",
 ]

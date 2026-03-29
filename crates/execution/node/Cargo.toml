@@ -63,7 +63,6 @@ base-revm.workspace = true
 # ethereum
 alloy-consensus.workspace = true
 alloy-primitives.workspace = true
-alloy-rpc-types-eth.workspace = true
 base-alloy-chains.workspace = true
 base-alloy-consensus.workspace = true
 alloy-rpc-types-engine.workspace = true

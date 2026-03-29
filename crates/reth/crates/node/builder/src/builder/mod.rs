@@ -36,10 +36,8 @@ use secp256k1::SecretKey;
 use tracing::{info, trace, warn};
 
 use crate::{
-    BlockReaderFor, DebugNode, DebugNodeLauncher, EngineNodeLauncher, LaunchNode, Node,
-    common::WithConfigs,
-    components::NodeComponentsBuilder,
-    node::FullNode,
+    BlockReaderFor, EngineNodeLauncher, LaunchNode, Node, common::WithConfigs,
+    components::NodeComponentsBuilder, node::FullNode,
     rpc::{RethRpcAddOns, RethRpcServerHandles, RpcContext},
 };
 
@@ -671,29 +669,6 @@ where
     {
         let launcher = self.engine_api_launcher();
         self.builder.launch_with(launcher).await
-    }
-
-    /// Launches the node with the [`DebugNodeLauncher`].
-    ///
-    /// This is equivalent to [`WithLaunchContext::launch`], but will enable the debugging features,
-    /// if they are configured.
-    pub fn launch_with_debug_capabilities(
-        self,
-    ) -> <DebugNodeLauncher as LaunchNode<NodeBuilderWithComponents<T, CB, AO>>>::Future
-    where
-        T::Types: DebugNode<NodeAdapter<T, CB::Components>>,
-        DebugNodeLauncher: LaunchNode<NodeBuilderWithComponents<T, CB, AO>>,
-    {
-        let Self { builder, task_executor } = self;
-
-        let engine_tree_config = builder.config.engine.tree_config();
-
-        let launcher = DebugNodeLauncher::new(EngineNodeLauncher::new(
-            task_executor,
-            builder.config.datadir(),
-            engine_tree_config,
-        ));
-        builder.launch_with(launcher)
     }
 
     /// Returns an [`EngineNodeLauncher`] that can be used to launch the node with engine API

@@ -42,7 +42,6 @@ use reth_consensus::noop::NoopConsensus;
 use reth_db_api::{database::Database, database_metrics::DatabaseMetrics};
 use reth_db_common::init::{InitStorageError, init_genesis_with_settings};
 use reth_downloaders::{bodies::noop::NoopBodiesDownloader, headers::noop::NoopHeaderDownloader};
-use reth_engine_local::MiningMode;
 use reth_evm::{ConfigureEvm, noop::NoopEvmConfig};
 use reth_exex::ExExManagerHandle;
 use reth_fs_util as fs;
@@ -83,7 +82,6 @@ use reth_tracing::{
     throttle,
     tracing::{debug, error, info, warn},
 };
-use reth_transaction_pool::TransactionPool;
 use reth_trie_db::ChangesetCache;
 use tokio::sync::{
     mpsc::{UnboundedSender, unbounded_channel},
@@ -451,13 +449,6 @@ impl<R, ChainSpec: EthChainSpec> LaunchContextWith<Attached<WithConfigs<ChainSpe
         Ok(secret)
     }
 
-    /// Returns the [`MiningMode`] intended for --dev mode.
-    pub fn dev_mining_mode<Pool>(&self, pool: Pool) -> MiningMode<Pool>
-    where
-        Pool: TransactionPool + Unpin,
-    {
-        self.node_config().dev_mining_mode(pool)
-    }
 }
 
 impl<DB, ChainSpec> LaunchContextWith<Attached<WithConfigs<ChainSpec>, DB>>

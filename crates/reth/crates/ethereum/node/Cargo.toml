@@ -34,14 +34,12 @@ reth-node-api.workspace = true
 reth-chainspec.workspace = true
 reth-revm = { workspace = true, features = ["std"] }
 reth-rpc-eth-types.workspace = true
-reth-engine-local.workspace = true
 reth-engine-primitives = { workspace = true, features = ["std"] }
 reth-payload-primitives.workspace = true
 
 # ethereum
 alloy-eips.workspace = true
 alloy-network.workspace = true
-alloy-rpc-types-eth.workspace = true
 alloy-rpc-types-engine.workspace = true
 
 # async
@@ -66,8 +64,9 @@ tempfile.workspace = true
 jsonrpsee-core.workspace = true
 
 alloy-primitives.workspace = true
-alloy-provider.workspace = true
+alloy-provider = { workspace = true, features = ["debug-api"] }
 alloy-genesis.workspace = true
+alloy-rpc-types-eth.workspace = true
 alloy-signer.workspace = true
 alloy-sol-types.workspace = true
 alloy-contract.workspace = true
