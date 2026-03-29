@@ -32,15 +32,16 @@
 //! ```
 
 use alloc::vec::Vec;
-use alloy_primitives::Bytes;
 use core::fmt::Debug;
-use serde::{de::DeserializeOwned, Serialize};
+
+use alloy_primitives::Bytes;
+pub use block_bincode::{Block, BlockBody};
+use serde::{Serialize, de::DeserializeOwned};
 
 pub use super::{
     block::{serde_bincode_compat as block, serde_bincode_compat::*},
     header::{serde_bincode_compat as header, serde_bincode_compat::*},
 };
-pub use block_bincode::{Block, BlockBody};
 
 /// Trait for types that can be serialized and deserialized using bincode.
 ///
@@ -143,12 +144,14 @@ impl<T: RlpBincode + 'static> SerdeBincodeCompat for T {
 }
 
 mod block_bincode {
-    use crate::serde_bincode_compat::SerdeBincodeCompat;
     use alloc::{borrow::Cow, vec::Vec};
+
     use alloy_consensus::TxEip4844;
     use alloy_eips::eip4895::Withdrawals;
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use serde_with::{DeserializeAs, SerializeAs};
+
+    use crate::serde_bincode_compat::SerdeBincodeCompat;
 
     /// Bincode-compatible [`alloy_consensus::Block`] serde implementation.
     ///

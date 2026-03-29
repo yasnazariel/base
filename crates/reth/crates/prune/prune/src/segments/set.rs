@@ -1,17 +1,17 @@
-use crate::segments::{
-    user::ReceiptsByLogs, AccountHistory, Bodies, Segment, SenderRecovery, StorageHistory,
-    TransactionLookup, UserReceipts,
-};
 use alloy_eips::eip2718::Encodable2718;
 use reth_db_api::{table::Value, transaction::DbTxMut};
 use reth_primitives_traits::NodePrimitives;
 use reth_provider::{
-    providers::StaticFileProvider, BlockReader, ChainStateBlockReader, DBProvider,
-    PruneCheckpointReader, PruneCheckpointWriter, RocksDBProviderFactory,
-    StaticFileProviderFactory,
+    BlockReader, ChainStateBlockReader, DBProvider, PruneCheckpointReader, PruneCheckpointWriter,
+    RocksDBProviderFactory, StaticFileProviderFactory, providers::StaticFileProvider,
 };
 use reth_prune_types::PruneModes;
 use reth_storage_api::{ChangeSetReader, StorageChangeSetReader, StorageSettingsCache};
+
+use crate::segments::{
+    AccountHistory, Bodies, Segment, SenderRecovery, StorageHistory, TransactionLookup,
+    UserReceipts, user::ReceiptsByLogs,
+};
 
 /// Collection of [`Segment`]. Thread-safe, allocated on the heap.
 #[derive(Debug)]
@@ -34,7 +34,7 @@ impl<Provider> SegmentSet<Provider> {
     /// Adds new [Segment] to collection if it's [Some].
     pub fn segment_opt<S: Segment<Provider> + 'static>(self, segment: Option<S>) -> Self {
         if let Some(segment) = segment {
-            return self.segment(segment)
+            return self.segment(segment);
         }
         self
     }

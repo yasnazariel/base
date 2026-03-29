@@ -1,20 +1,21 @@
 //! Reth genesis initialization utility functions.
 
+use std::io::BufRead;
+
 use alloy_consensus::BlockHeader;
 use alloy_genesis::GenesisAccount;
 use alloy_primitives::{
-    keccak256,
+    Address, B256, U256, keccak256,
     map::{AddressMap, B256Map, HashMap},
-    Address, B256, U256,
 };
 use reth_chainspec::EthChainSpec;
 use reth_codecs::Compact;
 use reth_config::config::EtlConfig;
 use reth_db_api::{
-    models::{storage_sharded_key::StorageShardedKey, ShardedKey},
+    BlockNumberList, DatabaseError,
+    models::{ShardedKey, storage_sharded_key::StorageShardedKey},
     tables,
     transaction::DbTxMut,
-    BlockNumberList, DatabaseError,
 };
 use reth_etl::Collector;
 use reth_execution_errors::StateRootError;
@@ -22,22 +23,22 @@ use reth_primitives_traits::{
     Account, Bytecode, GotExpected, NodePrimitives, SealedHeader, StorageEntry,
 };
 use reth_provider::{
-    errors::provider::ProviderResult, providers::StaticFileWriter, BlockHashReader, BlockNumReader,
-    BundleStateInit, ChainSpecProvider, DBProvider, DatabaseProviderFactory, EitherWriter,
-    ExecutionOutcome, HashingWriter, HeaderProvider, HistoryWriter, MetadataProvider,
-    MetadataWriter, NodePrimitivesProvider, OriginalValuesKnown, ProviderError, RevertsInit,
-    RocksDBProviderFactory, StageCheckpointReader, StageCheckpointWriter, StateWriteConfig,
-    StateWriter, StaticFileProviderFactory, StorageSettings, StorageSettingsCache, TrieWriter,
+    BlockHashReader, BlockNumReader, BundleStateInit, ChainSpecProvider, DBProvider,
+    DatabaseProviderFactory, EitherWriter, ExecutionOutcome, HashingWriter, HeaderProvider,
+    HistoryWriter, MetadataProvider, MetadataWriter, NodePrimitivesProvider, OriginalValuesKnown,
+    ProviderError, RevertsInit, RocksDBProviderFactory, StageCheckpointReader,
+    StageCheckpointWriter, StateWriteConfig, StateWriter, StaticFileProviderFactory,
+    StorageSettings, StorageSettingsCache, TrieWriter, errors::provider::ProviderResult,
+    providers::StaticFileWriter,
 };
 use reth_stages_types::{StageCheckpoint, StageId};
 use reth_static_file_types::StaticFileSegment;
 use reth_trie::{
-    prefix_set::{TriePrefixSets, TriePrefixSetsMut},
     IntermediateStateRootState, Nibbles, StateRoot as StateRootComputer, StateRootProgress,
+    prefix_set::{TriePrefixSets, TriePrefixSetsMut},
 };
 use reth_trie_db::DatabaseStateRoot;
 use serde::{Deserialize, Serialize};
-use std::io::BufRead;
 use tracing::{debug, error, info, trace, warn};
 
 /// Default soft limit for number of bytes to read from state dump file, before inserting into
@@ -167,7 +168,7 @@ where
                 // make sure that our database has been written to, and throw error if it's empty.
                 if factory.get_stage_checkpoint(StageId::Headers)?.is_none() {
                     error!(target: "reth::storage", "Genesis header found on static files, but database is uninitialized.");
-                    return Err(InitStorageError::UninitializedDatabase)
+                    return Err(InitStorageError::UninitializedDatabase);
                 }
 
                 let stored = factory.storage_settings()?.unwrap_or_else(StorageSettings::v1);
@@ -181,13 +182,13 @@ where
                 }
 
                 debug!("Genesis already written, skipping.");
-                return Ok(hash)
+                return Ok(hash);
             }
 
             return Err(InitStorageError::GenesisHashMismatch {
                 chainspec_hash: hash,
                 storage_hash: block_hash,
-            })
+            });
         }
         Err(e) => {
             debug!(?e);
@@ -617,7 +618,7 @@ where
         + AsRef<Provider>,
 {
     if etl_config.file_size == 0 {
-        return Err(eyre::eyre!("ETL file size cannot be zero"))
+        return Err(eyre::eyre!("ETL file size cannot be zero"));
     }
 
     let block = provider_rw.last_block_number()?;
@@ -645,7 +646,7 @@ where
             got: dump_state_root,
             expected: expected_state_root,
         })
-        .into())
+        .into());
     }
 
     debug!(target: "reth::cli",
@@ -681,7 +682,7 @@ where
             got: computed_state_root,
             expected: expected_state_root,
         })
-        .into())
+        .into());
     }
 
     // insert sync stages for stages that require state
@@ -716,14 +717,14 @@ fn parse_accounts(
     loop {
         let n = reader.read_line(&mut line)?;
         if n == 0 {
-            break
+            break;
         }
 
         let GenesisAccountWithAddress { genesis_account, address } = serde_json::from_str(&line)?;
         collector.insert(address, genesis_account)?;
 
-        if !collector.is_empty() &&
-            collector.len().is_multiple_of(AVERAGE_COUNT_ACCOUNTS_PER_GB_STATE_DUMP)
+        if !collector.is_empty()
+            && collector.len().is_multiple_of(AVERAGE_COUNT_ACCOUNTS_PER_GB_STATE_DUMP)
         {
             info!(target: "reth::cli",
                 parsed_new_accounts=collector.len(),
@@ -782,8 +783,8 @@ where
 
         accounts.push((address, account));
 
-        if (index > 0 && index.is_multiple_of(AVERAGE_COUNT_ACCOUNTS_PER_GB_STATE_DUMP)) ||
-            index == accounts_len - 1
+        if (index > 0 && index.is_multiple_of(AVERAGE_COUNT_ACCOUNTS_PER_GB_STATE_DUMP))
+            || index == accounts_len - 1
         {
             total_inserted_accounts += accounts.len();
 
@@ -872,7 +873,7 @@ where
                     "State root has been computed"
                 );
 
-                return Ok(root)
+                return Ok(root);
             }
         }
     }
@@ -897,7 +898,8 @@ struct GenesisAccountWithAddress {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::{collections::BTreeMap, sync::Arc};
+
     use alloy_consensus::constants::{
         HOLESKY_GENESIS_HASH, MAINNET_GENESIS_HASH, SEPOLIA_GENESIS_HASH,
     };
@@ -905,17 +907,18 @@ mod tests {
     use reth_chainspec::{Chain, ChainSpec, HOLESKY, MAINNET, SEPOLIA};
     use reth_db::DatabaseEnv;
     use reth_db_api::{
+        Database,
         cursor::DbCursorRO,
-        models::{storage_sharded_key::StorageShardedKey, IntegerList, ShardedKey},
+        models::{IntegerList, ShardedKey, storage_sharded_key::StorageShardedKey},
         table::{Table, TableRow},
         transaction::DbTx,
-        Database,
     };
     use reth_provider::{
-        test_utils::{create_test_provider_factory_with_chain_spec, MockNodeTypesWithDB},
         ProviderFactory, RocksDBProviderFactory,
+        test_utils::{MockNodeTypesWithDB, create_test_provider_factory_with_chain_spec},
     };
-    use std::{collections::BTreeMap, sync::Arc};
+
+    use super::*;
 
     fn collect_table_entries<DB, T>(
         tx: &<DB as Database>::TX,

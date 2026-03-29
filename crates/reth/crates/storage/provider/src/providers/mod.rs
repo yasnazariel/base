@@ -16,8 +16,8 @@ pub use static_file::{
 mod state;
 pub use state::{
     historical::{
-        compute_history_rank, history_info, needs_prev_shard_check, HistoricalStateProvider,
-        HistoricalStateProviderRef, HistoryInfo, LowestAvailableBlocks,
+        HistoricalStateProvider, HistoricalStateProviderRef, HistoryInfo, LowestAvailableBlocks,
+        compute_history_rank, history_info, needs_prev_shard_check,
     },
     latest::{LatestStateProvider, LatestStateProviderRef},
     overlay::{OverlayStateProvider, OverlayStateProviderFactory},
@@ -48,19 +48,19 @@ pub use rocksdb::{
 pub trait NodeTypesForProvider
 where
     Self: NodeTypes<
-        ChainSpec: EthereumHardforks,
-        Storage: ChainStorage<Self::Primitives>,
-        Primitives: NodePrimitives<SignedTx: Value, Receipt: Value, BlockHeader: Value>,
-    >,
+            ChainSpec: EthereumHardforks,
+            Storage: ChainStorage<Self::Primitives>,
+            Primitives: NodePrimitives<SignedTx: Value, Receipt: Value, BlockHeader: Value>,
+        >,
 {
 }
 
 impl<T> NodeTypesForProvider for T where
     T: NodeTypes<
-        ChainSpec: EthereumHardforks,
-        Storage: ChainStorage<T::Primitives>,
-        Primitives: NodePrimitives<SignedTx: Value, Receipt: Value, BlockHeader: Value>,
-    >
+            ChainSpec: EthereumHardforks,
+            Storage: ChainStorage<T::Primitives>,
+            Primitives: NodePrimitives<SignedTx: Value, Receipt: Value, BlockHeader: Value>,
+        >
 {
 }
 

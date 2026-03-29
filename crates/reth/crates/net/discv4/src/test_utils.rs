@@ -2,16 +2,6 @@
 
 // TODO(rand): update ::random calls after rand_09 migration
 
-use crate::{
-    proto::{FindNode, Message, Neighbours, NodeEndpoint, Packet, Ping, Pong},
-    receive_loop, send_loop, Discv4, Discv4Config, Discv4Service, EgressSender, IngressEvent,
-    IngressReceiver, PeerId, SAFE_MAX_DATAGRAM_NEIGHBOUR_RECORDS,
-};
-use alloy_primitives::{hex, B256, B512};
-use rand_08::{thread_rng, Rng, RngCore};
-use reth_ethereum_forks::{ForkHash, ForkId};
-use reth_network_peers::{pk2id, NodeRecord};
-use secp256k1::{SecretKey, SECP256K1};
 use std::{
     collections::{HashMap, HashSet},
     io,
@@ -22,6 +12,12 @@ use std::{
     task::{Context, Poll},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
+
+use alloy_primitives::{B256, B512, hex};
+use rand_08::{Rng, RngCore, thread_rng};
+use reth_ethereum_forks::{ForkHash, ForkId};
+use reth_network_peers::{NodeRecord, pk2id};
+use secp256k1::{SECP256K1, SecretKey};
 use tokio::{
     net::UdpSocket,
     sync::mpsc,
@@ -29,6 +25,13 @@ use tokio::{
 };
 use tokio_stream::{Stream, StreamExt};
 use tracing::debug;
+
+use crate::{
+    Discv4, Discv4Config, Discv4Service, EgressSender, IngressEvent, IngressReceiver, PeerId,
+    SAFE_MAX_DATAGRAM_NEIGHBOUR_RECORDS,
+    proto::{FindNode, Message, Neighbours, NodeEndpoint, Packet, Ping, Pong},
+    receive_loop, send_loop,
+};
 
 /// Mock discovery node
 #[derive(Debug)]
@@ -167,7 +170,7 @@ impl Stream for MockDiscovery {
                                 ping,
                                 pong,
                                 to: remote_addr,
-                            }))
+                            }));
                         }
                     }
                     Message::Pong(_) | Message::Neighbours(_) => {}
@@ -181,7 +184,7 @@ impl Stream for MockDiscovery {
                             return Poll::Ready(Some(MockEvent::Neighbours {
                                 nodes,
                                 to: remote_addr,
-                            }))
+                            }));
                         }
                     }
                     Message::EnrRequest(_) | Message::EnrResponse(_) => todo!(),
@@ -318,9 +321,10 @@ pub fn rng_message(rng: &mut impl RngCore) -> Message {
 
 #[cfg(test)]
 mod tests {
+    use std::net::Ipv4Addr;
+
     use super::*;
     use crate::Discv4Event;
-    use std::net::Ipv4Addr;
 
     /// This test creates two local UDP sockets. The mocked discovery service responds to specific
     /// messages and we check the actual service receives answers

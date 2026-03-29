@@ -1,35 +1,36 @@
 //! Network config support
 
-use crate::{
-    error::NetworkError,
-    import::{BlockImport, ProofOfStakeBlockImport},
-    transactions::TransactionsManagerConfig,
-    NetworkHandle, NetworkManager,
-};
+use std::{collections::HashSet, net::SocketAddr, sync::Arc};
+
 use alloy_eips::BlockNumHash;
 use reth_chainspec::{ChainSpecProvider, EthChainSpec, Hardforks};
-use reth_discv4::{Discv4Config, Discv4ConfigBuilder, NatResolver, DEFAULT_DISCOVERY_ADDRESS};
+use reth_discv4::{DEFAULT_DISCOVERY_ADDRESS, Discv4Config, Discv4ConfigBuilder, NatResolver};
 use reth_discv5::NetworkStackId;
 use reth_dns_discovery::DnsDiscoveryConfig;
 use reth_eth_wire::{
-    handshake::{EthHandshake, EthRlpxHandshake},
     EthNetworkPrimitives, HelloMessage, HelloMessageWithProtocols, NetworkPrimitives,
     UnifiedStatus,
+    handshake::{EthHandshake, EthRlpxHandshake},
 };
 use reth_ethereum_forks::{ForkFilter, Head};
-use reth_network_peers::{mainnet_nodes, pk2id, sepolia_nodes, PeerId, TrustedPeer};
+use reth_network_peers::{PeerId, TrustedPeer, mainnet_nodes, pk2id, sepolia_nodes};
 use reth_network_types::{PeersConfig, SessionsConfig};
-use reth_storage_api::{noop::NoopProvider, BlockNumReader, BlockReader, HeaderProvider};
+use reth_storage_api::{BlockNumReader, BlockReader, HeaderProvider, noop::NoopProvider};
 use reth_tasks::{TaskSpawner, TokioTaskExecutor};
 use secp256k1::SECP256K1;
-use std::{collections::HashSet, net::SocketAddr, sync::Arc};
+pub use secp256k1::SecretKey;
 
+use crate::{
+    NetworkHandle, NetworkManager,
+    error::NetworkError,
+    import::{BlockImport, ProofOfStakeBlockImport},
+    transactions::TransactionsManagerConfig,
+};
 // re-export for convenience
 use crate::{
     protocol::{IntoRlpxSubProtocol, RlpxSubProtocols},
     transactions::TransactionPropagationMode,
 };
-pub use secp256k1::SecretKey;
 
 /// Convenience function to create a new random [`SecretKey`]
 pub fn rng_secret_key() -> SecretKey {
@@ -496,11 +497,7 @@ impl<N: NetworkPrimitives> NetworkConfigBuilder<N> {
 
     /// Disables all discovery if the given condition is true.
     pub fn disable_discovery_if(self, disable: bool) -> Self {
-        if disable {
-            self.disable_discovery()
-        } else {
-            self
-        }
+        if disable { self.disable_discovery() } else { self }
     }
 
     /// Disable the Discv4 discovery.
@@ -517,29 +514,17 @@ impl<N: NetworkPrimitives> NetworkConfigBuilder<N> {
 
     /// Disable the DNS discovery if the given condition is true.
     pub fn disable_dns_discovery_if(self, disable: bool) -> Self {
-        if disable {
-            self.disable_dns_discovery()
-        } else {
-            self
-        }
+        if disable { self.disable_dns_discovery() } else { self }
     }
 
     /// Disable the Discv4 discovery if the given condition is true.
     pub fn disable_discv4_discovery_if(self, disable: bool) -> Self {
-        if disable {
-            self.disable_discv4_discovery()
-        } else {
-            self
-        }
+        if disable { self.disable_discv4_discovery() } else { self }
     }
 
     /// Disable the Discv5 discovery if the given condition is true.
     pub fn disable_discv5_discovery_if(self, disable: bool) -> Self {
-        if disable {
-            self.disable_discv5_discovery()
-        } else {
-            self
-        }
+        if disable { self.disable_discv5_discovery() } else { self }
     }
 
     /// Adds a new additional protocol to the `RLPx` sub-protocol list.
@@ -670,9 +655,9 @@ impl<N: NetworkPrimitives> NetworkConfigBuilder<N> {
 
         // If default DNS config is used then we add the known dns network to bootstrap from
         if let Some(dns_networks) =
-            dns_discovery_config.as_mut().and_then(|c| c.bootstrap_dns_networks.as_mut()) &&
-            dns_networks.is_empty() &&
-            let Some(link) = chain_spec.chain().public_dns_network_protocol()
+            dns_discovery_config.as_mut().and_then(|c| c.bootstrap_dns_networks.as_mut())
+            && dns_networks.is_empty()
+            && let Some(link) = chain_spec.chain().public_dns_network_protocol()
         {
             dns_networks.insert(link.parse().expect("is valid DNS link entry"));
         }
@@ -731,7 +716,8 @@ impl NetworkMode {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::{net::Ipv4Addr, sync::Arc};
+
     use alloy_eips::eip2124::ForkHash;
     use alloy_genesis::Genesis;
     use alloy_primitives::U256;
@@ -741,7 +727,8 @@ mod tests {
     use reth_discv5::build_local_enr;
     use reth_dns_discovery::tree::LinkEntry;
     use reth_storage_api::noop::NoopProvider;
-    use std::{net::Ipv4Addr, sync::Arc};
+
+    use super::*;
 
     fn builder() -> NetworkConfigBuilder {
         let secret_key = SecretKey::new(&mut rand_08::thread_rng());

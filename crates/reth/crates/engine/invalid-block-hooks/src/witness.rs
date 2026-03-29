@@ -1,9 +1,11 @@
+use std::{collections::BTreeMap, fmt::Debug, fs::File, io::Write, path::PathBuf};
+
 use alloy_consensus::BlockHeader;
-use alloy_primitives::{keccak256, Address, Bytes, B256, U256};
+use alloy_primitives::{Address, B256, Bytes, U256, keccak256};
 use alloy_rpc_types_debug::ExecutionWitness;
 use pretty_assertions::Comparison;
 use reth_engine_primitives::InvalidBlockHook;
-use reth_evm::{execute::Executor, ConfigureEvm};
+use reth_evm::{ConfigureEvm, execute::Executor};
 use reth_primitives_traits::{NodePrimitives, RecoveredBlock, SealedHeader};
 use reth_provider::{BlockExecutionOutput, StateProvider, StateProviderBox, StateProviderFactory};
 use reth_revm::{
@@ -12,15 +14,14 @@ use reth_revm::{
 };
 use reth_rpc_api::DebugApiClient;
 use reth_tracing::tracing::warn;
-use reth_trie::{updates::TrieUpdates, HashedStorage};
+use reth_trie::{HashedStorage, updates::TrieUpdates};
 use revm::state::AccountInfo;
 use revm_bytecode::Bytecode;
 use revm_database::{
-    states::{reverts::AccountInfoRevert, StorageSlot},
     AccountStatus, RevertToSlot,
+    states::{StorageSlot, reverts::AccountInfoRevert},
 };
 use serde::Serialize;
-use std::{collections::BTreeMap, fmt::Debug, fs::File, io::Write, path::PathBuf};
 
 type CollectionResult =
     (BTreeMap<B256, Bytes>, BTreeMap<B256, Bytes>, reth_trie::HashedPostState, BundleState);
@@ -407,20 +408,22 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_eips::eip7685::Requests;
-    use alloy_primitives::{map::HashMap, Address, Bytes, B256, U256};
+    use alloy_primitives::{Address, B256, Bytes, U256, map::HashMap};
     use reth_chainspec::ChainSpec;
     use reth_ethereum_primitives::EthPrimitives;
     use reth_evm_ethereum::EthEvmConfig;
     use reth_provider::test_utils::MockEthProvider;
-    use reth_revm::db::{BundleAccount, BundleState};
+    use reth_revm::{
+        db::{BundleAccount, BundleState},
+        test_utils::StateProviderTest,
+    };
+    use reth_testing_utils::generators::{self, BlockParams, random_block, random_eoa_accounts};
+    use revm_bytecode::Bytecode;
     use revm_database::states::reverts::AccountRevert;
     use tempfile::TempDir;
 
-    use reth_revm::test_utils::StateProviderTest;
-    use reth_testing_utils::generators::{self, random_block, random_eoa_accounts, BlockParams};
-    use revm_bytecode::Bytecode;
+    use super::*;
 
     /// Creates a test `BundleState` with realistic accounts, contracts, and reverts
     fn create_bundle_state() -> BundleState {
@@ -731,8 +734,8 @@ mod tests {
 
         // Modify the state to create a mismatch
         let addr = Address::from([1u8; 20]);
-        if let Some(account) = modified_state.state.get_mut(&addr) &&
-            let Some(ref mut info) = account.info
+        if let Some(account) = modified_state.state.get_mut(&addr)
+            && let Some(ref mut info) = account.info
         {
             info.balance = U256::from(999);
         }
@@ -756,9 +759,10 @@ mod tests {
 
     /// Creates test `TrieUpdates` with account nodes and removed nodes
     fn create_test_trie_updates() -> TrieUpdates {
-        use alloy_primitives::map::HashMap;
-        use reth_trie::{updates::TrieUpdates, BranchNodeCompact, Nibbles};
         use std::collections::HashSet;
+
+        use alloy_primitives::map::HashMap;
+        use reth_trie::{BranchNodeCompact, Nibbles, updates::TrieUpdates};
 
         let mut account_nodes = HashMap::default();
         let nibbles = Nibbles::from_nibbles_unchecked([0x1, 0x2, 0x3]);

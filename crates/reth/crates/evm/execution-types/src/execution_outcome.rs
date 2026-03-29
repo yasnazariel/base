@@ -1,17 +1,18 @@
-use crate::{BlockExecutionOutput, BlockExecutionResult};
 use alloc::{vec, vec::Vec};
+
 use alloy_eips::eip7685::Requests;
 use alloy_primitives::{
-    logs_bloom,
+    Address, B256, BlockNumber, Bloom, Log, U256, logs_bloom,
     map::{AddressMap, B256Map, HashMap},
-    Address, BlockNumber, Bloom, Log, B256, U256,
 };
 use reth_primitives_traits::{Account, Bytecode, Receipt, StorageEntry};
 use reth_trie_common::{HashedPostState, KeyHasher};
 use revm::{
-    database::{states::BundleState, BundleAccount},
+    database::{BundleAccount, states::BundleState},
     state::AccountInfo,
 };
+
+use crate::{BlockExecutionOutput, BlockExecutionResult};
 
 /// Type used to initialize revms bundle state.
 pub type BundleStateInit = AddressMap<(Option<Account>, Option<Account>, B256Map<(U256, U256)>)>;
@@ -216,11 +217,11 @@ impl<T> ExecutionOutcome<T> {
     /// Transform block number to the index of block.
     pub const fn block_number_to_index(&self, block_number: BlockNumber) -> Option<usize> {
         if self.first_block > block_number {
-            return None
+            return None;
         }
         let index = block_number - self.first_block;
         if index >= self.receipts.len() as u64 {
-            return None
+            return None;
         }
         Some(index as usize)
     }
@@ -317,7 +318,7 @@ impl<T> ExecutionOutcome<T> {
         T: Clone,
     {
         if at == self.first_block {
-            return (None, self)
+            return (None, self);
         }
 
         let (mut lower_state, mut higher_state) = (self.clone(), self);
@@ -425,6 +426,7 @@ impl<T> From<(BlockExecutionOutput<T>, BlockNumber)> for ExecutionOutcome<T> {
 #[cfg(feature = "serde-bincode-compat")]
 pub(super) mod serde_bincode_compat {
     use alloc::{borrow::Cow, vec::Vec};
+
     use alloy_eips::eip7685::Requests;
     use alloy_primitives::BlockNumber;
     use reth_primitives_traits::serde_bincode_compat::SerdeBincodeCompat;
@@ -538,12 +540,13 @@ pub(super) mod serde_bincode_compat {
 
     #[cfg(test)]
     mod tests {
-        use super::super::{serde_bincode_compat, ExecutionOutcome};
         use rand::Rng;
         use reth_ethereum_primitives::Receipt;
         use reth_primitives_traits::serde_bincode_compat::SerdeBincodeCompat;
         use serde::{Deserialize, Serialize};
         use serde_with::serde_as;
+
+        use super::super::{ExecutionOutcome, serde_bincode_compat};
 
         #[test]
         fn test_chain_bincode_roundtrip() {
@@ -578,9 +581,10 @@ pub(super) mod serde_bincode_compat {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_consensus::TxType;
-    use alloy_primitives::{bytes, Address, LogData, B256};
+    use alloy_primitives::{Address, B256, LogData, bytes};
+
+    use super::*;
 
     #[test]
     fn test_initialization() {

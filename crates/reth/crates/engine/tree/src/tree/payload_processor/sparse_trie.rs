@@ -1,12 +1,10 @@
 //! Sparse Trie task related functionality.
 
-use crate::tree::{
-    multiproof::{
-        dispatch_with_chunking, evm_state_to_hashed_post_state, MultiProofMessage,
-        VersionedMultiProofTargets, DEFAULT_MAX_TARGETS_FOR_CHUNKING,
-    },
-    payload_processor::multiproof::{MultiProofTaskMetrics, SparseTrieUpdate},
+use std::{
+    sync::mpsc,
+    time::{Duration, Instant},
 };
+
 use alloy_primitives::B256;
 use alloy_rlp::{Decodable, Encodable};
 use crossbeam_channel::{Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
@@ -14,8 +12,8 @@ use rayon::iter::ParallelIterator;
 use reth_primitives_traits::{Account, ParallelBridgeBuffered};
 use reth_tasks::Runtime;
 use reth_trie::{
-    proof_v2::Target, updates::TrieUpdates, DecodedMultiProofV2, HashedPostState, Nibbles,
-    TrieAccount, EMPTY_ROOT_HASH, TRIE_ACCOUNT_RLP_MAX_SIZE,
+    DecodedMultiProofV2, EMPTY_ROOT_HASH, HashedPostState, Nibbles, TRIE_ACCOUNT_RLP_MAX_SIZE,
+    TrieAccount, proof_v2::Target, updates::TrieUpdates,
 };
 use reth_trie_parallel::{
     proof_task::{
@@ -26,17 +24,21 @@ use reth_trie_parallel::{
     targets_v2::MultiProofTargetsV2,
 };
 use reth_trie_sparse::{
+    DeferredDrops, LeafUpdate, ParallelSparseTrie, SparseStateTrie, SparseTrie,
     errors::{SparseStateTrieResult, SparseTrieErrorKind, SparseTrieResult},
     provider::{TrieNodeProvider, TrieNodeProviderFactory},
-    DeferredDrops, LeafUpdate, ParallelSparseTrie, SparseStateTrie, SparseTrie,
 };
-use revm_primitives::{hash_map::Entry, B256Map};
+use revm_primitives::{B256Map, hash_map::Entry};
 use smallvec::SmallVec;
-use std::{
-    sync::mpsc,
-    time::{Duration, Instant},
-};
 use tracing::{debug, debug_span, error, instrument, trace};
+
+use crate::tree::{
+    multiproof::{
+        DEFAULT_MAX_TARGETS_FOR_CHUNKING, MultiProofMessage, VersionedMultiProofTargets,
+        dispatch_with_chunking, evm_state_to_hashed_post_state,
+    },
+    payload_processor::multiproof::{MultiProofTaskMetrics, SparseTrieUpdate},
+};
 
 #[expect(clippy::large_enum_variant)]
 pub(super) enum SpawnedSparseTrieTask<BPF, A, S>
@@ -343,7 +345,7 @@ where
                     SparseTrieTaskMessage::FinishedStateUpdates
                 }
                 MultiProofMessage::EmptyProof { .. } | MultiProofMessage::BlockAccessList(_) => {
-                    continue
+                    continue;
                 }
                 MultiProofMessage::HashedStateUpdate(state) => {
                     SparseTrieTaskMessage::HashedState(state)
@@ -451,9 +453,9 @@ where
                 self.process_new_updates()?;
                 self.promote_pending_account_updates()?;
 
-                if self.finished_state_updates &&
-                    self.account_updates.is_empty() &&
-                    self.storage_updates.iter().all(|(_, updates)| updates.is_empty())
+                if self.finished_state_updates
+                    && self.account_updates.is_empty()
+                    && self.storage_updates.iter().all(|(_, updates)| updates.is_empty())
                 {
                     break;
                 }
@@ -827,7 +829,7 @@ where
             // We need to keep iterating if any updates are being drained because that might
             // indicate that more pending account updates can be promoted.
             if num_promoted == 0 || !self.process_account_leaf_updates(false)? {
-                break
+                break;
             }
         }
 
@@ -1046,9 +1048,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use alloy_primitives::{keccak256, Address, U256};
+    use alloy_primitives::{Address, U256, keccak256};
     use reth_trie_sparse::ParallelSparseTrie;
+
+    use super::*;
 
     #[test]
     fn test_run_hashing_task_hashed_state_update_forwards() {

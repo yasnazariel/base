@@ -48,7 +48,7 @@ pub enum DatabaseVersionError {
 pub fn check_db_version_file<P: AsRef<Path>>(db_path: P) -> Result<(), DatabaseVersionError> {
     let version = get_db_version(db_path)?;
     if version != DB_VERSION {
-        return Err(DatabaseVersionError::VersionMismatch { version })
+        return Err(DatabaseVersionError::VersionMismatch { version });
     }
 
     Ok(())
@@ -85,10 +85,12 @@ pub fn db_version_file_path<P: AsRef<Path>>(db_path: P) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::{check_db_version_file, db_version_file_path, DatabaseVersionError};
-    use assert_matches::assert_matches;
     use std::fs;
+
+    use assert_matches::assert_matches;
     use tempfile::tempdir;
+
+    use super::{DatabaseVersionError, check_db_version_file, db_version_file_path};
 
     #[test]
     fn missing_file() {

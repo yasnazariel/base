@@ -29,25 +29,31 @@
 //! ProofResultMessage <-------- ProofResultSender ---
 //! ```
 
-use crate::{
-    root::ParallelStateRootError,
-    stats::{ParallelTrieStats, ParallelTrieTracker},
-    targets_v2::MultiProofTargetsV2,
-    value_encoder::{AsyncAccountValueEncoder, ValueEncoderStats},
-    StorageRootTargets,
+use std::{
+    cell::RefCell,
+    rc::Rc,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+        mpsc::{Receiver, Sender, channel},
+    },
+    time::{Duration, Instant},
 };
+
 use alloy_primitives::{
-    map::{B256Map, B256Set},
     B256,
+    map::{B256Map, B256Set},
 };
 use alloy_rlp::{BufMut, Encodable};
-use crossbeam_channel::{unbounded, Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
+use crossbeam_channel::{Receiver as CrossbeamReceiver, Sender as CrossbeamSender, unbounded};
 use reth_execution_errors::{SparseTrieError, SparseTrieErrorKind, StateProofError};
 use reth_primitives_traits::dashmap::{self, DashMap};
 use reth_provider::{DatabaseProviderROFactory, ProviderError, ProviderResult};
 use reth_storage_errors::db::DatabaseError;
 use reth_tasks::Runtime;
 use reth_trie::{
+    DecodedMultiProof, DecodedMultiProofV2, DecodedStorageMultiProof, HashBuilder, HashedPostState,
+    MultiProofTargets, Nibbles, ProofTrieNode, TRIE_ACCOUNT_RLP_MAX_SIZE,
     hashed_cursor::{HashedCursorFactory, HashedCursorMetricsCache, InstrumentedHashedCursor},
     node_iter::{TrieElement, TrieNodeIter},
     prefix_set::TriePrefixSets,
@@ -55,31 +61,26 @@ use reth_trie::{
     proof_v2,
     trie_cursor::{InstrumentedTrieCursor, TrieCursorFactory, TrieCursorMetricsCache},
     walker::TrieWalker,
-    DecodedMultiProof, DecodedMultiProofV2, DecodedStorageMultiProof, HashBuilder, HashedPostState,
-    MultiProofTargets, Nibbles, ProofTrieNode, TRIE_ACCOUNT_RLP_MAX_SIZE,
 };
 use reth_trie_common::{
+    BranchNodeMasks, BranchNodeMasksMap,
     added_removed_keys::MultiAddedRemovedKeys,
     prefix_set::{PrefixSet, PrefixSetMut},
     proof::{DecodedProofNodes, ProofRetainer},
-    BranchNodeMasks, BranchNodeMasksMap,
 };
 use reth_trie_sparse::provider::{RevealedNode, TrieNodeProvider, TrieNodeProviderFactory};
-use std::{
-    cell::RefCell,
-    rc::Rc,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        mpsc::{channel, Receiver, Sender},
-        Arc,
-    },
-    time::{Duration, Instant},
-};
 use tracing::{debug, debug_span, error, trace};
 
 #[cfg(feature = "metrics")]
 use crate::proof_task_metrics::{
     ProofTaskCursorMetrics, ProofTaskCursorMetricsCache, ProofTaskTrieMetrics,
+};
+use crate::{
+    StorageRootTargets,
+    root::ParallelStateRootError,
+    stats::{ParallelTrieStats, ParallelTrieTracker},
+    targets_v2::MultiProofTargetsV2,
+    value_encoder::{AsyncAccountValueEncoder, ValueEncoderStats},
 };
 
 type TrieNodeProviderResult = Result<Option<RevealedNode>, SparseTrieError>;
@@ -1807,8 +1808,8 @@ fn dispatch_v2_storage_proofs(
     // For storage targets with associated account proofs, ensure the first target has
     // min_len(0) so the root node is returned for storage root computation
     for (hashed_address, targets) in &mut storage_targets {
-        if account_target_addresses.contains(hashed_address) &&
-            let Some(first) = targets.first_mut()
+        if account_target_addresses.contains(hashed_address)
+            && let Some(first) = targets.first_mut()
         {
             *first = first.with_min_len(0);
         }
@@ -1842,7 +1843,7 @@ fn dispatch_v2_storage_proofs(
     for target in account_targets {
         let hashed_address = target.key();
         if storage_proof_receivers.contains_key(&hashed_address) {
-            continue
+            continue;
         }
 
         let (result_tx, result_rx) = crossbeam_channel::unbounded();
@@ -1993,8 +1994,9 @@ enum AccountWorkerJob {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use reth_provider::test_utils::create_test_provider_factory;
+
+    use super::*;
 
     fn test_ctx<Factory>(factory: Factory) -> ProofTaskCtx<Factory> {
         ProofTaskCtx::new(factory)

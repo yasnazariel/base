@@ -1,9 +1,11 @@
-use crate::{
-    compression::{Compression, Compressors, Zstd},
-    DataReader, NippyJar, NippyJarError, NippyJarHeader, RefRow,
-};
 use std::{ops::Range, sync::Arc};
+
 use zstd::bulk::Decompressor;
+
+use crate::{
+    DataReader, NippyJar, NippyJarError, NippyJarHeader, RefRow,
+    compression::{Compression, Compressors, Zstd},
+};
 
 /// Simple cursor implementation to retrieve data from [`NippyJar`].
 #[derive(Clone)]
@@ -80,7 +82,7 @@ impl<'a, H: NippyJarHeader> NippyJarCursor<'a, H> {
 
         if self.row as usize >= self.jar.rows {
             // Has reached the end
-            return Ok(None)
+            return Ok(None);
         }
 
         let mut row = Vec::with_capacity(self.jar.columns);
@@ -120,7 +122,7 @@ impl<'a, H: NippyJarHeader> NippyJarCursor<'a, H> {
 
         if self.row as usize >= self.jar.rows {
             // Has reached the end
-            return Ok(None)
+            return Ok(None);
         }
 
         let columns = self.jar.columns;

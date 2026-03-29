@@ -1,10 +1,12 @@
-use crate::blobstore::{BlobStore, BlobStoreCleanupStat, BlobStoreError};
+use std::sync::Arc;
+
 use alloy_eips::{
     eip4844::{BlobAndProofV1, BlobAndProofV2},
     eip7594::BlobTransactionSidecarVariant,
 };
 use alloy_primitives::B256;
-use std::sync::Arc;
+
+use crate::blobstore::{BlobStore, BlobStoreCleanupStat, BlobStoreError};
 
 /// A blobstore implementation that does nothing
 #[derive(Clone, Copy, Debug, PartialOrd, PartialEq, Eq, Default)]
@@ -59,7 +61,7 @@ impl BlobStore for NoopBlobStore {
         txs: Vec<B256>,
     ) -> Result<Vec<Arc<BlobTransactionSidecarVariant>>, BlobStoreError> {
         if txs.is_empty() {
-            return Ok(vec![])
+            return Ok(vec![]);
         }
         Err(BlobStoreError::MissingSidecar(txs[0]))
     }

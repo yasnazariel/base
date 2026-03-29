@@ -1,12 +1,14 @@
 //! Support for representing the version of the `eth`
 
-use crate::alloc::string::ToString;
 use alloc::string::String;
+use core::{fmt, str::FromStr};
+
 use alloy_rlp::{Decodable, Encodable, Error as RlpError};
 use bytes::BufMut;
-use core::{fmt, str::FromStr};
 use derive_more::Display;
 use reth_codecs_derive::add_arbitrary_tests;
+
+use crate::alloc::string::ToString;
 
 /// Error thrown when failed to parse a valid [`EthVersion`].
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -205,9 +207,10 @@ impl Decodable for ProtocolVersion {
 
 #[cfg(test)]
 mod tests {
-    use super::EthVersion;
     use alloy_rlp::{Decodable, Encodable, Error as RlpError};
     use bytes::BytesMut;
+
+    use super::EthVersion;
 
     #[test]
     fn test_eth_version_try_from_str() {

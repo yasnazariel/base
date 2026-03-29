@@ -1,11 +1,12 @@
+use alloy_primitives::B256;
+use reth_primitives_traits::Account;
+use reth_stages_types::MerkleCheckpoint;
+
 use crate::{
     hash_builder::HashBuilder,
     trie_cursor::CursorSubNode,
     updates::{StorageTrieUpdates, TrieUpdates},
 };
-use alloy_primitives::B256;
-use reth_primitives_traits::Account;
-use reth_stages_types::MerkleCheckpoint;
 
 /// The progress of the state root computation.
 #[derive(Debug)]

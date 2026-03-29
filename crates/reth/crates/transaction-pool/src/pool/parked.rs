@@ -1,15 +1,17 @@
-use crate::{
-    identifier::{SenderId, TransactionId},
-    pool::size::SizeTracker,
-    PoolTransaction, SubPoolLimit, ValidPoolTransaction, TXPOOL_MAX_ACCOUNT_SLOTS_PER_SENDER,
-};
-use rustc_hash::FxHashMap;
-use smallvec::SmallVec;
 use std::{
     cmp::Ordering,
-    collections::{hash_map::Entry, BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, hash_map::Entry},
     ops::{Bound::Unbounded, Deref},
     sync::Arc,
+};
+
+use rustc_hash::FxHashMap;
+use smallvec::SmallVec;
+
+use crate::{
+    PoolTransaction, SubPoolLimit, TXPOOL_MAX_ACCOUNT_SLOTS_PER_SENDER, ValidPoolTransaction,
+    identifier::{SenderId, TransactionId},
+    pool::size::SizeTracker,
 };
 
 /// A pool of transactions that are currently parked and are waiting for external changes (e.g.
@@ -96,11 +98,7 @@ impl<T: ParkedOrd> ParkedPool<T> {
             Entry::Occupied(mut entry) => {
                 let value = entry.get_mut();
                 value.count -= 1;
-                if value.count == 0 {
-                    entry.remove()
-                } else {
-                    return
-                }
+                if value.count == 0 { entry.remove() } else { return }
             }
             Entry::Vacant(_) => {
                 // This should never happen because the bisection between the two maps
@@ -177,7 +175,7 @@ impl<T: ParkedOrd> ParkedPool<T> {
     ) -> Vec<Arc<ValidPoolTransaction<T::Transaction>>> {
         if !self.exceeds(&limit) {
             // if we are below the limits, we don't need to drop anything
-            return Vec::new()
+            return Vec::new();
         }
 
         let mut removed = Vec::with_capacity(limit.tx_excess(self.len()).unwrap_or(1));
@@ -195,7 +193,7 @@ impl<T: ParkedOrd> ParkedPool<T> {
                 }
 
                 if !self.exceeds(&limit) {
-                    break
+                    break;
                 }
             }
         }
@@ -279,7 +277,7 @@ impl<T: PoolTransaction> ParkedPool<BasefeeOrd<T>> {
                 // still parked -> skip descendant transactions
                 'this: while let Some((peek, _)) = iter.peek() {
                     if peek.sender != id.sender {
-                        break 'this
+                        break 'this;
                     }
                     iter.next();
                 }
@@ -525,11 +523,13 @@ impl<T: PoolTransaction> Ord for QueuedOrd<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::test_utils::{MockTransaction, MockTransactionFactory, MockTransactionSet};
+    use std::collections::HashSet;
+
     use alloy_consensus::{Transaction, TxType};
     use alloy_primitives::address;
-    use std::collections::HashSet;
+
+    use super::*;
+    use crate::test_utils::{MockTransaction, MockTransactionFactory, MockTransactionSet};
 
     #[test]
     fn test_enforce_parked_basefee() {

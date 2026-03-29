@@ -1,15 +1,16 @@
-use super::setup;
 use eyre::Result;
 use reth_db::DatabaseEnv;
 use reth_db_api::{database::Database, table::TableImporter, tables};
 use reth_db_common::DbTool;
 use reth_node_core::dirs::{ChainPath, DataDirPath};
 use reth_provider::{
-    providers::{ProviderNodeTypes, RocksDBProvider, StaticFileProvider},
     DatabaseProviderFactory, ProviderFactory,
+    providers::{ProviderNodeTypes, RocksDBProvider, StaticFileProvider},
 };
-use reth_stages::{stages::StorageHashingStage, Stage, StageCheckpoint, UnwindInput};
+use reth_stages::{Stage, StageCheckpoint, UnwindInput, stages::StorageHashingStage};
 use tracing::info;
+
+use super::setup;
 
 pub(crate) async fn dump_hashing_storage_stage<N: ProviderNodeTypes<DB = DatabaseEnv>>(
     db_tool: &DbTool<N>,
@@ -90,7 +91,7 @@ fn dry_run<N: ProviderNodeTypes>(
             checkpoint: Some(StageCheckpoint::new(from)),
         };
         if stage.execute(&provider, input)?.done {
-            break
+            break;
         }
     }
 

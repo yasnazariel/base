@@ -3,7 +3,7 @@
 
 use discv5::enr::{CombinedPublicKey, EnrPublicKey, NodeId};
 use enr::Enr;
-use reth_network_peers::{id2pk, pk2id, PeerId};
+use reth_network_peers::{PeerId, id2pk, pk2id};
 use secp256k1::{PublicKey, SecretKey};
 
 /// Extracts a [`CombinedPublicKey::Secp256k1`] from a [`discv5::Enr`] and converts it to a
@@ -11,7 +11,7 @@ use secp256k1::{PublicKey, SecretKey};
 pub fn enr_to_discv4_id(enr: &discv5::Enr) -> Option<PeerId> {
     let pk = enr.public_key();
     if !matches!(pk, CombinedPublicKey::Secp256k1(_)) {
-        return None
+        return None;
     }
 
     let pk = PublicKey::from_slice(&pk.encode()).unwrap();
@@ -55,11 +55,12 @@ impl From<EnrCombinedKeyWrapper> for Enr<SecretKey> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_rlp::Encodable;
     use discv5::enr::{CombinedKey, EnrKey};
     use reth_chainspec::{EthereumHardfork, MAINNET};
     use reth_network_peers::NodeRecord;
+
+    use super::*;
 
     #[test]
     fn discv5_discv4_id_conversion() {

@@ -1,13 +1,13 @@
 //! Storage sharded key
-use crate::{
-    table::{Decode, Encode},
-    DatabaseError,
-};
-use alloy_primitives::{Address, BlockNumber, B256};
+use alloy_primitives::{Address, B256, BlockNumber};
 use derive_more::AsRef;
 use serde::{Deserialize, Serialize};
 
 use super::ShardedKey;
+use crate::{
+    DatabaseError,
+    table::{Decode, Encode},
+};
 
 /// Number of indices in one shard.
 pub const NUM_OF_INDICES_IN_SHARD: usize = 2_000;
@@ -77,7 +77,7 @@ impl Encode for StorageShardedKey {
 impl Decode for StorageShardedKey {
     fn decode(value: &[u8]) -> Result<Self, DatabaseError> {
         if value.len() != STORAGE_SHARD_KEY_BYTES_SIZE {
-            return Err(DatabaseError::Decode)
+            return Err(DatabaseError::Decode);
         }
         let block_num_index = value.len() - 8;
 
@@ -93,8 +93,9 @@ impl Decode for StorageShardedKey {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_primitives::{address, b256};
+
+    use super::*;
 
     #[test]
     fn storage_sharded_key_encode_decode_roundtrip() {

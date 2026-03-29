@@ -1,4 +1,5 @@
-use crate::utils::{advance_with_random_transactions, eth_payload_attributes};
+use std::sync::Arc;
+
 use alloy_eips::eip7685::RequestsOrHash;
 use alloy_genesis::Genesis;
 use alloy_primitives::{Address, B256};
@@ -15,7 +16,8 @@ use reth_node_ethereum::EthereumNode;
 use reth_provider::BlockNumReader;
 use reth_rpc_api::TestingBuildBlockRequestV1;
 use reth_tasks::Runtime;
-use std::sync::Arc;
+
+use crate::utils::{advance_with_random_transactions, eth_payload_attributes};
 
 #[tokio::test]
 async fn can_run_eth_node() -> eyre::Result<()> {

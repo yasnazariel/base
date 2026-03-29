@@ -1,5 +1,7 @@
+use std::{fs::File, io::BufReader};
+
 use alloy_eips::eip4895::Withdrawals;
-use alloy_primitives::{hex, Signature, TxKind, B256};
+use alloy_primitives::{B256, Signature, TxKind, hex};
 use arbitrary::Arbitrary;
 use eyre::{Context, Result};
 use proptest::{
@@ -17,11 +19,11 @@ use reth_codecs::alloy::{
     withdrawal::Withdrawal,
 };
 use reth_db::{
+    ClientVersion,
     models::{
         AccountBeforeTx, StaticFileBlockWithdrawals, StoredBlockBodyIndices, StoredBlockOmmers,
         StoredBlockWithdrawals,
     },
-    ClientVersion,
 };
 use reth_ethereum_primitives::{Receipt, Transaction, TransactionSigned, TxType};
 use reth_fs_util as fs;
@@ -32,9 +34,8 @@ use reth_stages_types::{
     HeadersCheckpoint, IndexHistoryCheckpoint, StageCheckpoint, StageUnitCheckpoint,
     StorageHashingCheckpoint,
 };
-use reth_trie::{hash_builder::HashBuilderValue, TrieMask};
-use reth_trie_common::{hash_builder::HashBuilderState, StoredNibbles, StoredNibblesSubKey};
-use std::{fs::File, io::BufReader};
+use reth_trie::{TrieMask, hash_builder::HashBuilderValue};
+use reth_trie_common::{StoredNibbles, StoredNibblesSubKey, hash_builder::HashBuilderState};
 
 pub const VECTORS_FOLDER: &str = "testdata/micro/compact";
 pub const VECTOR_SIZE: usize = 100;
@@ -214,7 +215,7 @@ where
                         tries += 1;
                         bytes.extend(std::iter::repeat_n(0u8, 256));
                     } else {
-                        return Err(err)?
+                        return Err(err)?;
                     }
                 }
             }
@@ -283,10 +284,12 @@ pub fn type_name<T>() -> String {
     // With alloy type transition <https://github.com/paradigmxyz/reth/pull/15768> the types are renamed, we map them here to the original name so that test vector files remain consistent
     let name = std::any::type_name::<T>();
     match name {
-        "alloy_consensus::transaction::envelope::EthereumTypedTransaction<alloy_consensus::transaction::eip4844::TxEip4844>" => "Transaction".to_string(),
-        "alloy_consensus::transaction::envelope::EthereumTxEnvelope<alloy_consensus::transaction::eip4844::TxEip4844>" => "TransactionSigned".to_string(),
-        name => {
-            name.split("::").last().unwrap_or(std::any::type_name::<T>()).to_string()
+        "alloy_consensus::transaction::envelope::EthereumTypedTransaction<alloy_consensus::transaction::eip4844::TxEip4844>" => {
+            "Transaction".to_string()
         }
+        "alloy_consensus::transaction::envelope::EthereumTxEnvelope<alloy_consensus::transaction::eip4844::TxEip4844>" => {
+            "TransactionSigned".to_string()
+        }
+        name => name.split("::").last().unwrap_or(std::any::type_name::<T>()).to_string(),
     }
 }

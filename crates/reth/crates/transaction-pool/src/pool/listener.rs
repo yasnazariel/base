@@ -1,25 +1,27 @@
 //! Listeners for the transaction-pool
 
-use crate::{
-    pool::{
-        events::{FullTransactionEvent, NewTransactionEvent, TransactionEvent},
-        QueuedReason,
-    },
-    traits::{NewBlobSidecar, PropagateKind},
-    PoolTransaction, ValidPoolTransaction,
-};
-use alloy_primitives::{TxHash, B256};
-use futures_util::Stream;
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::{HashMap, hash_map::Entry},
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
 };
+
+use alloy_primitives::{B256, TxHash};
+use futures_util::Stream;
 use tokio::sync::mpsc::{
-    self as mpsc, error::TrySendError, Receiver, Sender, UnboundedReceiver, UnboundedSender,
+    self as mpsc, Receiver, Sender, UnboundedReceiver, UnboundedSender, error::TrySendError,
 };
 use tracing::debug;
+
+use crate::{
+    PoolTransaction, ValidPoolTransaction,
+    pool::{
+        QueuedReason,
+        events::{FullTransactionEvent, NewTransactionEvent, TransactionEvent},
+    },
+    traits::{NewBlobSidecar, PropagateKind},
+};
 
 /// The size of the event channel used to propagate transaction events.
 const TX_POOL_EVENT_CHANNEL_SIZE: usize = 1024;
@@ -190,7 +192,7 @@ impl<T: PoolTransaction> PoolEventBroadcast<T> {
     #[inline]
     pub fn discarded_many(&mut self, discarded: &[Arc<ValidPoolTransaction<T>>]) {
         if self.is_empty() {
-            return
+            return;
         }
         for tx in discarded {
             self.discarded(tx.hash());
@@ -296,7 +298,7 @@ impl PendingTransactionHashListener {
                         true
                     } else {
                         false
-                    }
+                    };
                 }
             }
         }
@@ -338,7 +340,7 @@ impl<T: PoolTransaction> TransactionListener<T> {
                         true
                     } else {
                         false
-                    }
+                    };
                 }
             }
         }

@@ -1,16 +1,17 @@
 //! Command that initializes the node by importing a chain from a file.
-use crate::{
-    common::{AccessRights, CliNodeComponents, CliNodeTypes, Environment, EnvironmentArgs},
-    import_core::{import_blocks_from_file, ImportConfig},
-};
+use std::{path::PathBuf, sync::Arc};
+
 use clap::Parser;
 use reth_chainspec::{ChainSpecProvider, EthChainSpec, EthereumHardforks};
 use reth_cli::chainspec::ChainSpecParser;
 use reth_node_core::version::version_metadata;
-use std::{path::PathBuf, sync::Arc};
 use tracing::info;
 
 pub use crate::import_core::build_import_pipeline_impl as build_import_pipeline;
+use crate::{
+    common::{AccessRights, CliNodeComponents, CliNodeTypes, Environment, EnvironmentArgs},
+    import_core::{ImportConfig, import_blocks_from_file},
+};
 
 /// Syncs RLP encoded blocks from a file or files.
 #[derive(Debug, Parser)]
@@ -139,8 +140,9 @@ impl<C: ChainSpecParser> ImportCommand<C> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use reth_ethereum_cli::chainspec::{EthereumChainSpecParser, SUPPORTED_CHAINS};
+
+    use super::*;
 
     #[test]
     fn parse_common_import_command_chain_args() {

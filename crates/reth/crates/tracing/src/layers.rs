@@ -1,15 +1,17 @@
-use crate::{formatter::LogFormat, LayerInfo};
-#[cfg(feature = "otlp-logs")]
-use reth_tracing_otlp::{log_layer, OtlpLogsConfig};
-#[cfg(feature = "otlp")]
-use reth_tracing_otlp::{span_layer, OtlpConfig};
-use rolling_file::{RollingConditionBasic, RollingFileAppender};
 use std::{
     fmt,
     path::{Path, PathBuf},
 };
+
+#[cfg(feature = "otlp")]
+use reth_tracing_otlp::{OtlpConfig, span_layer};
+#[cfg(feature = "otlp-logs")]
+use reth_tracing_otlp::{OtlpLogsConfig, log_layer};
+use rolling_file::{RollingConditionBasic, RollingFileAppender};
 use tracing_appender::non_blocking::WorkerGuard;
-use tracing_subscriber::{filter::Directive, EnvFilter, Layer, Registry};
+use tracing_subscriber::{EnvFilter, Layer, Registry, filter::Directive};
+
+use crate::{LayerInfo, formatter::LogFormat};
 
 /// A worker guard returned by the file layer.
 ///

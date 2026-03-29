@@ -1,15 +1,15 @@
-use crate::{DatabaseHashedCursorFactory, DatabaseTrieCursorFactory};
-use alloy_primitives::{keccak256, map::hash_map, Address, BlockNumber, B256};
+use alloy_primitives::{Address, B256, BlockNumber, keccak256, map::hash_map};
 use reth_db_api::{models::BlockNumberAddress, transaction::DbTx};
 use reth_execution_errors::StorageRootError;
 use reth_storage_api::{BlockNumReader, StorageChangeSetReader};
 use reth_storage_errors::provider::ProviderResult;
-use reth_trie::{
-    hashed_cursor::HashedPostStateCursorFactory, HashedPostState, HashedStorage, StorageRoot,
-};
-
 #[cfg(feature = "metrics")]
 use reth_trie::metrics::TrieRootMetrics;
+use reth_trie::{
+    HashedPostState, HashedStorage, StorageRoot, hashed_cursor::HashedPostStateCursorFactory,
+};
+
+use crate::{DatabaseHashedCursorFactory, DatabaseTrieCursorFactory};
 
 /// Extends [`StorageRoot`] with operations specific for working with a database transaction.
 pub trait DatabaseStorageRoot<'a, TX> {
@@ -40,7 +40,7 @@ where
     let tip = provider.last_block_number()?;
 
     if from > tip {
-        return Ok(storage)
+        return Ok(storage);
     }
 
     for (BlockNumberAddress((_, storage_address)), storage_change) in
@@ -104,15 +104,16 @@ impl<'a, TX: DbTx> DatabaseStorageRoot<'a, TX>
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_consensus::Header;
     use alloy_primitives::U256;
     use reth_db_api::{models::BlockNumberAddress, tables, transaction::DbTxMut};
     use reth_primitives_traits::StorageEntry;
     use reth_provider::{
-        test_utils::create_test_provider_factory, StaticFileProviderFactory, StaticFileSegment,
-        StaticFileWriter, StorageSettingsCache,
+        StaticFileProviderFactory, StaticFileSegment, StaticFileWriter, StorageSettingsCache,
+        test_utils::create_test_provider_factory,
     };
+
+    use super::*;
 
     fn append_storage_changesets_to_static_files(
         factory: &impl StaticFileProviderFactory<

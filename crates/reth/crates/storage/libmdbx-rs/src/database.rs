@@ -1,10 +1,12 @@
-use crate::{
-    error::{mdbx_result, Result},
-    transaction::TransactionKind,
-    Environment, Transaction,
-};
-use ffi::MDBX_db_flags_t;
 use std::{ffi::CStr, ptr};
+
+use ffi::MDBX_db_flags_t;
+
+use crate::{
+    Environment, Transaction,
+    error::{Result, mdbx_result},
+    transaction::TransactionKind,
+};
 
 /// A handle to an individual database in an environment.
 ///

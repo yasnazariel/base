@@ -1,8 +1,9 @@
 //! Round-trip encoding fuzzing for the `eth-wire` crate.
 
+use std::fmt::Debug;
+
 use alloy_rlp::{Decodable, Encodable};
 use serde::Serialize;
-use std::fmt::Debug;
 
 /// Creates a fuzz test for a type that should be [`Encodable`](alloy_rlp::Encodable) and
 /// [`Decodable`](alloy_rlp::Decodable).
@@ -48,7 +49,6 @@ macro_rules! fuzz_type_and_name {
 #[cfg(test)]
 #[expect(missing_docs)]
 pub mod fuzz_rlp {
-    use crate::roundtrip_encoding;
     use alloy_rlp::{RlpDecodableWrapper, RlpEncodableWrapper};
     use reth_codecs::add_arbitrary_tests;
     use reth_eth_wire::{
@@ -59,6 +59,8 @@ pub mod fuzz_rlp {
     };
     use serde::{Deserialize, Serialize};
     use test_fuzz::test_fuzz;
+
+    use crate::roundtrip_encoding;
 
     // manually test Ping and Pong which are not covered by the above
 

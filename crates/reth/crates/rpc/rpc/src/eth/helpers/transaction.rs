@@ -2,23 +2,24 @@
 
 use std::time::Duration;
 
-use crate::EthApi;
 use alloy_consensus::BlobTransactionValidationError;
-use alloy_eips::{eip7594::BlobTransactionSidecarVariant, BlockId, Typed2718};
-use alloy_primitives::{hex, B256};
+use alloy_eips::{BlockId, Typed2718, eip7594::BlobTransactionSidecarVariant};
+use alloy_primitives::{B256, hex};
 use reth_chainspec::{ChainSpecProvider, EthereumHardforks};
 use reth_primitives_traits::{AlloyBlockHeader, Recovered, WithEncoded};
 use reth_rpc_convert::RpcConvert;
 use reth_rpc_eth_api::{
-    helpers::{spec::SignersForRpc, EthTransactions, LoadTransaction},
     FromEvmError, RpcNodeCore,
+    helpers::{EthTransactions, LoadTransaction, spec::SignersForRpc},
 };
-use reth_rpc_eth_types::{error::RpcPoolError, EthApiError};
+use reth_rpc_eth_types::{EthApiError, error::RpcPoolError};
 use reth_storage_api::BlockReaderIdExt;
 use reth_transaction_pool::{
-    error::Eip4844PoolTransactionError, AddedTransactionOutcome, EthBlobTransactionSidecar,
-    EthPoolTransaction, PoolPooledTx, PoolTransaction, TransactionPool,
+    AddedTransactionOutcome, EthBlobTransactionSidecar, EthPoolTransaction, PoolPooledTx,
+    PoolTransaction, TransactionPool, error::Eip4844PoolTransactionError,
 };
+
+use crate::EthApi;
 
 impl<N, Rpc> EthTransactions for EthApi<N, Rpc>
 where
@@ -132,23 +133,24 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::eth::helpers::types::EthRpcConverter;
     use alloy_consensus::{
         BlobTransactionSidecar, Block, Header, SidecarBuilder, SimpleCoder, Transaction,
     };
-    use alloy_primitives::{map::AddressMap, Address, U256};
+    use alloy_primitives::{Address, U256, map::AddressMap};
     use alloy_rpc_types_eth::request::TransactionRequest;
     use reth_chainspec::{ChainSpec, ChainSpecBuilder};
     use reth_evm_ethereum::EthEvmConfig;
     use reth_network_api::noop::NoopNetwork;
     use reth_provider::{
-        test_utils::{ExtendedAccount, MockEthProvider},
         ChainSpecProvider,
+        test_utils::{ExtendedAccount, MockEthProvider},
     };
     use reth_rpc_eth_api::node::RpcNodeCoreAdapter;
-    use reth_transaction_pool::test_utils::{testing_pool, TestPool};
+    use reth_transaction_pool::test_utils::{TestPool, testing_pool};
     use revm_primitives::Bytes;
+
+    use super::*;
+    use crate::eth::helpers::types::EthRpcConverter;
 
     fn mock_eth_api(
         accounts: AddressMap<ExtendedAccount>,

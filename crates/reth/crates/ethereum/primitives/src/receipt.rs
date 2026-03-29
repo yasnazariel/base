@@ -1,14 +1,14 @@
+use alloc::vec::Vec;
 use core::fmt::Debug;
 
-use alloc::vec::Vec;
 use alloy_consensus::{
-    Eip2718DecodableReceipt, Eip2718EncodableReceipt, Eip658Value, ReceiptEnvelope,
+    Eip658Value, Eip2718DecodableReceipt, Eip2718EncodableReceipt, ReceiptEnvelope,
     ReceiptWithBloom, RlpDecodableReceipt, RlpEncodableReceipt, TxReceipt, TxType, Typed2718,
 };
 use alloy_eips::eip2718::{Eip2718Error, Eip2718Result, Encodable2718, IsTyped2718};
-use alloy_primitives::{Bloom, Log, B256};
+use alloy_primitives::{B256, Bloom, Log};
 use alloy_rlp::{BufMut, Decodable, Encodable, Header, RlpDecodable, RlpEncodable};
-use reth_primitives_traits::{proofs::ordered_trie_root_with_encoder, InMemorySize};
+use reth_primitives_traits::{InMemorySize, proofs::ordered_trie_root_with_encoder};
 
 /// Helper trait alias with requirements for transaction type generic to be used within [`Receipt`].
 pub trait TxTy:
@@ -85,10 +85,10 @@ impl<T> Receipt<T> {
 impl<T: TxTy> Receipt<T> {
     /// Returns length of RLP-encoded receipt fields with the given [`Bloom`] without an RLP header.
     pub fn rlp_encoded_fields_length(&self, bloom: &Bloom) -> usize {
-        self.success.length() +
-            self.cumulative_gas_used.length() +
-            bloom.length() +
-            self.logs.length()
+        self.success.length()
+            + self.cumulative_gas_used.length()
+            + bloom.length()
+            + self.logs.length()
     }
 
     /// RLP-encodes receipt fields with the given [`Bloom`] without an RLP header.
@@ -194,7 +194,7 @@ impl<T: TxTy> RlpDecodableReceipt for Receipt<T> {
 
         // Legacy receipt, reuse initial buffer without advancing
         if header.list {
-            return Self::rlp_decode_inner(buf, T::try_from(0)?)
+            return Self::rlp_decode_inner(buf, T::try_from(0)?);
         }
 
         // Otherwise, advance the buffer and try decoding type flag followed by receipt
@@ -307,10 +307,11 @@ where
 #[cfg(all(feature = "serde", feature = "serde-bincode-compat"))]
 pub(super) mod serde_bincode_compat {
     use alloc::{borrow::Cow, vec::Vec};
+    use core::fmt::Debug;
+
     use alloy_consensus::TxType;
     use alloy_eips::eip2718::Eip2718Error;
     use alloy_primitives::{Log, U8};
-    use core::fmt::Debug;
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use serde_with::{DeserializeAs, SerializeAs};
 
@@ -414,11 +415,12 @@ pub(super) mod serde_bincode_compat {
 
     #[cfg(test)]
     mod tests {
-        use crate::{receipt::serde_bincode_compat, Receipt};
         use alloy_consensus::TxType;
         use arbitrary::Arbitrary;
         use rand::Rng;
         use serde_with::serde_as;
+
+        use crate::{Receipt, receipt::serde_bincode_compat};
 
         #[test]
         fn test_receipt_bincode_roundtrip() {
@@ -446,11 +448,12 @@ pub(super) mod serde_bincode_compat {
 
 #[cfg(feature = "reth-codec")]
 mod compact {
-    use super::*;
     use reth_codecs::{
+        __private::{Buf, modular_bitfield::prelude::*},
         Compact,
-        __private::{modular_bitfield::prelude::*, Buf},
     };
+
+    use super::*;
 
     impl Receipt {
         #[doc = "Used bytes by [`ReceiptFlags`]"]
@@ -562,17 +565,18 @@ pub use compact::*;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::TransactionSigned;
     use alloy_eips::eip2718::Encodable2718;
     use alloy_primitives::{
-        address, b256, bloom, bytes, hex_literal::hex, Address, Bytes, Log, LogData,
+        Address, Bytes, Log, LogData, address, b256, bloom, bytes, hex_literal::hex,
     };
     use alloy_rlp::Decodable;
     use reth_codecs::Compact;
     use reth_primitives_traits::proofs::{
         calculate_receipt_root, calculate_transaction_root, calculate_withdrawals_root,
     };
+
+    use super::*;
+    use crate::TransactionSigned;
 
     /// Ethereum full block.
     ///

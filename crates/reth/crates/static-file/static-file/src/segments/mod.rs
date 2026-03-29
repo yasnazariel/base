@@ -1,13 +1,13 @@
 //! `StaticFile` segment implementations and utilities.
 
 mod receipts;
-pub use receipts::Receipts;
+use std::ops::RangeInclusive;
 
 use alloy_primitives::BlockNumber;
+pub use receipts::Receipts;
 use reth_provider::StaticFileProviderFactory;
 use reth_static_file_types::StaticFileSegment;
 use reth_storage_errors::provider::ProviderResult;
-use std::ops::RangeInclusive;
 
 /// A segment represents moving some portion of the data to static files.
 pub trait Segment<Provider: StaticFileProviderFactory>: Send + Sync {

@@ -1,18 +1,18 @@
 //! Contains common `reth` arguments
 
-pub use reth_primitives_traits::header::HeaderMut;
+use std::{path::PathBuf, sync::Arc};
 
 use alloy_primitives::B256;
 use clap::Parser;
 use reth_chainspec::EthChainSpec;
 use reth_cli::chainspec::ChainSpecParser;
-use reth_config::{config::EtlConfig, Config};
+use reth_config::{Config, config::EtlConfig};
 use reth_consensus::noop::NoopConsensus;
-use reth_db::{init_db, open_db_read_only, DatabaseEnv};
+use reth_db::{DatabaseEnv, init_db, open_db_read_only};
 use reth_db_common::init::init_genesis_with_settings;
 use reth_downloaders::{bodies::noop::NoopBodiesDownloader, headers::noop::NoopHeaderDownloader};
 use reth_eth_wire::NetPrimitivesFor;
-use reth_evm::{noop::NoopEvmConfig, ConfigureEvm};
+use reth_evm::{ConfigureEvm, noop::NoopEvmConfig};
 use reth_network::NetworkEventListenerProvider;
 use reth_node_api::FullNodeTypesAdapter;
 use reth_node_builder::{
@@ -22,16 +22,16 @@ use reth_node_core::{
     args::{DatabaseArgs, DatadirArgs, StaticFilesArgs, StorageArgs},
     dirs::{ChainPath, DataDirPath},
 };
+pub use reth_primitives_traits::header::HeaderMut;
 use reth_provider::{
+    ProviderFactory, StaticFileProviderFactory, StorageSettings,
     providers::{
         BlockchainProvider, NodeTypesForProvider, RocksDBProvider, StaticFileProvider,
         StaticFileProviderBuilder,
     },
-    ProviderFactory, StaticFileProviderFactory, StorageSettings,
 };
-use reth_stages::{sets::DefaultStages, Pipeline, PipelineTarget};
+use reth_stages::{Pipeline, PipelineTarget, sets::DefaultStages};
 use reth_static_file::StaticFileProducer;
-use std::{path::PathBuf, sync::Arc};
 use tokio::sync::watch;
 use tracing::{debug, info, warn};
 
@@ -79,11 +79,7 @@ impl<C: ChainSpecParser> EnvironmentArgs<C> {
     /// - When `--storage.v2` is set: uses [`StorageSettings::v2()`] defaults
     /// - Otherwise: uses [`StorageSettings::base()`] defaults
     pub fn storage_settings(&self) -> StorageSettings {
-        if self.storage.v2 {
-            StorageSettings::v2()
-        } else {
-            StorageSettings::base()
-        }
+        if self.storage.v2 { StorageSettings::v2() } else { StorageSettings::base() }
     }
 
     /// Initializes environment according to [`AccessRights`] and returns an instance of
@@ -188,13 +184,13 @@ impl<C: ChainSpecParser> EnvironmentArgs<C> {
         .with_prune_modes(prune_modes.clone());
 
         // Check for consistency between database and static files.
-        if !access.is_read_only_inconsistent() &&
-            let Some(unwind_target) =
+        if !access.is_read_only_inconsistent()
+            && let Some(unwind_target) =
                 factory.static_file_provider().check_consistency(&factory.provider()?)?
         {
             if factory.db_ref().is_read_only()? {
                 warn!(target: "reth::cli", ?unwind_target, "Inconsistent storage. Restart node to heal.");
-                return Ok(factory)
+                return Ok(factory);
             }
 
             // Highly unlikely to happen, and given its destructive nature, it's better to panic

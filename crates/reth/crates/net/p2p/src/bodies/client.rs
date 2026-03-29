@@ -1,13 +1,14 @@
 use std::{
     ops::RangeInclusive,
     pin::Pin,
-    task::{ready, Context, Poll},
+    task::{Context, Poll, ready},
 };
 
-use crate::{download::DownloadClient, error::PeerRequestResult, priority::Priority};
 use alloy_primitives::B256;
 use futures::{Future, FutureExt};
 use reth_primitives_traits::BlockBody;
+
+use crate::{download::DownloadClient, error::PeerRequestResult, priority::Priority};
 
 /// The bodies future type
 pub type BodiesFut<B = reth_ethereum_primitives::BlockBody> =

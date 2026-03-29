@@ -1,18 +1,20 @@
+use std::{
+    fmt::{Debug, Formatter},
+    ops::RangeInclusive,
+};
+
+use alloy_primitives::B256;
+use futures::FutureExt;
+use reth_ethereum_primitives::BlockBody;
+use reth_network_peers::PeerId;
+use tokio::sync::oneshot;
+
 use crate::{
     bodies::client::{BodiesClient, BodiesFut},
     download::DownloadClient,
     error::PeerRequestResult,
     priority::Priority,
 };
-use alloy_primitives::B256;
-use futures::FutureExt;
-use reth_ethereum_primitives::BlockBody;
-use reth_network_peers::PeerId;
-use std::{
-    fmt::{Debug, Formatter},
-    ops::RangeInclusive,
-};
-use tokio::sync::oneshot;
 
 /// A test client for fetching bodies
 pub struct TestBodiesClient<F> {

@@ -14,21 +14,22 @@ mod network;
 mod payload;
 mod pool;
 
+use std::fmt::Debug;
+
 pub use builder::*;
 pub use consensus::*;
 pub use execute::*;
 pub use network::*;
 pub use payload::*;
 pub use pool::*;
-
-use crate::{ConfigureEvm, FullNodeTypes};
 use reth_consensus::FullConsensus;
 use reth_network::types::NetPrimitivesFor;
 use reth_network_api::FullNetwork;
 use reth_node_api::{NodeTypes, PrimitivesTy, TxTy};
 use reth_payload_builder::PayloadBuilderHandle;
 use reth_transaction_pool::{PoolPooledTx, PoolTransaction, TransactionPool};
-use std::fmt::Debug;
+
+use crate::{ConfigureEvm, FullNodeTypes};
 
 /// An abstraction over the components of a node, consisting of:
 ///  - evm and executor

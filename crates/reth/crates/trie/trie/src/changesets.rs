@@ -18,17 +18,17 @@
 //!
 //! And returns `TrieUpdatesSorted` containing the old node values.
 
-use crate::trie_cursor::TrieCursorIter;
-use alloy_primitives::{map::B256Map, B256};
-use itertools::{merge_join_by, EitherOrBoth};
-use reth_storage_errors::db::DatabaseError;
-use reth_trie_common::{
-    updates::{StorageTrieUpdatesSorted, TrieUpdatesSorted},
-    BranchNodeCompact, Nibbles,
-};
 use std::cmp::Ordering;
 
-use crate::trie_cursor::{TrieCursor, TrieCursorFactory, TrieStorageCursor};
+use alloy_primitives::{B256, map::B256Map};
+use itertools::{EitherOrBoth, merge_join_by};
+use reth_storage_errors::db::DatabaseError;
+use reth_trie_common::{
+    BranchNodeCompact, Nibbles,
+    updates::{StorageTrieUpdatesSorted, TrieUpdatesSorted},
+};
+
+use crate::trie_cursor::{TrieCursor, TrieCursorFactory, TrieCursorIter, TrieStorageCursor};
 
 /// Result type for changeset operations.
 pub type ChangesetResult<T> = Result<T, DatabaseError>;
@@ -236,11 +236,13 @@ pub fn storage_trie_wiped_changeset_iter(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::trie_cursor::mock::MockTrieCursorFactory;
+    use std::collections::BTreeMap;
+
     use alloy_primitives::map::B256Map;
     use reth_trie_common::updates::StorageTrieUpdatesSorted;
-    use std::collections::BTreeMap;
+
+    use super::*;
+    use crate::trie_cursor::mock::MockTrieCursorFactory;
 
     #[test]
     fn test_empty_updates() {

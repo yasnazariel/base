@@ -1,13 +1,15 @@
 //! Abstraction over primitive types in network messages.
 
-use crate::NewBlockPayload;
+use core::fmt::Debug;
+
 use alloy_consensus::{RlpDecodableReceipt, RlpEncodableReceipt, TxReceipt};
 use alloy_rlp::{Decodable, Encodable};
-use core::fmt::Debug;
 use reth_ethereum_primitives::{EthPrimitives, PooledTransactionVariant};
 use reth_primitives_traits::{
     Block, BlockBody, BlockHeader, BlockTy, NodePrimitives, SignedTransaction,
 };
+
+use crate::NewBlockPayload;
 
 /// Abstraction over primitive types which might appear in network messages.
 ///
@@ -72,11 +74,11 @@ pub trait NetworkPrimitives: Send + Sync + Unpin + Clone + Debug + 'static {
 /// types must be the same as the [`NodePrimitives`] associated types.
 pub trait NetPrimitivesFor<N: NodePrimitives>:
     NetworkPrimitives<
-    BlockHeader = N::BlockHeader,
-    BlockBody = N::BlockBody,
-    Block = N::Block,
-    Receipt = N::Receipt,
->
+        BlockHeader = N::BlockHeader,
+        BlockBody = N::BlockBody,
+        Block = N::Block,
+        Receipt = N::Receipt,
+    >
 {
 }
 
@@ -84,11 +86,11 @@ impl<N, T> NetPrimitivesFor<N> for T
 where
     N: NodePrimitives,
     T: NetworkPrimitives<
-        BlockHeader = N::BlockHeader,
-        BlockBody = N::BlockBody,
-        Block = N::Block,
-        Receipt = N::Receipt,
-    >,
+            BlockHeader = N::BlockHeader,
+            BlockBody = N::BlockBody,
+            Block = N::Block,
+            Receipt = N::Receipt,
+        >,
 {
 }
 

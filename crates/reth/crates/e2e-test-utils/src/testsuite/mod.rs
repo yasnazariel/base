@@ -1,24 +1,28 @@
 //! Utilities for running e2e tests against a node or a network of nodes.
 
-use crate::{
-    testsuite::actions::{Action, ActionBox},
-    NodeBuilderHelper,
-};
+use std::{collections::HashMap, marker::PhantomData};
+
 use alloy_primitives::B256;
 use eyre::Result;
 use jsonrpsee::http_client::HttpClient;
 use reth_node_api::{EngineTypes, PayloadTypes};
 use reth_payload_builder::PayloadId;
-use std::{collections::HashMap, marker::PhantomData};
+
+use crate::{
+    NodeBuilderHelper,
+    testsuite::actions::{Action, ActionBox},
+};
 pub mod actions;
 pub mod setup;
-use crate::testsuite::setup::Setup;
+use std::sync::Arc;
+
 use alloy_provider::{Provider, ProviderBuilder};
 use alloy_rpc_types_engine::{ForkchoiceState, PayloadAttributes};
 use reth_engine_primitives::ConsensusEngineHandle;
 use reth_rpc_builder::auth::AuthServerHandle;
-use std::sync::Arc;
 use url::Url;
+
+use crate::testsuite::setup::Setup;
 
 /// Client handles for both regular RPC and Engine API endpoints
 #[derive(Clone)]

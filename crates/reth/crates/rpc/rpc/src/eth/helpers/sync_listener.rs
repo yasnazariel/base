@@ -1,13 +1,14 @@
 //! A utility Future to asynchronously wait until a node has finished syncing.
 
-use futures::Stream;
-use pin_project::pin_project;
-use reth_network_api::NetworkInfo;
 use std::{
     future::Future,
     pin::Pin,
-    task::{ready, Context, Poll},
+    task::{Context, Poll, ready},
 };
+
+use futures::Stream;
+use pin_project::pin_project;
+use reth_network_api::NetworkInfo;
 
 /// This future resolves once the node is no longer syncing: [`NetworkInfo::is_syncing`].
 #[must_use = "futures do nothing unless polled"]
@@ -57,17 +58,19 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use alloy_rpc_types_admin::EthProtocolInfo;
-    use futures::stream;
-    use reth_network_api::{NetworkError, NetworkStatus};
     use std::{
         net::{IpAddr, SocketAddr},
         sync::{
-            atomic::{AtomicBool, Ordering},
             Arc,
+            atomic::{AtomicBool, Ordering},
         },
     };
+
+    use alloy_rpc_types_admin::EthProtocolInfo;
+    use futures::stream;
+    use reth_network_api::{NetworkError, NetworkStatus};
+
+    use super::*;
 
     #[derive(Clone)]
     struct TestNetwork {

@@ -17,8 +17,9 @@
 
 extern crate alloc;
 
-use crate::execute::{BasicBlockBuilder, Executor};
 use alloc::vec::Vec;
+use core::{error::Error, fmt::Debug};
+
 use alloy_eips::{
     eip2718::{EIP2930_TX_TYPE_ID, LEGACY_TX_TYPE_ID},
     eip2930::AccessList,
@@ -28,14 +29,15 @@ use alloy_evm::{
     block::{BlockExecutorFactory, BlockExecutorFor},
     precompiles::PrecompilesMap,
 };
-use alloy_primitives::{Address, Bytes, B256};
-use core::{error::Error, fmt::Debug};
+use alloy_primitives::{Address, B256, Bytes};
 use execute::{BasicBlockExecutor, BlockAssembler, BlockBuilder};
 use reth_execution_errors::BlockExecutionError;
 use reth_primitives_traits::{
     BlockTy, HeaderTy, NodePrimitives, ReceiptTy, SealedBlock, SealedHeader, TxTy,
 };
 use revm::{context::TxEnv, database::State, primitives::hardfork::SpecId};
+
+use crate::execute::{BasicBlockBuilder, Executor};
 
 pub mod either;
 /// EVM environment configuration.
@@ -57,7 +59,7 @@ pub mod noop;
 pub mod test_utils;
 
 pub use alloy_evm::{
-    block::{state_changes, system_calls, OnStateHook},
+    block::{OnStateHook, state_changes, system_calls},
     *,
 };
 
@@ -195,23 +197,20 @@ pub trait ConfigureEvm: Clone + Debug + Send + Sync + Unpin {
 
     /// Configured [`BlockExecutorFactory`], contains [`EvmFactory`] internally.
     type BlockExecutorFactory: for<'a> BlockExecutorFactory<
-        Transaction = TxTy<Self::Primitives>,
-        Receipt = ReceiptTy<Self::Primitives>,
-        ExecutionCtx<'a>: Debug + Send,
-        EvmFactory: EvmFactory<
-            Tx: TransactionEnv
-                    + FromRecoveredTx<TxTy<Self::Primitives>>
-                    + FromTxWithEncoded<TxTy<Self::Primitives>>,
-            Precompiles = PrecompilesMap,
-            Spec: Into<SpecId>,
-        >,
-    >;
+            Transaction = TxTy<Self::Primitives>,
+            Receipt = ReceiptTy<Self::Primitives>,
+            ExecutionCtx<'a>: Debug + Send,
+            EvmFactory: EvmFactory<
+                Tx: TransactionEnv
+                        + FromRecoveredTx<TxTy<Self::Primitives>>
+                        + FromTxWithEncoded<TxTy<Self::Primitives>>,
+                Precompiles = PrecompilesMap,
+                Spec: Into<SpecId>,
+            >,
+        >;
 
     /// A type that knows how to build a block.
-    type BlockAssembler: BlockAssembler<
-        Self::BlockExecutorFactory,
-        Block = BlockTy<Self::Primitives>,
-    >;
+    type BlockAssembler: BlockAssembler<Self::BlockExecutorFactory, Block = BlockTy<Self::Primitives>>;
 
     /// Returns reference to the configured [`BlockExecutorFactory`].
     fn block_executor_factory(&self) -> &Self::BlockExecutorFactory;

@@ -1,5 +1,13 @@
 //! Storage for blob data of EIP4844 transactions.
 
+use std::{
+    fmt,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+};
+
 use alloy_eips::{
     eip4844::{BlobAndProofV1, BlobAndProofV2},
     eip7594::BlobTransactionSidecarVariant,
@@ -9,13 +17,6 @@ pub use converter::BlobSidecarConverter;
 pub use disk::{DiskFileBlobStore, DiskFileBlobStoreConfig, OpenDiskFileBlobStore};
 pub use mem::InMemoryBlobStore;
 pub use noop::NoopBlobStore;
-use std::{
-    fmt,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
-};
 pub use tracker::{BlobStoreCanonTracker, BlobStoreUpdates};
 
 mod converter;
@@ -180,8 +181,8 @@ impl BlobStoreSize {
 
 impl PartialEq for BlobStoreSize {
     fn eq(&self, other: &Self) -> bool {
-        self.data_size.load(Ordering::Relaxed) == other.data_size.load(Ordering::Relaxed) &&
-            self.num_blobs.load(Ordering::Relaxed) == other.num_blobs.load(Ordering::Relaxed)
+        self.data_size.load(Ordering::Relaxed) == other.data_size.load(Ordering::Relaxed)
+            && self.num_blobs.load(Ordering::Relaxed) == other.num_blobs.load(Ordering::Relaxed)
     }
 }
 

@@ -1,14 +1,16 @@
 //! Custom forkchoice update actions for testing specific FCU scenarios.
 
-use crate::testsuite::{Action, Environment};
+use std::marker::PhantomData;
+
 use alloy_primitives::B256;
 use alloy_rpc_types_engine::{ForkchoiceState, PayloadStatusEnum};
 use eyre::Result;
 use futures_util::future::BoxFuture;
 use reth_node_api::EngineTypes;
 use reth_rpc_api::clients::EngineApiClient;
-use std::marker::PhantomData;
 use tracing::debug;
+
+use crate::testsuite::{Action, Environment};
 
 /// Reference to a block for forkchoice update
 #[derive(Debug, Clone)]

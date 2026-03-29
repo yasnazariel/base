@@ -1,12 +1,14 @@
-use crate::backfill::{BackfillAction, BackfillEvent, BackfillSync};
-use futures::Stream;
-use reth_stages_api::{ControlFlow, PipelineTarget};
 use std::{
     fmt::{Display, Formatter, Result},
     pin::Pin,
     task::{Context, Poll},
 };
+
+use futures::Stream;
+use reth_stages_api::{ControlFlow, PipelineTarget};
 use tracing::*;
+
+use crate::backfill::{BackfillAction, BackfillEvent, BackfillSync};
 
 /// The type that drives the chain forward.
 ///
@@ -100,7 +102,7 @@ where
                                 tracing::error!( %err, "backfill sync failed");
                                 Poll::Ready(ChainEvent::FatalError)
                             }
-                        }
+                        };
                     }
                     BackfillEvent::TaskDropped(err) => {
                         tracing::error!( %err, "backfill sync task dropped");
@@ -124,13 +126,13 @@ where
                         }
                         HandlerEvent::FatalError => {
                             error!(target: "engine::tree", "Fatal error");
-                            return Poll::Ready(ChainEvent::FatalError)
+                            return Poll::Ready(ChainEvent::FatalError);
                         }
                     }
                 }
                 Poll::Pending => {
                     // no more events to process
-                    break 'outer
+                    break 'outer;
                 }
             }
         }

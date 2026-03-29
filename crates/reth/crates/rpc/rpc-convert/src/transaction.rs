@@ -1,21 +1,23 @@
 //! Compatibility functions for rpc `Transaction` type.
-use crate::{
-    RpcHeader, RpcReceipt, RpcTransaction, RpcTxReq, RpcTypes, SignableTxRequest, TryIntoTxEnv,
-};
+use core::error;
+use std::{convert::Infallible, error::Error, fmt::Debug, marker::PhantomData};
+
 use alloy_consensus::{
-    error::ValueError, transaction::Recovered, EthereumTxEnvelope, Sealable, TxEip4844,
+    EthereumTxEnvelope, Sealable, TxEip4844, error::ValueError, transaction::Recovered,
 };
 use alloy_network::Network;
 use alloy_primitives::{Address, U256};
-use alloy_rpc_types_eth::{request::TransactionRequest, Transaction, TransactionInfo};
-use core::error;
+use alloy_rpc_types_eth::{Transaction, TransactionInfo, request::TransactionRequest};
 use dyn_clone::DynClone;
 use reth_evm::{BlockEnvFor, ConfigureEvm, EvmEnvFor, TxEnvFor};
 use reth_primitives_traits::{
     BlockTy, HeaderTy, NodePrimitives, SealedBlock, SealedHeader, SealedHeaderFor, TransactionMeta,
     TxTy,
 };
-use std::{convert::Infallible, error::Error, fmt::Debug, marker::PhantomData};
+
+use crate::{
+    RpcHeader, RpcReceipt, RpcTransaction, RpcTxReq, RpcTypes, SignableTxRequest, TryIntoTxEnv,
+};
 
 /// Input for [`RpcConvert::convert_receipts`].
 #[derive(Debug, Clone)]
@@ -715,11 +717,11 @@ impl<Network, Evm, Receipt, Header, Map, SimTx, RpcTx, TxEnv>
         self,
     ) -> Box<
         dyn RpcConvert<
-            Primitives = <Self as RpcConvert>::Primitives,
-            Network = <Self as RpcConvert>::Network,
-            Error = <Self as RpcConvert>::Error,
-            Evm = <Self as RpcConvert>::Evm,
-        >,
+                Primitives = <Self as RpcConvert>::Primitives,
+                Network = <Self as RpcConvert>::Network,
+                Error = <Self as RpcConvert>::Error,
+                Evm = <Self as RpcConvert>::Evm,
+            >,
     >
     where
         Self: RpcConvert,
@@ -753,15 +755,15 @@ where
 }
 
 impl<
-        Network,
-        Evm,
-        Receipt: Clone,
-        Header: Clone,
-        Map: Clone,
-        SimTx: Clone,
-        RpcTx: Clone,
-        TxEnv: Clone,
-    > Clone for RpcConverter<Network, Evm, Receipt, Header, Map, SimTx, RpcTx, TxEnv>
+    Network,
+    Evm,
+    Receipt: Clone,
+    Header: Clone,
+    Map: Clone,
+    SimTx: Clone,
+    RpcTx: Clone,
+    TxEnv: Clone,
+> Clone for RpcConverter<Network, Evm, Receipt, Header, Map, SimTx, RpcTx, TxEnv>
 {
     fn clone(&self) -> Self {
         Self {
@@ -869,11 +871,12 @@ where
 /// Optimism specific RPC transaction compatibility implementations.
 #[cfg(feature = "op")]
 pub mod op {
-    use super::*;
     use alloy_consensus::SignableTransaction;
     use alloy_signer::Signature;
-    use op_alloy_consensus::{transaction::OpTransactionInfo, OpTxEnvelope};
+    use op_alloy_consensus::{OpTxEnvelope, transaction::OpTransactionInfo};
     use op_alloy_rpc_types::OpTransactionRequest;
+
+    use super::*;
 
     impl<T: op_alloy_consensus::OpTransaction + alloy_consensus::Transaction> FromConsensusTx<T>
         for op_alloy_rpc_types::Transaction<T>
@@ -944,11 +947,12 @@ impl TryFromTransactionResponse<op_alloy_network::Optimism> for op_alloy_consens
 
 #[cfg(test)]
 mod transaction_response_tests {
-    use super::*;
-    use alloy_consensus::{transaction::Recovered, EthereumTxEnvelope, Signed, TxLegacy};
+    use alloy_consensus::{EthereumTxEnvelope, Signed, TxLegacy, transaction::Recovered};
     use alloy_network::Ethereum;
-    use alloy_primitives::{Address, Signature, B256, U256};
+    use alloy_primitives::{Address, B256, Signature, U256};
     use alloy_rpc_types_eth::Transaction;
+
+    use super::*;
 
     #[test]
     fn test_ethereum_transaction_conversion() {

@@ -1,15 +1,17 @@
-use crate::utils::eth_payload_attributes;
+use std::sync::Arc;
+
 use alloy_primitives::{Address, U256};
-use alloy_provider::{network::EthereumWallet, Provider, ProviderBuilder};
+use alloy_provider::{Provider, ProviderBuilder, network::EthereumWallet};
 use alloy_rpc_types_eth::{
+    BlockOverrides, TransactionRequest,
     simulate::{SimBlock, SimulatePayload, SimulatedBlock},
     state::StateOverridesBuilder,
-    BlockOverrides, TransactionRequest,
 };
 use reth_chainspec::{ChainSpecBuilder, MAINNET};
 use reth_e2e_test_utils::setup_engine;
 use reth_node_ethereum::EthereumNode;
-use std::sync::Arc;
+
+use crate::utils::eth_payload_attributes;
 
 /// Tests that `eth_simulateV1` handles a transaction with `maxFeePerBlobGas` set but no
 /// `blob_versioned_hashes` or sidecar. The transaction should be treated as EIP-1559, not

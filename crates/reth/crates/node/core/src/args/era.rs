@@ -1,6 +1,7 @@
+use std::path::Path;
+
 use clap::Args;
 use reth_chainspec::{ChainKind, NamedChain};
-use std::path::Path;
 use url::Url;
 
 /// Syncs ERA1 encoded blocks from a local or remote source.

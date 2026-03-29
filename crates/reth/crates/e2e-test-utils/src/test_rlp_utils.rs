@@ -1,14 +1,15 @@
 //! Utilities for creating and writing RLP test data
 
-use alloy_consensus::{constants::EMPTY_WITHDRAWALS, BlockHeader, Header};
+use std::{io::Write, path::Path};
+
+use alloy_consensus::{BlockHeader, Header, constants::EMPTY_WITHDRAWALS};
 use alloy_eips::eip4895::Withdrawals;
-use alloy_primitives::{Address, B256, B64, U256};
+use alloy_primitives::{Address, B64, B256, U256};
 use alloy_rlp::Encodable;
 use reth_chainspec::{ChainSpec, EthereumHardforks};
 use reth_ethereum_primitives::{Block, BlockBody};
 use reth_primitives::SealedBlock;
 use reth_primitives_traits::Block as BlockTrait;
-use std::{io::Write, path::Path};
 use tracing::debug;
 
 /// Generate test blocks for a given chain spec

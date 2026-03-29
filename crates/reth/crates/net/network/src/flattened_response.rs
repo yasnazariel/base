@@ -1,10 +1,11 @@
-use futures::Future;
-use pin_project::pin_project;
 use std::{
     pin::Pin,
     task::{Context, Poll},
 };
-use tokio::sync::oneshot::{error::RecvError, Receiver};
+
+use futures::Future;
+use pin_project::pin_project;
+use tokio::sync::oneshot::{Receiver, error::RecvError};
 
 /// Flatten a [Receiver] message in order to get rid of the [`RecvError`] result
 #[derive(Debug)]

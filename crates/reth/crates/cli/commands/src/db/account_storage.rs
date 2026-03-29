@@ -1,4 +1,6 @@
-use alloy_primitives::{keccak256, Address};
+use std::time::{Duration, Instant};
+
+use alloy_primitives::{Address, keccak256};
 use clap::Parser;
 use human_bytes::human_bytes;
 use reth_codecs::Compact;
@@ -6,7 +8,6 @@ use reth_db_api::{cursor::DbDupCursorRO, database::Database, tables, transaction
 use reth_db_common::DbTool;
 use reth_node_builder::NodeTypesWithDB;
 use reth_storage_api::StorageSettingsCache;
-use std::time::{Duration, Instant};
 use tracing::info;
 
 /// Log progress every 5 seconds

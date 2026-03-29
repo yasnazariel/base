@@ -1,14 +1,16 @@
 //! Error handling for (`EthStream`)[`crate::EthStream`]
 
-use crate::{
-    errors::P2PStreamError, message::MessageError, version::ParseVersionError, DisconnectReason,
-};
+use std::io;
+
 use alloy_chains::Chain;
 use alloy_primitives::B256;
 use reth_eth_wire_types::EthVersion;
 use reth_ethereum_forks::ValidationError;
 use reth_primitives_traits::{GotExpected, GotExpectedBoxed};
-use std::io;
+
+use crate::{
+    DisconnectReason, errors::P2PStreamError, message::MessageError, version::ParseVersionError,
+};
 
 /// Errors when sending/receiving messages
 #[derive(thiserror::Error, Debug)]
@@ -56,17 +58,13 @@ pub enum EthStreamError {
 impl EthStreamError {
     /// Returns the [`DisconnectReason`] if the error is a disconnect message
     pub const fn as_disconnected(&self) -> Option<DisconnectReason> {
-        if let Self::P2PStreamError(err) = self {
-            err.as_disconnected()
-        } else {
-            None
-        }
+        if let Self::P2PStreamError(err) = self { err.as_disconnected() } else { None }
     }
 
     /// Returns the [`io::Error`] if it was caused by IO
     pub const fn as_io(&self) -> Option<&io::Error> {
         if let Self::P2PStreamError(P2PStreamError::Io(io)) = self {
-            return Some(io)
+            return Some(io);
         }
         None
     }

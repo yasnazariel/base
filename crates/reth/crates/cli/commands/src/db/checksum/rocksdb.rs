@@ -1,16 +1,18 @@
 //! RocksDB checksum implementation.
 
-use super::{checksum_hasher, PROGRESS_LOG_INTERVAL};
-use crate::common::CliNodeTypes;
+use std::{hash::Hasher, time::Instant};
+
 use clap::ValueEnum;
 use reth_chainspec::EthereumHardforks;
-use reth_db::{tables, DatabaseEnv};
+use reth_db::{DatabaseEnv, tables};
 use reth_db_api::table::Table;
 use reth_db_common::DbTool;
 use reth_node_builder::NodeTypesWithDBAdapter;
 use reth_provider::RocksDBProviderFactory;
-use std::{hash::Hasher, time::Instant};
 use tracing::info;
+
+use super::{PROGRESS_LOG_INTERVAL, checksum_hasher};
+use crate::common::CliNodeTypes;
 
 /// RocksDB tables that can be checksummed.
 #[derive(Debug, Clone, Copy, ValueEnum)]

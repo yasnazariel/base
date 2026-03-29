@@ -16,21 +16,23 @@
 //!    `signature` is a 65-byte secp256k1 EC signature over the keccak256 hash of the record
 //! content, excluding the sig= part, encoded as URL-safe base64 (RFC-4648).
 
-use crate::error::{
-    ParseDnsEntryError,
-    ParseDnsEntryError::{FieldNotFound, UnknownEntry},
-    ParseEntryResult,
+use std::{
+    fmt,
+    hash::{Hash, Hasher},
+    str::FromStr,
 };
-use alloy_primitives::{hex, Bytes};
+
+use alloy_primitives::{Bytes, hex};
 use data_encoding::{BASE32_NOPAD, BASE64URL_NOPAD};
 use enr::{Enr, EnrKey, EnrKeyUnambiguous, EnrPublicKey, Error as EnrError};
 use secp256k1::SecretKey;
 #[cfg(feature = "serde")]
 use serde_with::{DeserializeFromStr, SerializeDisplay};
-use std::{
-    fmt,
-    hash::{Hash, Hasher},
-    str::FromStr,
+
+use crate::error::{
+    ParseDnsEntryError,
+    ParseDnsEntryError::{FieldNotFound, UnknownEntry},
+    ParseEntryResult,
 };
 
 /// Prefix used for root entries in the ENR tree.
@@ -205,7 +207,7 @@ impl BranchEntry {
 
             let decoded_len = base32_no_padding_decoded_len(hash.len());
             if !(12..=32).contains(&decoded_len) || hash.chars().any(|c| c.is_whitespace()) {
-                return Err(ParseDnsEntryError::InvalidChildHash(hash.to_string()))
+                return Err(ParseDnsEntryError::InvalidChildHash(hash.to_string()));
             }
             Ok(hash.to_string())
         }

@@ -1,5 +1,6 @@
-use super::BranchNodeCompact;
 use alloc::vec::Vec;
+
+use super::BranchNodeCompact;
 
 /// Walker sub node for storing intermediate state root calculation state in the database.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -68,10 +69,11 @@ impl reth_codecs::Compact for StoredSubNode {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::TrieMask;
     use alloy_primitives::B256;
     use reth_codecs::Compact;
+
+    use super::*;
+    use crate::TrieMask;
 
     #[test]
     fn subnode_roundtrip() {

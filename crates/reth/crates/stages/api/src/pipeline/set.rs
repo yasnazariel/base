@@ -1,8 +1,9 @@
-use crate::{Stage, StageId};
 use std::{
     collections::HashMap,
     fmt::{Debug, Formatter},
 };
+
+use crate::{Stage, StageId};
 
 /// Combines multiple [`Stage`]s into a single unit.
 ///
@@ -73,8 +74,8 @@ impl<Provider> StageSetBuilder<Provider> {
 
     fn upsert_stage_state(&mut self, stage: Box<dyn Stage<Provider>>, added_at_index: usize) {
         let stage_id = stage.id();
-        if self.stages.insert(stage.id(), StageEntry { stage, enabled: true }).is_some() &&
-            let Some(to_remove) = self
+        if self.stages.insert(stage.id(), StageEntry { stage, enabled: true }).is_some()
+            && let Some(to_remove) = self
                 .order
                 .iter()
                 .enumerate()
@@ -138,11 +139,7 @@ impl<Provider> StageSetBuilder<Provider> {
     ///
     /// If the stage was already in the group, it is removed from its previous place.
     pub fn add_stage_opt<S: Stage<Provider> + 'static>(self, stage: Option<S>) -> Self {
-        if let Some(stage) = stage {
-            self.add_stage(stage)
-        } else {
-            self
-        }
+        if let Some(stage) = stage { self.add_stage(stage) } else { self }
     }
 
     /// Adds the given [`StageSet`] to the end of this set.
@@ -240,7 +237,7 @@ impl<Provider> StageSetBuilder<Provider> {
         F: FnOnce() -> bool,
     {
         if f() {
-            return self.disable(stage_id)
+            return self.disable(stage_id);
         }
         self
     }
@@ -254,7 +251,7 @@ impl<Provider> StageSetBuilder<Provider> {
         F: FnOnce() -> bool,
     {
         if f() {
-            return self.disable_all(stages)
+            return self.disable_all(stages);
         }
         self
     }
@@ -263,8 +260,8 @@ impl<Provider> StageSetBuilder<Provider> {
     pub fn build(mut self) -> Vec<Box<dyn Stage<Provider>>> {
         let mut stages = Vec::new();
         for id in &self.order {
-            if let Some(entry) = self.stages.remove(id) &&
-                entry.enabled
+            if let Some(entry) = self.stages.remove(id)
+                && entry.enabled
             {
                 stages.push(entry.stage);
             }

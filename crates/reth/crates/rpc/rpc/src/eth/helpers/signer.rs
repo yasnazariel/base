@@ -2,11 +2,11 @@
 
 use alloy_dyn_abi::TypedData;
 use alloy_eips::eip2718::Decodable2718;
-use alloy_primitives::{eip191_hash_message, map::AddressMap, Address, Signature, B256};
+use alloy_primitives::{Address, B256, Signature, eip191_hash_message, map::AddressMap};
 use alloy_signer::SignerSync;
-use alloy_signer_local::{coins_bip39::English, MnemonicBuilder, PrivateKeySigner};
+use alloy_signer_local::{MnemonicBuilder, PrivateKeySigner, coins_bip39::English};
 use reth_rpc_convert::SignableTxRequest;
-use reth_rpc_eth_api::helpers::{signer::Result, EthSigner};
+use reth_rpc_eth_api::helpers::{EthSigner, signer::Result};
 use reth_rpc_eth_types::SignError;
 
 /// Holds developer keys
@@ -109,12 +109,13 @@ impl<T: Decodable2718, TxReq: SignableTxRequest<T>> EthSigner<T, TxReq> for DevS
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_consensus::Transaction;
     use alloy_primitives::{Bytes, U256};
     use alloy_rpc_types_eth::{TransactionInput, TransactionRequest};
     use reth_ethereum_primitives::TransactionSigned;
     use revm_primitives::TxKind;
+
+    use super::*;
 
     fn build_signer() -> DevSigner {
         let signer: PrivateKeySigner =

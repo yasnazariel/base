@@ -2,6 +2,8 @@
 
 #![cfg(all(feature = "rocksdb", unix))]
 
+use std::{sync::Arc, time::Duration};
+
 use alloy_consensus::BlockHeader;
 use alloy_primitives::B256;
 use alloy_rpc_types_eth::{Transaction, TransactionReceipt};
@@ -9,11 +11,10 @@ use eyre::Result;
 use jsonrpsee::core::client::ClientT;
 use reth_chainspec::{ChainSpec, ChainSpecBuilder, MAINNET};
 use reth_db::tables;
-use reth_e2e_test_utils::{transaction::TransactionTestContext, wallet, E2ETestSetupBuilder};
+use reth_e2e_test_utils::{E2ETestSetupBuilder, transaction::TransactionTestContext, wallet};
 use reth_node_ethereum::EthereumNode;
 use reth_payload_builder::EthPayloadBuilderAttributes;
 use reth_provider::RocksDBProviderFactory;
-use std::{sync::Arc, time::Duration};
 
 const ROCKSDB_POLL_TIMEOUT: Duration = Duration::from_secs(60);
 const ROCKSDB_POLL_INTERVAL: Duration = Duration::from_millis(50);

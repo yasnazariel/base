@@ -1,4 +1,8 @@
-use super::missing_static_data_error;
+use std::{
+    cmp::Ordering,
+    task::{Context, Poll, ready},
+};
+
 use futures_util::TryStreamExt;
 use reth_db_api::{
     cursor::DbCursorRO,
@@ -7,8 +11,8 @@ use reth_db_api::{
 };
 use reth_network_p2p::bodies::{downloader::BodyDownloader, response::BlockResponse};
 use reth_provider::{
-    providers::StaticFileWriter, BlockReader, BlockWriter, DBProvider, ProviderError,
-    StaticFileProviderFactory, StatsReader,
+    BlockReader, BlockWriter, DBProvider, ProviderError, StaticFileProviderFactory, StatsReader,
+    providers::StaticFileWriter,
 };
 use reth_stages_api::{
     EntitiesCheckpoint, ExecInput, ExecOutput, Stage, StageCheckpoint, StageError, StageId,
@@ -16,11 +20,9 @@ use reth_stages_api::{
 };
 use reth_static_file_types::StaticFileSegment;
 use reth_storage_errors::provider::ProviderResult;
-use std::{
-    cmp::Ordering,
-    task::{ready, Context, Poll},
-};
 use tracing::*;
+
+use super::missing_static_data_error;
 
 /// The body stage downloads block bodies.
 ///
@@ -125,7 +127,7 @@ where
                         &static_file_provider,
                         provider,
                         StaticFileSegment::Transactions,
-                    )?)
+                    )?);
                 }
             } else {
                 return Err(missing_static_data_error(
@@ -133,7 +135,7 @@ where
                     &static_file_provider,
                     provider,
                     StaticFileSegment::Transactions,
-                )?)
+                )?);
             }
         }
         Ordering::Equal => {}
@@ -162,7 +164,7 @@ where
         input: ExecInput,
     ) -> Poll<Result<(), StageError>> {
         if input.target_reached() || self.buffer.is_some() {
-            return Poll::Ready(Ok(()))
+            return Poll::Ready(Ok(()));
         }
 
         // Update the header range on the downloader
@@ -188,7 +190,7 @@ where
     /// header, limited by the stage's batch size.
     fn execute(&mut self, provider: &Provider, input: ExecInput) -> Result<ExecOutput, StageError> {
         if input.target_reached() {
-            return Ok(ExecOutput::done(input.checkpoint()))
+            return Ok(ExecOutput::done(input.checkpoint()));
         }
         let (from_block, to_block) = input.next_block_range().into_inner();
 
@@ -252,14 +254,15 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::test_utils::{
-        stage_test_suite_ext, ExecuteStageTestRunner, StageTestRunner, UnwindStageTestRunner,
-    };
     use assert_matches::assert_matches;
     use reth_provider::StaticFileProviderFactory;
     use reth_stages_api::StageUnitCheckpoint;
     use test_utils::*;
+
+    use super::*;
+    use crate::test_utils::{
+        ExecuteStageTestRunner, StageTestRunner, UnwindStageTestRunner, stage_test_suite_ext,
+    };
 
     stage_test_suite_ext!(BodyTestRunner, body);
 
@@ -468,15 +471,15 @@ mod tests {
     }
 
     mod test_utils {
-        use crate::{
-            stages::bodies::BodyStage,
-            test_utils::{
-                ExecuteStageTestRunner, StageTestRunner, TestRunnerError, TestStageDB,
-                UnwindStageTestRunner,
-            },
+        use std::{
+            collections::VecDeque,
+            ops::RangeInclusive,
+            pin::Pin,
+            task::{Context, Poll},
         };
+
         use alloy_consensus::{BlockHeader, Header};
-        use alloy_primitives::{map::B256Map, BlockNumber, TxNumber, B256};
+        use alloy_primitives::{B256, BlockNumber, TxNumber, map::B256Map};
         use futures_util::Stream;
         use reth_db::{static_file::HeaderWithHashMask, tables};
         use reth_db_api::{
@@ -494,19 +497,21 @@ mod tests {
         };
         use reth_primitives_traits::{SealedBlock, SealedHeader};
         use reth_provider::{
-            providers::StaticFileWriter, test_utils::MockNodeTypesWithDB, HeaderProvider,
-            ProviderFactory, StaticFileProviderFactory, TransactionsProvider,
+            HeaderProvider, ProviderFactory, StaticFileProviderFactory, TransactionsProvider,
+            providers::StaticFileWriter, test_utils::MockNodeTypesWithDB,
         };
         use reth_stages_api::{ExecInput, ExecOutput, UnwindInput};
         use reth_static_file_types::StaticFileSegment;
         use reth_testing_utils::generators::{
-            self, random_block_range, random_signed_tx, BlockRangeParams,
+            self, BlockRangeParams, random_block_range, random_signed_tx,
         };
-        use std::{
-            collections::VecDeque,
-            ops::RangeInclusive,
-            pin::Pin,
-            task::{Context, Poll},
+
+        use crate::{
+            stages::bodies::BodyStage,
+            test_utils::{
+                ExecuteStageTestRunner, StageTestRunner, TestRunnerError, TestStageDB,
+                UnwindStageTestRunner,
+            },
         };
 
         /// The block hash of the genesis block.
@@ -784,7 +789,7 @@ mod tests {
                 let this = self.get_mut();
 
                 if this.headers.is_empty() {
-                    return Poll::Ready(None)
+                    return Poll::Ready(None);
                 }
 
                 let mut response =
@@ -801,12 +806,12 @@ mod tests {
                     }
 
                     if response.len() as u64 >= this.batch_size {
-                        break
+                        break;
                     }
                 }
 
                 if !response.is_empty() {
-                    return Poll::Ready(Some(Ok(response)))
+                    return Poll::Ready(Some(Ok(response)));
                 }
 
                 panic!("requested bodies without setting headers")

@@ -1,12 +1,14 @@
 //! Receipt abstraction
 
-use crate::{InMemorySize, MaybeCompact, MaybeSerde, MaybeSerdeBincodeCompat};
 use alloc::vec::Vec;
+use core::fmt;
+
 use alloy_consensus::{
     Eip2718EncodableReceipt, RlpDecodableReceipt, RlpEncodableReceipt, TxReceipt, Typed2718,
 };
 use alloy_rlp::{Decodable, Encodable};
-use core::fmt;
+
+use crate::{InMemorySize, MaybeCompact, MaybeSerde, MaybeSerdeBincodeCompat};
 
 /// Helper trait that unifies all behaviour required by receipt to support full node operations.
 pub trait FullReceipt: Receipt + MaybeCompact {}

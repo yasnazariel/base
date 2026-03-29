@@ -1,12 +1,13 @@
 #![allow(unreachable_pub)]
 //! Standalone http tests
 
-use crate::utils::{launch_http, launch_http_ws, launch_ws};
-use alloy_eips::{eip1898::LenientBlockNumberOrTag, BlockId, BlockNumberOrTag};
-use alloy_primitives::{hex_literal::hex, Address, Bytes, TxHash, B256, B64, U256, U64};
+use std::collections::HashSet;
+
+use alloy_eips::{BlockId, BlockNumberOrTag, eip1898::LenientBlockNumberOrTag};
+use alloy_primitives::{Address, B64, B256, Bytes, TxHash, U64, U256, hex_literal::hex};
 use alloy_rpc_types_eth::{
-    transaction::TransactionRequest, Block, FeeHistory, Filter, Header, Index, Log,
-    PendingTransactionFilterKind, SyncStatus, Transaction, TransactionReceipt,
+    Block, FeeHistory, Filter, Header, Index, Log, PendingTransactionFilterKind, SyncStatus,
+    Transaction, TransactionReceipt, transaction::TransactionRequest,
 };
 use alloy_rpc_types_trace::filter::TraceFilter;
 use jsonrpsee::{
@@ -21,20 +22,21 @@ use jsonrpsee::{
 use reth_ethereum_primitives::{Receipt, TransactionSigned};
 use reth_network_peers::NodeRecord;
 use reth_rpc_api::{
-    clients::{AdminApiClient, EthApiClient},
     DebugApiClient, EthCallBundleApiClient, EthFilterApiClient, NetApiClient, OtterscanClient,
     TraceApiClient, Web3ApiClient,
+    clients::{AdminApiClient, EthApiClient},
 };
 use reth_rpc_server_types::RethRpcModule;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
-use std::collections::HashSet;
+
+use crate::utils::{launch_http, launch_http_ws, launch_ws};
 
 fn is_unimplemented(err: jsonrpsee::core::client::Error) -> bool {
     match err {
         jsonrpsee::core::client::Error::Call(error_obj) => {
-            error_obj.code() == ErrorCode::InternalError.code() &&
-                error_obj.message() == "unimplemented"
+            error_obj.code() == ErrorCode::InternalError.code()
+                && error_obj.message() == "unimplemented"
         }
         _ => false,
     }
@@ -594,16 +596,20 @@ where
         .err()
         .unwrap()
     ));
-    assert!(OtterscanClient::<Transaction, Header>::get_transaction_by_sender_and_nonce(
-        client, sender, nonce
-    )
-    .await
-    .err()
-    .is_none());
-    assert!(OtterscanClient::<Transaction, Header>::get_contract_creator(client, address)
+    assert!(
+        OtterscanClient::<Transaction, Header>::get_transaction_by_sender_and_nonce(
+            client, sender, nonce
+        )
         .await
-        .unwrap()
-        .is_none());
+        .err()
+        .is_none()
+    );
+    assert!(
+        OtterscanClient::<Transaction, Header>::get_contract_creator(client, address)
+            .await
+            .unwrap()
+            .is_none()
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -1726,8 +1732,8 @@ async fn test_debug_db_get() {
     let match_error_msg = |err: jsonrpsee::core::client::Error, expected: String| -> bool {
         match err {
             jsonrpsee::core::client::Error::Call(error_obj) => {
-                error_obj.code() == ErrorCode::InvalidParams.code() &&
-                    error_obj.message() == expected
+                error_obj.code() == ErrorCode::InvalidParams.code()
+                    && error_obj.message() == expected
             }
             _ => false,
         }

@@ -1,7 +1,8 @@
 //! Helpers for testing.
 
-use crate::execute::BasicBlockExecutor;
 use revm::database::State;
+
+use crate::execute::BasicBlockExecutor;
 
 impl<Factory, DB> BasicBlockExecutor<Factory, DB> {
     /// Provides safe read access to the state

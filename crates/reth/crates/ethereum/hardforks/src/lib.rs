@@ -24,9 +24,7 @@ mod display;
 mod hardforks;
 
 pub use alloy_hardforks::*;
-
-pub use display::DisplayHardforks;
-pub use hardforks::*;
-
 #[cfg(any(test, feature = "arbitrary"))]
 pub use arbitrary;
+pub use display::DisplayHardforks;
+pub use hardforks::*;

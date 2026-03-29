@@ -1,10 +1,11 @@
 //! Traits for configuring a node.
 
-use crate::PayloadTypes;
+use std::{fmt::Debug, future::Future, marker::PhantomData};
+
 use alloy_rpc_types_engine::JwtSecret;
 use reth_basic_payload_builder::PayloadBuilder;
 use reth_consensus::FullConsensus;
-use reth_db_api::{database_metrics::DatabaseMetrics, Database};
+use reth_db_api::{Database, database_metrics::DatabaseMetrics};
 use reth_engine_primitives::{ConsensusEngineEvent, ConsensusEngineHandle};
 use reth_evm::ConfigureEvm;
 use reth_network_api::FullNetwork;
@@ -15,7 +16,8 @@ use reth_provider::FullProvider;
 use reth_tasks::TaskExecutor;
 use reth_tokio_util::EventSender;
 use reth_transaction_pool::{PoolTransaction, TransactionPool};
-use std::{fmt::Debug, future::Future, marker::PhantomData};
+
+use crate::PayloadTypes;
 
 /// A helper trait that is downstream of the [`NodeTypes`] trait and adds stateful
 /// components to the node.
@@ -48,17 +50,17 @@ where
 /// Helper trait to bound [`PayloadBuilder`] to the node's engine types.
 pub trait PayloadBuilderFor<N: NodeTypes>:
     PayloadBuilder<
-    Attributes = <N::Payload as PayloadTypes>::PayloadBuilderAttributes,
-    BuiltPayload = <N::Payload as PayloadTypes>::BuiltPayload,
->
+        Attributes = <N::Payload as PayloadTypes>::PayloadBuilderAttributes,
+        BuiltPayload = <N::Payload as PayloadTypes>::BuiltPayload,
+    >
 {
 }
 
 impl<T, N: NodeTypes> PayloadBuilderFor<N> for T where
     T: PayloadBuilder<
-        Attributes = <N::Payload as PayloadTypes>::PayloadBuilderAttributes,
-        BuiltPayload = <N::Payload as PayloadTypes>::BuiltPayload,
-    >
+            Attributes = <N::Payload as PayloadTypes>::PayloadBuilderAttributes,
+            BuiltPayload = <N::Payload as PayloadTypes>::BuiltPayload,
+        >
 {
 }
 

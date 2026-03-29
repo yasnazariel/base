@@ -1,13 +1,15 @@
 //! Actions that can be performed in tests.
 
-use crate::testsuite::Environment;
+use std::future::Future;
+
 use alloy_rpc_types_engine::{ForkchoiceState, ForkchoiceUpdated, PayloadStatusEnum};
 use eyre::Result;
 use futures_util::future::BoxFuture;
 use reth_node_api::EngineTypes;
 use reth_rpc_api::clients::EngineApiClient;
-use std::future::Future;
 use tracing::debug;
+
+use crate::testsuite::Environment;
 
 pub mod custom_fcu;
 pub mod engine_api;
@@ -174,8 +176,8 @@ where
                 ];
 
                 // if we're on a fork, validate it now that it's canonical
-                if let Ok(active_state) = env.active_node_state() &&
-                    let Some(fork_base) = active_state.current_fork_base
+                if let Ok(active_state) = env.active_node_state()
+                    && let Some(fork_base) = active_state.current_fork_base
                 {
                     debug!("MakeCanonical: Adding fork validation from base block {}", fork_base);
                     actions.push(Box::new(ValidateFork::new(fork_base)));

@@ -21,9 +21,18 @@ pub mod node;
 pub mod pubsub;
 pub mod types;
 
-pub use bundle::{EthBundleApiServer, EthCallBundleApiServer};
+#[cfg(feature = "client")]
+pub use core::EthApiClient;
 pub use core::{EthApiServer, FullEthApiServer};
+
+#[cfg(feature = "client")]
+pub use bundle::{EthBundleApiClient, EthCallBundleApiClient};
+pub use bundle::{EthBundleApiServer, EthCallBundleApiServer};
+#[cfg(feature = "client")]
+pub use ext::L2EthApiExtClient;
 pub use ext::L2EthApiExtServer;
+#[cfg(feature = "client")]
+pub use filter::EthFilterApiClient;
 pub use filter::{EngineEthFilter, EthFilterApiServer, QueryLimits};
 pub use node::{RpcNodeCore, RpcNodeCoreExt};
 pub use pubsub::EthPubSubApiServer;
@@ -31,15 +40,5 @@ pub use reth_rpc_convert::*;
 pub use reth_rpc_eth_types::error::{
     AsEthApiError, FromEthApiError, FromEvmError, IntoEthApiError,
 };
-pub use types::{EthApiTypes, FullEthApiTypes, RpcBlock, RpcHeader, RpcReceipt, RpcTransaction};
-
-#[cfg(feature = "client")]
-pub use bundle::{EthBundleApiClient, EthCallBundleApiClient};
-#[cfg(feature = "client")]
-pub use core::EthApiClient;
-#[cfg(feature = "client")]
-pub use ext::L2EthApiExtClient;
-#[cfg(feature = "client")]
-pub use filter::EthFilterApiClient;
-
 use reth_trie_common as _;
+pub use types::{EthApiTypes, FullEthApiTypes, RpcBlock, RpcHeader, RpcReceipt, RpcTransaction};

@@ -59,9 +59,11 @@
 //!     Ok(())
 //! }
 //! ```
-use crate::e2s::{error::E2sError, types::Entry};
-use snap::{read::FrameDecoder, write::FrameEncoder};
 use std::io::{Read, Write};
+
+use snap::{read::FrameDecoder, write::FrameEncoder};
+
+use crate::e2s::{error::E2sError, types::Entry};
 
 /// Maximum allowed decompressed size for a signed beacon block SSZ payload.
 const MAX_DECOMPRESSED_SIGNED_BEACON_BLOCK_BYTES: usize = 256 * 1024 * 1024; // 256 MiB

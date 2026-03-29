@@ -27,8 +27,9 @@
 // This basis of this file has been taken from the deprecated jsonrpc codebase:
 // https://github.com/paritytech/jsonrpc
 
-use bytes::{Buf, BytesMut};
 use std::{io, str};
+
+use bytes::{Buf, BytesMut};
 
 /// Separator for enveloping messages in streaming codecs
 #[derive(Debug, Clone)]
@@ -117,7 +118,7 @@ impl tokio_util::codec::Decoder for StreamCodec {
                         buf.advance(start_idx);
                     }
                     let bts = buf.split_to(idx + 1 - start_idx);
-                    return Ok(String::from_utf8(bts.into()).ok())
+                    return Ok(String::from_utf8(bts.into()).ok());
                 }
             }
             Ok(None)
@@ -140,9 +141,10 @@ impl tokio_util::codec::Encoder<String> for StreamCodec {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use bytes::BufMut;
     use tokio_util::codec::Decoder;
+
+    use super::*;
 
     #[test]
     fn simple_encode() {

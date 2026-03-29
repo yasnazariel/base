@@ -1,7 +1,9 @@
-use crate::PrunedSegmentInfo;
 use alloc::vec::Vec;
-use alloy_primitives::BlockNumber;
 use core::time::Duration;
+
+use alloy_primitives::BlockNumber;
+
+use crate::PrunedSegmentInfo;
 
 /// An event emitted by a pruner.
 #[derive(Debug, PartialEq, Eq, Clone)]

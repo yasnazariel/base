@@ -1,11 +1,12 @@
 //! Support for maintaining the blob pool.
 
+use std::collections::BTreeMap;
+
 use alloy_consensus::Typed2718;
 use alloy_eips::eip2718::Encodable2718;
-use alloy_primitives::{BlockNumber, B256};
+use alloy_primitives::{B256, BlockNumber};
 use reth_execution_types::ChainBlocks;
 use reth_primitives_traits::{Block, BlockBody, SignedTransaction};
-use std::collections::BTreeMap;
 
 /// The type that is used to track canonical blob transactions.
 #[derive(Debug, Default, Eq, PartialEq)]
@@ -65,7 +66,7 @@ impl BlobStoreCanonTracker {
             if *entry.key() <= finalized_block {
                 finalized.extend(entry.remove_entry().1);
             } else {
-                break
+                break;
             }
         }
 
@@ -88,12 +89,13 @@ pub enum BlobStoreUpdates {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_consensus::{Header, Signed};
     use alloy_primitives::Signature;
     use reth_ethereum_primitives::Transaction;
     use reth_execution_types::Chain;
     use reth_primitives_traits::{RecoveredBlock, SealedBlock, SealedHeader};
+
+    use super::*;
 
     #[test]
     fn test_finalized_tracker() {

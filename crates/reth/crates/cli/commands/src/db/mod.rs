@@ -1,14 +1,16 @@
-use crate::common::{AccessRights, CliNodeTypes, Environment, EnvironmentArgs};
-use clap::{Parser, Subcommand};
-use reth_chainspec::{EthChainSpec, EthereumHardforks};
-use reth_cli::chainspec::ChainSpecParser;
-use reth_cli_runner::CliContext;
-use reth_db::version::{get_db_version, DatabaseVersionError, DB_VERSION};
-use reth_db_common::DbTool;
 use std::{
     io::{self, Write},
     sync::Arc,
 };
+
+use clap::{Parser, Subcommand};
+use reth_chainspec::{EthChainSpec, EthereumHardforks};
+use reth_cli::chainspec::ChainSpecParser;
+use reth_cli_runner::CliContext;
+use reth_db::version::{DB_VERSION, DatabaseVersionError, get_db_version};
+use reth_db_common::DbTool;
+
+use crate::common::{AccessRights, CliNodeTypes, Environment, EnvironmentArgs};
 mod account_storage;
 mod checksum;
 mod clear;
@@ -156,7 +158,7 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + EthereumHardforks>> Command<C>
 
                     if !input.trim().eq_ignore_ascii_case("y") {
                         println!("Database drop aborted!");
-                        return Ok(())
+                        return Ok(());
                     }
                 }
 
@@ -229,9 +231,11 @@ impl<C: ChainSpecParser> Command<C> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use reth_ethereum_cli::chainspec::{EthereumChainSpecParser, SUPPORTED_CHAINS};
     use std::path::Path;
+
+    use reth_ethereum_cli::chainspec::{EthereumChainSpecParser, SUPPORTED_CHAINS};
+
+    use super::*;
 
     #[test]
     fn parse_stats_globals() {

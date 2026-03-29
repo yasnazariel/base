@@ -1,5 +1,9 @@
-use crate::{DatabaseHashedCursorFactory, DatabaseTrieCursorFactory};
-use alloy_primitives::{keccak256, map::B256Map, BlockNumber, B256};
+use std::{
+    collections::HashSet,
+    ops::{Bound, RangeBounds, RangeInclusive},
+};
+
+use alloy_primitives::{B256, BlockNumber, keccak256, map::B256Map};
 use reth_db_api::{
     models::{AccountBeforeTx, BlockNumberAddress},
     transaction::DbTx,
@@ -10,15 +14,13 @@ use reth_storage_api::{
 };
 use reth_storage_errors::provider::ProviderError;
 use reth_trie::{
+    HashedPostStateSorted, HashedStorageSorted, StateRoot, StateRootProgress, TrieInputSorted,
     hashed_cursor::HashedPostStateCursorFactory, trie_cursor::InMemoryTrieCursorFactory,
-    updates::TrieUpdates, HashedPostStateSorted, HashedStorageSorted, StateRoot, StateRootProgress,
-    TrieInputSorted,
-};
-use std::{
-    collections::HashSet,
-    ops::{Bound, RangeBounds, RangeInclusive},
+    updates::TrieUpdates,
 };
 use tracing::{debug, instrument};
+
+use crate::{DatabaseHashedCursorFactory, DatabaseTrieCursorFactory};
 
 /// Extends [`StateRoot`] with operations specific for working with a database transaction.
 pub trait DatabaseStateRoot<'a, TX>: Sized {
@@ -32,10 +34,12 @@ pub trait DatabaseStateRoot<'a, TX>: Sized {
     ///
     /// An instance of state root calculator with account and storage prefixes loaded.
     fn incremental_root_calculator(
-        provider: &'a (impl ChangeSetReader
-                 + StorageChangeSetReader
-                 + StorageSettingsCache
-                 + DBProvider<Tx = TX>),
+        provider: &'a (
+                impl ChangeSetReader
+                + StorageChangeSetReader
+                + StorageSettingsCache
+                + DBProvider<Tx = TX>
+            ),
         range: RangeInclusive<BlockNumber>,
     ) -> Result<Self, StateRootError>;
 
@@ -46,10 +50,12 @@ pub trait DatabaseStateRoot<'a, TX>: Sized {
     ///
     /// The updated state root.
     fn incremental_root(
-        provider: &'a (impl ChangeSetReader
-                 + StorageChangeSetReader
-                 + StorageSettingsCache
-                 + DBProvider<Tx = TX>),
+        provider: &'a (
+                impl ChangeSetReader
+                + StorageChangeSetReader
+                + StorageSettingsCache
+                + DBProvider<Tx = TX>
+            ),
         range: RangeInclusive<BlockNumber>,
     ) -> Result<B256, StateRootError>;
 
@@ -62,10 +68,12 @@ pub trait DatabaseStateRoot<'a, TX>: Sized {
     ///
     /// The updated state root and the trie updates.
     fn incremental_root_with_updates(
-        provider: &'a (impl ChangeSetReader
-                 + StorageChangeSetReader
-                 + StorageSettingsCache
-                 + DBProvider<Tx = TX>),
+        provider: &'a (
+                impl ChangeSetReader
+                + StorageChangeSetReader
+                + StorageSettingsCache
+                + DBProvider<Tx = TX>
+            ),
         range: RangeInclusive<BlockNumber>,
     ) -> Result<(B256, TrieUpdates), StateRootError>;
 
@@ -76,10 +84,12 @@ pub trait DatabaseStateRoot<'a, TX>: Sized {
     ///
     /// The intermediate progress of state root computation.
     fn incremental_root_with_progress(
-        provider: &'a (impl ChangeSetReader
-                 + StorageChangeSetReader
-                 + StorageSettingsCache
-                 + DBProvider<Tx = TX>),
+        provider: &'a (
+                impl ChangeSetReader
+                + StorageChangeSetReader
+                + StorageSettingsCache
+                + DBProvider<Tx = TX>
+            ),
         range: RangeInclusive<BlockNumber>,
     ) -> Result<StateRootProgress, StateRootError>;
 
@@ -116,7 +126,7 @@ pub trait DatabaseStateRoot<'a, TX>: Sized {
     ///
     /// The state root for this [`HashedPostStateSorted`].
     fn overlay_root(tx: &'a TX, post_state: &HashedPostStateSorted)
-        -> Result<B256, StateRootError>;
+    -> Result<B256, StateRootError>;
 
     /// Calculates the state root for this [`HashedPostStateSorted`] and returns it alongside trie
     /// updates. See [`Self::overlay_root`] for more info.
@@ -161,10 +171,12 @@ impl<'a, TX: DbTx> DatabaseStateRoot<'a, TX>
     }
 
     fn incremental_root_calculator(
-        provider: &'a (impl ChangeSetReader
-                 + StorageChangeSetReader
-                 + StorageSettingsCache
-                 + DBProvider<Tx = TX>),
+        provider: &'a (
+                impl ChangeSetReader
+                + StorageChangeSetReader
+                + StorageSettingsCache
+                + DBProvider<Tx = TX>
+            ),
         range: RangeInclusive<BlockNumber>,
     ) -> Result<Self, StateRootError> {
         let loaded_prefix_sets =
@@ -173,10 +185,12 @@ impl<'a, TX: DbTx> DatabaseStateRoot<'a, TX>
     }
 
     fn incremental_root(
-        provider: &'a (impl ChangeSetReader
-                 + StorageChangeSetReader
-                 + StorageSettingsCache
-                 + DBProvider<Tx = TX>),
+        provider: &'a (
+                impl ChangeSetReader
+                + StorageChangeSetReader
+                + StorageSettingsCache
+                + DBProvider<Tx = TX>
+            ),
         range: RangeInclusive<BlockNumber>,
     ) -> Result<B256, StateRootError> {
         debug!(target: "trie::loader", ?range, "incremental state root");
@@ -184,10 +198,12 @@ impl<'a, TX: DbTx> DatabaseStateRoot<'a, TX>
     }
 
     fn incremental_root_with_updates(
-        provider: &'a (impl ChangeSetReader
-                 + StorageChangeSetReader
-                 + StorageSettingsCache
-                 + DBProvider<Tx = TX>),
+        provider: &'a (
+                impl ChangeSetReader
+                + StorageChangeSetReader
+                + StorageSettingsCache
+                + DBProvider<Tx = TX>
+            ),
         range: RangeInclusive<BlockNumber>,
     ) -> Result<(B256, TrieUpdates), StateRootError> {
         debug!(target: "trie::loader", ?range, "incremental state root");
@@ -195,10 +211,12 @@ impl<'a, TX: DbTx> DatabaseStateRoot<'a, TX>
     }
 
     fn incremental_root_with_progress(
-        provider: &'a (impl ChangeSetReader
-                 + StorageChangeSetReader
-                 + StorageSettingsCache
-                 + DBProvider<Tx = TX>),
+        provider: &'a (
+                impl ChangeSetReader
+                + StorageChangeSetReader
+                + StorageSettingsCache
+                + DBProvider<Tx = TX>
+            ),
         range: RangeInclusive<BlockNumber>,
     ) -> Result<StateRootProgress, StateRootError> {
         debug!(target: "trie::loader", ?range, "incremental state root with progress");
@@ -270,11 +288,13 @@ impl<'a, TX: DbTx> DatabaseStateRoot<'a, TX>
 /// This is a convenience wrapper kept for backward compatibility. The storage
 /// key tagging is now handled internally by the changeset reader.
 pub fn from_reverts_auto(
-    provider: &(impl ChangeSetReader
-          + StorageChangeSetReader
-          + BlockNumReader
-          + DBProvider
-          + StorageSettingsCache),
+    provider: &(
+         impl ChangeSetReader
+         + StorageChangeSetReader
+         + BlockNumReader
+         + DBProvider
+         + StorageSettingsCache
+     ),
     range: impl RangeBounds<BlockNumber>,
 ) -> Result<HashedPostStateSorted, ProviderError> {
     HashedPostStateSorted::from_reverts(provider, range)
@@ -355,8 +375,7 @@ impl DatabaseHashedPostState for HashedPostStateSorted {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use alloy_primitives::{hex, keccak256, map::HashMap, Address, B256, U256};
+    use alloy_primitives::{Address, B256, U256, hex, keccak256, map::HashMap};
     use reth_db::test_utils::create_test_rw_db;
     use reth_db_api::{
         database::Database,
@@ -369,6 +388,8 @@ mod tests {
     use reth_trie::{HashedPostState, HashedStorage, KeccakKeyHasher};
     use revm::state::AccountInfo;
     use revm_database::BundleState;
+
+    use super::*;
 
     /// Overlay root calculation works with sorted state.
     #[test]
@@ -723,14 +744,18 @@ mod tests {
 
         let storage1 = sorted.storages.get(&expected_hashed_addr1).expect("storage for address1");
         assert_eq!(storage1.storage_slots.len(), 2);
-        assert!(storage1
-            .storage_slots
-            .iter()
-            .any(|(k, v)| *k == expected_hashed_slot1 && *v == U256::from(100)));
-        assert!(storage1
-            .storage_slots
-            .iter()
-            .any(|(k, v)| *k == expected_hashed_slot2 && *v == U256::from(200)));
+        assert!(
+            storage1
+                .storage_slots
+                .iter()
+                .any(|(k, v)| *k == expected_hashed_slot1 && *v == U256::from(100))
+        );
+        assert!(
+            storage1
+                .storage_slots
+                .iter()
+                .any(|(k, v)| *k == expected_hashed_slot2 && *v == U256::from(200))
+        );
         assert!(storage1.storage_slots.windows(2).all(|w| w[0].0 <= w[1].0));
 
         let storage2 = sorted.storages.get(&expected_hashed_addr2).expect("storage for address2");

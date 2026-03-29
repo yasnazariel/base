@@ -1,21 +1,23 @@
-use crate::{
-    error::BeaconForkChoiceUpdateError, BeaconOnNewPayloadError, ExecutionPayload, ForkchoiceStatus,
-};
-use alloy_rpc_types_engine::{
-    ForkChoiceUpdateResult, ForkchoiceState, ForkchoiceUpdateError, ForkchoiceUpdated, PayloadId,
-    PayloadStatus, PayloadStatusEnum,
-};
 use core::{
     fmt::{self, Display},
     future::Future,
     pin::Pin,
-    task::{ready, Context, Poll},
+    task::{Context, Poll, ready},
 };
-use futures::{future::Either, FutureExt, TryFutureExt};
+
+use alloy_rpc_types_engine::{
+    ForkChoiceUpdateResult, ForkchoiceState, ForkchoiceUpdateError, ForkchoiceUpdated, PayloadId,
+    PayloadStatus, PayloadStatusEnum,
+};
+use futures::{FutureExt, TryFutureExt, future::Either};
 use reth_errors::RethResult;
 use reth_payload_builder_primitives::PayloadBuilderError;
 use reth_payload_primitives::{EngineApiMessageVersion, PayloadTypes};
 use tokio::sync::{mpsc::UnboundedSender, oneshot};
+
+use crate::{
+    BeaconOnNewPayloadError, ExecutionPayload, ForkchoiceStatus, error::BeaconForkChoiceUpdateError,
+};
 
 /// Type alias for backwards compat
 #[deprecated(note = "Use ConsensusEngineHandle instead")]

@@ -2,18 +2,20 @@
 
 #![allow(missing_docs)]
 
-use crate::{
-    hello::DEFAULT_TCP_PORT, EthVersion, HelloMessageWithProtocols, P2PStream, ProtocolVersion,
-    Status, StatusMessage, UnauthedP2PStream, UnifiedStatus,
-};
+use std::net::SocketAddr;
+
 use alloy_chains::Chain;
 use alloy_primitives::{B256, U256};
 use reth_ethereum_forks::{ForkFilter, Head};
 use reth_network_peers::pk2id;
-use secp256k1::{SecretKey, SECP256K1};
-use std::net::SocketAddr;
+use secp256k1::{SECP256K1, SecretKey};
 use tokio::net::TcpStream;
 use tokio_util::codec::{Decoder, Framed, LengthDelimitedCodec};
+
+use crate::{
+    EthVersion, HelloMessageWithProtocols, P2PStream, ProtocolVersion, Status, StatusMessage,
+    UnauthedP2PStream, UnifiedStatus, hello::DEFAULT_TCP_PORT,
+};
 
 pub type P2pPassthroughTcpStream = P2PStream<Framed<TcpStream, LengthDelimitedCodec>>;
 
@@ -64,9 +66,10 @@ pub async fn connect_passthrough(
 
 /// An Rlpx subprotocol for testing
 pub mod proto {
-    use super::*;
-    use crate::{protocol::Protocol, Capability};
     use bytes::{Buf, BufMut, BytesMut};
+
+    use super::*;
+    use crate::{Capability, protocol::Protocol};
 
     /// Returns a new testing `HelloMessage` with eth and the test protocol
     pub fn test_hello() -> (HelloMessageWithProtocols, SecretKey) {
@@ -142,7 +145,7 @@ pub mod proto {
         /// Decodes a `TestProtoMessage` from the given message buffer.
         pub fn decode_message(buf: &mut &[u8]) -> Option<Self> {
             if buf.is_empty() {
-                return None
+                return None;
             }
             let id = buf[0];
             buf.advance(1);

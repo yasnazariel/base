@@ -2,11 +2,12 @@
 
 use std::sync::Arc;
 
-use crate::common::{CliNodeComponents, CliNodeTypes};
 use clap::{Parser, Subcommand};
 use reth_chainspec::{EthChainSpec, EthereumHardforks, Hardforks};
 use reth_cli::chainspec::ChainSpecParser;
 use reth_cli_runner::CliContext;
+
+use crate::common::{CliNodeComponents, CliNodeTypes};
 
 pub mod drop;
 pub mod dump;

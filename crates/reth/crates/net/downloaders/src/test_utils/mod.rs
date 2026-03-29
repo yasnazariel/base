@@ -2,12 +2,14 @@
 
 #![allow(dead_code)]
 
+use std::ops::RangeInclusive;
+
+use alloy_primitives::{B256, map::B256Map};
+use reth_ethereum_primitives::BlockBody;
+use reth_testing_utils::generators::{self, BlockRangeParams, random_block_range};
+
 #[cfg(any(test, feature = "file-client"))]
 use crate::{bodies::test_utils::create_raw_bodies, file_codec::BlockFileCodec};
-use alloy_primitives::{map::B256Map, B256};
-use reth_ethereum_primitives::BlockBody;
-use reth_testing_utils::generators::{self, random_block_range, BlockRangeParams};
-use std::ops::RangeInclusive;
 
 mod bodies_client;
 pub use bodies_client::TestBodiesClient;
@@ -39,8 +41,9 @@ pub(crate) fn generate_bodies(
 pub(crate) async fn generate_bodies_file(
     range: RangeInclusive<u64>,
 ) -> (tokio::fs::File, Vec<SealedHeader>, B256Map<BlockBody>) {
-    use futures::SinkExt;
     use std::io::SeekFrom;
+
+    use futures::SinkExt;
     use tokio::{fs::File, io::AsyncSeekExt};
     use tokio_util::codec::FramedWrite;
 

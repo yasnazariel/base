@@ -4,8 +4,8 @@
 //! consistency checks for static files. The goal is to detect and potentially heal
 //! inconsistencies between `RocksDB` data and MDBX checkpoints.
 
-use super::RocksDBProvider;
-use crate::StaticFileProviderFactory;
+use std::collections::HashSet;
+
 use alloy_eips::eip2718::Encodable2718;
 use alloy_primitives::BlockNumber;
 use rayon::prelude::*;
@@ -17,7 +17,9 @@ use reth_storage_api::{
     StorageChangeSetReader, StorageSettingsCache, TransactionsProvider,
 };
 use reth_storage_errors::provider::ProviderResult;
-use std::collections::HashSet;
+
+use super::RocksDBProvider;
+use crate::StaticFileProviderFactory;
 
 /// Batch size for changeset iteration during history healing.
 /// Balances memory usage against iteration overhead.
@@ -62,22 +64,22 @@ impl RocksDBProvider {
         let mut unwind_target: Option<BlockNumber> = None;
 
         // Heal TransactionHashNumbers if stored in RocksDB
-        if provider.cached_storage_settings().storage_v2 &&
-            let Some(target) = self.heal_transaction_hash_numbers(provider)?
+        if provider.cached_storage_settings().storage_v2
+            && let Some(target) = self.heal_transaction_hash_numbers(provider)?
         {
             unwind_target = Some(unwind_target.map_or(target, |t| t.min(target)));
         }
 
         // Heal StoragesHistory if stored in RocksDB
-        if provider.cached_storage_settings().storage_v2 &&
-            let Some(target) = self.heal_storages_history(provider)?
+        if provider.cached_storage_settings().storage_v2
+            && let Some(target) = self.heal_storages_history(provider)?
         {
             unwind_target = Some(unwind_target.map_or(target, |t| t.min(target)));
         }
 
         // Heal AccountsHistory if stored in RocksDB
-        if provider.cached_storage_settings().storage_v2 &&
-            let Some(target) = self.heal_accounts_history(provider)?
+        if provider.cached_storage_settings().storage_v2
+            && let Some(target) = self.heal_accounts_history(provider)?
         {
             unwind_target = Some(unwind_target.map_or(target, |t| t.min(target)));
         }
@@ -441,22 +443,23 @@ impl RocksDBProvider {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{
-        providers::{rocksdb::RocksDBBuilder, static_file::StaticFileWriter},
-        test_utils::create_test_provider_factory,
-        BlockWriter, DatabaseProviderFactory, StageCheckpointWriter, TransactionsProvider,
-    };
     use alloy_primitives::{Address, B256};
     use reth_db::cursor::{DbCursorRO, DbCursorRW};
     use reth_db_api::{
-        models::{storage_sharded_key::StorageShardedKey, StorageSettings},
+        models::{StorageSettings, storage_sharded_key::StorageShardedKey},
         tables::{self, BlockNumberList},
         transaction::DbTxMut,
     };
     use reth_stages_types::StageCheckpoint;
     use reth_testing_utils::generators::{self, BlockRangeParams};
     use tempfile::TempDir;
+
+    use super::*;
+    use crate::{
+        BlockWriter, DatabaseProviderFactory, StageCheckpointWriter, TransactionsProvider,
+        providers::{rocksdb::RocksDBBuilder, static_file::StaticFileWriter},
+        test_utils::create_test_provider_factory,
+    };
 
     #[test]
     fn test_first_last_empty_rocksdb() {

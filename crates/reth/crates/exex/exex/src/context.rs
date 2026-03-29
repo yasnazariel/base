@@ -1,4 +1,5 @@
-use crate::{ExExContextDyn, ExExEvent, ExExNotifications, ExExNotificationsStream};
+use std::fmt::Debug;
+
 use alloy_eips::BlockNumHash;
 use reth_exex_types::ExExHead;
 use reth_node_api::{FullNodeComponents, NodePrimitives, NodeTypes, PrimitivesTy};
@@ -6,8 +7,9 @@ use reth_node_core::node_config::NodeConfig;
 use reth_payload_builder::PayloadBuilderHandle;
 use reth_provider::BlockReader;
 use reth_tasks::TaskExecutor;
-use std::fmt::Debug;
-use tokio::sync::mpsc::{error::SendError, UnboundedSender};
+use tokio::sync::mpsc::{UnboundedSender, error::SendError};
+
+use crate::{ExExContextDyn, ExExEvent, ExExNotifications, ExExNotificationsStream};
 
 /// Captures the context that an `ExEx` has access to.
 ///
@@ -133,10 +135,11 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::ExExContext;
     use reth_exex_types::ExExHead;
     use reth_node_api::FullNodeComponents;
     use reth_provider::BlockReader;
+
+    use crate::ExExContext;
 
     /// <https://github.com/paradigmxyz/reth/issues/12054>
     #[test]

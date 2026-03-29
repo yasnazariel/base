@@ -1,8 +1,8 @@
 #![allow(missing_docs)]
 
 use alloy_primitives::B256;
-use criterion::{criterion_group, criterion_main, Criterion};
-use reth_db::{test_utils::create_test_rw_db_with_path, CanonicalHeaders, Database};
+use criterion::{Criterion, criterion_group, criterion_main};
+use reth_db::{CanonicalHeaders, Database, test_utils::create_test_rw_db_with_path};
 use reth_db_api::transaction::DbTxMut;
 
 mod utils;

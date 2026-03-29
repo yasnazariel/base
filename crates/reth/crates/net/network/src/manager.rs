@@ -15,7 +15,41 @@
 //! (IP+port) of our node is published via discovery, remote peers can initiate inbound connections
 //! to the local node. Once a (tcp) connection is established, both peers start to authenticate a [RLPx session](https://github.com/ethereum/devp2p/blob/master/rlpx.md) via a handshake. If the handshake was successful, both peers announce their capabilities and are now ready to exchange sub-protocol messages via the `RLPx` session.
 
+use std::{
+    net::SocketAddr,
+    path::Path,
+    pin::Pin,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, AtomicUsize, Ordering},
+    },
+    task::{Context, Poll},
+    time::{Duration, Instant},
+};
+
+use futures::{Future, StreamExt};
+use parking_lot::Mutex;
+use reth_chainspec::EnrForkIdEntry;
+use reth_eth_wire::{DisconnectReason, EthNetworkPrimitives, NetworkPrimitives};
+use reth_fs_util::{self as fs, FsPathError};
+use reth_metrics::common::mpsc::UnboundedMeteredSender;
+use reth_network_api::{
+    EthProtocolInfo, NetworkEvent, NetworkStatus, PeerInfo, PeerRequest,
+    events::{PeerEvent, SessionInfo},
+    test_utils::PeersHandle,
+};
+use reth_network_peers::{NodeRecord, PeerId};
+use reth_network_types::ReputationChangeKind;
+use reth_storage_api::BlockNumReader;
+use reth_tasks::shutdown::GracefulShutdown;
+use reth_tokio_util::EventSender;
+use secp256k1::SecretKey;
+use tokio::sync::mpsc::{self, error::TrySendError};
+use tokio_stream::wrappers::UnboundedReceiverStream;
+use tracing::{debug, error, trace, warn};
+
 use crate::{
+    FetchClient, NetworkBuilder,
     budget::{DEFAULT_BUDGET_TRY_DRAIN_NETWORK_HANDLE_CHANNEL, DEFAULT_BUDGET_TRY_DRAIN_SWARM},
     config::NetworkConfig,
     discovery::Discovery,
@@ -25,8 +59,8 @@ use crate::{
     listener::ConnectionListener,
     message::{NewBlockMessage, PeerMessage},
     metrics::{
-        BackedOffPeersMetrics, ClosedSessionsMetrics, DirectionalDisconnectMetrics, NetworkMetrics,
-        PendingSessionFailureMetrics, NETWORK_POOL_TRANSACTIONS_SCOPE,
+        BackedOffPeersMetrics, ClosedSessionsMetrics, DirectionalDisconnectMetrics,
+        NETWORK_POOL_TRANSACTIONS_SCOPE, NetworkMetrics, PendingSessionFailureMetrics,
     },
     network::{NetworkHandle, NetworkHandleMessage},
     peers::{BackoffReason, PeersManager},
@@ -37,39 +71,7 @@ use crate::{
     state::NetworkState,
     swarm::{Swarm, SwarmEvent},
     transactions::NetworkTransactionEvent,
-    FetchClient, NetworkBuilder,
 };
-use futures::{Future, StreamExt};
-use parking_lot::Mutex;
-use reth_chainspec::EnrForkIdEntry;
-use reth_eth_wire::{DisconnectReason, EthNetworkPrimitives, NetworkPrimitives};
-use reth_fs_util::{self as fs, FsPathError};
-use reth_metrics::common::mpsc::UnboundedMeteredSender;
-use reth_network_api::{
-    events::{PeerEvent, SessionInfo},
-    test_utils::PeersHandle,
-    EthProtocolInfo, NetworkEvent, NetworkStatus, PeerInfo, PeerRequest,
-};
-use reth_network_peers::{NodeRecord, PeerId};
-use reth_network_types::ReputationChangeKind;
-use reth_storage_api::BlockNumReader;
-use reth_tasks::shutdown::GracefulShutdown;
-use reth_tokio_util::EventSender;
-use secp256k1::SecretKey;
-use std::{
-    net::SocketAddr,
-    path::Path,
-    pin::Pin,
-    sync::{
-        atomic::{AtomicU64, AtomicUsize, Ordering},
-        Arc,
-    },
-    task::{Context, Poll},
-    time::{Duration, Instant},
-};
-use tokio::sync::mpsc::{self, error::TrySendError};
-use tokio_stream::wrappers::UnboundedReceiverStream;
-use tracing::{debug, error, trace, warn};
 
 #[cfg_attr(doc, aquamarine::aquamarine)]
 // TODO: Inlined diagram due to a bug in aquamarine library, should become an include when it's
@@ -672,7 +674,7 @@ impl<N: NetworkPrimitives> NetworkManager<N> {
                 if self.handle.mode().is_stake() {
                     // See [EIP-3675](https://eips.ethereum.org/EIPS/eip-3675#devp2p)
                     warn!(target: "net", "Peer performed block propagation, but it is not supported in proof of stake (EIP-3675)");
-                    return
+                    return;
                 }
                 let msg = NewBlockMessage { hash, block: Arc::new(block) };
                 self.swarm.state_mut().announce_new_block(msg);
@@ -1161,7 +1163,7 @@ impl<N: NetworkPrimitives> Future for NetworkManager<N> {
         if maybe_more_handle_messages || maybe_more_swarm_events {
             // make sure we're woken up again
             cx.waker().wake_by_ref();
-            return Poll::Pending
+            return Poll::Pending;
         }
 
         this.update_poll_metrics(start, poll_durations);

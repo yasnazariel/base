@@ -8,10 +8,11 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 
+use std::path::PathBuf;
+
 use futures::{Future, Stream};
 use reth_engine_primitives::BeaconEngineMessage;
 use reth_payload_primitives::PayloadTypes;
-use std::path::PathBuf;
 use tokio_util::either::Either;
 
 pub mod engine_store;

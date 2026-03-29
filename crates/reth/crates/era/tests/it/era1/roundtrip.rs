@@ -10,6 +10,8 @@
 //! Only a couple of era1 files are downloaded from <https://era.ithaca.xyz/era1/> for mainnet
 //! and <https://era.ithaca.xyz/sepolia-era1/> for sepolia to keep the tests efficient.
 
+use std::io::Cursor;
+
 use alloy_consensus::{BlockBody, BlockHeader, Header, ReceiptEnvelope};
 use reth_era::{
     common::file_ops::{EraFileFormat, StreamReader, StreamWriter},
@@ -25,7 +27,6 @@ use reth_era::{
     },
 };
 use reth_ethereum_primitives::TransactionSigned;
-use std::io::Cursor;
 
 use crate::{EraTestDownloader, MAINNET, SEPOLIA};
 

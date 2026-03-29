@@ -2,26 +2,27 @@
 
 // TODO(rand): update ::random calls after rand_09 migration
 
-use alloy_consensus::{Header, SignableTransaction, Transaction as _, TxLegacy};
-use alloy_eips::{
-    eip1898::BlockWithParent,
-    eip4895::{Withdrawal, Withdrawals},
-    NumHash,
-};
-use alloy_primitives::{Address, BlockNumber, Bytes, TxKind, B256, B64, U256};
-pub use rand::Rng;
-use rand::{distr::uniform::SampleRange, rngs::StdRng, SeedableRng};
-use reth_ethereum_primitives::{Block, BlockBody, Receipt, Transaction, TransactionSigned};
-use reth_primitives_traits::{
-    crypto::secp256k1::sign_message, proofs, Account, Block as _, Log, SealedBlock, SealedHeader,
-    StorageEntry,
-};
-use secp256k1::{Keypair, Secp256k1};
 use std::{
     cmp::{max, min},
     collections::BTreeMap,
     ops::{Range, RangeInclusive},
 };
+
+use alloy_consensus::{Header, SignableTransaction, Transaction as _, TxLegacy};
+use alloy_eips::{
+    NumHash,
+    eip1898::BlockWithParent,
+    eip4895::{Withdrawal, Withdrawals},
+};
+use alloy_primitives::{Address, B64, B256, BlockNumber, Bytes, TxKind, U256};
+pub use rand::Rng;
+use rand::{SeedableRng, distr::uniform::SampleRange, rngs::StdRng};
+use reth_ethereum_primitives::{Block, BlockBody, Receipt, Transaction, TransactionSigned};
+use reth_primitives_traits::{
+    Account, Block as _, Log, SealedBlock, SealedHeader, StorageEntry,
+    crypto::secp256k1::sign_message, proofs,
+};
+use secp256k1::{Keypair, Secp256k1};
 
 /// Used to pass arguments for random block generation function in tests
 #[derive(Debug, Default)]
@@ -345,7 +346,7 @@ where
                 let old = if entry.value.is_zero() {
                     let old = storage.remove(&entry.key);
                     if matches!(old, Some(U256::ZERO)) {
-                        return None
+                        return None;
                     }
                     old
                 } else {
@@ -483,15 +484,17 @@ pub fn random_log<R: Rng>(rng: &mut R, address: Option<Address>, topics_count: O
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::str::FromStr;
+
     use alloy_consensus::TxEip1559;
     use alloy_eips::eip2930::AccessList;
-    use alloy_primitives::{hex, Signature};
+    use alloy_primitives::{Signature, hex};
     use reth_primitives_traits::{
-        crypto::secp256k1::{public_key_to_address, sign_message},
         SignerRecoverable,
+        crypto::secp256k1::{public_key_to_address, sign_message},
     };
-    use std::str::FromStr;
+
+    use super::*;
 
     #[test]
     fn test_sign_message() {
@@ -539,7 +542,9 @@ mod tests {
         };
         let transaction = Transaction::Legacy(tx.clone());
 
-        let expected = hex!("ec098504a817c800825208943535353535353535353535353535353535353535880de0b6b3a764000080018080");
+        let expected = hex!(
+            "ec098504a817c800825208943535353535353535353535353535353535353535880de0b6b3a764000080018080"
+        );
         assert_eq!(expected.as_slice(), &alloy_rlp::encode(tx));
 
         let hash = transaction.signature_hash();

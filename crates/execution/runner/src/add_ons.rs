@@ -182,7 +182,11 @@ where
     N: FullNodeComponents<
             Types: OpNodeTypes + NodeTypes<Payload: PayloadTypes<PayloadBuilderAttributes = Attrs>>,
             Evm: ConfigureEvm<
-                NextBlockEnvCtx: BuildNextEnv<Attrs, HeaderTy<N::Types>, base_execution_chainspec::OpChainSpec>,
+                NextBlockEnvCtx: BuildNextEnv<
+                    Attrs,
+                    HeaderTy<N::Types>,
+                    base_execution_chainspec::OpChainSpec,
+                >,
             >,
             Pool: TransactionPool<Transaction: OpPooledTx>,
         >,
@@ -257,7 +261,11 @@ where
     N: FullNodeComponents<
             Types: OpNodeTypes + NodeTypes<Payload: PayloadTypes<PayloadBuilderAttributes = Attrs>>,
             Evm: ConfigureEvm<
-                NextBlockEnvCtx: BuildNextEnv<Attrs, HeaderTy<N::Types>, base_execution_chainspec::OpChainSpec>,
+                NextBlockEnvCtx: BuildNextEnv<
+                    Attrs,
+                    HeaderTy<N::Types>,
+                    base_execution_chainspec::OpChainSpec,
+                >,
             >,
         >,
     <<N as FullNodeComponents>::Pool as TransactionPool>::Transaction: OpPooledTx,

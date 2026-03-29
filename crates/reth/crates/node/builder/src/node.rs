@@ -1,12 +1,14 @@
+use std::{
+    fmt::Debug,
+    marker::PhantomData,
+    ops::{Deref, DerefMut},
+    sync::Arc,
+};
+
 use reth_db::DatabaseEnv;
+use reth_node_api::{EngineTypes, FullNodeComponents, PayloadTypes};
 // re-export the node api types
 pub use reth_node_api::{FullNodeTypes, NodeTypes};
-
-use crate::{
-    components::NodeComponentsBuilder, rpc::RethRpcAddOns, NodeAdapter, NodeAddOns, NodeHandle,
-    RethFullAdapter,
-};
-use reth_node_api::{EngineTypes, FullNodeComponents, PayloadTypes};
 use reth_node_core::{
     dirs::{ChainPath, DataDirPath},
     node_config::NodeConfig,
@@ -14,13 +16,12 @@ use reth_node_core::{
 use reth_payload_builder::PayloadBuilderHandle;
 use reth_provider::ChainSpecProvider;
 use reth_rpc_api::EngineApiClient;
-use reth_rpc_builder::{auth::AuthServerHandle, RpcServerHandle};
+use reth_rpc_builder::{RpcServerHandle, auth::AuthServerHandle};
 use reth_tasks::TaskExecutor;
-use std::{
-    fmt::Debug,
-    marker::PhantomData,
-    ops::{Deref, DerefMut},
-    sync::Arc,
+
+use crate::{
+    NodeAdapter, NodeAddOns, NodeHandle, RethFullAdapter, components::NodeComponentsBuilder,
+    rpc::RethRpcAddOns,
 };
 
 /// A helper type to obtain components for a given node when [`FullNodeTypes::Types`] is a [`Node`]

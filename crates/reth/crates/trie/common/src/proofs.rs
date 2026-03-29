@@ -1,22 +1,23 @@
 //! Merkle trie proofs.
 
-use crate::{BranchNodeMasksMap, Nibbles, ProofTrieNode, TrieAccount};
 use alloc::{borrow::Cow, vec::Vec};
+
 use alloy_consensus::constants::KECCAK_EMPTY;
 use alloy_primitives::{
-    keccak256,
-    map::{hash_map, B256Map, B256Set},
-    Address, Bytes, B256, U256,
+    Address, B256, Bytes, U256, keccak256,
+    map::{B256Map, B256Set, hash_map},
 };
-use alloy_rlp::{encode_fixed_size, Decodable, EMPTY_STRING_CODE};
+use alloy_rlp::{Decodable, EMPTY_STRING_CODE, encode_fixed_size};
 use alloy_trie::{
-    nodes::TrieNode,
-    proof::{verify_proof, DecodedProofNodes, ProofNodes, ProofVerificationError},
     EMPTY_ROOT_HASH,
+    nodes::TrieNode,
+    proof::{DecodedProofNodes, ProofNodes, ProofVerificationError, verify_proof},
 };
 use derive_more::{Deref, DerefMut, IntoIterator};
 use itertools::Itertools;
 use reth_primitives_traits::Account;
+
+use crate::{BranchNodeMasksMap, Nibbles, ProofTrieNode, TrieAccount};
 
 /// Proof targets map.
 #[derive(Deref, DerefMut, IntoIterator, Clone, PartialEq, Eq, Default, Debug)]
@@ -158,11 +159,7 @@ impl Iterator for ChunkedMultiProofTargets {
             },
         );
 
-        if chunk.is_empty() {
-            None
-        } else {
-            Some(chunk)
-        }
+        if chunk.is_empty() { None } else { Some(chunk) }
     }
 }
 
@@ -183,9 +180,9 @@ pub struct MultiProof {
 impl MultiProof {
     /// Returns true if the multiproof is empty.
     pub fn is_empty(&self) -> bool {
-        self.account_subtree.is_empty() &&
-            self.branch_node_masks.is_empty() &&
-            self.storages.is_empty()
+        self.account_subtree.is_empty()
+            && self.branch_node_masks.is_empty()
+            && self.storages.is_empty()
     }
 
     /// Return the account proof nodes for the given account path.
@@ -232,16 +229,16 @@ impl MultiProof {
         // Inspect the last node in the proof. If it's a leaf node with matching suffix,
         // then the node contains the encoded trie account.
         let info = 'info: {
-            if let Some(last) = proof.last() &&
-                let TrieNode::Leaf(leaf) = TrieNode::decode(&mut &last[..])? &&
-                nibbles.ends_with(&leaf.key)
+            if let Some(last) = proof.last()
+                && let TrieNode::Leaf(leaf) = TrieNode::decode(&mut &last[..])?
+                && nibbles.ends_with(&leaf.key)
             {
                 let account = TrieAccount::decode(&mut &leaf.value[..])?;
                 break 'info Some(Account {
                     balance: account.balance,
                     nonce: account.nonce,
                     bytecode_hash: (account.code_hash != KECCAK_EMPTY).then_some(account.code_hash),
-                })
+                });
             }
             None
         };
@@ -313,9 +310,9 @@ pub struct DecodedMultiProof {
 impl DecodedMultiProof {
     /// Returns true if the multiproof is empty.
     pub fn is_empty(&self) -> bool {
-        self.account_subtree.is_empty() &&
-            self.branch_node_masks.is_empty() &&
-            self.storages.is_empty()
+        self.account_subtree.is_empty()
+            && self.branch_node_masks.is_empty()
+            && self.storages.is_empty()
     }
 
     /// Return the account proof nodes for the given account path.
@@ -362,15 +359,15 @@ impl DecodedMultiProof {
         // Inspect the last node in the proof. If it's a leaf node with matching suffix,
         // then the node contains the encoded trie account.
         let info = 'info: {
-            if let Some(TrieNode::Leaf(leaf)) = proof.last() &&
-                nibbles.ends_with(&leaf.key)
+            if let Some(TrieNode::Leaf(leaf)) = proof.last()
+                && nibbles.ends_with(&leaf.key)
             {
                 let account = TrieAccount::decode(&mut &leaf.value[..])?;
                 break 'info Some(Account {
                     balance: account.balance,
                     nonce: account.nonce,
                     bytecode_hash: (account.code_hash != KECCAK_EMPTY).then_some(account.code_hash),
-                })
+                });
             }
             None
         };
@@ -517,11 +514,11 @@ impl StorageMultiProof {
         // Inspect the last node in the proof. If it's a leaf node with matching suffix,
         // then the node contains the encoded slot value.
         let value = 'value: {
-            if let Some(last) = proof.last() &&
-                let TrieNode::Leaf(leaf) = TrieNode::decode(&mut &last[..])? &&
-                nibbles.ends_with(&leaf.key)
+            if let Some(last) = proof.last()
+                && let TrieNode::Leaf(leaf) = TrieNode::decode(&mut &last[..])?
+                && nibbles.ends_with(&leaf.key)
             {
-                break 'value U256::decode(&mut &leaf.value[..])?
+                break 'value U256::decode(&mut &leaf.value[..])?;
             }
             U256::ZERO
         };
@@ -567,10 +564,10 @@ impl DecodedStorageMultiProof {
         // Inspect the last node in the proof. If it's a leaf node with matching suffix,
         // then the node contains the encoded slot value.
         let value = 'value: {
-            if let Some(TrieNode::Leaf(leaf)) = proof.last() &&
-                nibbles.ends_with(&leaf.key)
+            if let Some(TrieNode::Leaf(leaf)) = proof.last()
+                && nibbles.ends_with(&leaf.key)
             {
-                break 'value U256::decode(&mut &leaf.value[..])?
+                break 'value U256::decode(&mut &leaf.value[..])?;
             }
             U256::ZERO
         };
@@ -654,10 +651,10 @@ impl AccountProof {
         } = proof;
         let storage_proofs = storage_proof.into_iter().map(Into::into).collect();
 
-        let (storage_root, info) = if nonce == 0 &&
-            balance.is_zero() &&
-            storage_hash.is_zero() &&
-            code_hash == KECCAK_EMPTY
+        let (storage_root, info) = if nonce == 0
+            && balance.is_zero()
+            && storage_hash.is_zero()
+            && code_hash == KECCAK_EMPTY
         {
             // Account does not exist in state. Return `None` here to prevent proof
             // verification.
@@ -868,7 +865,7 @@ impl DecodedStorageProof {
 /// for compatibility with `triehash` crate.
 #[cfg(any(test, feature = "test-utils"))]
 pub mod triehash {
-    use alloy_primitives::{keccak256, B256};
+    use alloy_primitives::{B256, keccak256};
     use alloy_rlp::RlpEncodable;
     use hash_db::Hasher;
     use plain_hasher::PlainHasher;

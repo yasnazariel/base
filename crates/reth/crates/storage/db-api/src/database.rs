@@ -1,9 +1,10 @@
+use std::{fmt::Debug, sync::Arc};
+
 use crate::{
+    DatabaseError,
     table::TableImporter,
     transaction::{DbTx, DbTxMut},
-    DatabaseError,
 };
-use std::{fmt::Debug, sync::Arc};
 
 /// Main Database trait that can open read-only and read-write transactions.
 ///

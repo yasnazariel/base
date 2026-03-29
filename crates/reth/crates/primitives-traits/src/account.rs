@@ -1,11 +1,12 @@
-use crate::InMemorySize;
 use alloy_consensus::constants::KECCAK_EMPTY;
 use alloy_genesis::GenesisAccount;
-use alloy_primitives::{keccak256, Bytes, B256, U256};
+use alloy_primitives::{B256, Bytes, U256, keccak256};
 use alloy_trie::TrieAccount;
 use derive_more::Deref;
 use revm_bytecode::{Bytecode as RevmBytecode, BytecodeDecodeError};
 use revm_state::AccountInfo;
+
+use crate::InMemorySize;
 
 #[cfg(any(test, feature = "reth-codec"))]
 /// Identifiers used in [`Compact`](reth_codecs::Compact) encoding of [`Bytecode`].
@@ -47,9 +48,9 @@ impl Account {
     /// After `SpuriousDragon` empty account is defined as account with nonce == 0 && balance == 0
     /// && bytecode = None (or hash is [`KECCAK_EMPTY`]).
     pub fn is_empty(&self) -> bool {
-        self.nonce == 0 &&
-            self.balance.is_zero() &&
-            self.bytecode_hash.is_none_or(|hash| hash == KECCAK_EMPTY)
+        self.nonce == 0
+            && self.balance.is_zero()
+            && self.bytecode_hash.is_none_or(|hash| hash == KECCAK_EMPTY)
     }
 
     /// Returns an account bytecode's hash.
@@ -167,7 +168,6 @@ impl reth_codecs::Compact for Bytecode {
     fn from_compact(mut buf: &[u8], _: usize) -> (Self, &[u8]) {
         use byteorder::ReadBytesExt;
         use bytes::Buf;
-
         use compact_ids::*;
 
         let len = buf.read_u32::<byteorder::BigEndian>().expect("could not read bytecode length")
@@ -253,10 +253,11 @@ impl From<Account> for AccountInfo {
 mod tests {
     use std::sync::Arc;
 
-    use super::*;
-    use alloy_primitives::{hex_literal::hex, B256, U256};
+    use alloy_primitives::{B256, U256, hex_literal::hex};
     use reth_codecs::Compact;
     use revm_bytecode::{JumpTable, LegacyAnalyzedBytecode};
+
+    use super::*;
 
     #[test]
     fn test_account() {

@@ -1,15 +1,17 @@
 //! Node-specific operations for multi-node testing.
 
-use crate::testsuite::{Action, Environment};
+use std::time::Duration;
+
 use alloy_rpc_types_eth::{Block, Header, Receipt, Transaction, TransactionRequest};
 use eyre::Result;
 use futures_util::future::BoxFuture;
 use reth_ethereum_primitives::TransactionSigned;
 use reth_node_api::EngineTypes;
 use reth_rpc_api::clients::EthApiClient;
-use std::time::Duration;
 use tokio::time::{sleep, timeout};
 use tracing::debug;
+
+use crate::testsuite::{Action, Environment};
 
 /// Action to select which node should be active for subsequent single-node operations.
 #[derive(Debug)]
@@ -116,7 +118,12 @@ where
             if self.should_be_equal && !tips_equal {
                 return Err(eyre::eyre!(
                     "Expected nodes {} and {} to have the same chain tip, but node {} has {} and node {} has {}",
-                    self.node_a, self.node_b, self.node_a, block_a.header.hash, self.node_b, block_b.header.hash
+                    self.node_a,
+                    self.node_b,
+                    self.node_a,
+                    block_a.header.hash,
+                    self.node_b,
+                    block_b.header.hash
                 ));
             }
 
@@ -206,8 +213,8 @@ where
                 .copied()
                 .ok_or_else(|| eyre::eyre!("Block tag '{}' not found in registry", self.tag))?;
 
-            if let Some(expected_node) = self.expected_node_idx &&
-                node_idx != expected_node
+            if let Some(expected_node) = self.expected_node_idx
+                && node_idx != expected_node
             {
                 return Err(eyre::eyre!(
                     "Block tag '{}' came from node {} but expected node {}",

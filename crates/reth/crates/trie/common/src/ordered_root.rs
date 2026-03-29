@@ -5,11 +5,13 @@
 //! calculation during block execution, where we know the total count but receive receipts
 //! one by one as transactions are executed.
 
-use crate::{HashBuilder, Nibbles, EMPTY_ROOT_HASH};
 use alloc::vec::Vec;
+use core::fmt;
+
 use alloy_primitives::B256;
 use alloy_trie::root::adjust_index_for_rlp;
-use core::fmt;
+
+use crate::{EMPTY_ROOT_HASH, HashBuilder, Nibbles};
 
 /// Error returned when using [`OrderedTrieRootEncodedBuilder`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -257,8 +259,9 @@ impl OrderedTrieRootEncodedBuilder {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_trie::root::ordered_trie_root_encoded;
+
+    use super::*;
 
     #[test]
     fn test_ordered_encoded_builder_equivalence() {

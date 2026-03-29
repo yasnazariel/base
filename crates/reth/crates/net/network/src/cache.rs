@@ -1,11 +1,12 @@
 //! Network cache support
 
-use alloy_primitives::map::DefaultHashBuilder;
 use core::hash::BuildHasher;
+use std::{fmt, hash::Hash};
+
+use alloy_primitives::map::DefaultHashBuilder;
 use derive_more::{Deref, DerefMut};
 use itertools::Itertools;
 use schnellru::{ByLength, Limiter, Unlimited};
-use std::{fmt, hash::Hash};
 
 /// A minimal LRU cache based on a [`LruMap`](schnellru::LruMap) with limited capacity.
 ///
@@ -189,9 +190,11 @@ where
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use derive_more::{Constructor, Display};
     use std::hash::Hasher;
+
+    use derive_more::{Constructor, Display};
+
+    use super::*;
 
     #[derive(Debug, Hash, PartialEq, Eq, Display, Clone, Copy)]
     struct Key(i8);

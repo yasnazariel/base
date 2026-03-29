@@ -1,6 +1,8 @@
 //! `Eth` Sim bundle implementation and helpers.
 
-use alloy_consensus::{transaction::TxHashRef, BlockHeader};
+use std::{sync::Arc, time::Duration};
+
+use alloy_consensus::{BlockHeader, transaction::TxHashRef};
 use alloy_eips::BlockNumberOrTag;
 use alloy_evm::{env::BlockEnvironment, overrides::apply_block_overrides};
 use alloy_primitives::U256;
@@ -14,17 +16,16 @@ use reth_evm::{ConfigureEvm, Evm};
 use reth_primitives_traits::Recovered;
 use reth_rpc_api::MevSimApiServer;
 use reth_rpc_eth_api::{
-    helpers::{block::LoadBlock, Call, EthTransactions},
     FromEthApiError, FromEvmError,
+    helpers::{Call, EthTransactions, block::LoadBlock},
 };
-use reth_rpc_eth_types::{utils::recover_raw_transaction, EthApiError};
+use reth_rpc_eth_types::{EthApiError, utils::recover_raw_transaction};
 use reth_storage_api::ProviderTx;
 use reth_tasks::pool::BlockingTaskGuard;
 use reth_transaction_pool::{PoolPooledTx, PoolTransaction, TransactionPool};
 use revm::{
-    context::Block, context_interface::result::ResultAndState, DatabaseCommit, DatabaseRef,
+    DatabaseCommit, DatabaseRef, context::Block, context_interface::result::ResultAndState,
 };
-use std::{sync::Arc, time::Duration};
 use tracing::trace;
 
 /// Maximum bundle depth
@@ -269,8 +270,8 @@ where
                     let max_block_number =
                         item.inclusion.max_block_number().unwrap_or(block_number);
 
-                    if current_block_number < block_number ||
-                        current_block_number > max_block_number
+                    if current_block_number < block_number
+                        || current_block_number > max_block_number
                     {
                         return Err(EthApiError::InvalidParams(
                             EthSimBundleError::InvalidInclusion.to_string(),
@@ -350,9 +351,9 @@ where
                         });
 
                         // Calculate payout transaction fee
-                        let payout_tx_fee = U256::from(basefee) *
-                            U256::from(SBUNDLE_PAYOUT_MAX_COST) *
-                            U256::from(refund_configs.len() as u64);
+                        let payout_tx_fee = U256::from(basefee)
+                            * U256::from(SBUNDLE_PAYOUT_MAX_COST)
+                            * U256::from(refund_configs.len() as u64);
 
                         // Add gas used for payout transactions
                         total_gas_used += SBUNDLE_PAYOUT_MAX_COST * refund_configs.len() as u64;
@@ -360,8 +361,8 @@ where
                         // Calculate allocated refundable value (payout value) based on ORIGINAL
                         // refundable value This ensures all refund_percent
                         // values are calculated from the same base
-                        let payout_value = original_refundable_value * U256::from(refund_percent) /
-                            U256::from(100);
+                        let payout_value = original_refundable_value * U256::from(refund_percent)
+                            / U256::from(100);
 
                         if payout_tx_fee > payout_value {
                             return Err(EthApiError::InvalidParams(

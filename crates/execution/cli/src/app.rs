@@ -52,7 +52,10 @@ where
     ///
     /// This accepts a closure that is used to launch the node via the
     /// [`NodeCommand`](reth_cli_commands::node::NodeCommand).
-    pub fn run(mut self, launcher: impl Launcher<crate::chainspec::OpChainSpecParser, Ext>) -> Result<()> {
+    pub fn run(
+        mut self,
+        launcher: impl Launcher<crate::chainspec::OpChainSpecParser, Ext>,
+    ) -> Result<()> {
         let runner = match self.runner.take() {
             Some(runner) => runner,
             None => CliRunner::try_default_runtime()?,

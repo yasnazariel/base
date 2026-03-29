@@ -1,11 +1,11 @@
 //! Traits for sparse trie implementations.
 
+use alloc::{borrow::Cow, vec::Vec};
 use core::fmt::Debug;
 
-use alloc::{borrow::Cow, vec::Vec};
 use alloy_primitives::{
-    map::{B256Map, HashMap, HashSet},
     B256,
+    map::{B256Map, HashMap, HashSet},
 };
 use alloy_trie::BranchNodeCompact;
 use reth_execution_errors::SparseTrieResult;

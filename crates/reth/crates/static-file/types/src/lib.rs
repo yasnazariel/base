@@ -17,12 +17,12 @@ mod segment;
 
 #[cfg(feature = "std")]
 mod changeset_offsets;
-#[cfg(feature = "std")]
-pub use changeset_offsets::{ChangesetOffsetReader, ChangesetOffsetWriter};
+use core::ops::RangeInclusive;
 
 use alloy_primitives::BlockNumber;
+#[cfg(feature = "std")]
+pub use changeset_offsets::{ChangesetOffsetReader, ChangesetOffsetWriter};
 pub use compression::Compression;
-use core::ops::RangeInclusive;
 pub use event::StaticFileProducerEvent;
 pub use segment::{
     ChangesetOffset, SegmentConfig, SegmentHeader, SegmentRangeInclusive, StaticFileSegment,
@@ -78,8 +78,8 @@ impl StaticFileTargets {
         core::iter::once(&(self.receipts.as_ref(), static_files.receipts)).all(
             |(target_block_range, highest_static_file_block)| {
                 target_block_range.is_none_or(|target_block_range| {
-                    *target_block_range.start() ==
-                        highest_static_file_block
+                    *target_block_range.start()
+                        == highest_static_file_block
                             .map_or(0, |highest_static_file_block| highest_static_file_block + 1)
                 })
             },

@@ -69,17 +69,19 @@
 //! # Ok::<(), reth_era::e2s::error::E2sError>(())
 //! ``````
 
-use crate::{
-    common::decode::DecodeCompressedRlp,
-    e2s::{error::E2sError, types::Entry},
+use std::{
+    io::{Read, Write},
+    marker::PhantomData,
 };
+
 use alloy_consensus::{Block, BlockBody, Header};
 use alloy_primitives::{B256, U256};
 use alloy_rlp::{Decodable, Encodable};
 use snap::{read::FrameDecoder, write::FrameEncoder};
-use std::{
-    io::{Read, Write},
-    marker::PhantomData,
+
+use crate::{
+    common::decode::DecodeCompressedRlp,
+    e2s::{error::E2sError, types::Entry},
 };
 
 // Era1-specific constants
@@ -369,8 +371,10 @@ impl CompressedReceipts {
         if entry.entry_type != COMPRESSED_RECEIPTS {
             return Err(E2sError::Ssz(format!(
                 "Invalid entry type for CompressedReceipts: expected {:02x}{:02x}, got {:02x}{:02x}",
-                COMPRESSED_RECEIPTS[0], COMPRESSED_RECEIPTS[1],
-                entry.entry_type[0], entry.entry_type[1]
+                COMPRESSED_RECEIPTS[0],
+                COMPRESSED_RECEIPTS[1],
+                entry.entry_type[0],
+                entry.entry_type[1]
             )));
         }
 
@@ -557,11 +561,12 @@ impl BlockTuple {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::test_utils::{create_header, create_test_receipt, create_test_receipts};
     use alloy_eips::eip4895::Withdrawals;
     use alloy_primitives::{Bytes, U256};
     use reth_ethereum_primitives::{Receipt, TxType};
+
+    use super::*;
+    use crate::test_utils::{create_header, create_test_receipt, create_test_receipts};
 
     #[test]
     fn test_header_conversion_roundtrip() {

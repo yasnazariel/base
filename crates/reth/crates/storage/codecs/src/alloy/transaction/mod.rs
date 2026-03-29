@@ -1,10 +1,11 @@
 //! Compact implementation for transaction types
-use crate::Compact;
 use alloy_consensus::{
-    transaction::{RlpEcdsaEncodableTx, TxEip1559, TxEip2930, TxEip7702, TxLegacy},
     EthereumTypedTransaction, TxType,
+    transaction::{RlpEcdsaEncodableTx, TxEip1559, TxEip2930, TxEip7702, TxLegacy},
 };
 use alloy_primitives::bytes::BufMut;
+
+use crate::Compact;
 
 impl<Eip4844> Compact for EthereumTypedTransaction<Eip4844>
 where
@@ -72,6 +73,8 @@ mod tests {
     // this check is to ensure we do not inadvertently add too many fields to a struct which would
     // expand the flags field and break backwards compatibility
 
+    use alloy_primitives::hex;
+
     use crate::{
         alloy::{
             header::Header,
@@ -82,7 +85,6 @@ mod tests {
         },
         test_utils::test_decode,
     };
-    use alloy_primitives::hex;
 
     #[test]
     fn test_ensure_backwards_compatibility() {

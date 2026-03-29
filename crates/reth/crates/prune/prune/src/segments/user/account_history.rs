@@ -1,16 +1,8 @@
-use crate::{
-    db_ext::DbTxPruneExt,
-    segments::{
-        user::history::{finalize_history_prune, HistoryPruneResult},
-        PruneInput, Segment,
-    },
-    PrunerError,
-};
 use alloy_primitives::BlockNumber;
 use reth_db_api::{models::ShardedKey, tables, transaction::DbTxMut};
 use reth_provider::{
-    changeset_walker::StaticFileAccountChangesetWalker, DBProvider, EitherWriter,
-    RocksDBProviderFactory, StaticFileProviderFactory,
+    DBProvider, EitherWriter, RocksDBProviderFactory, StaticFileProviderFactory,
+    changeset_walker::StaticFileAccountChangesetWalker,
 };
 use reth_prune_types::{
     PruneMode, PrunePurpose, PruneSegment, SegmentOutput, SegmentOutputCheckpoint,
@@ -19,6 +11,15 @@ use reth_static_file_types::StaticFileSegment;
 use reth_storage_api::{ChangeSetReader, StorageSettingsCache};
 use rustc_hash::FxHashMap;
 use tracing::{instrument, trace};
+
+use crate::{
+    PrunerError,
+    db_ext::DbTxPruneExt,
+    segments::{
+        PruneInput, Segment,
+        user::history::{HistoryPruneResult, finalize_history_prune},
+    },
+};
 
 /// Number of account history tables to prune in one step.
 ///
@@ -68,7 +69,7 @@ where
             Some(range) => range,
             None => {
                 trace!(target: "pruner", "No account history to prune");
-                return Ok(SegmentOutput::done())
+                return Ok(SegmentOutput::done());
             }
         };
         let range_end = *range.end();
@@ -112,7 +113,7 @@ impl AccountHistory {
             return Ok(SegmentOutput::not_done(
                 limiter.interrupt_reason(),
                 input.previous_checkpoint.map(SegmentOutputCheckpoint::from_prune_checkpoint),
-            ))
+            ));
         }
 
         // Deleted account changeset keys (account addresses) with the highest block number deleted
@@ -186,7 +187,7 @@ impl AccountHistory {
             return Ok(SegmentOutput::not_done(
                 limiter.interrupt_reason(),
                 input.previous_checkpoint.map(SegmentOutputCheckpoint::from_prune_checkpoint),
-            ))
+            ));
         }
 
         // Deleted account changeset keys (account addresses) with the highest block number deleted
@@ -252,7 +253,7 @@ impl AccountHistory {
             return Ok(SegmentOutput::not_done(
                 limiter.interrupt_reason(),
                 input.previous_checkpoint.map(SegmentOutputCheckpoint::from_prune_checkpoint),
-            ))
+            ));
         }
 
         let mut highest_deleted_accounts = FxHashMap::default();
@@ -330,11 +331,11 @@ impl AccountHistory {
 
 #[cfg(test)]
 mod tests {
-    use super::ACCOUNT_HISTORY_TABLES_TO_PRUNE;
-    use crate::segments::{AccountHistory, PruneInput, PruneLimiter, Segment, SegmentOutput};
-    use alloy_primitives::{BlockNumber, B256};
+    use std::{collections::BTreeMap, ops::AddAssign};
+
+    use alloy_primitives::{B256, BlockNumber};
     use assert_matches::assert_matches;
-    use reth_db_api::{models::StorageSettings, tables, BlockNumberList};
+    use reth_db_api::{BlockNumberList, models::StorageSettings, tables};
     use reth_provider::{DBProvider, DatabaseProviderFactory, PruneCheckpointReader};
     use reth_prune_types::{
         PruneCheckpoint, PruneInterruptReason, PruneMode, PruneProgress, PruneSegment,
@@ -342,9 +343,11 @@ mod tests {
     use reth_stages::test_utils::{StorageKind, TestStageDB};
     use reth_storage_api::StorageSettingsCache;
     use reth_testing_utils::generators::{
-        self, random_block_range, random_changeset_range, random_eoa_accounts, BlockRangeParams,
+        self, BlockRangeParams, random_block_range, random_changeset_range, random_eoa_accounts,
     };
-    use std::{collections::BTreeMap, ops::AddAssign};
+
+    use super::ACCOUNT_HISTORY_TABLES_TO_PRUNE;
+    use crate::segments::{AccountHistory, PruneInput, PruneLimiter, Segment, SegmentOutput};
 
     #[test]
     fn prune_legacy() {
@@ -436,8 +439,8 @@ mod tests {
                     .iter()
                     .enumerate()
                     .skip_while(|(i, (block_number, _))| {
-                        *i < deleted_entries_limit / ACCOUNT_HISTORY_TABLES_TO_PRUNE * run &&
-                            *block_number <= to_block as usize
+                        *i < deleted_entries_limit / ACCOUNT_HISTORY_TABLES_TO_PRUNE * run
+                            && *block_number <= to_block as usize
                     })
                     .next()
                     .map(|(i, _)| i)
@@ -597,8 +600,8 @@ mod tests {
                     .iter()
                     .enumerate()
                     .skip_while(|(i, (block_number, _))| {
-                        *i < deleted_entries_limit / ACCOUNT_HISTORY_TABLES_TO_PRUNE * run &&
-                            *block_number <= to_block as usize
+                        *i < deleted_entries_limit / ACCOUNT_HISTORY_TABLES_TO_PRUNE * run
+                            && *block_number <= to_block as usize
                     })
                     .next()
                     .map(|(i, _)| i)

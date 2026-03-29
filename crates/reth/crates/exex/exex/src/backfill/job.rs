@@ -1,5 +1,3 @@
-use crate::StreamBackfillJob;
-use reth_evm::ConfigureEvm;
 use std::{
     collections::BTreeMap,
     ops::RangeInclusive,
@@ -9,9 +7,12 @@ use std::{
 use alloy_consensus::BlockHeader;
 use alloy_primitives::BlockNumber;
 use reth_ethereum_primitives::Receipt;
-use reth_evm::execute::{BlockExecutionError, BlockExecutionOutput, Executor};
+use reth_evm::{
+    ConfigureEvm,
+    execute::{BlockExecutionError, BlockExecutionOutput, Executor},
+};
 use reth_node_api::{Block as _, BlockBody as _, NodePrimitives};
-use reth_primitives_traits::{format_gas_throughput, RecoveredBlock, SignedTransaction};
+use reth_primitives_traits::{RecoveredBlock, SignedTransaction, format_gas_throughput};
 use reth_provider::{
     BlockReader, Chain, ExecutionOutcome, HeaderProvider, ProviderError, StateProviderFactory,
     TransactionVariant,
@@ -20,6 +21,8 @@ use reth_prune_types::PruneModes;
 use reth_revm::database::StateProviderDatabase;
 use reth_stages_api::ExecutionStageThresholds;
 use reth_tracing::tracing::{debug, trace};
+
+use crate::StreamBackfillJob;
 
 pub(super) type BackfillJobResult<T> = Result<T, BlockExecutionError>;
 
@@ -47,7 +50,7 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.range.is_empty() {
-            return None
+            return None;
         }
 
         Some(self.execute_range())
@@ -128,7 +131,7 @@ where
                 cumulative_gas,
                 batch_start.elapsed(),
             ) {
-                break
+                break;
             }
         }
 
@@ -241,13 +244,6 @@ impl<E, P> From<BackfillJob<E, P>> for SingleBlockBackfillJob<E, P> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        backfill::{
-            job::ExecutionStageThresholds,
-            test_utils::{blocks_and_execution_outputs, chain_spec, to_execution_outcome},
-        },
-        BackfillJobFactory,
-    };
     use alloy_consensus::BlockHeader;
     use reth_db_common::init::init_genesis;
     use reth_evm_ethereum::EthEvmConfig;
@@ -256,6 +252,14 @@ mod tests {
         providers::BlockchainProvider, test_utils::create_test_provider_factory_with_chain_spec,
     };
     use reth_testing_utils::generators;
+
+    use crate::{
+        BackfillJobFactory,
+        backfill::{
+            job::ExecutionStageThresholds,
+            test_utils::{blocks_and_execution_outputs, chain_spec, to_execution_outcome},
+        },
+    };
 
     #[test]
     fn test_backfill() -> eyre::Result<()> {

@@ -1,15 +1,19 @@
-use crate::utils::eth_payload_attributes;
+use std::{
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
+};
+
 use alloy_eips::{eip2718::Encodable2718, eip7910::EthConfig};
 use alloy_genesis::Genesis;
 use alloy_primitives::{Address, B256, U256};
-use alloy_provider::{network::EthereumWallet, Provider, ProviderBuilder, SendableTx};
+use alloy_provider::{Provider, ProviderBuilder, SendableTx, network::EthereumWallet};
 use alloy_rpc_types_beacon::relay::{
     BidTrace, BuilderBlockValidationRequestV3, BuilderBlockValidationRequestV4,
     SignedBidSubmissionV3, SignedBidSubmissionV4,
 };
 use alloy_rpc_types_engine::{BlobsBundleV1, ExecutionPayloadV3};
 use alloy_rpc_types_eth::TransactionRequest;
-use rand::{rngs::StdRng, Rng, SeedableRng};
+use rand::{Rng, SeedableRng, rngs::StdRng};
 use reth_chainspec::{ChainSpecBuilder, EthChainSpec, MAINNET};
 use reth_e2e_test_utils::setup_engine;
 use reth_network::types::NatResolver;
@@ -22,10 +26,8 @@ use reth_node_ethereum::EthereumNode;
 use reth_payload_primitives::BuiltPayload;
 use reth_rpc_api::servers::AdminApiServer;
 use reth_tasks::Runtime;
-use std::{
-    sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
-};
+
+use crate::utils::eth_payload_attributes;
 
 alloy_sol_types::sol! {
     #[sol(rpc, bytecode = "6080604052348015600f57600080fd5b5060405160db38038060db833981016040819052602a91607a565b60005b818110156074576040805143602082015290810182905260009060600160408051601f19818403018152919052805160209091012080555080606d816092565b915050602d565b505060b8565b600060208284031215608b57600080fd5b5051919050565b60006001820160b157634e487b7160e01b600052601160045260246000fd5b5060010190565b60168060c56000396000f3fe6080604052600080fdfea164736f6c6343000810000a")]
@@ -73,9 +75,9 @@ async fn test_fee_history() -> eyre::Result<()> {
     let fee_history = provider.get_fee_history(10, 0_u64.into(), &[]).await?;
 
     let genesis_base_fee = chain_spec.initial_base_fee().unwrap() as u128;
-    let expected_first_base_fee = genesis_base_fee -
-        genesis_base_fee /
-            chain_spec
+    let expected_first_base_fee = genesis_base_fee
+        - genesis_base_fee
+            / chain_spec
                 .base_fee_params_at_timestamp(chain_spec.genesis_timestamp())
                 .max_change_denominator;
     assert_eq!(fee_history.base_fee_per_gas[0], genesis_base_fee);
@@ -192,23 +194,29 @@ async fn test_flashbots_validate_v3() -> eyre::Result<()> {
         registered_gas_limit: payload.block().gas_limit,
     };
 
-    assert!(provider
-        .raw_request::<_, ()>("flashbots_validateBuilderSubmissionV3".into(), (&request,))
-        .await
-        .is_ok());
+    assert!(
+        provider
+            .raw_request::<_, ()>("flashbots_validateBuilderSubmissionV3".into(), (&request,))
+            .await
+            .is_ok()
+    );
 
     request.registered_gas_limit -= 1;
-    assert!(provider
-        .raw_request::<_, ()>("flashbots_validateBuilderSubmissionV3".into(), (&request,))
-        .await
-        .is_err());
+    assert!(
+        provider
+            .raw_request::<_, ()>("flashbots_validateBuilderSubmissionV3".into(), (&request,))
+            .await
+            .is_err()
+    );
     request.registered_gas_limit += 1;
 
     request.request.execution_payload.payload_inner.payload_inner.state_root = B256::ZERO;
-    assert!(provider
-        .raw_request::<_, ()>("flashbots_validateBuilderSubmissionV3".into(), (&request,))
-        .await
-        .is_err());
+    assert!(
+        provider
+            .raw_request::<_, ()>("flashbots_validateBuilderSubmissionV3".into(), (&request,))
+            .await
+            .is_err()
+    );
     Ok(())
 }
 
@@ -281,17 +289,21 @@ async fn test_flashbots_validate_v4() -> eyre::Result<()> {
         .expect("request should validate");
 
     request.registered_gas_limit -= 1;
-    assert!(provider
-        .raw_request::<_, ()>("flashbots_validateBuilderSubmissionV4".into(), (&request,))
-        .await
-        .is_err());
+    assert!(
+        provider
+            .raw_request::<_, ()>("flashbots_validateBuilderSubmissionV4".into(), (&request,))
+            .await
+            .is_err()
+    );
     request.registered_gas_limit += 1;
 
     request.request.execution_payload.payload_inner.payload_inner.state_root = B256::ZERO;
-    assert!(provider
-        .raw_request::<_, ()>("flashbots_validateBuilderSubmissionV4".into(), (&request,))
-        .await
-        .is_err());
+    assert!(
+        provider
+            .raw_request::<_, ()>("flashbots_validateBuilderSubmissionV4".into(), (&request,))
+            .await
+            .is_err()
+    );
     Ok(())
 }
 

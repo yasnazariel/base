@@ -1,5 +1,6 @@
-use crate::{segment::PrunePurpose, PruneSegment, PruneSegmentError};
 use alloy_primitives::BlockNumber;
+
+use crate::{PruneSegment, PruneSegmentError, segment::PrunePurpose};
 
 /// Prune mode.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -67,7 +68,7 @@ impl PruneMode {
             Self::Full => true,
             Self::Distance(distance) => {
                 if *distance > tip {
-                    return false
+                    return false;
                 }
                 block < tip - *distance
             }
@@ -120,9 +121,10 @@ impl PruneMode {
 
 #[cfg(test)]
 mod tests {
-    use crate::{PruneMode, PrunePurpose, PruneSegment, MINIMUM_UNWIND_SAFE_DISTANCE};
     use assert_matches::assert_matches;
     use serde::Deserialize;
+
+    use crate::{MINIMUM_UNWIND_SAFE_DISTANCE, PruneMode, PrunePurpose, PruneSegment};
 
     #[test]
     fn test_prune_target_block() {

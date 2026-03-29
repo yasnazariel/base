@@ -20,12 +20,11 @@ mod stage;
 pub mod test_utils;
 mod util;
 
-pub use crate::metrics::*;
+use aquamarine as _;
 pub use error::*;
 pub use pipeline::*;
-pub use stage::*;
-
-use aquamarine as _;
-
 // re-export the stages types for convenience
 pub use reth_stages_types::*;
+pub use stage::*;
+
+pub use crate::metrics::*;

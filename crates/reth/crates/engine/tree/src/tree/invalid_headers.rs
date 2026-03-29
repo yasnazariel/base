@@ -1,11 +1,12 @@
+use std::fmt::Debug;
+
 use alloy_eips::eip1898::BlockWithParent;
 use alloy_primitives::B256;
 use reth_metrics::{
-    metrics::{Counter, Gauge},
     Metrics,
+    metrics::{Counter, Gauge},
 };
 use schnellru::{ByLength, LruMap};
-use std::fmt::Debug;
 use tracing::warn;
 
 /// The max hit counter for invalid headers in the cache before it is forcefully evicted.
@@ -42,7 +43,7 @@ impl InvalidHeaderCache {
             let entry = self.headers.get(hash)?;
             entry.hit_count += 1;
             if entry.hit_count < INVALID_HEADER_HIT_EVICTION_THRESHOLD {
-                return Some(entry.header)
+                return Some(entry.header);
             }
         }
         // if we get here, the entry has been hit too many times, so we evict it
@@ -104,9 +105,10 @@ struct InvalidHeaderCacheMetrics {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_consensus::Header;
     use reth_primitives_traits::SealedHeader;
+
+    use super::*;
 
     #[test]
     fn test_hit_eviction() {

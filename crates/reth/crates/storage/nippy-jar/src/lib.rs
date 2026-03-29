@@ -12,8 +12,6 @@
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-use memmap2::Mmap;
-use serde::{Deserialize, Serialize};
 use std::{
     error::Error as StdError,
     fs::File,
@@ -21,6 +19,9 @@ use std::{
     ops::Range,
     path::{Path, PathBuf},
 };
+
+use memmap2::Mmap;
+use serde::{Deserialize, Serialize};
 use tracing::*;
 
 /// Compression algorithms supported by `NippyJar`.
@@ -215,10 +216,8 @@ impl<H: NippyJarHeader> NippyJar<H> {
     /// Deserializes an instance of [`Self`] from a [`Read`] type.
     pub fn load_from_reader<R: Read>(reader: R) -> Result<Self, NippyJarError> {
         let mut reader = reader;
-        Ok(
-            bincode::serde::decode_from_std_read(&mut reader, bincode::config::legacy())
-                .map_err(crate::error::BincodeError::from)?,
-        )
+        Ok(bincode::serde::decode_from_std_read(&mut reader, bincode::config::legacy())
+            .map_err(crate::error::BincodeError::from)?)
     }
 
     /// Serializes an instance of [`Self`] to a [`Write`] type.
@@ -330,13 +329,13 @@ impl<H: NippyJarHeader> NippyJar<H> {
         columns: &[impl IntoIterator<Item = ColumnResult<Vec<u8>>>],
     ) -> Result<(), NippyJarError> {
         if columns.len() != self.columns {
-            return Err(NippyJarError::ColumnLenMismatch(self.columns, columns.len()))
+            return Err(NippyJarError::ColumnLenMismatch(self.columns, columns.len()));
         }
 
-        if let Some(compression) = &self.compressor &&
-            !compression.is_ready()
+        if let Some(compression) = &self.compressor
+            && !compression.is_ready()
         {
-            return Err(NippyJarError::CompressorNotReady)
+            return Err(NippyJarError::CompressorNotReady);
         }
 
         Ok(())
@@ -377,9 +376,9 @@ impl DataReader {
 
         // Ensure that the size of an offset is at most 8 bytes.
         if offset_size > 8 {
-            return Err(NippyJarError::OffsetSizeTooBig { offset_size })
+            return Err(NippyJarError::OffsetSizeTooBig { offset_size });
         } else if offset_size == 0 {
-            return Err(NippyJarError::OffsetSizeTooSmall { offset_size })
+            return Err(NippyJarError::OffsetSizeTooSmall { offset_size });
         }
 
         Ok(Self { data_file, data_mmap, offset_file, offset_size, offset_mmap })
@@ -419,7 +418,7 @@ impl DataReader {
 
         let offset_end = index.saturating_add(self.offset_size as usize);
         if offset_end > self.offset_mmap.len() {
-            return Err(NippyJarError::OffsetOutOfBounds { index })
+            return Err(NippyJarError::OffsetOutOfBounds { index });
         }
 
         buffer[..self.offset_size as usize].copy_from_slice(&self.offset_mmap[index..offset_end]);
@@ -449,10 +448,12 @@ impl DataReader {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use compression::Compression;
-    use rand::{rngs::SmallRng, seq::SliceRandom, RngCore, SeedableRng};
     use std::{fs::OpenOptions, io::Read};
+
+    use compression::Compression;
+    use rand::{RngCore, SeedableRng, rngs::SmallRng, seq::SliceRandom};
+
+    use super::*;
 
     type ColumnResults<T> = Vec<ColumnResult<T>>;
     type ColumnValues = Vec<Vec<u8>>;
@@ -501,9 +502,11 @@ mod tests {
             buf
         );
 
-        let mut read_jar =
-            bincode::serde::decode_from_std_read::<NippyJar, _, _>(&mut &buf[..], bincode::config::legacy())
-                .unwrap();
+        let mut read_jar = bincode::serde::decode_from_std_read::<NippyJar, _, _>(
+            &mut &buf[..],
+            bincode::config::legacy(),
+        )
+        .unwrap();
         // Path is not ser/de
         read_jar.path = file.path().to_path_buf();
         assert_eq!(jar, read_jar);
@@ -791,11 +794,13 @@ mod tests {
                 const BLOCKS_EMPTY_MASK: usize = 0b00;
                 for (row_num, _) in &data {
                     // Simulates `by_number` queries
-                    assert!(cursor
-                        .row_by_number_with_cols(*row_num, BLOCKS_EMPTY_MASK)
-                        .unwrap()
-                        .unwrap()
-                        .is_empty());
+                    assert!(
+                        cursor
+                            .row_by_number_with_cols(*row_num, BLOCKS_EMPTY_MASK)
+                            .unwrap()
+                            .unwrap()
+                            .is_empty()
+                    );
                 }
             }
         }

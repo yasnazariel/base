@@ -3,7 +3,8 @@
 //! This module provides a flexible builder API for setting up test nodes with custom
 //! configurations through closures that modify `NodeConfig` and `TreeConfig`.
 
-use crate::{node::NodeTestContext, wallet::Wallet, NodeBuilderHelper, NodeHelperType, TmpDB};
+use std::sync::Arc;
+
 use futures_util::future::TryJoinAll;
 use reth_chainspec::EthChainSpec;
 use reth_node_builder::{
@@ -15,8 +16,9 @@ use reth_primitives_traits::AlloyBlockHeader;
 use reth_provider::providers::BlockchainProvider;
 use reth_rpc_server_types::RpcModuleSelection;
 use reth_tasks::Runtime;
-use std::sync::Arc;
-use tracing::{span, Instrument, Level};
+use tracing::{Instrument, Level, span};
+
+use crate::{NodeBuilderHelper, NodeHelperType, TmpDB, node::NodeTestContext, wallet::Wallet};
 
 /// Type alias for tree config modifier closure
 type TreeConfigModifier =
@@ -186,9 +188,9 @@ where
                 }
 
                 // Connect last node with the first if there are more than two
-                if idx + 1 == self.num_nodes &&
-                    self.num_nodes > 2 &&
-                    let Some(first) = prev.first_mut()
+                if idx + 1 == self.num_nodes
+                    && self.num_nodes > 2
+                    && let Some(first) = prev.first_mut()
                 {
                     current.connect(first).await;
                 }

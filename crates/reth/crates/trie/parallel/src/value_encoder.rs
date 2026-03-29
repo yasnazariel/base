@@ -1,22 +1,24 @@
-use crate::proof_task::{StorageProofResult, StorageProofResultMessage};
-use alloy_primitives::{map::B256Map, B256};
-use alloy_rlp::Encodable;
 use core::cell::RefCell;
-use crossbeam_channel::Receiver as CrossbeamReceiver;
-use reth_execution_errors::trie::StateProofError;
-use reth_primitives_traits::{dashmap::DashMap, Account};
-use reth_storage_errors::db::DatabaseError;
-use reth_trie::{
-    hashed_cursor::HashedStorageCursor,
-    proof_v2::{DeferredValueEncoder, LeafValueEncoder, StorageProofCalculator},
-    trie_cursor::TrieStorageCursor,
-    ProofTrieNode,
-};
 use std::{
     rc::Rc,
     sync::Arc,
     time::{Duration, Instant},
 };
+
+use alloy_primitives::{B256, map::B256Map};
+use alloy_rlp::Encodable;
+use crossbeam_channel::Receiver as CrossbeamReceiver;
+use reth_execution_errors::trie::StateProofError;
+use reth_primitives_traits::{Account, dashmap::DashMap};
+use reth_storage_errors::db::DatabaseError;
+use reth_trie::{
+    ProofTrieNode,
+    hashed_cursor::HashedStorageCursor,
+    proof_v2::{DeferredValueEncoder, LeafValueEncoder, StorageProofCalculator},
+    trie_cursor::TrieStorageCursor,
+};
+
+use crate::proof_task::{StorageProofResult, StorageProofResultMessage};
 
 /// Stats collected by [`AsyncAccountValueEncoder`] during proof computation.
 ///
@@ -326,7 +328,7 @@ where
                 stats: self.stats.clone(),
                 storage_calculator: self.storage_calculator.clone(),
                 cached_storage_roots: self.cached_storage_roots.clone(),
-            }
+            };
         }
 
         // If the address didn't have a job dispatched for it then we can assume it has no targets,
@@ -335,7 +337,7 @@ where
         // If the root is already calculated then just use it directly
         if let Some(root) = self.cached_storage_roots.get(&hashed_address) {
             self.stats.borrow_mut().from_cache_count += 1;
-            return AsyncAccountDeferredValueEncoder::FromCache { account, root: *root }
+            return AsyncAccountDeferredValueEncoder::FromCache { account, root: *root };
         }
 
         // Compute storage root synchronously using the shared calculator

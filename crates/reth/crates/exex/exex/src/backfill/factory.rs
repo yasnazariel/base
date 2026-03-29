@@ -1,4 +1,3 @@
-use crate::BackfillJob;
 use std::{ops::RangeInclusive, time::Duration};
 
 use alloy_primitives::BlockNumber;
@@ -7,6 +6,7 @@ use reth_prune_types::PruneModes;
 use reth_stages_api::ExecutionStageThresholds;
 
 use super::stream::DEFAULT_PARALLELISM;
+use crate::BackfillJob;
 
 /// Factory for creating new backfill jobs.
 #[derive(Debug, Clone)]

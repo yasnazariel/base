@@ -1,7 +1,6 @@
 use alloy_eips::BlockId;
-use alloy_primitives::{map::AddressMap, U256};
+use alloy_primitives::{U256, map::AddressMap};
 use jsonrpsee::{core::RpcResult, proc_macros::rpc};
-
 // Required for the subscription attributes below
 use reth_chain_state as _;
 

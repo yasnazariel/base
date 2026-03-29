@@ -1,14 +1,5 @@
 //! The ECIES Stream implementation which wraps over [`AsyncRead`] and [`AsyncWrite`].
 
-use crate::{
-    codec::ECIESCodec, error::ECIESErrorImpl, ECIESError, EgressECIESValue, IngressECIESValue,
-};
-use alloy_primitives::{
-    bytes::{Bytes, BytesMut},
-    B512 as PeerId,
-};
-use futures::{ready, Sink, SinkExt};
-use secp256k1::SecretKey;
 use std::{
     fmt::Debug,
     io,
@@ -16,6 +7,13 @@ use std::{
     task::{Context, Poll},
     time::Duration,
 };
+
+use alloy_primitives::{
+    B512 as PeerId,
+    bytes::{Bytes, BytesMut},
+};
+use futures::{Sink, SinkExt, ready};
+use secp256k1::SecretKey;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     time::timeout,
@@ -23,6 +21,10 @@ use tokio::{
 use tokio_stream::{Stream, StreamExt};
 use tokio_util::codec::{Decoder, Framed};
 use tracing::{instrument, trace};
+
+use crate::{
+    ECIESError, EgressECIESValue, IngressECIESValue, codec::ECIESCodec, error::ECIESErrorImpl,
+};
 
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -111,7 +113,7 @@ where
                     expected: IngressECIESValue::AuthReceive(Default::default()),
                     msg,
                 }
-                .into())
+                .into());
             }
         };
 
@@ -170,10 +172,11 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use reth_network_peers::pk2id;
     use secp256k1::SECP256K1;
     use tokio::net::{TcpListener, TcpStream};
+
+    use super::*;
 
     #[tokio::test]
     async fn can_write_and_read() {

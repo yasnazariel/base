@@ -1,23 +1,25 @@
 //! Handler that can download blocks on demand (e.g. from the network).
 
-use crate::{engine::DownloadRequest, metrics::BlockDownloaderMetrics};
-use alloy_consensus::BlockHeader;
-use alloy_primitives::{map::B256Set, B256};
-use futures::FutureExt;
-use reth_consensus::Consensus;
-use reth_network_p2p::{
-    full_block::{FetchFullBlockFuture, FetchFullBlockRangeFuture, FullBlockClient},
-    BlockClient,
-};
-use reth_primitives_traits::{Block, SealedBlock};
 use std::{
     cmp::{Ordering, Reverse},
-    collections::{binary_heap::PeekMut, BinaryHeap, VecDeque},
+    collections::{BinaryHeap, VecDeque, binary_heap::PeekMut},
     fmt::Debug,
     sync::Arc,
     task::{Context, Poll},
 };
+
+use alloy_consensus::BlockHeader;
+use alloy_primitives::{B256, map::B256Set};
+use futures::FutureExt;
+use reth_consensus::Consensus;
+use reth_network_p2p::{
+    BlockClient,
+    full_block::{FetchFullBlockFuture, FetchFullBlockRangeFuture, FullBlockClient},
+};
+use reth_primitives_traits::{Block, SealedBlock};
 use tracing::trace;
+
+use crate::{engine::DownloadRequest, metrics::BlockDownloaderMetrics};
 
 /// A trait that can download blocks on demand.
 pub trait BlockDownloader: Send + Sync {
@@ -144,7 +146,7 @@ where
     /// given hash.
     fn download_full_block(&mut self, hash: B256) -> bool {
         if self.is_inflight_request(hash) {
-            return false
+            return false;
         }
         self.push_pending_event(DownloadOutcome::NewDownloadStarted {
             remaining_blocks: 1,
@@ -172,8 +174,8 @@ where
 
     /// Sets the metrics for the active downloads
     fn update_block_download_metrics(&self) {
-        let blocks = self.inflight_full_block_requests.len() +
-            self.inflight_block_range_requests.iter().map(|r| r.count() as usize).sum::<usize>();
+        let blocks = self.inflight_full_block_requests.len()
+            + self.inflight_block_range_requests.iter().map(|r| r.count() as usize).sum::<usize>();
         self.metrics.active_block_downloads.set(blocks as f64);
     }
 
@@ -245,10 +247,10 @@ where
         while let Some(block) = self.set_buffered_blocks.pop() {
             // peek ahead and pop duplicates
             while let Some(peek) = self.set_buffered_blocks.peek_mut() {
-                if peek.0 .0.hash() == block.0 .0.hash() {
+                if peek.0.0.hash() == block.0.0.hash() {
                     PeekMut::pop(peek);
                 } else {
-                    break
+                    break;
                 }
             }
             downloaded_blocks.push(block.0.into());
@@ -303,8 +305,8 @@ impl<B: Block> BlockDownloader for NoopBlockDownloader<B> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::test_utils::insert_headers_into_client;
+    use std::{future::poll_fn, sync::Arc};
+
     use alloy_consensus::Header;
     use alloy_eips::eip1559::ETHEREUM_BLOCK_GAS_LIMIT_30M;
     use assert_matches::assert_matches;
@@ -312,7 +314,9 @@ mod tests {
     use reth_ethereum_consensus::EthBeaconConsensus;
     use reth_network_p2p::test_utils::TestFullBlockClient;
     use reth_primitives_traits::SealedHeader;
-    use std::{future::poll_fn, sync::Arc};
+
+    use super::*;
+    use crate::test_utils::insert_headers_into_client;
 
     struct TestHarness {
         block_downloader:

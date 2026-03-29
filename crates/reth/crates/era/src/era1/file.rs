@@ -5,6 +5,14 @@
 //!
 //! See also <https://github.com/eth-clients/e2store-format-specs/blob/main/formats/era1.md>.
 
+use std::{
+    collections::VecDeque,
+    fs::File,
+    io::{Read, Seek, Write},
+};
+
+use alloy_primitives::BlockNumber;
+
 use crate::{
     common::file_ops::{EraFileFormat, FileReader, StreamReader, StreamWriter},
     e2s::{
@@ -14,18 +22,12 @@ use crate::{
     },
     era1::types::{
         execution::{
-            Accumulator, BlockTuple, CompressedBody, CompressedHeader, CompressedReceipts,
-            TotalDifficulty, ACCUMULATOR, COMPRESSED_BODY, COMPRESSED_HEADER, COMPRESSED_RECEIPTS,
-            MAX_BLOCKS_PER_ERA1, TOTAL_DIFFICULTY,
+            ACCUMULATOR, Accumulator, BlockTuple, COMPRESSED_BODY, COMPRESSED_HEADER,
+            COMPRESSED_RECEIPTS, CompressedBody, CompressedHeader, CompressedReceipts,
+            MAX_BLOCKS_PER_ERA1, TOTAL_DIFFICULTY, TotalDifficulty,
         },
-        group::{BlockIndex, Era1Group, Era1Id, BLOCK_INDEX},
+        group::{BLOCK_INDEX, BlockIndex, Era1Group, Era1Id},
     },
-};
-use alloy_primitives::BlockNumber;
-use std::{
-    collections::VecDeque,
-    fs::File,
-    io::{Read, Seek, Write},
 };
 
 /// Era1 file interface
@@ -147,13 +149,17 @@ impl<R: Read + Seek> BlockTupleIterator<R> {
                 }
                 ACCUMULATOR => {
                     if self.accumulator.is_some() {
-                        return Err(E2sError::Ssz("Multiple accumulator entries found".to_string()));
+                        return Err(E2sError::Ssz(
+                            "Multiple accumulator entries found".to_string(),
+                        ));
                     }
                     self.accumulator = Some(Accumulator::from_entry(&entry)?);
                 }
                 BLOCK_INDEX => {
                     if self.block_index.is_some() {
-                        return Err(E2sError::Ssz("Multiple block index entries found".to_string()));
+                        return Err(E2sError::Ssz(
+                            "Multiple block index entries found".to_string(),
+                        ));
                     }
                     self.block_index = Some(BlockIndex::from_entry(&entry)?);
                 }
@@ -162,10 +168,10 @@ impl<R: Read + Seek> BlockTupleIterator<R> {
                 }
             }
 
-            if !self.headers.is_empty() &&
-                !self.bodies.is_empty() &&
-                !self.receipts.is_empty() &&
-                !self.difficulties.is_empty()
+            if !self.headers.is_empty()
+                && !self.bodies.is_empty()
+                && !self.receipts.is_empty()
+                && !self.difficulties.is_empty()
             {
                 let header = self.headers.pop_front().unwrap();
                 let body = self.bodies.pop_front().unwrap();
@@ -223,13 +229,16 @@ impl<R: Read + Seek> Era1Reader<R> {
         } = iter;
 
         // Ensure we have matching counts for block components
-        if headers.len() != bodies.len() ||
-            headers.len() != receipts.len() ||
-            headers.len() != difficulties.len()
+        if headers.len() != bodies.len()
+            || headers.len() != receipts.len()
+            || headers.len() != difficulties.len()
         {
             return Err(E2sError::Ssz(format!(
                 "Mismatched block component counts: headers={}, bodies={}, receipts={}, difficulties={}",
-                headers.len(), bodies.len(), receipts.len(), difficulties.len()
+                headers.len(),
+                bodies.len(),
+                receipts.len(),
+                difficulties.len()
             )));
         }
 
@@ -300,7 +309,9 @@ impl<W: Write> StreamWriter<W> for Era1Writer<W> {
 
         // Ensure blocks are written before other entries
         if era1_file.group.blocks.len() > MAX_BLOCKS_PER_ERA1 {
-            return Err(E2sError::Ssz("Era1 file cannot contain more than 8192 blocks".to_string()));
+            return Err(E2sError::Ssz(
+                "Era1 file cannot contain more than 8192 blocks".to_string(),
+            ));
         }
 
         // Write all blocks
@@ -405,11 +416,13 @@ impl<W: Write> Era1Writer<W> {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Cursor;
+
+    use alloy_primitives::{B256, U256};
+    use tempfile::tempdir;
+
     use super::*;
     use crate::common::file_ops::FileWriter;
-    use alloy_primitives::{B256, U256};
-    use std::io::Cursor;
-    use tempfile::tempdir;
 
     // Helper to create a sample block tuple for testing
     fn create_test_block(number: BlockNumber, data_size: usize) -> BlockTuple {

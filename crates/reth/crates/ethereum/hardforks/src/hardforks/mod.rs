@@ -1,11 +1,11 @@
 mod dev;
-pub use dev::DEV_HARDFORKS;
+use alloc::{boxed::Box, vec::Vec};
 
-use crate::{ForkCondition, ForkFilter, ForkId, Hardfork, Head};
+pub use dev::DEV_HARDFORKS;
 #[cfg(feature = "std")]
 use rustc_hash::FxHashMap;
 
-use alloc::{boxed::Box, vec::Vec};
+use crate::{ForkCondition, ForkFilter, ForkId, Hardfork, Head};
 
 /// Generic trait over a set of ordered hardforks
 #[auto_impl::auto_impl(&, Arc)]
@@ -204,8 +204,9 @@ impl<T: Hardfork, const N: usize> From<[(T, ForkCondition); N]> for ChainHardfor
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_hardforks::hardfork;
+
+    use super::*;
 
     hardfork!(AHardfork { A1, A2, A3 });
     hardfork!(BHardfork { B1, B2 });

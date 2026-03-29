@@ -1,8 +1,3 @@
-use crate::{
-    db_ext::DbTxPruneExt,
-    segments::{self, PruneInput, Segment},
-    PrunerError,
-};
 use reth_db_api::{tables, transaction::DbTxMut};
 use reth_provider::{
     BlockReader, DBProvider, EitherWriterDestination, StaticFileProviderFactory,
@@ -13,6 +8,12 @@ use reth_prune_types::{
 };
 use reth_static_file_types::StaticFileSegment;
 use tracing::{debug, instrument, trace};
+
+use crate::{
+    PrunerError,
+    db_ext::DbTxPruneExt,
+    segments::{self, PruneInput, Segment},
+};
 
 #[derive(Debug)]
 pub struct SenderRecovery {
@@ -61,14 +62,14 @@ where
                     provider,
                     input,
                     StaticFileSegment::TransactionSenders,
-                )
+                );
             }
 
             return segments::prune_static_files(
                 provider,
                 input,
                 StaticFileSegment::TransactionSenders,
-            )
+            );
         }
         debug!(target: "pruner", "Pruning transaction senders from database.");
 
@@ -76,7 +77,7 @@ where
             Some(range) => range,
             None => {
                 trace!(target: "pruner", "No transaction senders to prune");
-                return Ok(SegmentOutput::done())
+                return Ok(SegmentOutput::done());
             }
         };
         let tx_range_end = *tx_range.end();
@@ -134,8 +135,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::segments::{PruneInput, PruneLimiter, Segment, SegmentOutput, SenderRecovery};
-    use alloy_primitives::{BlockNumber, TxNumber, B256};
+    use std::ops::Sub;
+
+    use alloy_primitives::{B256, BlockNumber, TxNumber};
     use assert_matches::assert_matches;
     use itertools::{
         FoldWhile::{Continue, Done},
@@ -146,8 +148,9 @@ mod tests {
     use reth_provider::{DBProvider, DatabaseProviderFactory, PruneCheckpointReader};
     use reth_prune_types::{PruneCheckpoint, PruneMode, PruneProgress, PruneSegment};
     use reth_stages::test_utils::{StorageKind, TestStageDB};
-    use reth_testing_utils::generators::{self, random_block_range, BlockRangeParams};
-    use std::ops::Sub;
+    use reth_testing_utils::generators::{self, BlockRangeParams, random_block_range};
+
+    use crate::segments::{PruneInput, PruneLimiter, Segment, SegmentOutput, SenderRecovery};
 
     #[test]
     fn prune() {
@@ -214,8 +217,8 @@ mod tests {
                 .map(|block| block.transaction_count())
                 .sum::<usize>()
                 .min(
-                    next_tx_number_to_prune as usize +
-                        input.limiter.deleted_entries_limit().unwrap(),
+                    next_tx_number_to_prune as usize
+                        + input.limiter.deleted_entries_limit().unwrap(),
                 )
                 .sub(1);
 

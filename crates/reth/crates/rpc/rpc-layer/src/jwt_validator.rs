@@ -1,7 +1,8 @@
-use crate::{AuthValidator, JwtError, JwtSecret};
-use http::{header, HeaderMap, Response, StatusCode};
+use http::{HeaderMap, Response, StatusCode, header};
 use jsonrpsee_http_client::{HttpBody, HttpResponse};
 use tracing::error;
+
+use crate::{AuthValidator, JwtError, JwtSecret};
 
 /// Implements JWT validation logics and integrates
 /// to an Http [`AuthLayer`][crate::AuthLayer]
@@ -68,8 +69,9 @@ fn err_response(err: JwtError) -> HttpResponse {
 
 #[cfg(test)]
 mod tests {
+    use http::{HeaderMap, header};
+
     use crate::jwt_validator::get_bearer;
-    use http::{header, HeaderMap};
 
     #[test]
     fn auth_header_available() {

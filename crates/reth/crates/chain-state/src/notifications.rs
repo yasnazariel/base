@@ -1,19 +1,20 @@
 //! Canonical chain state notification trait and types.
 
-use alloy_eips::{eip2718::Encodable2718, BlockNumHash};
+use std::{
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll, ready},
+};
+
+use alloy_eips::{BlockNumHash, eip2718::Encodable2718};
 use derive_more::{Deref, DerefMut};
 use reth_execution_types::{BlockReceipts, Chain};
 use reth_primitives_traits::{NodePrimitives, RecoveredBlock, SealedHeader};
 use reth_storage_api::NodePrimitivesProvider;
-use std::{
-    pin::Pin,
-    sync::Arc,
-    task::{ready, Context, Poll},
-};
 use tokio::sync::{broadcast, watch};
 use tokio_stream::{
-    wrappers::{BroadcastStream, WatchStream},
     Stream,
+    wrappers::{BroadcastStream, WatchStream},
 };
 use tracing::debug;
 
@@ -68,10 +69,10 @@ impl<N: NodePrimitives> Stream for CanonStateNotificationStream<N> {
                 Some(Ok(notification)) => Poll::Ready(Some(notification)),
                 Some(Err(err)) => {
                     debug!(%err, "canonical state notification stream lagging behind");
-                    continue
+                    continue;
                 }
                 None => Poll::Ready(None),
-            }
+            };
         }
     }
 }
@@ -254,13 +255,15 @@ pub trait PersistedBlockSubscriptions: Send + Sync {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::collections::BTreeMap;
+
     use alloy_consensus::{BlockBody, SignableTransaction, TxLegacy};
-    use alloy_primitives::{b256, Signature, B256};
+    use alloy_primitives::{B256, Signature, b256};
     use reth_ethereum_primitives::{Receipt, TransactionSigned, TxType};
     use reth_execution_types::ExecutionOutcome;
     use reth_primitives_traits::SealedBlock;
-    use std::collections::BTreeMap;
+
+    use super::*;
 
     #[test]
     fn test_commit_notification() {

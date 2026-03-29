@@ -1,23 +1,25 @@
+use std::{sync::Arc, time::Instant};
+
+use alloy_primitives::{B256, map::B256Set};
+use crossbeam_channel::{Receiver as CrossbeamReceiver, unbounded as crossbeam_unbounded};
+use reth_execution_errors::StorageRootError;
+use reth_storage_errors::db::DatabaseError;
+use reth_trie::{
+    DecodedMultiProof, DecodedStorageMultiProof, HashedPostState, MultiProofTargets, Nibbles,
+    prefix_set::{PrefixSet, PrefixSetMut, TriePrefixSets, TriePrefixSetsMut},
+};
+use reth_trie_common::added_removed_keys::MultiAddedRemovedKeys;
+use tracing::trace;
+
 use crate::{
+    StorageRootTargets,
     metrics::ParallelTrieMetrics,
     proof_task::{
         AccountMultiproofInput, ProofResult, ProofResultContext, ProofWorkerHandle,
         StorageProofInput, StorageProofResultMessage,
     },
     root::ParallelStateRootError,
-    StorageRootTargets,
 };
-use alloy_primitives::{map::B256Set, B256};
-use crossbeam_channel::{unbounded as crossbeam_unbounded, Receiver as CrossbeamReceiver};
-use reth_execution_errors::StorageRootError;
-use reth_storage_errors::db::DatabaseError;
-use reth_trie::{
-    prefix_set::{PrefixSet, PrefixSetMut, TriePrefixSets, TriePrefixSetsMut},
-    DecodedMultiProof, DecodedStorageMultiProof, HashedPostState, MultiProofTargets, Nibbles,
-};
-use reth_trie_common::added_removed_keys::MultiAddedRemovedKeys;
-use std::{sync::Arc, time::Instant};
-use tracing::trace;
 
 /// Parallel proof calculator.
 ///
@@ -245,18 +247,18 @@ impl ParallelProof {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::proof_task::{ProofTaskCtx, ProofWorkerHandle};
     use alloy_primitives::{
-        keccak256,
+        Address, U256, keccak256,
         map::{B256Set, DefaultHashBuilder, HashMap},
-        Address, U256,
     };
     use rand::Rng;
     use reth_primitives_traits::{Account, StorageEntry};
-    use reth_provider::{test_utils::create_test_provider_factory, HashingWriter};
+    use reth_provider::{HashingWriter, test_utils::create_test_provider_factory};
     use reth_trie::proof::Proof;
     use reth_trie_db::{DatabaseHashedCursorFactory, DatabaseTrieCursorFactory};
+
+    use super::*;
+    use crate::proof_task::{ProofTaskCtx, ProofWorkerHandle};
 
     #[test]
     fn random_parallel_proof() {

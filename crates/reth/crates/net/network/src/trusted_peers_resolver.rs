@@ -1,11 +1,12 @@
 //! Periodically resolves DNS records for a set of trusted peers and emits updates as they complete
 
-use futures::{future::BoxFuture, ready, stream::FuturesUnordered, FutureExt, StreamExt};
-use reth_network_peers::{NodeRecord, PeerId, TrustedPeer};
 use std::{
     io,
     task::{Context, Poll},
 };
+
+use futures::{FutureExt, StreamExt, future::BoxFuture, ready, stream::FuturesUnordered};
+use reth_network_peers::{NodeRecord, PeerId, TrustedPeer};
 use tokio::time::Interval;
 use tracing::warn;
 

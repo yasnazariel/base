@@ -18,12 +18,13 @@ pub mod signed;
 pub mod error;
 pub mod recover;
 
+use core::{fmt, hash::Hash};
+
 pub use alloy_consensus::transaction::{
     SignerRecoverable, TransactionInfo, TransactionMeta, TxHashRef,
 };
 
 use crate::{InMemorySize, MaybeCompact, MaybeSerde};
-use core::{fmt, hash::Hash};
 
 #[cfg(test)]
 mod access_list;

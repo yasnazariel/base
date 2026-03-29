@@ -1,6 +1,6 @@
 //! Storage metadata models.
 
-use reth_codecs::{add_arbitrary_tests, Compact};
+use reth_codecs::{Compact, add_arbitrary_tests};
 use serde::{Deserialize, Serialize};
 
 /// Storage configuration settings for this node.

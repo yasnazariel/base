@@ -10,14 +10,14 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 use core::{fmt::Debug, marker::PhantomData};
+
+use reth_chainspec::EthChainSpec;
+use reth_db_api::{Database, database_metrics::DatabaseMetrics};
+use reth_engine_primitives::EngineTypes;
+use reth_payload_primitives::{BuiltPayload, PayloadTypes};
 pub use reth_primitives_traits::{
     Block, BlockBody, FullBlock, FullReceipt, FullSignedTx, NodePrimitives,
 };
-
-use reth_chainspec::EthChainSpec;
-use reth_db_api::{database_metrics::DatabaseMetrics, Database};
-use reth_engine_primitives::EngineTypes;
-use reth_payload_primitives::{BuiltPayload, PayloadTypes};
 
 /// The type that configures the essential types of an Ethereum-like node.
 ///

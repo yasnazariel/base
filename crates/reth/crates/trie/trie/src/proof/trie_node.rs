@@ -1,13 +1,15 @@
-use super::{Proof, StorageProof};
-use crate::{hashed_cursor::HashedCursorFactory, trie_cursor::TrieCursorFactory};
-use alloy_primitives::{map::HashSet, B256};
+use std::time::Instant;
+
+use alloy_primitives::{B256, map::HashSet};
 use reth_execution_errors::{SparseTrieError, SparseTrieErrorKind};
 use reth_trie_common::{MultiProofTargets, Nibbles};
 use reth_trie_sparse::provider::{
-    pad_path_to_key, RevealedNode, TrieNodeProvider, TrieNodeProviderFactory,
+    RevealedNode, TrieNodeProvider, TrieNodeProviderFactory, pad_path_to_key,
 };
-use std::time::Instant;
-use tracing::{enabled, trace, Level};
+use tracing::{Level, enabled, trace};
+
+use super::{Proof, StorageProof};
+use crate::{hashed_cursor::HashedCursorFactory, trie_cursor::TrieCursorFactory};
 
 /// Factory for instantiating providers capable of retrieving blinded trie nodes via proofs.
 #[derive(Debug, Clone)]

@@ -1,12 +1,13 @@
 //! Helper functions for initializing and opening a database.
 
-use crate::{is_database_empty, TableSet, Tables};
-use eyre::Context;
-use reth_tracing::tracing::info;
 use std::path::Path;
 
-pub use crate::implementation::mdbx::*;
+use eyre::Context;
 pub use reth_libmdbx::*;
+use reth_tracing::tracing::info;
+
+pub use crate::implementation::mdbx::*;
+use crate::{TableSet, Tables, is_database_empty};
 
 /// Tables that have been removed from the schema but may still exist on disk from previous
 /// versions. These will be dropped during database initialization.
@@ -15,7 +16,7 @@ const ORPHAN_TABLES: &[&str] = &["AccountsTrieChangeSets", "StoragesTrieChangeSe
 /// Creates a new database at the specified path if it doesn't exist. Does NOT create tables. Check
 /// [`init_db`].
 pub fn create_db<P: AsRef<Path>>(path: P, args: DatabaseArguments) -> eyre::Result<DatabaseEnv> {
-    use crate::version::{check_db_version_file, create_db_version_file, DatabaseVersionError};
+    use crate::version::{DatabaseVersionError, check_db_version_file, create_db_version_file};
 
     let rpath = path.as_ref();
     if is_database_empty(rpath) {

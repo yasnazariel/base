@@ -1,9 +1,10 @@
+use std::collections::HashMap;
+
 use reth_metrics::{
-    metrics::{Gauge, Histogram},
     Metrics,
+    metrics::{Gauge, Histogram},
 };
 use reth_prune_types::PruneSegment;
-use std::collections::HashMap;
 
 #[derive(Metrics)]
 #[metrics(scope = "pruner")]

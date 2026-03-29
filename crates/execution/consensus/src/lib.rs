@@ -394,12 +394,13 @@ mod tests {
 
         let block = RecoveredBlock::new_sealed(block, vec![Address::default()]);
 
-        let post_execution = <OpBeaconConsensus as FullConsensus<OpPrimitives>>::validate_block_post_execution(
-            &beacon_consensus,
-            &block,
-            &result,
-            None,
-        );
+        let post_execution =
+            <OpBeaconConsensus as FullConsensus<OpPrimitives>>::validate_block_post_execution(
+                &beacon_consensus,
+                &block,
+                &result,
+                None,
+            );
 
         // validate blob, it should pass blob gas used validation
         assert!(post_execution.is_ok());
@@ -464,12 +465,13 @@ mod tests {
 
         let block = RecoveredBlock::new_sealed(block, vec![Address::default()]);
 
-        let post_execution = <OpBeaconConsensus as FullConsensus<OpPrimitives>>::validate_block_post_execution(
-            &beacon_consensus,
-            &block,
-            &result,
-            None,
-        );
+        let post_execution =
+            <OpBeaconConsensus as FullConsensus<OpPrimitives>>::validate_block_post_execution(
+                &beacon_consensus,
+                &block,
+                &result,
+                None,
+            );
 
         // validate blob, it should fail blob gas used validation post execution.
         assert!(matches!(

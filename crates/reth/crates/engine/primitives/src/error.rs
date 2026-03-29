@@ -1,4 +1,5 @@
 use alloc::boxed::Box;
+
 use alloy_rpc_types_engine::ForkchoiceUpdateError;
 
 /// Represents all error cases when handling a new payload.

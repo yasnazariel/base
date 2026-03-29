@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use alloy_primitives::Sealable;
 use futures::Stream;
 use reth_network_p2p::headers::{
@@ -5,7 +7,6 @@ use reth_network_p2p::headers::{
     error::HeadersDownloaderError,
 };
 use reth_primitives_traits::SealedHeader;
-use std::fmt::Debug;
 
 /// A [`HeaderDownloader`] implementation that does nothing.
 #[derive(Debug, Default)]

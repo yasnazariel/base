@@ -34,41 +34,37 @@ mod block;
 mod receipt;
 pub use reth_static_file_types as static_file;
 pub mod transaction;
-#[cfg(any(test, feature = "arbitrary"))]
-pub use block::{generate_valid_header, valid_header_strategy};
+pub use alloy_consensus::{
+    ReceiptWithBloom,
+    transaction::{PooledTransaction, Recovered, TransactionMeta},
+};
 pub use block::{Block, BlockBody, SealedBlock};
 #[expect(deprecated)]
 pub use block::{BlockWithSenders, SealedBlockFor, SealedBlockWithSenders};
-
-pub use receipt::{gas_spent_by_transactions, Receipt};
+#[cfg(any(test, feature = "arbitrary"))]
+pub use block::{generate_valid_header, valid_header_strategy};
+pub use receipt::{Receipt, gas_spent_by_transactions};
 pub use reth_primitives_traits::{
-    logs_bloom, Account, BlockTy, BodyTy, Bytecode, GotExpected, GotExpectedBoxed, Header,
-    HeaderTy, Log, LogData, NodePrimitives, ReceiptTy, RecoveredBlock, SealedHeader, StorageEntry,
-    TxTy,
+    Account, BlockTy, BodyTy, Bytecode, GotExpected, GotExpectedBoxed, Header, HeaderTy, Log,
+    LogData, NodePrimitives, ReceiptTy, RecoveredBlock, SealedHeader, StorageEntry, TxTy,
+    logs_bloom,
 };
 pub use static_file::StaticFileSegment;
-
-pub use alloy_consensus::{
-    transaction::{PooledTransaction, Recovered, TransactionMeta},
-    ReceiptWithBloom,
-};
 
 /// Recovered transaction
 #[deprecated(note = "use `Recovered` instead")]
 pub type RecoveredTx<T> = Recovered<T>;
 
+#[cfg(feature = "c-kzg")]
+pub use c_kzg as kzg;
+// Re-exports
+pub use reth_ethereum_forks::*;
 pub use transaction::{
-    util::secp256k1::{public_key_to_address, recover_signer_unchecked, sign_message},
     InvalidTransactionError, Transaction, TransactionSigned, TxType,
+    util::secp256k1::{public_key_to_address, recover_signer_unchecked, sign_message},
 };
 #[expect(deprecated)]
 pub use transaction::{PooledTransactionsElementEcRecovered, TransactionSignedEcRecovered};
-
-// Re-exports
-pub use reth_ethereum_forks::*;
-
-#[cfg(feature = "c-kzg")]
-pub use c_kzg as kzg;
 
 /// Bincode-compatible serde implementations for commonly used types in Reth.
 ///

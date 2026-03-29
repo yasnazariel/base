@@ -1,10 +1,10 @@
-use crate::{
-    add_static_file_mask,
-    static_file::mask::{ColumnSelectorOne, ColumnSelectorTwo},
-    HeaderTerminalDifficulties,
-};
 use alloy_primitives::{Address, BlockHash};
-use reth_db_api::{models::StorageBeforeTx, table::Table, AccountChangeSets};
+use reth_db_api::{AccountChangeSets, models::StorageBeforeTx, table::Table};
+
+use crate::{
+    HeaderTerminalDifficulties, add_static_file_mask,
+    static_file::mask::{ColumnSelectorOne, ColumnSelectorTwo},
+};
 
 // HEADER MASKS
 add_static_file_mask! {

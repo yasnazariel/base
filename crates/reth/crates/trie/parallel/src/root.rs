@@ -1,6 +1,5 @@
-#[cfg(feature = "metrics")]
-use crate::metrics::ParallelStateRootMetrics;
-use crate::{stats::ParallelTrieTracker, storage_root_targets::StorageRootTargets};
+use std::{collections::HashMap, sync::mpsc};
+
 use alloy_primitives::B256;
 use alloy_rlp::{BufMut, Encodable};
 use itertools::Itertools;
@@ -9,17 +8,20 @@ use reth_provider::{DatabaseProviderROFactory, ProviderError};
 use reth_storage_errors::db::DatabaseError;
 use reth_tasks::Runtime;
 use reth_trie::{
+    HashBuilder, Nibbles, StorageRoot, TRIE_ACCOUNT_RLP_MAX_SIZE,
     hashed_cursor::HashedCursorFactory,
     node_iter::{TrieElement, TrieNodeIter},
     prefix_set::TriePrefixSets,
     trie_cursor::TrieCursorFactory,
     updates::TrieUpdates,
     walker::TrieWalker,
-    HashBuilder, Nibbles, StorageRoot, TRIE_ACCOUNT_RLP_MAX_SIZE,
 };
-use std::{collections::HashMap, sync::mpsc};
 use thiserror::Error;
 use tracing::*;
+
+#[cfg(feature = "metrics")]
+use crate::metrics::ParallelStateRootMetrics;
+use crate::{stats::ParallelTrieTracker, storage_root_targets::StorageRootTargets};
 
 /// Parallel incremental state root calculator.
 ///
@@ -271,13 +273,15 @@ impl From<StateProofError> for ParallelStateRootError {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use alloy_primitives::{keccak256, Address, U256};
+    use std::sync::Arc;
+
+    use alloy_primitives::{Address, U256, keccak256};
     use rand::Rng;
     use reth_primitives_traits::{Account, StorageEntry};
-    use reth_provider::{test_utils::create_test_provider_factory, HashingWriter};
-    use reth_trie::{test_utils, HashedPostState, HashedStorage};
-    use std::sync::Arc;
+    use reth_provider::{HashingWriter, test_utils::create_test_provider_factory};
+    use reth_trie::{HashedPostState, HashedStorage, test_utils};
+
+    use super::*;
 
     #[tokio::test]
     async fn random_parallel_root() {

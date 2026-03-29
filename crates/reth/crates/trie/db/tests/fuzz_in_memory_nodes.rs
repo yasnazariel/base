@@ -1,5 +1,7 @@
 #![allow(missing_docs)]
 
+use std::collections::BTreeMap;
+
 use alloy_primitives::{B256, U256};
 use proptest::prelude::*;
 use reth_db::{
@@ -10,13 +12,12 @@ use reth_db::{
 use reth_primitives_traits::{Account, StorageEntry};
 use reth_provider::test_utils::create_test_provider_factory;
 use reth_trie::{
+    HashedPostState, HashedStorage, StateRoot, StorageRoot,
     test_utils::{state_root_prehashed, storage_root_prehashed},
     trie_cursor::InMemoryTrieCursorFactory,
     updates::TrieUpdates,
-    HashedPostState, HashedStorage, StateRoot, StorageRoot,
 };
 use reth_trie_db::{DatabaseStateRoot, DatabaseStorageRoot, DatabaseTrieCursorFactory};
-use std::collections::BTreeMap;
 
 proptest! {
     #![proptest_config(ProptestConfig {

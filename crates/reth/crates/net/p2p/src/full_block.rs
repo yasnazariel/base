@@ -1,19 +1,4 @@
-use super::headers::client::HeadersRequest;
-use crate::{
-    bodies::client::{BodiesClient, SingleBodyRequest},
-    download::DownloadClient,
-    error::PeerRequestResult,
-    headers::client::{HeadersClient, SingleHeaderRequest},
-    priority::Priority,
-    BlockClient,
-};
-use alloy_consensus::BlockHeader;
-use alloy_primitives::{Sealable, B256};
 use core::marker::PhantomData;
-use reth_consensus::Consensus;
-use reth_eth_wire_types::{EthNetworkPrimitives, HeadersDirection, NetworkPrimitives};
-use reth_network_peers::{PeerId, WithPeerId};
-use reth_primitives_traits::{SealedBlock, SealedHeader};
 use std::{
     cmp::Reverse,
     collections::{HashMap, VecDeque},
@@ -23,9 +8,26 @@ use std::{
     ops::RangeInclusive,
     pin::Pin,
     sync::Arc,
-    task::{ready, Context, Poll},
+    task::{Context, Poll, ready},
 };
+
+use alloy_consensus::BlockHeader;
+use alloy_primitives::{B256, Sealable};
+use reth_consensus::Consensus;
+use reth_eth_wire_types::{EthNetworkPrimitives, HeadersDirection, NetworkPrimitives};
+use reth_network_peers::{PeerId, WithPeerId};
+use reth_primitives_traits::{SealedBlock, SealedHeader};
 use tracing::debug;
+
+use super::headers::client::HeadersRequest;
+use crate::{
+    BlockClient,
+    bodies::client::{BodiesClient, SingleBodyRequest},
+    download::DownloadClient,
+    error::PeerRequestResult,
+    headers::client::{HeadersClient, SingleHeaderRequest},
+    priority::Priority,
+};
 
 /// A Client that can fetch full blocks from the network.
 #[derive(Debug, Clone)]
@@ -143,7 +145,7 @@ where
     /// Returns the [`SealedBlock`] if the request is complete and valid.
     fn take_block(&mut self) -> Option<SealedBlock<Client::Block>> {
         if self.header.is_none() || self.body.is_none() {
-            return None
+            return None;
         }
 
         let header = self.header.take().unwrap();
@@ -158,7 +160,7 @@ where
                     self.client.report_bad_message(resp.peer_id());
                     self.header = Some(header);
                     self.request.body = Some(self.client.get_block_body(self.hash));
-                    return None
+                    return None;
                 }
                 Some(SealedBlock::from_sealed_parts(header, resp.into_data()))
             }
@@ -170,10 +172,10 @@ where
             if let Err(err) = self.consensus.validate_body_against_header(resp.data(), header) {
                 debug!(target: "downloaders", %err, hash=?header.hash(), "Received wrong body");
                 self.client.report_bad_message(resp.peer_id());
-                return
+                return;
             }
             self.body = Some(BodyResponse::Validated(resp.into_data()));
-            return
+            return;
         }
         self.body = Some(BodyResponse::PendingValidation(resp));
     }
@@ -237,7 +239,7 @@ where
             }
 
             if let Some(res) = this.take_block() {
-                return Poll::Ready(res)
+                return Poll::Ready(res);
             }
 
             // ensure we still have enough budget for another iteration
@@ -245,7 +247,7 @@ where
             if budget == 0 {
                 // make sure we're woken up again
                 cx.waker().wake_by_ref();
-                return Poll::Pending
+                return Poll::Pending;
             }
         }
     }
@@ -277,18 +279,18 @@ where
     Client: BlockClient,
 {
     fn poll(&mut self, cx: &mut Context<'_>) -> Poll<ResponseResult<Client::Header, Client::Body>> {
-        if let Some(fut) = Pin::new(&mut self.header).as_pin_mut() &&
-            let Poll::Ready(res) = fut.poll(cx)
+        if let Some(fut) = Pin::new(&mut self.header).as_pin_mut()
+            && let Poll::Ready(res) = fut.poll(cx)
         {
             self.header = None;
-            return Poll::Ready(ResponseResult::Header(res))
+            return Poll::Ready(ResponseResult::Header(res));
         }
 
-        if let Some(fut) = Pin::new(&mut self.body).as_pin_mut() &&
-            let Poll::Ready(res) = fut.poll(cx)
+        if let Some(fut) = Pin::new(&mut self.body).as_pin_mut()
+            && let Poll::Ready(res) = fut.poll(cx)
         {
             self.body = None;
-            return Poll::Ready(ResponseResult::Body(res))
+            return Poll::Ready(ResponseResult::Body(res));
         }
 
         Poll::Pending
@@ -392,7 +394,7 @@ where
     fn take_blocks(&mut self) -> Option<Vec<SealedBlock<Client::Block>>> {
         if !self.is_bodies_complete() {
             // not done with bodies yet
-            return None
+            return None;
         }
 
         let headers = self.headers.take()?;
@@ -415,7 +417,7 @@ where
                             // get body that doesn't match, put back into vecdeque, and retry it
                             self.pending_headers.push_back(header.clone());
                             needs_retry = true;
-                            continue
+                            continue;
                         }
 
                         resp.into_data()
@@ -441,7 +443,7 @@ where
             // create response for failing bodies
             let hashes = self.remaining_bodies_hashes();
             self.request.bodies = Some(self.client.get_block_bodies(hashes));
-            return None
+            return None;
         }
 
         Some(valid_responses)
@@ -593,7 +595,7 @@ where
             }
 
             if let Some(res) = this.take_blocks() {
-                return Poll::Ready(res)
+                return Poll::Ready(res);
             }
         }
     }
@@ -618,18 +620,18 @@ where
         &mut self,
         cx: &mut Context<'_>,
     ) -> Poll<RangeResponseResult<Client::Header, Client::Body>> {
-        if let Some(fut) = Pin::new(&mut self.headers).as_pin_mut() &&
-            let Poll::Ready(res) = fut.poll(cx)
+        if let Some(fut) = Pin::new(&mut self.headers).as_pin_mut()
+            && let Poll::Ready(res) = fut.poll(cx)
         {
             self.headers = None;
-            return Poll::Ready(RangeResponseResult::Header(res))
+            return Poll::Ready(RangeResponseResult::Header(res));
         }
 
-        if let Some(fut) = Pin::new(&mut self.bodies).as_pin_mut() &&
-            let Poll::Ready(res) = fut.poll(cx)
+        if let Some(fut) = Pin::new(&mut self.bodies).as_pin_mut()
+            && let Poll::Ready(res) = fut.poll(cx)
         {
             self.bodies = None;
-            return Poll::Ready(RangeResponseResult::Body(res))
+            return Poll::Ready(RangeResponseResult::Body(res));
         }
 
         Poll::Pending
@@ -748,15 +750,16 @@ impl<Net> Default for NoopFullBlockClient<Net> {
 
 #[cfg(test)]
 mod tests {
-    use reth_ethereum_primitives::BlockBody;
-
-    use super::*;
-    use crate::{error::RequestError, test_utils::TestFullBlockClient};
     use std::{
         ops::Range,
         sync::atomic::{AtomicUsize, Ordering},
     };
-    use tokio::time::{timeout, Duration};
+
+    use reth_ethereum_primitives::BlockBody;
+    use tokio::time::{Duration, timeout};
+
+    use super::*;
+    use crate::{error::RequestError, test_utils::TestFullBlockClient};
 
     #[tokio::test]
     async fn download_single_full_block() {
@@ -852,7 +855,7 @@ mod tests {
         ) -> Self::Output {
             let attempt = self.body_requests.fetch_add(1, Ordering::SeqCst);
             if attempt == self.fail_on {
-                return futures::future::ready(Err(RequestError::Timeout))
+                return futures::future::ready(Err(RequestError::Timeout));
             }
 
             self.inner.get_block_bodies_with_priority_and_range_hint(hashes, priority, range_hint)

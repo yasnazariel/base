@@ -1,20 +1,22 @@
-use crate::{
-    error::{Eip4844PoolTransactionError, InvalidPoolTransactionError},
-    identifier::{SenderId, TransactionId},
-    pool::pending::PendingTransaction,
-    PoolTransaction, Priority, TransactionOrdering, ValidPoolTransaction,
-};
-use alloy_consensus::Transaction;
-use alloy_eips::Typed2718;
-use alloy_primitives::map::AddressSet;
 use core::fmt;
-use reth_primitives_traits::transaction::error::InvalidTransactionError;
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet, VecDeque},
     sync::Arc,
 };
-use tokio::sync::broadcast::{error::TryRecvError, Receiver};
+
+use alloy_consensus::Transaction;
+use alloy_eips::Typed2718;
+use alloy_primitives::map::AddressSet;
+use reth_primitives_traits::transaction::error::InvalidTransactionError;
+use tokio::sync::broadcast::{Receiver, error::TryRecvError};
 use tracing::debug;
+
+use crate::{
+    PoolTransaction, Priority, TransactionOrdering, ValidPoolTransaction,
+    error::{Eip4844PoolTransactionError, InvalidPoolTransactionError},
+    identifier::{SenderId, TransactionId},
+    pool::pending::PendingTransaction,
+};
 
 const MAX_NEW_TRANSACTIONS_PER_BATCH: usize = 16;
 
@@ -58,8 +60,9 @@ impl<T: TransactionOrdering> Iterator for BestTransactionsWithFees<T> {
             let best = Iterator::next(&mut self.best)?;
             // If both the base fee and blob fee (if applicable for EIP-4844) are satisfied, return
             // the transaction
-            if best.transaction.max_fee_per_gas() >= self.base_fee as u128 &&
-                best.transaction
+            if best.transaction.max_fee_per_gas() >= self.base_fee as u128
+                && best
+                    .transaction
                     .max_fee_per_blob_gas()
                     .is_none_or(|fee| fee >= self.base_fee_per_blob_gas as u128)
             {
@@ -130,14 +133,14 @@ impl<T: TransactionOrdering> BestTransactions<T> {
         loop {
             match self.new_transaction_receiver.as_mut()?.try_recv() {
                 Ok(tx) => {
-                    if let Some(last_priority) = &self.last_priority &&
-                        &tx.priority > last_priority
+                    if let Some(last_priority) = &self.last_priority
+                        && &tx.priority > last_priority
                     {
                         // we skip transactions if we already yielded a transaction with lower
                         // priority
-                        return Some(IncomingTransaction::Stash(tx))
+                        return Some(IncomingTransaction::Stash(tx));
                     }
-                    return Some(IncomingTransaction::Process(tx))
+                    return Some(IncomingTransaction::Process(tx));
                 }
                 // note TryRecvError::Lagged can be returned here, which is an error that attempts
                 // to correct itself on consecutive try_recv() attempts
@@ -208,7 +211,7 @@ impl<T: TransactionOrdering> BestTransactions<T> {
                     "[{:?}] skipping invalid transaction",
                     best.transaction.hash()
                 );
-                continue
+                continue;
             }
 
             // Insert transactions that just got unlocked.
@@ -229,7 +232,7 @@ impl<T: TransactionOrdering> BestTransactions<T> {
                 if self.new_transaction_receiver.is_some() {
                     self.last_priority = Some(best.priority.clone())
                 }
-                return Some((best.transaction, best.priority))
+                return Some((best.transaction, best.priority));
             }
         }
     }
@@ -317,7 +320,7 @@ where
         loop {
             let best = self.best.next()?;
             if (self.predicate)(&best) {
-                return Some(best)
+                return Some(best);
             }
             self.best.mark_invalid(
                 &best,
@@ -399,22 +402,18 @@ where
         // If we have space, try prioritizing transactions
         if self.prioritized_gas < self.max_prioritized_gas {
             for item in &mut self.inner {
-                if self.prioritized_senders.contains(&item.transaction.sender()) &&
-                    self.prioritized_gas + item.transaction.gas_limit() <=
-                        self.max_prioritized_gas
+                if self.prioritized_senders.contains(&item.transaction.sender())
+                    && self.prioritized_gas + item.transaction.gas_limit()
+                        <= self.max_prioritized_gas
                 {
                     self.prioritized_gas += item.transaction.gas_limit();
-                    return Some(item)
+                    return Some(item);
                 }
                 self.buffer.push_back(item);
             }
         }
 
-        if let Some(item) = self.buffer.pop_front() {
-            Some(item)
-        } else {
-            self.inner.next()
-        }
+        if let Some(item) = self.buffer.pop_front() { Some(item) } else { self.inner.next() }
     }
 }
 
@@ -443,9 +442,9 @@ where
 mod tests {
     use super::*;
     use crate::{
+        BestTransactions, Priority,
         pool::pending::PendingPool,
         test_utils::{MockOrdering, MockTransaction, MockTransactionFactory},
-        BestTransactions, Priority,
     };
 
     #[test]

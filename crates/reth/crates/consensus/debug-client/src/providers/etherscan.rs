@@ -1,12 +1,14 @@
-use crate::BlockProvider;
+use std::{sync::Arc, time::Duration};
+
 use alloy_consensus::BlockHeader;
 use alloy_eips::BlockNumberOrTag;
 use alloy_json_rpc::{Response, ResponsePayload};
 use reqwest::Client;
 use reth_tracing::tracing::{debug, warn};
-use serde::{de::DeserializeOwned, Serialize};
-use std::{sync::Arc, time::Duration};
+use serde::{Serialize, de::DeserializeOwned};
 use tokio::{sync::mpsc, time::interval};
+
+use crate::BlockProvider;
 
 /// Block provider that fetches new blocks from Etherscan API.
 #[derive(derive_more::Debug, Clone)]
@@ -108,7 +110,7 @@ where
                         %err,
                         "Failed to fetch a block from Etherscan",
                     );
-                    continue
+                    continue;
                 }
             };
             let block_number = block.header().number();

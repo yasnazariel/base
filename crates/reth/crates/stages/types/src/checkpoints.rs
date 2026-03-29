@@ -1,10 +1,12 @@
-use super::StageId;
 #[cfg(test)]
 use alloc::vec;
 use alloc::{format, string::String, vec::Vec};
-use alloy_primitives::{Address, BlockNumber, B256, U256};
 use core::ops::RangeInclusive;
-use reth_trie_common::{hash_builder::HashBuilderState, StoredSubNode};
+
+use alloy_primitives::{Address, B256, BlockNumber, U256};
+use reth_trie_common::{StoredSubNode, hash_builder::HashBuilderState};
+
+use super::StageId;
 
 /// Saves the progress of Merkle stage.
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
@@ -322,7 +324,7 @@ impl EntitiesCheckpoint {
     /// Return [None] if `total == 0`.
     pub fn fmt_percentage(&self) -> Option<String> {
         if self.total == 0 {
-            return None
+            return None;
         }
 
         // Calculate percentage with 2 decimal places.
@@ -418,14 +420,14 @@ impl StageCheckpoint {
         match stage_checkpoint {
             StageUnitCheckpoint::Account(AccountHashingCheckpoint {
                 progress: entities, ..
-            }) |
-            StageUnitCheckpoint::Storage(StorageHashingCheckpoint {
+            })
+            | StageUnitCheckpoint::Storage(StorageHashingCheckpoint {
                 progress: entities, ..
-            }) |
-            StageUnitCheckpoint::Entities(entities) |
-            StageUnitCheckpoint::Execution(ExecutionCheckpoint { progress: entities, .. }) |
-            StageUnitCheckpoint::Headers(HeadersCheckpoint { progress: entities, .. }) |
-            StageUnitCheckpoint::IndexHistory(IndexHistoryCheckpoint {
+            })
+            | StageUnitCheckpoint::Entities(entities)
+            | StageUnitCheckpoint::Execution(ExecutionCheckpoint { progress: entities, .. })
+            | StageUnitCheckpoint::Headers(HeadersCheckpoint { progress: entities, .. })
+            | StageUnitCheckpoint::IndexHistory(IndexHistoryCheckpoint {
                 progress: entities,
                 ..
             }) => Some(entities),
@@ -467,10 +469,10 @@ impl StageUnitCheckpoint {
     /// range.
     pub const fn set_block_range(&mut self, from: u64, to: u64) -> Option<CheckpointBlockRange> {
         match self {
-            Self::Account(AccountHashingCheckpoint { block_range, .. }) |
-            Self::Storage(StorageHashingCheckpoint { block_range, .. }) |
-            Self::Execution(ExecutionCheckpoint { block_range, .. }) |
-            Self::IndexHistory(IndexHistoryCheckpoint { block_range, .. }) => {
+            Self::Account(AccountHashingCheckpoint { block_range, .. })
+            | Self::Storage(StorageHashingCheckpoint { block_range, .. })
+            | Self::Execution(ExecutionCheckpoint { block_range, .. })
+            | Self::IndexHistory(IndexHistoryCheckpoint { block_range, .. }) => {
                 let old_range = *block_range;
                 *block_range = CheckpointBlockRange { from, to };
 
@@ -573,10 +575,11 @@ stage_unit_checkpoints!(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_primitives::b256;
     use rand::Rng;
     use reth_codecs::Compact;
+
+    use super::*;
 
     #[test]
     fn merkle_checkpoint_roundtrip() {

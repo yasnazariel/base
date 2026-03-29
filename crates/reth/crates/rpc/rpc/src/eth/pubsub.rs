@@ -4,18 +4,18 @@ use std::sync::Arc;
 
 use alloy_primitives::TxHash;
 use alloy_rpc_types_eth::{
-    pubsub::{Params, PubSubSyncStatus, SubscriptionKind, SyncStatusMetadata},
     Filter, Log,
+    pubsub::{Params, PubSubSyncStatus, SubscriptionKind, SyncStatusMetadata},
 };
 use futures::StreamExt;
 use jsonrpsee::{
-    server::SubscriptionMessage, types::ErrorObject, PendingSubscriptionSink, SubscriptionSink,
+    PendingSubscriptionSink, SubscriptionSink, server::SubscriptionMessage, types::ErrorObject,
 };
 use reth_chain_state::CanonStateSubscriptions;
 use reth_network_api::NetworkInfo;
 use reth_rpc_convert::RpcHeader;
 use reth_rpc_eth_api::{
-    pubsub::EthPubSubApiServer, EthApiTypes, RpcConvert, RpcNodeCore, RpcTransaction,
+    EthApiTypes, RpcConvert, RpcNodeCore, RpcTransaction, pubsub::EthPubSubApiServer,
 };
 use reth_rpc_eth_types::logs_utils;
 use reth_rpc_server_types::result::{internal_rpc_err, invalid_params_rpc_err};
@@ -24,8 +24,8 @@ use reth_tasks::{TaskSpawner, TokioTaskExecutor};
 use reth_transaction_pool::{NewTransactionEvent, TransactionPool};
 use serde::Serialize;
 use tokio_stream::{
-    wrappers::{BroadcastStream, ReceiverStream},
     Stream,
+    wrappers::{BroadcastStream, ReceiverStream},
 };
 use tracing::error;
 
@@ -103,7 +103,7 @@ where
                 let filter = match params {
                     Some(Params::Logs(filter)) => *filter,
                     Some(Params::Bool(_)) => {
-                        return Err(invalid_params_rpc_err("Invalid params for logs"))
+                        return Err(invalid_params_rpc_err("Invalid params for logs"));
                     }
                     _ => Default::default(),
                 };
@@ -132,7 +132,7 @@ where
                                 };
                                 std::future::ready(tx_value)
                             });
-                            return pipe_from_stream(accepted_sink, stream).await
+                            return pipe_from_stream(accepted_sink, stream).await;
                         }
                         Params::Bool(false) | Params::None => {
                             // only hashes requested
@@ -140,7 +140,7 @@ where
                         _ => {
                             return Err(invalid_params_rpc_err(
                                 "Invalid params for newPendingTransactions",
-                            ))
+                            ));
                         }
                     }
                 }
@@ -165,7 +165,7 @@ where
                 .map_err(SubscriptionSerializeError::new)?;
 
                 if accepted_sink.send(msg).await.is_err() {
-                    return Ok(())
+                    return Ok(());
                 }
 
                 while canon_state.next().await.is_some() {
@@ -185,7 +185,7 @@ where
                         .map_err(SubscriptionSerializeError::new)?;
 
                         if accepted_sink.send(msg).await.is_err() {
-                            break
+                            break;
                         }
                     }
                 }

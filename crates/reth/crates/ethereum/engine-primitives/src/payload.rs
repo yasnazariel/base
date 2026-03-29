@@ -1,6 +1,8 @@
 //! Contains types required for building a payload.
 
 use alloc::{sync::Arc, vec::Vec};
+use core::convert::Infallible;
+
 use alloy_eips::{
     eip4844::BlobTransactionSidecar,
     eip4895::Withdrawals,
@@ -14,7 +16,6 @@ use alloy_rpc_types_engine::{
     ExecutionPayloadEnvelopeV4, ExecutionPayloadEnvelopeV5, ExecutionPayloadEnvelopeV6,
     ExecutionPayloadFieldV2, ExecutionPayloadV1, ExecutionPayloadV3, PayloadAttributes, PayloadId,
 };
-use core::convert::Infallible;
 use reth_ethereum_primitives::EthPrimitives;
 use reth_payload_primitives::{BuiltPayload, PayloadBuilderAttributes};
 use reth_primitives_traits::{NodePrimitives, SealedBlock};
@@ -96,7 +97,7 @@ impl EthBuiltPayload {
             BlobSidecars::Empty => BlobsBundleV1::empty(),
             BlobSidecars::Eip4844(sidecars) => BlobsBundleV1::from(sidecars),
             BlobSidecars::Eip7594(_) => {
-                return Err(BuiltPayloadConversionError::UnexpectedEip7594Sidecars)
+                return Err(BuiltPayloadConversionError::UnexpectedEip7594Sidecars);
             }
         };
 
@@ -137,7 +138,7 @@ impl EthBuiltPayload {
             BlobSidecars::Empty => BlobsBundleV2::empty(),
             BlobSidecars::Eip7594(sidecars) => BlobsBundleV2::from(sidecars),
             BlobSidecars::Eip4844(_) => {
-                return Err(BuiltPayloadConversionError::UnexpectedEip4844Sidecars)
+                return Err(BuiltPayloadConversionError::UnexpectedEip4844Sidecars);
             }
         };
 
@@ -448,10 +449,12 @@ pub fn payload_id(parent: &B256, attributes: &PayloadAttributes) -> PayloadId {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use core::str::FromStr;
+
     use alloy_eips::eip4895::Withdrawal;
     use alloy_primitives::B64;
-    use core::str::FromStr;
+
+    use super::*;
 
     #[test]
     fn attributes_serde() {

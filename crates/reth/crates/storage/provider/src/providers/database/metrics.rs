@@ -1,6 +1,7 @@
+use std::time::{Duration, Instant};
+
 use metrics::{Gauge, Histogram};
 use reth_metrics::Metrics;
-use std::time::{Duration, Instant};
 
 #[derive(Debug)]
 pub(crate) struct DurationsRecorder<'a> {

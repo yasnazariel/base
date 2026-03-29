@@ -1,4 +1,10 @@
-use alloy_primitives::{keccak256, Address, BlockNumber, B256, U256};
+use std::{
+    collections::BTreeSet,
+    thread,
+    time::{Duration, Instant},
+};
+
+use alloy_primitives::{Address, B256, BlockNumber, U256, keccak256};
 use clap::Parser;
 use parking_lot::Mutex;
 use reth_db_api::{
@@ -12,11 +18,6 @@ use reth_node_builder::NodeTypesWithDB;
 use reth_provider::providers::ProviderNodeTypes;
 use reth_storage_api::{BlockNumReader, StateProvider, StorageSettingsCache};
 use reth_tasks::spawn_scoped_os_thread;
-use std::{
-    collections::BTreeSet,
-    thread,
-    time::{Duration, Instant},
-};
 use tracing::{error, info};
 
 /// Log progress every 5 seconds

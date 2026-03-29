@@ -1,7 +1,8 @@
 //! Engine tree configuration.
 
-use alloy_eips::merge::EPOCH_SLOTS;
 use core::time::Duration;
+
+use alloy_eips::merge::EPOCH_SLOTS;
 
 /// Triggers persistence when the number of canonical blocks in memory exceeds this threshold.
 pub const DEFAULT_PERSISTENCE_THRESHOLD: u64 = 2;
@@ -327,8 +328,8 @@ impl TreeConfig {
     /// Return the multiproof task chunk size, using the V2 default if V2 proofs are enabled
     /// and the chunk size is at the default value.
     pub const fn effective_multiproof_chunk_size(&self) -> usize {
-        if !self.disable_proof_v2 &&
-            self.multiproof_chunk_size == DEFAULT_MULTIPROOF_TASK_CHUNK_SIZE
+        if !self.disable_proof_v2
+            && self.multiproof_chunk_size == DEFAULT_MULTIPROOF_TASK_CHUNK_SIZE
         {
             DEFAULT_MULTIPROOF_TASK_CHUNK_SIZE_V2
         } else {

@@ -1,7 +1,3 @@
-use crate::{
-    segments::{self, PruneInput, Segment},
-    PrunerError,
-};
 use alloy_primitives::BlockNumber;
 use reth_provider::{BlockReader, PruneCheckpointReader, StaticFileProviderFactory};
 use reth_prune_types::{
@@ -10,6 +6,11 @@ use reth_prune_types::{
 };
 use reth_static_file_types::StaticFileSegment;
 use tracing::{debug, instrument};
+
+use crate::{
+    PrunerError,
+    segments::{self, PruneInput, Segment},
+};
 
 /// Segment responsible for pruning transactions in static files.
 ///
@@ -70,7 +71,7 @@ impl Bodies {
                 if input.previous_checkpoint.is_some_and(|cp| cp.block_number.unwrap_or(0) >= safe)
                 {
                     // we have pruned what we can
-                    return Ok(None)
+                    return Ok(None);
                 }
 
                 debug!(
@@ -129,19 +130,20 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::Pruner;
     use alloy_primitives::BlockNumber;
     use reth_exex_types::FinishedExExHeight;
     use reth_provider::{
-        test_utils::{create_test_provider_factory, MockNodeTypesWithDB},
         DBProvider, DatabaseProviderFactory, ProviderFactory, PruneCheckpointWriter,
         StaticFileWriter,
+        test_utils::{MockNodeTypesWithDB, create_test_provider_factory},
     };
     use reth_prune_types::{PruneMode, PruneProgress, PruneSegment};
     use reth_static_file_types::{
-        SegmentHeader, SegmentRangeInclusive, StaticFileSegment, DEFAULT_BLOCKS_PER_STATIC_FILE,
+        DEFAULT_BLOCKS_PER_STATIC_FILE, SegmentHeader, SegmentRangeInclusive, StaticFileSegment,
     };
+
+    use super::*;
+    use crate::Pruner;
 
     /// Creates empty static file jars at 500k block intervals up to the tip block.
     ///

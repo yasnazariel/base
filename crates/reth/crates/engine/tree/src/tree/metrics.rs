@@ -1,16 +1,18 @@
-use crate::tree::{error::InsertBlockFatalError, TreeOutcome};
+use std::time::{Duration, Instant};
+
 use alloy_rpc_types_engine::{PayloadStatus, PayloadStatusEnum};
 use reth_engine_primitives::{ForkchoiceStatus, OnForkChoiceUpdated};
 use reth_errors::ProviderError;
 use reth_evm::metrics::ExecutorMetrics;
 use reth_execution_types::BlockExecutionOutput;
 use reth_metrics::{
-    metrics::{Counter, Gauge, Histogram},
     Metrics,
+    metrics::{Counter, Gauge, Histogram},
 };
 use reth_primitives_traits::constants::gas_units::MEGAGAS;
 use reth_trie::updates::TrieUpdates;
-use std::time::{Duration, Instant};
+
+use crate::tree::{TreeOutcome, error::InsertBlockFatalError};
 
 /// Upper bounds for each gas bucket. The last bucket is a catch-all for
 /// everything above the final threshold: <5M, 5-10M, 10-20M, 20-30M, 30-40M, >40M.
@@ -492,12 +494,13 @@ pub(crate) struct BlockBufferMetrics {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_eips::eip7685::Requests;
     use metrics_util::debugging::{DebuggingRecorder, Snapshotter};
     use reth_ethereum_primitives::Receipt;
     use reth_execution_types::BlockExecutionResult;
     use reth_revm::db::BundleState;
+
+    use super::*;
 
     fn setup_test_recorder() -> Snapshotter {
         let recorder = DebuggingRecorder::new();

@@ -1,8 +1,3 @@
-use crate::{
-    db_ext::DbTxPruneExt,
-    segments::{PruneInput, Segment},
-    PrunerError,
-};
 use alloy_consensus::TxReceipt;
 use reth_db_api::{table::Value, tables, transaction::DbTxMut};
 use reth_primitives_traits::NodePrimitives;
@@ -10,10 +5,16 @@ use reth_provider::{
     BlockReader, DBProvider, NodePrimitivesProvider, PruneCheckpointWriter, TransactionsProvider,
 };
 use reth_prune_types::{
-    PruneCheckpoint, PruneMode, PrunePurpose, PruneSegment, ReceiptsLogPruneConfig, SegmentOutput,
-    MINIMUM_UNWIND_SAFE_DISTANCE,
+    MINIMUM_UNWIND_SAFE_DISTANCE, PruneCheckpoint, PruneMode, PrunePurpose, PruneSegment,
+    ReceiptsLogPruneConfig, SegmentOutput,
 };
 use tracing::{instrument, trace};
+
+use crate::{
+    PrunerError,
+    db_ext::DbTxPruneExt,
+    segments::{PruneInput, Segment},
+};
 #[derive(Debug)]
 pub struct ReceiptsByLogs {
     config: ReceiptsLogPruneConfig,
@@ -146,7 +147,7 @@ where
                         ?block_range,
                         "No receipts to prune."
                     );
-                    continue
+                    continue;
                 }
             };
             let tx_range = from_tx_number..=tx_range_end;
@@ -160,10 +161,11 @@ where
                 tx_range,
                 &mut limiter,
                 |(tx_num, receipt)| {
-                    let skip = num_addresses > 0 &&
-                        receipt.logs().iter().any(|log| {
-                            filtered_addresses[..num_addresses].contains(&&log.address)
-                        });
+                    let skip = num_addresses > 0
+                        && receipt
+                            .logs()
+                            .iter()
+                            .any(|log| filtered_addresses[..num_addresses].contains(&&log.address));
 
                     if skip {
                         last_skipped_transaction = *tx_num;
@@ -195,7 +197,7 @@ where
 
             if limiter.is_limit_reached() {
                 done &= end_block == to_block;
-                break
+                break;
             }
 
             from_tx_number = last_pruned_transaction + 1;
@@ -232,7 +234,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::segments::{user::ReceiptsByLogs, PruneInput, PruneLimiter, Segment};
+    use std::collections::BTreeMap;
+
     use alloy_primitives::B256;
     use assert_matches::assert_matches;
     use reth_db_api::{cursor::DbCursorRO, tables, transaction::DbTx};
@@ -241,9 +244,10 @@ mod tests {
     use reth_prune_types::{PruneMode, PruneSegment, ReceiptsLogPruneConfig};
     use reth_stages::test_utils::{StorageKind, TestStageDB};
     use reth_testing_utils::generators::{
-        self, random_block_range, random_eoa_account, random_log, random_receipt, BlockRangeParams,
+        self, BlockRangeParams, random_block_range, random_eoa_account, random_log, random_receipt,
     };
-    use std::collections::BTreeMap;
+
+    use crate::segments::{PruneInput, PruneLimiter, Segment, user::ReceiptsByLogs};
 
     #[test]
     fn prune_receipts_by_logs() {
@@ -341,8 +345,8 @@ mod tests {
 
             assert_eq!(
                 db.table::<tables::Receipts>().unwrap().len(),
-                blocks.iter().map(|block| block.transaction_count()).sum::<usize>() -
-                    ((pruned_tx + 1) - unprunable) as usize
+                blocks.iter().map(|block| block.transaction_count()).sum::<usize>()
+                    - ((pruned_tx + 1) - unprunable) as usize
             );
 
             output.progress.is_finished()
@@ -359,8 +363,8 @@ mod tests {
             // Either we only find our contract, or the receipt is part of the unprunable receipts
             // set by tip - 128
             assert!(
-                receipt.logs.iter().any(|l| l.address == deposit_contract_addr) ||
-                    provider.block_by_transaction_id(tx_num).unwrap().unwrap() > tip - 128,
+                receipt.logs.iter().any(|l| l.address == deposit_contract_addr)
+                    || provider.block_by_transaction_id(tx_num).unwrap().unwrap() > tip - 128,
             );
         }
     }

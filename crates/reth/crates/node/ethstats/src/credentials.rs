@@ -1,5 +1,6 @@
-use crate::error::EthStatsError;
 use std::str::FromStr;
+
+use crate::error::EthStatsError;
 
 /// Credentials for connecting to an `EthStats` server
 ///

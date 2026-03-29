@@ -1,8 +1,9 @@
-use super::{TrieCursor, TrieCursorFactory, TrieStorageCursor};
-use crate::{forward_cursor::ForwardInMemoryCursor, updates::TrieUpdatesSorted};
 use alloy_primitives::B256;
 use reth_storage_errors::db::DatabaseError;
 use reth_trie_common::{BranchNodeCompact, Nibbles};
+
+use super::{TrieCursor, TrieCursorFactory, TrieStorageCursor};
+use crate::{forward_cursor::ForwardInMemoryCursor, updates::TrieUpdatesSorted};
 
 /// The trie cursor factory for the trie updates.
 #[derive(Debug, Clone)]
@@ -192,7 +193,7 @@ impl<'a, C: TrieCursor> InMemoryTrieCursor<'a, C> {
                 {
                     // If overlay returns a node prior to the DB's node, or the DB is exhausted,
                     // then we return the overlay's node.
-                    return Ok(Some((mem_key, node)))
+                    return Ok(Some((mem_key, node)));
                 }
                 // All other cases:
                 // - mem_key > db_key
@@ -250,14 +251,14 @@ impl<C: TrieCursor> TrieCursor for InMemoryTrieCursor<'_, C> {
 
         // If either cursor is currently pointing to the last entry which was returned then consume
         // that entry so that `choose_next_entry` is looking at the subsequent one.
-        if let Some((key, _)) = self.in_memory_cursor.current() &&
-            key == &last_key
+        if let Some((key, _)) = self.in_memory_cursor.current()
+            && key == &last_key
         {
             self.in_memory_cursor.first_after(&last_key);
         }
 
-        if let Some((key, _)) = &self.cursor_entry &&
-            key == &last_key
+        if let Some((key, _)) = &self.cursor_entry
+            && key == &last_key
         {
             self.cursor_next()?;
         }
@@ -306,10 +307,12 @@ impl<C: TrieStorageCursor> TrieStorageCursor for InMemoryTrieCursor<'_, C> {
 
 #[cfg(test)]
 mod tests {
+    use std::{collections::BTreeMap, sync::Arc};
+
+    use parking_lot::Mutex;
+
     use super::*;
     use crate::trie_cursor::mock::MockTrieCursor;
-    use parking_lot::Mutex;
-    use std::{collections::BTreeMap, sync::Arc};
 
     #[derive(Debug)]
     struct InMemoryTrieCursorTestCase {
@@ -330,8 +333,8 @@ mod tests {
 
         let mut results = Vec::new();
 
-        if let Some(first_expected) = test_case.expected_results.first() &&
-            let Ok(Some(entry)) = cursor.seek(first_expected.0)
+        if let Some(first_expected) = test_case.expected_results.first()
+            && let Ok(Some(entry)) = cursor.seek(first_expected.0)
         {
             results.push(entry);
         }
@@ -700,9 +703,10 @@ mod tests {
     }
 
     mod proptest_tests {
-        use super::*;
         use itertools::Itertools;
         use proptest::prelude::*;
+
+        use super::*;
 
         /// Merge `db_nodes` with `in_memory_nodes`, applying the in-memory overlay.
         /// This properly handles deletions (None values in `in_memory_nodes`).
@@ -765,8 +769,8 @@ mod tests {
         }
 
         /// Generate a sorted vector of (Nibbles, Option<BranchNodeCompact>) entries
-        fn sorted_in_memory_nodes_strategy(
-        ) -> impl Strategy<Value = Vec<(Nibbles, Option<BranchNodeCompact>)>> {
+        fn sorted_in_memory_nodes_strategy()
+        -> impl Strategy<Value = Vec<(Nibbles, Option<BranchNodeCompact>)>> {
             prop::collection::vec(
                 (
                     prop::collection::vec(any::<u8>(), 0..2),

@@ -1,10 +1,11 @@
-use crate::utils::{advance_with_random_transactions, eth_payload_attributes};
+use std::{sync::Arc, time::Duration};
+
 use alloy_consensus::{SignableTransaction, TxEip1559, TxEnvelope};
 use alloy_eips::Encodable2718;
 use alloy_network::TxSignerSync;
 use alloy_provider::{Provider, ProviderBuilder};
 use futures::future::JoinAll;
-use rand::{rngs::StdRng, seq::IndexedRandom, Rng, SeedableRng};
+use rand::{Rng, SeedableRng, rngs::StdRng, seq::IndexedRandom};
 use reth_chainspec::{ChainSpecBuilder, MAINNET};
 use reth_e2e_test_utils::{
     setup, setup_engine, setup_engine_with_connection, transaction::TransactionTestContext,
@@ -12,7 +13,8 @@ use reth_e2e_test_utils::{
 };
 use reth_node_ethereum::EthereumNode;
 use reth_rpc_api::EthApiServer;
-use std::{sync::Arc, time::Duration};
+
+use crate::utils::{advance_with_random_transactions, eth_payload_attributes};
 
 #[tokio::test]
 async fn can_sync() -> eyre::Result<()> {

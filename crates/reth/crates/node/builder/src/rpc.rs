@@ -1,20 +1,20 @@
 //! Builder support for rpc components.
 
-pub use jsonrpsee::server::middleware::rpc::{RpcService, RpcServiceBuilder};
-pub use reth_engine_tree::tree::{BasicEngineValidator, EngineValidator};
-pub use reth_rpc_builder::{middleware::RethRpcMiddleware, Identity, Stack};
-pub use reth_trie_db::ChangesetCache;
-
-use crate::{
-    invalid_block_hook::InvalidBlockHookExt, ConfigureEngineEvm, ConsensusEngineEvent,
-    ConsensusEngineHandle,
+use std::{
+    fmt::{self, Debug},
+    future::Future,
+    ops::{Deref, DerefMut},
+    sync::Arc,
 };
+
 use alloy_rpc_types::engine::ClientVersionV1;
 use alloy_rpc_types_engine::ExecutionData;
-use jsonrpsee::{core::middleware::layer::Either, RpcModule};
+pub use jsonrpsee::server::middleware::rpc::{RpcService, RpcServiceBuilder};
+use jsonrpsee::{RpcModule, core::middleware::layer::Either};
 use parking_lot::Mutex;
 use reth_chain_state::CanonStateSubscriptions;
 use reth_chainspec::{ChainSpecProvider, EthChainSpec, EthereumHardforks, Hardforks};
+pub use reth_engine_tree::tree::{BasicEngineValidator, EngineValidator};
 use reth_node_api::{
     AddOnsContext, BlockTy, EngineApiValidator, EngineTypes, FullNodeComponents, FullNodeTypes,
     NodeAddOns, NodeTypes, PayloadTypes, PayloadValidator, PrimitivesTy, TreeConfig,
@@ -22,30 +22,31 @@ use reth_node_api::{
 use reth_node_core::{
     cli::config::RethTransactionPoolConfig,
     node_config::NodeConfig,
-    version::{version_metadata, CLIENT_CODE},
+    version::{CLIENT_CODE, version_metadata},
 };
 use reth_payload_builder::{PayloadBuilderHandle, PayloadStore};
 use reth_rpc::{
-    eth::{core::EthRpcConverterFor, DevSigner, EthApiTypes, FullEthApiServer},
     AdminApi,
+    eth::{DevSigner, EthApiTypes, FullEthApiServer, core::EthRpcConverterFor},
 };
-use reth_rpc_api::{eth::helpers::EthTransactions, IntoEngineApiRpcModule};
+use reth_rpc_api::{IntoEngineApiRpcModule, eth::helpers::EthTransactions};
+pub use reth_rpc_builder::{Identity, Stack, middleware::RethRpcMiddleware};
 use reth_rpc_builder::{
+    RpcModuleBuilder, RpcRegistryInner, RpcServerConfig, RpcServerHandle, TransportRpcModules,
     auth::{AuthRpcModule, AuthServerHandle},
     config::RethRpcServerConfig,
-    RpcModuleBuilder, RpcRegistryInner, RpcServerConfig, RpcServerHandle, TransportRpcModules,
 };
-use reth_rpc_engine_api::{capabilities::EngineCapabilities, EngineApi};
-use reth_rpc_eth_types::{cache::cache_new_blocks_task, EthConfig, EthStateCache};
+use reth_rpc_engine_api::{EngineApi, capabilities::EngineCapabilities};
+use reth_rpc_eth_types::{EthConfig, EthStateCache, cache::cache_new_blocks_task};
 use reth_tokio_util::EventSender;
 use reth_tracing::tracing::{debug, info};
-use std::{
-    fmt::{self, Debug},
-    future::Future,
-    ops::{Deref, DerefMut},
-    sync::Arc,
-};
+pub use reth_trie_db::ChangesetCache;
 use tokio::sync::oneshot;
+
+use crate::{
+    ConfigureEngineEvm, ConsensusEngineEvent, ConsensusEngineHandle,
+    invalid_block_hook::InvalidBlockHookExt,
+};
 
 /// Contains the handles to the spawned RPC servers.
 ///
@@ -1278,10 +1279,7 @@ pub trait PayloadValidatorBuilder<Node: FullNodeComponents>: Send + Sync + Clone
 /// for block execution, state validation, and fork handling.
 pub trait EngineValidatorBuilder<Node: FullNodeComponents>: Send + Sync + Clone {
     /// The tree validator type that will be used by the consensus engine.
-    type EngineValidator: EngineValidator<
-        <Node::Types as NodeTypes>::Payload,
-        <Node::Types as NodeTypes>::Primitives,
-    >;
+    type EngineValidator: EngineValidator<<Node::Types as NodeTypes>::Payload, <Node::Types as NodeTypes>::Primitives>;
 
     /// Builds the tree validator for the consensus engine.
     ///
@@ -1328,9 +1326,9 @@ where
     >,
     EV: PayloadValidatorBuilder<Node>,
     EV::Validator: reth_engine_primitives::PayloadValidator<
-        <Node::Types as NodeTypes>::Payload,
-        Block = BlockTy<Node::Types>,
-    >,
+            <Node::Types as NodeTypes>::Payload,
+            Block = BlockTy<Node::Types>,
+        >,
 {
     type EngineValidator = BasicEngineValidator<Node::Provider, Node::Evm, EV::Validator>;
 

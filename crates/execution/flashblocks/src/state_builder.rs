@@ -6,9 +6,8 @@ use alloy_consensus::{
 };
 use alloy_eips::Encodable2718;
 use alloy_evm::{
-    block::BlockExecutionError,
     Database as AlloyDatabase,
-    block::{StateDB, SystemCaller},
+    block::{BlockExecutionError, StateDB, SystemCaller},
 };
 use alloy_primitives::B256;
 use alloy_rpc_types::TransactionTrait;

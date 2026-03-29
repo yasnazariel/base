@@ -31,13 +31,17 @@ mod txpool;
 mod validation;
 mod web3;
 
-pub use testing::{TestingBuildBlockRequestV1, TESTING_BUILD_BLOCK_V1};
-
 /// re-export of all server traits
 pub use servers::*;
+pub use testing::{TESTING_BUILD_BLOCK_V1, TestingBuildBlockRequestV1};
 
 /// Aggregates all server traits.
 pub mod servers {
+    pub use reth_rpc_eth_api::{
+        self as eth, EthApiServer, EthBundleApiServer, EthCallBundleApiServer, EthFilterApiServer,
+        EthPubSubApiServer, L2EthApiExtServer,
+    };
+
     pub use crate::{
         admin::AdminApiServer,
         debug::{DebugApiServer, DebugExecutionWitnessApiServer},
@@ -54,10 +58,6 @@ pub mod servers {
         validation::BlockSubmissionValidationApiServer,
         web3::Web3ApiServer,
     };
-    pub use reth_rpc_eth_api::{
-        self as eth, EthApiServer, EthBundleApiServer, EthCallBundleApiServer, EthFilterApiServer,
-        EthPubSubApiServer, L2EthApiExtServer,
-    };
 }
 
 /// re-export of all client traits
@@ -67,6 +67,11 @@ pub use clients::*;
 /// Aggregates all client traits.
 #[cfg(feature = "client")]
 pub mod clients {
+    pub use reth_rpc_eth_api::{
+        EthApiClient, EthBundleApiClient, EthCallBundleApiClient, EthFilterApiClient,
+        L2EthApiExtServer,
+    };
+
     pub use crate::{
         admin::AdminApiClient,
         anvil::AnvilApiClient,
@@ -84,9 +89,5 @@ pub mod clients {
         txpool::TxPoolApiClient,
         validation::BlockSubmissionValidationApiClient,
         web3::Web3ApiClient,
-    };
-    pub use reth_rpc_eth_api::{
-        EthApiClient, EthBundleApiClient, EthCallBundleApiClient, EthFilterApiClient,
-        L2EthApiExtServer,
     };
 }

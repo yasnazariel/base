@@ -1,9 +1,10 @@
 //! Preserved sparse trie for reuse across payload validations.
 
+use std::sync::Arc;
+
 use alloy_primitives::B256;
 use parking_lot::Mutex;
 use reth_trie_sparse::SparseStateTrie;
-use std::sync::Arc;
 use tracing::debug;
 
 /// Type alias for the sparse trie type used in preservation.

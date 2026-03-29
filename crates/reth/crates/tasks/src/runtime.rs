@@ -7,31 +7,35 @@
 //! - [`BlockingTaskGuard`] for rate-limiting expensive operations (with `rayon` feature)
 
 #[cfg(feature = "rayon")]
-use crate::pool::{BlockingTaskGuard, BlockingTaskPool};
-use crate::{
-    metrics::{IncCounterOnDrop, TaskExecutorMetrics},
-    shutdown::{GracefulShutdown, GracefulShutdownGuard, Shutdown},
-    PanickedTaskError, TaskEvent, TaskManager,
-};
-use futures_util::{
-    future::{select, BoxFuture},
-    Future, FutureExt, TryFutureExt,
-};
-#[cfg(feature = "rayon")]
 use std::thread::available_parallelism;
 use std::{
     pin::pin,
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
     },
     time::Duration,
 };
-use tokio::{runtime::Handle, sync::mpsc::UnboundedSender, task::JoinHandle};
+
+use futures_util::{
+    Future, FutureExt, TryFutureExt,
+    future::{BoxFuture, select},
+};
+use tokio::{
+    runtime::{Handle, Runtime as TokioRuntime},
+    sync::mpsc::UnboundedSender,
+    task::JoinHandle,
+};
 use tracing::{debug, error};
 use tracing_futures::Instrument;
 
-use tokio::runtime::Runtime as TokioRuntime;
+#[cfg(feature = "rayon")]
+use crate::pool::{BlockingTaskGuard, BlockingTaskPool};
+use crate::{
+    PanickedTaskError, TaskEvent, TaskManager,
+    metrics::{IncCounterOnDrop, TaskExecutorMetrics},
+    shutdown::{GracefulShutdown, GracefulShutdownGuard, Shutdown},
+};
 
 /// Default thread keep-alive duration for the tokio runtime.
 pub const DEFAULT_THREAD_KEEP_ALIVE: Duration = Duration::from_secs(15);

@@ -1,12 +1,13 @@
 //! Contains connection-oriented interfaces.
 
-use futures::{ready, Stream, StreamExt};
 use std::{
     io,
     net::SocketAddr,
     pin::Pin,
     task::{Context, Poll},
 };
+
+use futures::{Stream, StreamExt, ready};
 use tokio::net::{TcpListener, TcpStream};
 
 /// A tcp connection listener.
@@ -101,12 +102,14 @@ impl Stream for TcpListenerStream {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::{
         net::{Ipv4Addr, SocketAddrV4},
         pin::pin,
     };
+
     use tokio::macros::support::poll_fn;
+
+    use super::*;
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_incoming_listener() {

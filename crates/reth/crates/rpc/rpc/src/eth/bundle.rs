@@ -1,26 +1,27 @@
 //! `Eth` bundle implementation and helpers.
 
-use alloy_consensus::{transaction::TxHashRef, EnvKzgSettings, Transaction as _};
+use std::sync::Arc;
+
+use alloy_consensus::{EnvKzgSettings, Transaction as _, transaction::TxHashRef};
 use alloy_eips::eip7840::BlobParams;
 use alloy_evm::env::BlockEnvironment;
-use alloy_primitives::{uint, Keccak256, U256};
+use alloy_primitives::{Keccak256, U256, uint};
 use alloy_rpc_types_mev::{EthCallBundle, EthCallBundleResponse, EthCallBundleTransactionResult};
 use jsonrpsee::core::RpcResult;
 use reth_chainspec::{ChainSpecProvider, EthChainSpec};
 use reth_evm::{ConfigureEvm, Evm};
 use reth_rpc_eth_api::{
-    helpers::{Call, EthTransactions, LoadPendingBlock},
     EthCallBundleApiServer, FromEthApiError, FromEvmError,
+    helpers::{Call, EthTransactions, LoadPendingBlock},
 };
-use reth_rpc_eth_types::{utils::recover_raw_transaction, EthApiError, RpcInvalidTransactionError};
+use reth_rpc_eth_types::{EthApiError, RpcInvalidTransactionError, utils::recover_raw_transaction};
 use reth_tasks::pool::BlockingTaskGuard;
 use reth_transaction_pool::{
     EthBlobTransactionSidecar, EthPoolTransaction, PoolPooledTx, PoolTransaction, TransactionPool,
 };
 use revm::{
-    context::Block, context_interface::result::ResultAndState, DatabaseCommit, DatabaseRef,
+    DatabaseCommit, DatabaseRef, context::Block, context_interface::result::ResultAndState,
 };
-use std::sync::Arc;
 
 /// `Eth` bundle implementation.
 pub struct EthBundle<Eth> {
@@ -68,13 +69,13 @@ where
             return Err(EthApiError::InvalidParams(
                 EthBundleError::EmptyBundleTransactions.to_string(),
             )
-            .into())
+            .into());
         }
         if block_number == 0 {
             return Err(EthApiError::InvalidParams(
                 EthBundleError::BundleMissingBlockNumber.to_string(),
             )
-            .into())
+            .into());
         }
 
         let transactions = txs
@@ -118,7 +119,7 @@ where
                     EthBundleError::Eip4844BlobGasExceeded(blob_params.max_blob_gas_per_block())
                         .to_string(),
                 )
-                .into())
+                .into());
             }
         }
 
@@ -128,7 +129,7 @@ where
             if gas_limit > evm_env.block_env.gas_limit() {
                 return Err(
                     EthApiError::InvalidTransaction(RpcInvalidTransactionError::GasTooHigh).into()
-                )
+                );
             }
             evm_env.block_env.inner_mut().gas_limit = gas_limit;
         }

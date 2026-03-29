@@ -1,12 +1,14 @@
 //! Implements the `GetBlockHeaders`, `GetBlockBodies`, `BlockHeaders`, and `BlockBodies` message
 //! types.
 
-use crate::HeadersDirection;
 use alloc::vec::Vec;
+
 use alloy_eips::BlockHashOrNumber;
 use alloy_primitives::B256;
 use alloy_rlp::{RlpDecodable, RlpDecodableWrapper, RlpEncodable, RlpEncodableWrapper};
 use reth_codecs_derive::{add_arbitrary_tests, generate_tests};
+
+use crate::HeadersDirection;
 
 /// A request for a peer to return block headers starting at the requested block.
 /// The peer must return at most [`limit`](#structfield.limit) headers.
@@ -91,16 +93,18 @@ impl<B> From<Vec<B>> for BlockBodies<B> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        message::RequestPair, BlockBodies, BlockHeaders, GetBlockBodies, GetBlockHeaders,
-        HeadersDirection,
-    };
+    use std::str::FromStr;
+
     use alloy_consensus::{Header, TxLegacy};
     use alloy_eips::BlockHashOrNumber;
-    use alloy_primitives::{hex, Signature, TxKind, U256};
+    use alloy_primitives::{Signature, TxKind, U256, hex};
     use alloy_rlp::{Decodable, Encodable};
     use reth_ethereum_primitives::{BlockBody, Transaction, TransactionSigned};
-    use std::str::FromStr;
+
+    use crate::{
+        BlockBodies, BlockHeaders, GetBlockBodies, GetBlockHeaders, HeadersDirection,
+        message::RequestPair,
+    };
 
     #[test]
     fn decode_hash() {

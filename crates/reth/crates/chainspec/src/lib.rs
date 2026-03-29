@@ -22,21 +22,19 @@ mod info;
 mod spec;
 
 pub use alloy_chains::{Chain, ChainKind, NamedChain};
-/// Re-export for convenience
-pub use reth_ethereum_forks::*;
-
 pub use alloy_evm::EvmLimitParams;
 pub use api::EthChainSpec;
 pub use info::ChainInfo;
+/// Re-export for convenience
+pub use reth_ethereum_forks::*;
+use reth_primitives_traits::sync::OnceLock;
 #[cfg(any(test, feature = "test-utils"))]
 pub use spec::test_fork_ids;
 pub use spec::{
-    blob_params_to_schedule, create_chain_config, mainnet_chain_config, make_genesis_header,
-    BaseFeeParams, BaseFeeParamsKind, ChainSpec, ChainSpecBuilder, ChainSpecProvider,
-    DepositContract, ForkBaseFeeParams, DEV, HOLESKY, HOODI, MAINNET, SEPOLIA,
+    BaseFeeParams, BaseFeeParamsKind, ChainSpec, ChainSpecBuilder, ChainSpecProvider, DEV,
+    DepositContract, ForkBaseFeeParams, HOLESKY, HOODI, MAINNET, SEPOLIA, blob_params_to_schedule,
+    create_chain_config, mainnet_chain_config, make_genesis_header,
 };
-
-use reth_primitives_traits::sync::OnceLock;
 
 /// Simple utility to create a thread-safe sync cell with a value set.
 pub fn once_cell_set<T>(value: T) -> OnceLock<T> {
@@ -47,10 +45,12 @@ pub fn once_cell_set<T>(value: T) -> OnceLock<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::str::FromStr;
+
     use alloy_primitives::U256;
     use alloy_rlp::Encodable;
-    use std::str::FromStr;
+
+    use super::*;
 
     #[test]
     fn test_id() {
@@ -150,9 +150,10 @@ mod tests {
 
     #[test]
     fn test_centralized_base_fee_calculation() {
-        use crate::{ChainSpec, EthChainSpec};
         use alloy_consensus::Header;
         use alloy_eips::eip1559::INITIAL_BASE_FEE;
+
+        use crate::{ChainSpec, EthChainSpec};
 
         fn parent_header() -> Header {
             Header {

@@ -1,9 +1,10 @@
 //! Codec for reading raw block bodies from a file.
 
-use crate::file_client::FileClientError;
 use alloy_primitives::bytes::{Buf, BytesMut};
 use alloy_rlp::{Decodable, Encodable};
 use tokio_util::codec::{Decoder, Encoder};
+
+use crate::file_client::FileClientError;
 
 /// Codec for reading raw block bodies from a file.
 ///
@@ -32,7 +33,7 @@ impl<B: Decodable> Decoder for BlockFileCodec<B> {
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         if src.is_empty() {
-            return Ok(None)
+            return Ok(None);
         }
 
         let buf_slice = &mut src.as_ref();

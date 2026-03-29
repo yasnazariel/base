@@ -1,19 +1,5 @@
 //! clap [Args](clap::Args) for RPC related arguments.
 
-use crate::args::{
-    types::{MaxU32, ZeroAsNoneU64},
-    GasPriceOracleArgs, RpcStateCacheArgs,
-};
-use alloy_primitives::map::AddressSet;
-use alloy_rpc_types_engine::JwtSecret;
-use clap::{
-    builder::{PossibleValue, RangedU64ValueParser, Resettable, TypedValueParser},
-    Arg, Args, Command,
-};
-use rand::Rng;
-use reth_cli_util::{parse_duration_from_secs_or_ms, parse_ether_value};
-use reth_rpc_eth_types::builder::config::PendingBlockKind;
-use reth_rpc_server_types::{constants, RethRpcModule, RpcModuleSelection};
 use std::{
     ffi::OsStr,
     net::{IpAddr, Ipv4Addr},
@@ -21,9 +7,24 @@ use std::{
     sync::OnceLock,
     time::Duration,
 };
+
+use alloy_primitives::map::AddressSet;
+use alloy_rpc_types_engine::JwtSecret;
+use clap::{
+    Arg, Args, Command,
+    builder::{PossibleValue, RangedU64ValueParser, Resettable, TypedValueParser},
+};
+use rand::Rng;
+use reth_cli_util::{parse_duration_from_secs_or_ms, parse_ether_value};
+use reth_rpc_eth_types::builder::config::PendingBlockKind;
+use reth_rpc_server_types::{RethRpcModule, RpcModuleSelection, constants};
 use url::Url;
 
 use super::types::MaxOr;
+use crate::args::{
+    GasPriceOracleArgs, RpcStateCacheArgs,
+    types::{MaxU32, ZeroAsNoneU64},
+};
 
 /// Global static RPC server defaults
 static RPC_SERVER_DEFAULTS: OnceLock<DefaultRpcServerArgs> = OnceLock::new();
@@ -909,8 +910,9 @@ impl TypedValueParser for RpcModuleSelectionValueParser {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use clap::{Args, Parser};
+
+    use super::*;
 
     /// A helper type to parse Args more easily
     #[derive(Parser)]

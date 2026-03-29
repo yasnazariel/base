@@ -11,24 +11,24 @@
 //! 2. Prewarming tasks execute transactions in parallel using shared caches
 //! 3. When actual block execution happens, it benefits from the warmed cache
 
-use crate::tree::{
-    cached_state::{CachedStateProvider, SavedCache},
-    payload_processor::{
-        bal::{self, total_slots, BALSlotIter},
-        multiproof::{MultiProofMessage, VersionedMultiProofTargets},
-        PayloadExecutionCache,
+use std::{
+    ops::Range,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+        mpsc::{self, Receiver, Sender, channel},
     },
-    precompile_cache::{CachedPrecompile, PrecompileCacheMap},
-    ExecutionEnv, StateProviderBuilder,
+    time::Instant,
 };
+
 use alloy_consensus::transaction::TxHashRef;
 use alloy_eip7928::BlockAccessList;
 use alloy_eips::eip4895::Withdrawal;
 use alloy_evm::Database;
-use alloy_primitives::{keccak256, map::B256Set, B256};
+use alloy_primitives::{B256, keccak256, map::B256Set};
 use crossbeam_channel::{Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
 use metrics::{Counter, Gauge, Histogram};
-use reth_evm::{execute::ExecutableTxFor, ConfigureEvm, Evm, EvmFor, RecoveredTx, SpecFor};
+use reth_evm::{ConfigureEvm, Evm, EvmFor, RecoveredTx, SpecFor, execute::ExecutableTxFor};
 use reth_metrics::Metrics;
 use reth_primitives_traits::NodePrimitives;
 use reth_provider::{
@@ -38,16 +38,18 @@ use reth_provider::{
 use reth_revm::{database::StateProviderDatabase, state::EvmState};
 use reth_tasks::Runtime;
 use reth_trie::MultiProofTargets;
-use std::{
-    ops::Range,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        mpsc::{self, channel, Receiver, Sender},
-        Arc,
+use tracing::{Span, debug, debug_span, instrument, trace, warn};
+
+use crate::tree::{
+    ExecutionEnv, StateProviderBuilder,
+    cached_state::{CachedStateProvider, SavedCache},
+    payload_processor::{
+        PayloadExecutionCache,
+        bal::{self, BALSlotIter, total_slots},
+        multiproof::{MultiProofMessage, VersionedMultiProofTargets},
     },
-    time::Instant,
+    precompile_cache::{CachedPrecompile, PrecompileCacheMap},
 };
-use tracing::{debug, debug_span, instrument, trace, warn, Span};
 
 /// Determines the prewarming mode: transaction-based, BAL-based, or skipped.
 #[derive(Debug)]
@@ -441,7 +443,7 @@ where
 
                     if finished_execution {
                         // all tasks are done, we can exit, which will save caches and exit
-                        break
+                        break;
                     }
                 }
                 PrewarmTaskEvent::FinishedTxExecution { executed_transactions } => {
@@ -453,7 +455,7 @@ where
 
                     if final_execution_outcome.is_some() {
                         // all tasks are done, we can exit, which will save caches and exit
-                        break
+                        break;
                     }
                 }
             }
@@ -527,7 +529,7 @@ where
                     %err,
                     "Failed to build state provider in prewarm thread"
                 );
-                return None
+                return None;
             }
         };
 
@@ -591,7 +593,7 @@ where
     {
         let Some((mut evm, metrics, terminate_execution, v2_proofs_enabled)) = self.evm_for_ctx()
         else {
-            return
+            return;
         };
 
         while let Ok(IndexedTransaction { index, tx }) = txs.recv() {
@@ -607,7 +609,7 @@ where
 
             // If the task was cancelled, stop execution, and exit.
             if terminate_execution.load(Ordering::Relaxed) {
-                break
+                break;
             }
 
             let (tx_env, tx) = tx.into_parts();
@@ -624,14 +626,14 @@ where
                     // Track transaction execution errors
                     metrics.transaction_errors.increment(1);
                     // skip error because we can ignore these errors and continue with the next tx
-                    continue
+                    continue;
                 }
             };
             metrics.execution_duration.record(start.elapsed());
 
             // If the task was cancelled, stop execution, and exit.
             if terminate_execution.load(Ordering::Relaxed) {
-                break
+                break;
             }
 
             // Only send outcome for transactions after the first txn
@@ -807,7 +809,7 @@ fn multiproof_targets_legacy_from_state(state: EvmState) -> (VersionedMultiProof
         //
         // See: https://eips.ethereum.org/EIPS/eip-6780
         if !account.is_touched() || account.is_selfdestructed() {
-            continue
+            continue;
         }
 
         let mut storage_set =
@@ -815,7 +817,7 @@ fn multiproof_targets_legacy_from_state(state: EvmState) -> (VersionedMultiProof
         for (key, slot) in account.storage {
             // do nothing if unchanged
             if !slot.is_changed() {
-                continue
+                continue;
             }
 
             storage_set.insert(keccak256(B256::new(key.to_be_bytes())));
@@ -845,7 +847,7 @@ fn multiproof_targets_v2_from_state(state: EvmState) -> (VersionedMultiProofTarg
         //
         // See: https://eips.ethereum.org/EIPS/eip-6780
         if !account.is_touched() || account.is_selfdestructed() {
-            continue
+            continue;
         }
 
         let hashed_address = keccak256(addr);
@@ -855,7 +857,7 @@ fn multiproof_targets_v2_from_state(state: EvmState) -> (VersionedMultiProofTarg
         for (key, slot) in account.storage {
             // do nothing if unchanged
             if !slot.is_changed() {
-                continue
+                continue;
             }
 
             let hashed_slot = keccak256(B256::new(key.to_be_bytes()));

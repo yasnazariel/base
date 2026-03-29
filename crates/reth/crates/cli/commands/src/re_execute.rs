@@ -1,30 +1,32 @@
 //! Re-execute blocks from database in parallel.
 
-use crate::common::{
-    AccessRights, CliComponentsBuilder, CliNodeComponents, CliNodeTypes, Environment,
-    EnvironmentArgs,
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
 };
-use alloy_consensus::{transaction::TxHashRef, BlockHeader, TxReceipt};
+
+use alloy_consensus::{BlockHeader, TxReceipt, transaction::TxHashRef};
 use clap::Parser;
 use eyre::WrapErr;
 use reth_chainspec::{EthChainSpec, EthereumHardforks, Hardforks};
 use reth_cli::chainspec::ChainSpecParser;
 use reth_cli_util::cancellation::CancellationToken;
 use reth_consensus::FullConsensus;
-use reth_evm::{execute::Executor, ConfigureEvm};
-use reth_primitives_traits::{format_gas_throughput, BlockBody, GotExpected};
+use reth_evm::{ConfigureEvm, execute::Executor};
+use reth_primitives_traits::{BlockBody, GotExpected, format_gas_throughput};
 use reth_provider::{
     BlockNumReader, BlockReader, ChainSpecProvider, DatabaseProviderFactory, ReceiptProvider,
     StaticFileProviderFactory, TransactionVariant,
 };
 use reth_revm::database::StateProviderDatabase;
 use reth_stages::stages::calculate_gas_used_from_headers;
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
 use tokio::{sync::mpsc, task::JoinSet};
 use tracing::*;
+
+use crate::common::{
+    AccessRights, CliComponentsBuilder, CliNodeComponents, CliNodeTypes, Environment,
+    EnvironmentArgs,
+};
 
 /// `reth re-execute` command
 ///
@@ -132,7 +134,7 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + Hardforks + EthereumHardforks>
                 'blocks: for block in start_block..end_block {
                     if cancellation.is_cancelled() {
                         // exit if the program is being terminated
-                        break
+                        break;
                     }
 
                     let block = provider_factory
@@ -145,9 +147,9 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + Hardforks + EthereumHardforks>
                             if skip_invalid_blocks {
                                 executor = evm_config.batch_executor(db_at(block.number()));
                                 let _ = info_tx.send((block, eyre::Report::new(err)));
-                                continue
+                                continue;
                             }
-                            return Err(err.into())
+                            return Err(err.into());
                         }
                     };
 
@@ -172,14 +174,14 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + Hardforks + EthereumHardforks>
                                     ?tx_hash,
                                     "Invalid receipt"
                                 );
-                                let expected_gas_used = correct_receipt.cumulative_gas_used() -
-                                    if i == 0 {
+                                let expected_gas_used = correct_receipt.cumulative_gas_used()
+                                    - if i == 0 {
                                         0
                                     } else {
                                         correct_receipts[i - 1].cumulative_gas_used()
                                     };
-                                let got_gas_used = receipt.cumulative_gas_used() -
-                                    if i == 0 {
+                                let got_gas_used = receipt.cumulative_gas_used()
+                                    - if i == 0 {
                                         0
                                     } else {
                                         result.receipts[i - 1].cumulative_gas_used()
@@ -208,8 +210,8 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + Hardforks + EthereumHardforks>
                     let _ = stats_tx.send(block.gas_used());
 
                     // Reset DB once in a while to avoid OOM or read tx timeouts
-                    if executor.size_hint() > 1_000_000 ||
-                        executor_created.elapsed() > executor_lifetime
+                    if executor.size_hint() > 1_000_000
+                        || executor_created.elapsed() > executor_lifetime
                     {
                         executor = evm_config.batch_executor(db_at(block.number()));
                         executor_created = Instant::now();

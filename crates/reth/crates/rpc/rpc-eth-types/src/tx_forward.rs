@@ -1,9 +1,10 @@
 //! Consist of types adjacent to the fee history cache and its configs
 
+use std::fmt::Debug;
+
 use alloy_rpc_client::RpcClient;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
-use std::fmt::Debug;
 
 /// Configuration for the transaction forwarder.
 #[derive(Debug, PartialEq, Eq, Clone, Default, Serialize, Deserialize)]

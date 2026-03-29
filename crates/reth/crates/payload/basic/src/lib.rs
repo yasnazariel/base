@@ -8,7 +8,16 @@
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-use crate::metrics::PayloadBuilderMetrics;
+use std::{
+    fmt,
+    future::Future,
+    ops::Deref,
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll},
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
+
 use alloy_eips::merge::SLOT_DURATION;
 use alloy_primitives::{B256, U256};
 use futures_core::ready;
@@ -21,20 +30,13 @@ use reth_primitives_traits::{HeaderTy, NodePrimitives, SealedHeader};
 use reth_revm::{cached::CachedReads, cancelled::CancelOnDrop};
 use reth_storage_api::{BlockReaderIdExt, StateProviderFactory};
 use reth_tasks::TaskSpawner;
-use std::{
-    fmt,
-    future::Future,
-    ops::Deref,
-    pin::Pin,
-    sync::Arc,
-    task::{Context, Poll},
-    time::{Duration, SystemTime, UNIX_EPOCH},
-};
 use tokio::{
-    sync::{oneshot, Semaphore},
+    sync::{Semaphore, oneshot},
     time::{Interval, Sleep},
 };
 use tracing::{debug, trace, warn};
+
+use crate::metrics::PayloadBuilderMetrics;
 
 mod better_payload_emitter;
 mod metrics;
@@ -377,7 +379,7 @@ where
         // check if the deadline is reached
         if this.deadline.as_mut().poll(cx).is_ready() {
             trace!(target: "payload_builder", "payload building deadline reached");
-            return Poll::Ready(Ok(()))
+            return Poll::Ready(Ok(()));
         }
 
         // check if the interval is reached
@@ -587,25 +589,25 @@ where
         let this = self.get_mut();
 
         // check if there is a better payload before returning the best payload
-        if let Some(fut) = Pin::new(&mut this.maybe_better).as_pin_mut() &&
-            let Poll::Ready(res) = fut.poll(cx)
+        if let Some(fut) = Pin::new(&mut this.maybe_better).as_pin_mut()
+            && let Poll::Ready(res) = fut.poll(cx)
         {
             this.maybe_better = None;
             if let Ok(Some(payload)) = res.map(|out| out.into_payload()).inspect_err(
                 |err| warn!(target: "payload_builder", %err, "failed to resolve pending payload"),
             ) {
                 debug!(target: "payload_builder", "resolving better payload");
-                return Poll::Ready(Ok(payload))
+                return Poll::Ready(Ok(payload));
             }
         }
 
         if let Some(best) = this.best_payload.take() {
             debug!(target: "payload_builder", "resolving best payload");
-            return Poll::Ready(Ok(best))
+            return Poll::Ready(Ok(best));
         }
 
-        if let Some(fut) = Pin::new(&mut this.empty_payload).as_pin_mut() &&
-            let Poll::Ready(res) = fut.poll(cx)
+        if let Some(fut) = Pin::new(&mut this.empty_payload).as_pin_mut()
+            && let Poll::Ready(res) = fut.poll(cx)
         {
             this.empty_payload = None;
             return match res {
@@ -618,11 +620,11 @@ where
                     Poll::Ready(res)
                 }
                 Err(err) => Poll::Ready(Err(err.into())),
-            }
+            };
         }
 
         if this.is_empty() {
-            return Poll::Ready(Err(PayloadBuilderError::MissingPayload))
+            return Poll::Ready(Err(PayloadBuilderError::MissingPayload));
         }
 
         Poll::Pending
@@ -897,11 +899,7 @@ impl<Payload> fmt::Debug for MissingPayloadBehaviour<Payload> {
 /// This compares the total fees of the blocks, higher is better.
 #[inline(always)]
 pub fn is_better_payload<T: BuiltPayload>(best_payload: Option<&T>, new_fees: U256) -> bool {
-    if let Some(best_payload) = best_payload {
-        new_fees > best_payload.fees()
-    } else {
-        true
-    }
+    if let Some(best_payload) = best_payload { new_fees > best_payload.fees() } else { true }
 }
 
 /// Returns the duration until the given unix timestamp in seconds.

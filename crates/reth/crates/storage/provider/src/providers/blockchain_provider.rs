@@ -1,19 +1,12 @@
-use crate::{
-    providers::{
-        ConsistentProvider, ProviderNodeTypes, RocksDBProvider, StaticFileProvider,
-        StaticFileProviderRWRefMut,
-    },
-    AccountReader, BlockHashReader, BlockIdReader, BlockNumReader, BlockReader, BlockReaderIdExt,
-    BlockSource, CanonChainTracker, CanonStateNotifications, CanonStateSubscriptions,
-    ChainSpecProvider, ChainStateBlockReader, ChangeSetReader, DatabaseProviderFactory,
-    HashedPostStateProvider, HeaderProvider, ProviderError, ProviderFactory, PruneCheckpointReader,
-    ReceiptProvider, ReceiptProviderIdExt, RocksDBProviderFactory, StageCheckpointReader,
-    StateProviderBox, StateProviderFactory, StateReader, StaticFileProviderFactory,
-    TransactionVariant, TransactionsProvider,
+use std::{
+    ops::{RangeBounds, RangeInclusive},
+    sync::Arc,
+    time::Instant,
 };
+
 use alloy_consensus::transaction::TransactionMeta;
 use alloy_eips::{BlockHashOrNumber, BlockId, BlockNumHash, BlockNumberOrTag};
-use alloy_primitives::{Address, BlockHash, BlockNumber, TxHash, TxNumber, B256};
+use alloy_primitives::{Address, B256, BlockHash, BlockNumber, TxHash, TxNumber};
 use alloy_rpc_types_engine::ForkchoiceState;
 use reth_chain_state::{
     BlockState, CanonicalInMemoryState, ForkChoiceNotifications, ForkChoiceSubscriptions,
@@ -33,12 +26,21 @@ use reth_storage_api::{
 use reth_storage_errors::provider::ProviderResult;
 use reth_trie::{HashedPostState, KeccakKeyHasher};
 use revm_database::BundleState;
-use std::{
-    ops::{RangeBounds, RangeInclusive},
-    sync::Arc,
-    time::Instant,
-};
 use tracing::trace;
+
+use crate::{
+    AccountReader, BlockHashReader, BlockIdReader, BlockNumReader, BlockReader, BlockReaderIdExt,
+    BlockSource, CanonChainTracker, CanonStateNotifications, CanonStateSubscriptions,
+    ChainSpecProvider, ChainStateBlockReader, ChangeSetReader, DatabaseProviderFactory,
+    HashedPostStateProvider, HeaderProvider, ProviderError, ProviderFactory, PruneCheckpointReader,
+    ReceiptProvider, ReceiptProviderIdExt, RocksDBProviderFactory, StageCheckpointReader,
+    StateProviderBox, StateProviderFactory, StateReader, StaticFileProviderFactory,
+    TransactionVariant, TransactionsProvider,
+    providers::{
+        ConsistentProvider, ProviderNodeTypes, RocksDBProvider, StaticFileProvider,
+        StaticFileProviderRWRefMut,
+    },
+};
 
 /// The main type for interacting with the blockchain.
 ///
@@ -186,12 +188,16 @@ impl<N: ProviderNodeTypes> RocksDBProviderFactory for BlockchainProvider<N> {
 
     #[cfg(all(unix, feature = "rocksdb"))]
     fn set_pending_rocksdb_batch(&self, _batch: rocksdb::WriteBatchWithTransaction<true>) {
-        unimplemented!("BlockchainProvider wraps ProviderFactory - use DatabaseProvider::set_pending_rocksdb_batch instead")
+        unimplemented!(
+            "BlockchainProvider wraps ProviderFactory - use DatabaseProvider::set_pending_rocksdb_batch instead"
+        )
     }
 
     #[cfg(all(unix, feature = "rocksdb"))]
     fn commit_pending_rocksdb_batches(&self) -> ProviderResult<()> {
-        unimplemented!("BlockchainProvider wraps ProviderFactory - use DatabaseProvider::commit_pending_rocksdb_batches instead")
+        unimplemented!(
+            "BlockchainProvider wraps ProviderFactory - use DatabaseProvider::commit_pending_rocksdb_batches instead"
+        )
     }
 }
 
@@ -602,8 +608,8 @@ impl<N: ProviderNodeTypes> StateProviderFactory for BlockchainProvider<N> {
     }
 
     fn pending_state_by_hash(&self, block_hash: B256) -> ProviderResult<Option<StateProviderBox>> {
-        if let Some(pending) = self.canonical_in_memory_state.pending_state() &&
-            pending.hash() == block_hash
+        if let Some(pending) = self.canonical_in_memory_state.pending_state()
+            && pending.hash() == block_hash
         {
             return Ok(Some(Box::new(self.block_state_provider(&pending)?)));
         }
@@ -612,7 +618,7 @@ impl<N: ProviderNodeTypes> StateProviderFactory for BlockchainProvider<N> {
 
     fn maybe_pending(&self) -> ProviderResult<Option<StateProviderBox>> {
         if let Some(pending) = self.canonical_in_memory_state.pending_state() {
-            return Ok(Some(Box::new(self.block_state_provider(&pending)?)))
+            return Ok(Some(Box::new(self.block_state_provider(&pending)?)));
         }
 
         Ok(None)
@@ -797,21 +803,19 @@ impl<N: ProviderNodeTypes> StateReader for BlockchainProvider<N> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        providers::BlockchainProvider,
-        test_utils::{
-            create_test_provider_factory, create_test_provider_factory_with_chain_spec,
-            MockNodeTypesWithDB,
-        },
-        BlockWriter, CanonChainTracker, ProviderFactory, SaveBlocksMode,
+    use std::{
+        collections::BTreeMap,
+        ops::{Bound, Range, RangeBounds},
+        sync::Arc,
     };
+
     use alloy_eips::{BlockHashOrNumber, BlockNumHash, BlockNumberOrTag};
-    use alloy_primitives::{BlockNumber, TxNumber, B256};
+    use alloy_primitives::{B256, BlockNumber, TxNumber};
     use itertools::Itertools;
     use rand::Rng;
     use reth_chain_state::{
-        test_utils::TestBlockBuilder, CanonStateNotification, CanonStateSubscriptions,
-        CanonicalInMemoryState, ExecutedBlock, NewCanonicalChain,
+        CanonStateNotification, CanonStateSubscriptions, CanonicalInMemoryState, ExecutedBlock,
+        NewCanonicalChain, test_utils::TestBlockBuilder,
     };
     use reth_chainspec::{ChainSpec, MAINNET};
     use reth_db_api::models::{AccountBeforeTx, StoredBlockBodyIndices};
@@ -828,14 +832,18 @@ mod tests {
         StateWriteConfig, StateWriter, TransactionVariant, TransactionsProvider,
     };
     use reth_testing_utils::generators::{
-        self, random_block, random_block_range, random_changeset_range, random_eoa_accounts,
-        random_receipt, BlockParams, BlockRangeParams,
+        self, BlockParams, BlockRangeParams, random_block, random_block_range,
+        random_changeset_range, random_eoa_accounts, random_receipt,
     };
     use revm_database::{BundleState, OriginalValuesKnown};
-    use std::{
-        collections::BTreeMap,
-        ops::{Bound, Range, RangeBounds},
-        sync::Arc,
+
+    use crate::{
+        BlockWriter, CanonChainTracker, ProviderFactory, SaveBlocksMode,
+        providers::BlockchainProvider,
+        test_utils::{
+            MockNodeTypesWithDB, create_test_provider_factory,
+            create_test_provider_factory_with_chain_spec,
+        },
     };
 
     const TEST_BLOCKS_COUNT: usize = 5;
@@ -1008,8 +1016,8 @@ mod tests {
     ) {
         let hook_provider = provider.clone();
         provider.database.db_ref().set_post_transaction_hook(Box::new(move || {
-            if let Some(state) = hook_provider.canonical_in_memory_state.head_state() &&
-                state.anchor().number + 1 == block_number
+            if let Some(state) = hook_provider.canonical_in_memory_state.head_state()
+                && state.anchor().number + 1 == block_number
             {
                 let mut lowest_memory_block =
                     state.parent_state_chain().last().expect("qed").block();
@@ -1589,10 +1597,9 @@ mod tests {
         let block_hash = database_block.hash();
 
         assert!(!receipts.get(database_block.number as usize).unwrap().is_empty());
-        assert!(!provider
-            .receipts_by_number_or_tag(database_block.number.into())?
-            .unwrap()
-            .is_empty());
+        assert!(
+            !provider.receipts_by_number_or_tag(database_block.number.into())?.unwrap().is_empty()
+        );
 
         assert_eq!(
             provider.receipts_by_block_id(block_number.into())?.unwrap(),
@@ -1636,10 +1643,9 @@ mod tests {
         let finalized_block = in_memory_blocks.get(in_memory_block_count - 3).unwrap().clone();
 
         assert!(!receipts.get(database_block.number as usize).unwrap().is_empty());
-        assert!(!provider
-            .receipts_by_number_or_tag(database_block.number.into())?
-            .unwrap()
-            .is_empty());
+        assert!(
+            !provider.receipts_by_number_or_tag(database_block.number.into())?.unwrap().is_empty()
+        );
 
         assert_eq!(
             provider.receipts_by_number_or_tag(database_block.number.into())?.unwrap(),
@@ -1722,36 +1728,38 @@ mod tests {
 
         let in_memory_changesets = in_memory_changesets.into_iter().next().unwrap();
         let chain = NewCanonicalChain::Commit {
-            new: vec![in_memory_blocks
-                .first()
-                .map(|block| {
-                    let senders = block.senders().expect("failed to recover senders");
-                    ExecutedBlock {
-                        recovered_block: Arc::new(RecoveredBlock::new_sealed(
-                            block.clone(),
-                            senders,
-                        )),
-                        execution_output: Arc::new(BlockExecutionOutput {
-                            state: BundleState::new(
-                                in_memory_state.into_iter().map(|(address, (account, _))| {
-                                    (address, None, Some(account.into()), Default::default())
-                                }),
-                                [in_memory_changesets.iter().map(|(address, account, _)| {
-                                    (*address, Some(Some((*account).into())), Vec::new())
-                                })],
-                                [],
-                            ),
-                            result: BlockExecutionResult {
-                                receipts: Default::default(),
-                                requests: Default::default(),
-                                gas_used: 0,
-                                blob_gas_used: 0,
-                            },
-                        }),
-                        ..Default::default()
-                    }
-                })
-                .unwrap()],
+            new: vec![
+                in_memory_blocks
+                    .first()
+                    .map(|block| {
+                        let senders = block.senders().expect("failed to recover senders");
+                        ExecutedBlock {
+                            recovered_block: Arc::new(RecoveredBlock::new_sealed(
+                                block.clone(),
+                                senders,
+                            )),
+                            execution_output: Arc::new(BlockExecutionOutput {
+                                state: BundleState::new(
+                                    in_memory_state.into_iter().map(|(address, (account, _))| {
+                                        (address, None, Some(account.into()), Default::default())
+                                    }),
+                                    [in_memory_changesets.iter().map(|(address, account, _)| {
+                                        (*address, Some(Some((*account).into())), Vec::new())
+                                    })],
+                                    [],
+                                ),
+                                result: BlockExecutionResult {
+                                    receipts: Default::default(),
+                                    requests: Default::default(),
+                                    gas_used: 0,
+                                    blob_gas_used: 0,
+                                },
+                            }),
+                            ..Default::default()
+                        }
+                    })
+                    .unwrap(),
+            ],
         };
         provider.canonical_in_memory_state.update_chain(chain);
 

@@ -14,27 +14,28 @@
 pub mod codecs;
 
 mod raw;
-pub use raw::{RawDupSort, RawKey, RawTable, RawValue, TableRawRow};
+use std::fmt;
 
-use crate::{
-    models::{
-        accounts::BlockNumberAddress,
-        blocks::{HeaderHash, StoredBlockOmmers},
-        storage_sharded_key::StorageShardedKey,
-        AccountBeforeTx, ClientVersion, CompactU256, IntegerList, ShardedKey,
-        StoredBlockBodyIndices, StoredBlockWithdrawals,
-    },
-    table::{Decode, DupSort, Encode, Table, TableInfo},
-};
 use alloy_consensus::Header;
-use alloy_primitives::{Address, BlockHash, BlockNumber, TxHash, TxNumber, B256};
+use alloy_primitives::{Address, B256, BlockHash, BlockNumber, TxHash, TxNumber};
+pub use raw::{RawDupSort, RawKey, RawTable, RawValue, TableRawRow};
 use reth_ethereum_primitives::{Receipt, TransactionSigned};
 use reth_primitives_traits::{Account, Bytecode, StorageEntry};
 use reth_prune_types::{PruneCheckpoint, PruneSegment};
 use reth_stages_types::StageCheckpoint;
 use reth_trie_common::{BranchNodeCompact, StorageTrieEntry, StoredNibbles, StoredNibblesSubKey};
 use serde::{Deserialize, Serialize};
-use std::fmt;
+
+use crate::{
+    models::{
+        AccountBeforeTx, ClientVersion, CompactU256, IntegerList, ShardedKey,
+        StoredBlockBodyIndices, StoredBlockWithdrawals,
+        accounts::BlockNumberAddress,
+        blocks::{HeaderHash, StoredBlockOmmers},
+        storage_sharded_key::StorageShardedKey,
+    },
+    table::{Decode, DupSort, Encode, Table, TableInfo},
+};
 
 /// Enum for the types of tables present in libmdbx.
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
@@ -576,8 +577,9 @@ pub type StageId = String;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::str::FromStr;
+
+    use super::*;
 
     #[test]
     fn parse_table_from_str() {

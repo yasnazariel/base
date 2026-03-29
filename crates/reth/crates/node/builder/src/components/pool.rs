@@ -1,16 +1,18 @@
 //! Pool component for the node builder.
 
-use crate::{BuilderContext, FullNodeTypes};
+use std::future::Future;
+
 use alloy_primitives::map::AddressSet;
 use reth_chain_state::CanonStateSubscriptions;
 use reth_chainspec::EthereumHardforks;
 use reth_node_api::{BlockTy, NodeTypes, TxTy};
 use reth_transaction_pool::{
-    blobstore::DiskFileBlobStore, BlobStore, CoinbaseTipOrdering, PoolConfig, PoolTransaction,
-    SubPoolLimit, TransactionOrdering, TransactionPool, TransactionValidationTaskExecutor,
-    TransactionValidator,
+    BlobStore, CoinbaseTipOrdering, PoolConfig, PoolTransaction, SubPoolLimit, TransactionOrdering,
+    TransactionPool, TransactionValidationTaskExecutor, TransactionValidator,
+    blobstore::DiskFileBlobStore,
 };
-use std::future::Future;
+
+use crate::{BuilderContext, FullNodeTypes};
 
 /// A type that knows how to build the transaction pool.
 pub trait PoolBuilder<Node: FullNodeTypes, Evm>: Send {
@@ -320,8 +322,9 @@ impl<Node: FullNodeTypes, V: std::fmt::Debug> std::fmt::Debug for TxPoolBuilder<
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use reth_transaction_pool::PoolConfig;
+
+    use super::*;
 
     #[test]
     fn test_pool_builder_config_overrides_apply() {

@@ -1,7 +1,16 @@
 //! Execution cache implementation for block processing.
+use std::{
+    mem::size_of,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, AtomicUsize, Ordering},
+    },
+    time::Duration,
+};
+
 use alloy_primitives::{
+    Address, B256, StorageKey, StorageValue,
     map::{DefaultHashBuilder, FbBuildHasher},
-    Address, StorageKey, StorageValue, B256,
 };
 use fixed_cache::{AnyRef, CacheConfig, Stats, StatsHandler};
 use metrics::{Counter, Gauge, Histogram};
@@ -15,18 +24,10 @@ use reth_provider::{
 };
 use reth_revm::db::BundleState;
 use reth_trie::{
-    updates::TrieUpdates, AccountProof, HashedPostState, HashedStorage, MultiProof,
-    MultiProofTargets, StorageMultiProof, StorageProof, TrieInput,
+    AccountProof, HashedPostState, HashedStorage, MultiProof, MultiProofTargets, StorageMultiProof,
+    StorageProof, TrieInput, updates::TrieUpdates,
 };
 use revm_primitives::eip7907::MAX_CODE_SIZE;
-use std::{
-    mem::size_of,
-    sync::{
-        atomic::{AtomicU64, AtomicUsize, Ordering},
-        Arc,
-    },
-    time::Duration,
-};
 use tracing::{debug_span, instrument, trace, warn};
 
 /// Alignment in bytes for entries in the fixed-cache.
@@ -585,11 +586,7 @@ impl ExecutionCache {
             f()
         })?;
 
-        if miss {
-            Ok(CachedStatus::NotCached(result))
-        } else {
-            Ok(CachedStatus::Cached(result))
-        }
+        if miss { Ok(CachedStatus::NotCached(result)) } else { Ok(CachedStatus::Cached(result)) }
     }
 
     /// Gets storage from cache, or inserts using the provided function.
@@ -605,11 +602,7 @@ impl ExecutionCache {
             f()
         })?;
 
-        if miss {
-            Ok(CachedStatus::NotCached(result))
-        } else {
-            Ok(CachedStatus::Cached(result))
-        }
+        if miss { Ok(CachedStatus::NotCached(result)) } else { Ok(CachedStatus::Cached(result)) }
     }
 
     /// Gets account from cache, or inserts using the provided function.
@@ -624,11 +617,7 @@ impl ExecutionCache {
             f()
         })?;
 
-        if miss {
-            Ok(CachedStatus::NotCached(result))
-        } else {
-            Ok(CachedStatus::Cached(result))
-        }
+        if miss { Ok(CachedStatus::NotCached(result)) } else { Ok(CachedStatus::Cached(result)) }
     }
 
     /// Insert storage value into cache.
@@ -688,7 +677,7 @@ impl ExecutionCache {
             // If the account was not modified, as in not changed and not destroyed, then we have
             // nothing to do w.r.t. this particular account and can move on
             if account.status.is_not_modified() {
-                continue
+                continue;
             }
 
             // If the original account had code (was a contract), we must clear the entire cache
@@ -711,11 +700,11 @@ impl ExecutionCache {
                         );
                     });
                     self.clear();
-                    return Ok(())
+                    return Ok(());
                 }
 
                 self.0.account_cache.remove(addr);
-                continue
+                continue;
             }
 
             // If we have an account that was modified, but it has a `None` account info, some wild
@@ -723,7 +712,7 @@ impl ExecutionCache {
             // `None` current info, should be destroyed.
             let Some(ref account_info) = account.info else {
                 trace!(target: "engine::caching", ?account, "Account with None account info found in state updates");
-                return Err(())
+                return Err(());
             };
 
             // Now we iterate over all storage and make updates to the cached storage values
@@ -840,7 +829,7 @@ impl SavedCache {
     /// `with_disable_cache_metrics(true)` to skip.
     pub(crate) fn update_metrics(&self) {
         if self.disable_cache_metrics {
-            return
+            return;
         }
         self.caches.update_metrics(&self.metrics);
     }
@@ -862,11 +851,12 @@ impl SavedCache {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use alloy_primitives::{map::HashMap, U256};
+    use alloy_primitives::{U256, map::HashMap};
     use reth_provider::test_utils::{ExtendedAccount, MockEthProvider};
     use reth_revm::db::{AccountStatus, BundleAccount};
     use revm_state::AccountInfo;
+
+    use super::*;
 
     #[test]
     fn test_empty_storage_cached_state_provider() {

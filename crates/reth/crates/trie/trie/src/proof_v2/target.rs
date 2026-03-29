@@ -1,6 +1,7 @@
-use crate::proof_v2::increment_and_strip_trailing_zeros;
 use alloy_primitives::B256;
 use reth_trie_common::Nibbles;
+
+use crate::proof_v2::increment_and_strip_trailing_zeros;
 
 /// Target describes a proof target. For every proof target given, the
 /// [`crate::proof_v2::ProofCalculator`] will calculate and return all nodes whose path is a prefix

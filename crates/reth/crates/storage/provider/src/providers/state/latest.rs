@@ -1,7 +1,4 @@
-use crate::{
-    AccountReader, BlockHashReader, HashedPostStateProvider, StateProvider, StateRootProvider,
-};
-use alloy_primitives::{Address, BlockNumber, Bytes, StorageKey, StorageValue, B256};
+use alloy_primitives::{Address, B256, BlockNumber, Bytes, StorageKey, StorageValue};
 use reth_db_api::{cursor::DbDupCursorRO, tables, transaction::DbTx};
 use reth_primitives_traits::{Account, Bytecode};
 use reth_storage_api::{
@@ -9,15 +6,19 @@ use reth_storage_api::{
 };
 use reth_storage_errors::provider::{ProviderError, ProviderResult};
 use reth_trie::{
+    AccountProof, HashedPostState, HashedStorage, KeccakKeyHasher, MultiProof, MultiProofTargets,
+    StateRoot, StorageMultiProof, StorageRoot, TrieInput, TrieInputSorted,
     proof::{Proof, StorageProof},
     updates::TrieUpdates,
     witness::TrieWitness,
-    AccountProof, HashedPostState, HashedStorage, KeccakKeyHasher, MultiProof, MultiProofTargets,
-    StateRoot, StorageMultiProof, StorageRoot, TrieInput, TrieInputSorted,
 };
 use reth_trie_db::{
     DatabaseProof, DatabaseStateRoot, DatabaseStorageProof, DatabaseStorageRoot,
     DatabaseTrieWitness,
+};
+
+use crate::{
+    AccountReader, BlockHashReader, HashedPostStateProvider, StateProvider, StateRootProvider,
 };
 
 /// State provider over latest state that takes tx reference.
@@ -187,8 +188,8 @@ impl<Provider: DBProvider + BlockHashReader + StorageSettingsCache> StateProvide
             )
         } else {
             let mut cursor = self.tx().cursor_dup_read::<tables::PlainStorageState>()?;
-            if let Some(entry) = cursor.seek_by_key_subkey(account, storage_key)? &&
-                entry.key == storage_key
+            if let Some(entry) = cursor.seek_by_key_subkey(account, storage_key)?
+                && entry.key == storage_key
             {
                 return Ok(Some(entry.value));
             }
@@ -240,9 +241,7 @@ reth_storage_api::macros::delegate_provider_impls!(LatestStateProvider<Provider>
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::test_utils::create_test_provider_factory;
-    use alloy_primitives::{address, b256, keccak256, U256};
+    use alloy_primitives::{U256, address, b256, keccak256};
     use reth_db_api::{
         models::StorageSettings,
         tables,
@@ -251,6 +250,9 @@ mod tests {
     use reth_primitives_traits::StorageEntry;
     use reth_storage_api::StorageSettingsCache;
     use reth_storage_errors::provider::ProviderError;
+
+    use super::*;
+    use crate::test_utils::create_test_provider_factory;
 
     const fn assert_state_provider<T: StateProvider>() {}
     #[expect(dead_code)]

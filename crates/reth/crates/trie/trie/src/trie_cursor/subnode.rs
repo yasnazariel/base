@@ -1,6 +1,7 @@
-use crate::{BranchNodeCompact, Nibbles, StoredSubNode};
 use alloy_primitives::B256;
 use alloy_trie::proof::AddedRemovedKeys;
+
+use crate::{BranchNodeCompact, Nibbles, StoredSubNode};
 
 /// Cursor for iterating over a subtrie.
 #[derive(Clone)]
@@ -262,50 +263,54 @@ mod tests {
 
     #[test]
     fn subnode_position_ord() {
-        assert!([
-            SubNodePosition::ParentBranch,
-            SubNodePosition::Child(0),
-            SubNodePosition::Child(1),
-            SubNodePosition::Child(2),
-            SubNodePosition::Child(3),
-            SubNodePosition::Child(4),
-            SubNodePosition::Child(5),
-            SubNodePosition::Child(6),
-            SubNodePosition::Child(7),
-            SubNodePosition::Child(8),
-            SubNodePosition::Child(9),
-            SubNodePosition::Child(10),
-            SubNodePosition::Child(11),
-            SubNodePosition::Child(12),
-            SubNodePosition::Child(13),
-            SubNodePosition::Child(14),
-            SubNodePosition::Child(15),
-        ]
-        .is_sorted());
+        assert!(
+            [
+                SubNodePosition::ParentBranch,
+                SubNodePosition::Child(0),
+                SubNodePosition::Child(1),
+                SubNodePosition::Child(2),
+                SubNodePosition::Child(3),
+                SubNodePosition::Child(4),
+                SubNodePosition::Child(5),
+                SubNodePosition::Child(6),
+                SubNodePosition::Child(7),
+                SubNodePosition::Child(8),
+                SubNodePosition::Child(9),
+                SubNodePosition::Child(10),
+                SubNodePosition::Child(11),
+                SubNodePosition::Child(12),
+                SubNodePosition::Child(13),
+                SubNodePosition::Child(14),
+                SubNodePosition::Child(15),
+            ]
+            .is_sorted()
+        );
     }
 
     #[test]
     fn subnode_position_is_last_child() {
-        assert!([
-            SubNodePosition::ParentBranch,
-            SubNodePosition::Child(0),
-            SubNodePosition::Child(1),
-            SubNodePosition::Child(2),
-            SubNodePosition::Child(3),
-            SubNodePosition::Child(4),
-            SubNodePosition::Child(5),
-            SubNodePosition::Child(6),
-            SubNodePosition::Child(7),
-            SubNodePosition::Child(8),
-            SubNodePosition::Child(9),
-            SubNodePosition::Child(10),
-            SubNodePosition::Child(11),
-            SubNodePosition::Child(12),
-            SubNodePosition::Child(13),
-            SubNodePosition::Child(14),
-        ]
-        .iter()
-        .all(|position| !position.is_last_child()));
+        assert!(
+            [
+                SubNodePosition::ParentBranch,
+                SubNodePosition::Child(0),
+                SubNodePosition::Child(1),
+                SubNodePosition::Child(2),
+                SubNodePosition::Child(3),
+                SubNodePosition::Child(4),
+                SubNodePosition::Child(5),
+                SubNodePosition::Child(6),
+                SubNodePosition::Child(7),
+                SubNodePosition::Child(8),
+                SubNodePosition::Child(9),
+                SubNodePosition::Child(10),
+                SubNodePosition::Child(11),
+                SubNodePosition::Child(12),
+                SubNodePosition::Child(13),
+                SubNodePosition::Child(14),
+            ]
+            .iter()
+            .all(|position| !position.is_last_child())
+        );
         assert!(SubNodePosition::Child(15).is_last_child());
         assert!(SubNodePosition::Child(16).is_last_child());
     }

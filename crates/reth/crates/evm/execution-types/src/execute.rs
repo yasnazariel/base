@@ -1,8 +1,7 @@
+pub use alloy_evm::block::BlockExecutionResult;
 use alloy_primitives::{Address, B256, U256};
 use reth_primitives_traits::{Account, Bytecode};
 use revm::database::BundleState;
-
-pub use alloy_evm::block::BlockExecutionResult;
 
 /// [`BlockExecutionResult`] combined with state.
 #[derive(

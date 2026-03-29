@@ -1,9 +1,17 @@
 //! Contains the implementation of the mining mode for the local engine.
 
-use alloy_primitives::{TxHash, B256};
+use std::{
+    collections::VecDeque,
+    future::Future,
+    pin::Pin,
+    task::{Context, Poll},
+    time::Duration,
+};
+
+use alloy_primitives::{B256, TxHash};
 use alloy_rpc_types_engine::ForkchoiceState;
 use eyre::OptionExt;
-use futures_util::{stream::Fuse, StreamExt};
+use futures_util::{StreamExt, stream::Fuse};
 use reth_engine_primitives::ConsensusEngineHandle;
 use reth_payload_builder::PayloadBuilderHandle;
 use reth_payload_primitives::{
@@ -12,13 +20,6 @@ use reth_payload_primitives::{
 use reth_primitives_traits::{HeaderTy, SealedHeaderFor};
 use reth_storage_api::BlockReader;
 use reth_transaction_pool::TransactionPool;
-use std::{
-    collections::VecDeque,
-    future::Future,
-    pin::Pin,
-    task::{Context, Poll},
-    time::Duration,
-};
 use tokio::time::Interval;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::error;
@@ -87,7 +88,7 @@ impl<Pool: TransactionPool + Unpin> Future for MiningMode<Pool> {
             }
             Self::Interval(interval) => {
                 if interval.poll_tick(cx).is_ready() {
-                    return Poll::Ready(())
+                    return Poll::Ready(());
                 }
                 Poll::Pending
             }
@@ -116,9 +117,9 @@ impl<T, B, Pool> LocalMiner<T, B, Pool>
 where
     T: PayloadTypes,
     B: PayloadAttributesBuilder<
-        T::PayloadAttributes,
-        HeaderTy<<T::BuiltPayload as BuiltPayload>::Primitives>,
-    >,
+            T::PayloadAttributes,
+            HeaderTy<<T::BuiltPayload as BuiltPayload>::Primitives>,
+        >,
     Pool: TransactionPool + Unpin,
 {
     /// Spawns a new [`LocalMiner`] with the given parameters.

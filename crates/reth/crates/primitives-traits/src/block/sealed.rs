@@ -1,17 +1,19 @@
 //! Sealed block types
 
-use crate::{
-    block::{error::BlockRecoveryError, header::BlockHeader, RecoveredBlock},
-    transaction::signed::{RecoveryError, SignedTransaction},
-    Block, BlockBody, GotExpected, InMemorySize, SealedHeader,
-};
 use alloc::vec::Vec;
+use core::ops::Deref;
+
 use alloy_consensus::BlockHeader as _;
-use alloy_eips::{eip1898::BlockWithParent, BlockNumHash};
-use alloy_primitives::{Address, BlockHash, Sealable, Sealed, B256};
+use alloy_eips::{BlockNumHash, eip1898::BlockWithParent};
+use alloy_primitives::{Address, B256, BlockHash, Sealable, Sealed};
 use alloy_rlp::{Decodable, Encodable};
 use bytes::BufMut;
-use core::ops::Deref;
+
+use crate::{
+    Block, BlockBody, GotExpected, InMemorySize, SealedHeader,
+    block::{RecoveredBlock, error::BlockRecoveryError, header::BlockHeader},
+    transaction::signed::{RecoveryError, SignedTransaction},
+};
 
 /// Sealed full block composed of the block's header and body.
 ///
@@ -266,7 +268,7 @@ impl<B: Block> SealedBlock<B> {
             return Err(GotExpected {
                 got: calculated_root,
                 expected: self.header().transactions_root(),
-            })
+            });
         }
 
         Ok(())
@@ -409,12 +411,13 @@ impl<B: crate::test_utils::TestBlock> SealedBlock<B> {
 /// Bincode-compatible [`SealedBlock`] serde implementation.
 #[cfg(feature = "serde-bincode-compat")]
 pub(super) mod serde_bincode_compat {
-    use crate::{
-        serde_bincode_compat::{self, BincodeReprFor, SerdeBincodeCompat},
-        Block,
-    };
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
-    use serde_with::{serde_as, DeserializeAs, SerializeAs};
+    use serde_with::{DeserializeAs, SerializeAs, serde_as};
+
+    use crate::{
+        Block,
+        serde_bincode_compat::{self, BincodeReprFor, SerdeBincodeCompat},
+    };
 
     /// Bincode-compatible [`super::SealedBlock`] serde implementation.
     ///
@@ -503,8 +506,9 @@ pub(super) mod serde_bincode_compat {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_rlp::{Decodable, Encodable};
+
+    use super::*;
 
     #[test]
     fn test_sealed_block_rlp_roundtrip() {

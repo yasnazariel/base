@@ -1,11 +1,11 @@
 //! Helper type that represents one of two possible executor types
 
-use crate::{execute::Executor, Database, OnStateHook};
-
 // re-export Either
 pub use futures_util::future::Either;
 use reth_execution_types::{BlockExecutionOutput, BlockExecutionResult};
 use reth_primitives_traits::{NodePrimitives, RecoveredBlock};
+
+use crate::{Database, OnStateHook, execute::Executor};
 
 impl<A, B, DB> Executor<DB> for Either<A, B>
 where

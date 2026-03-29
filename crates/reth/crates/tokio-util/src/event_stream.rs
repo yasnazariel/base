@@ -4,6 +4,7 @@ use std::{
     pin::Pin,
     task::{Context, Poll},
 };
+
 use tokio_stream::Stream;
 use tracing::warn;
 
@@ -46,9 +47,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use tokio::sync::broadcast;
     use tokio_stream::StreamExt;
+
+    use super::*;
 
     #[tokio::test]
     async fn test_event_stream_yields_items() {

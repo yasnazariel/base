@@ -3,7 +3,7 @@
 //! Implementation modified from [`rustc`](https://github.com/rust-lang/rust/blob/3dee9775a8c94e701a08f7b2df2c444f353d8699/compiler/rustc_driver_impl/src/signal_handler.rs).
 
 use std::{
-    alloc::{alloc, Layout},
+    alloc::{Layout, alloc},
     fmt, mem, ptr,
 };
 
@@ -24,11 +24,7 @@ struct RawStderr(());
 impl fmt::Write for RawStderr {
     fn write_str(&mut self, s: &str) -> Result<(), fmt::Error> {
         let ret = unsafe { libc::write(libc::STDERR_FILENO, s.as_ptr().cast(), s.len()) };
-        if ret == -1 {
-            Err(fmt::Error)
-        } else {
-            Ok(())
-        }
+        if ret == -1 { Err(fmt::Error) } else { Ok(()) }
     }
 }
 
@@ -49,7 +45,7 @@ extern "C" fn print_stack_trace(_: libc::c_int) {
         // Collect return addresses
         let depth = libc::backtrace(stack_trace.as_mut_ptr(), MAX_FRAMES as i32);
         if depth == 0 {
-            return
+            return;
         }
         &stack_trace[0..depth as usize]
     };
@@ -67,7 +63,7 @@ extern "C" fn print_stack_trace(_: libc::c_int) {
         let period = period.saturating_add(1); // avoid "what if wrapped?" branches
         let Some(offset) = stack.iter().skip(period).zip(stack).position(cycled) else {
             // impossible.
-            return
+            return;
         };
 
         // Count matching trace slices, else we could miscount "biphasic cycles"

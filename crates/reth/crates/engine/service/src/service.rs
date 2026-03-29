@@ -1,3 +1,9 @@
+use std::{
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll},
+};
+
 use futures::{Stream, StreamExt};
 use pin_project::pin_project;
 use reth_chainspec::EthChainSpec;
@@ -19,18 +25,13 @@ use reth_network_p2p::BlockClient;
 use reth_node_types::{BlockTy, NodeTypes};
 use reth_payload_builder::PayloadBuilderHandle;
 use reth_provider::{
-    providers::{BlockchainProvider, ProviderNodeTypes},
     ProviderFactory, StorageSettingsCache,
+    providers::{BlockchainProvider, ProviderNodeTypes},
 };
 use reth_prune::PrunerWithFactory;
 use reth_stages_api::{MetricEventsSender, Pipeline};
 use reth_tasks::TaskSpawner;
 use reth_trie_db::ChangesetCache;
-use std::{
-    pin::Pin,
-    sync::Arc,
-    task::{Context, Poll},
-};
 
 /// Alias for consensus engine stream.
 pub type EngineMessageStream<T> = Pin<Box<dyn Stream<Item = BeaconEngineMessage<T>> + Send + Sync>>;
@@ -144,7 +145,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::sync::Arc;
+
     use reth_chainspec::{ChainSpecBuilder, MAINNET};
     use reth_engine_primitives::{BeaconEngineMessage, NoopInvalidBlockHook};
     use reth_engine_tree::{test_utils::TestPipelineBuilder, tree::BasicEngineValidator};
@@ -161,9 +163,10 @@ mod tests {
     use reth_prune::Pruner;
     use reth_tasks::TokioTaskExecutor;
     use reth_trie_db::ChangesetCache;
-    use std::sync::Arc;
     use tokio::sync::{mpsc::unbounded_channel, watch};
     use tokio_stream::wrappers::UnboundedReceiverStream;
+
+    use super::*;
 
     #[test]
     fn eth_chain_orchestrator_build() {

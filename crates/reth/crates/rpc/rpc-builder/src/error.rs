@@ -1,10 +1,12 @@
-use crate::{cors::CorsDomainError, RethRpcModule};
-use reth_ipc::server::IpcServerStartError;
 use std::{
     collections::HashSet,
     io::{self, ErrorKind},
     net::SocketAddr,
 };
+
+use reth_ipc::server::IpcServerStartError;
+
+use crate::{RethRpcModule, cors::CorsDomainError};
 
 /// Rpc server kind.
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
@@ -79,7 +81,7 @@ impl RpcError {
     /// Converts an [`io::Error`] to a more descriptive `RpcError`.
     pub fn server_error(io_error: io::Error, kind: ServerKind) -> Self {
         if io_error.kind() == ErrorKind::AddrInUse {
-            return Self::AddressAlreadyInUse { kind, error: io_error }
+            return Self::AddressAlreadyInUse { kind, error: io_error };
         }
         Self::ServerError { kind, error: io_error }
     }
@@ -131,8 +133,9 @@ pub enum WsHttpSamePortError {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::net::{Ipv4Addr, SocketAddrV4};
+
+    use super::*;
     #[test]
     fn test_address_in_use_message() {
         let addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1234));

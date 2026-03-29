@@ -1,7 +1,8 @@
 //! Configuration types for peer sessions manager.
 
-use crate::peers::config::{DEFAULT_MAX_COUNT_PEERS_INBOUND, DEFAULT_MAX_COUNT_PEERS_OUTBOUND};
 use std::time::Duration;
+
+use crate::peers::config::{DEFAULT_MAX_COUNT_PEERS_INBOUND, DEFAULT_MAX_COUNT_PEERS_OUTBOUND};
 
 /// Default request timeout for a single request.
 ///

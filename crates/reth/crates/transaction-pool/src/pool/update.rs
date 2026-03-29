@@ -1,9 +1,10 @@
 //! Support types for updating the pool.
 
-use crate::{
-    identifier::TransactionId, pool::state::SubPool, PoolTransaction, ValidPoolTransaction,
-};
 use std::sync::Arc;
+
+use crate::{
+    PoolTransaction, ValidPoolTransaction, identifier::TransactionId, pool::state::SubPool,
+};
 
 /// A change of the transaction's location
 ///

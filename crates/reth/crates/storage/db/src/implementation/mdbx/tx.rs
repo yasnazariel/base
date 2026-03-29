@@ -1,26 +1,28 @@
 //! Transaction wrapper for libmdbx-sys.
 
-use super::{cursor::Cursor, utils::*};
-use crate::{
-    metrics::{DatabaseEnvMetrics, Operation, TransactionMode, TransactionOutcome},
-    DatabaseError,
-};
-use reth_db_api::{
-    table::{Compress, DupSort, Encode, IntoVec, Table, TableImporter},
-    transaction::{DbTx, DbTxMut},
-};
-use reth_libmdbx::{ffi::MDBX_dbi, CommitLatency, Transaction, TransactionKind, WriteFlags, RW};
-use reth_storage_errors::db::{DatabaseWriteError, DatabaseWriteOperation};
-use reth_tracing::tracing::{debug, instrument, trace, warn};
 use std::{
     backtrace::Backtrace,
     collections::HashMap,
     marker::PhantomData,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
     time::{Duration, Instant},
+};
+
+use reth_db_api::{
+    table::{Compress, DupSort, Encode, IntoVec, Table, TableImporter},
+    transaction::{DbTx, DbTxMut},
+};
+use reth_libmdbx::{CommitLatency, RW, Transaction, TransactionKind, WriteFlags, ffi::MDBX_dbi};
+use reth_storage_errors::db::{DatabaseWriteError, DatabaseWriteOperation};
+use reth_tracing::tracing::{debug, instrument, trace, warn};
+
+use super::{cursor::Cursor, utils::*};
+use crate::{
+    DatabaseError,
+    metrics::{DatabaseEnvMetrics, Operation, TransactionMode, TransactionOutcome},
 };
 
 /// Duration after which we emit the log about long-lived database transactions.
@@ -215,11 +217,7 @@ impl<K: TransactionKind> MetricsHandler<K> {
     }
 
     const fn transaction_mode(&self) -> TransactionMode {
-        if K::IS_READ_ONLY {
-            TransactionMode::ReadOnly
-        } else {
-            TransactionMode::ReadWrite
-        }
+        if K::IS_READ_ONLY { TransactionMode::ReadOnly } else { TransactionMode::ReadWrite }
     }
 
     /// Logs the caller location and ID of the transaction that was opened.
@@ -241,9 +239,9 @@ impl<K: TransactionKind> MetricsHandler<K> {
     /// NOTE: Backtrace is recorded using [`Backtrace::force_capture`], so `RUST_BACKTRACE` env var
     /// is not needed.
     fn log_backtrace_on_long_read_transaction(&self) {
-        if self.record_backtrace &&
-            !self.backtrace_recorded.load(Ordering::Relaxed) &&
-            self.transaction_mode().is_read_only()
+        if self.record_backtrace
+            && !self.backtrace_recorded.load(Ordering::Relaxed)
+            && self.transaction_mode().is_read_only()
         {
             let open_duration = self.start.elapsed();
             if open_duration >= self.long_transaction_duration {
@@ -448,12 +446,14 @@ impl DbTxMut for Tx<RW> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{mdbx::DatabaseArguments, tables, DatabaseEnv, DatabaseEnvKind};
+    use std::{sync::atomic::Ordering, thread::sleep, time::Duration};
+
     use reth_db_api::{database::Database, models::ClientVersion, transaction::DbTx};
     use reth_libmdbx::MaxReadTransactionDuration;
     use reth_storage_errors::db::DatabaseError;
-    use std::{sync::atomic::Ordering, thread::sleep, time::Duration};
     use tempfile::tempdir;
+
+    use crate::{DatabaseEnv, DatabaseEnvKind, mdbx::DatabaseArguments, tables};
 
     #[test]
     fn long_read_transaction_safety_disabled() {

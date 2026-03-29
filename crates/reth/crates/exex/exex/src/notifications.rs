@@ -1,4 +1,10 @@
-use crate::{BackfillJobFactory, ExExNotification, StreamBackfillJob, WalHandle};
+use std::{
+    fmt::Debug,
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll, ready},
+};
+
 use alloy_consensus::BlockHeader;
 use alloy_eips::BlockNumHash;
 use futures::{Stream, StreamExt};
@@ -9,13 +15,9 @@ use reth_node_api::NodePrimitives;
 use reth_provider::{BlockReader, Chain, HeaderProvider, StateProviderFactory};
 use reth_stages_api::ExecutionStageThresholds;
 use reth_tracing::tracing::debug;
-use std::{
-    fmt::Debug,
-    pin::Pin,
-    sync::Arc,
-    task::{ready, Context, Poll},
-};
 use tokio::sync::mpsc::Receiver;
+
+use crate::{BackfillJobFactory, ExExNotification, StreamBackfillJob, WalHandle};
 
 /// A stream of [`ExExNotification`]s. The stream will emit notifications for all blocks. If the
 /// stream is configured with a head via [`ExExNotifications::set_with_head`] or
@@ -340,12 +342,12 @@ where
     /// we're not on the canonical chain and we need to revert the notification with the ExEx
     /// head block.
     fn check_canonical(&mut self) -> eyre::Result<Option<ExExNotification<E::Primitives>>> {
-        if self.provider.is_known(self.initial_exex_head.block.hash)? &&
-            self.initial_exex_head.block.number <= self.initial_local_head.number
+        if self.provider.is_known(self.initial_exex_head.block.hash)?
+            && self.initial_exex_head.block.number <= self.initial_local_head.number
         {
             // we have the targeted block and that block is below the current head
             debug!(target: "exex::notifications", "ExEx head is on the canonical chain");
-            return Ok(None)
+            return Ok(None);
         }
 
         // If the head block is not found in the database, it means we're not on the canonical
@@ -365,7 +367,7 @@ where
             return Err(eyre::eyre!(
                 "Could not find notification for block hash {:?} in the WAL",
                 self.initial_exex_head.block.hash
-            ))
+            ));
         };
 
         // Update the head block hash to the parent hash of the first committed block.
@@ -432,7 +434,7 @@ where
         // 1. Check once whether we need to retrieve a notification gap from the WAL.
         if this.pending_check_canonical {
             if let Some(canonical_notification) = this.check_canonical()? {
-                return Poll::Ready(Some(Ok(canonical_notification)))
+                return Poll::Ready(Some(Ok(canonical_notification)));
             }
 
             // ExEx head is on the canonical chain, we no longer need to check it
@@ -452,7 +454,7 @@ where
                 debug!(target: "exex::notifications", range = ?chain.range(), "Backfill job returned a chain");
                 return Poll::Ready(Some(Ok(ExExNotification::ChainCommitted {
                     new: Arc::new(chain),
-                })))
+                })));
             }
 
             // Backfill job is done, remove it
@@ -462,26 +464,26 @@ where
         // 4. Otherwise advance the regular event stream
         loop {
             let Some(notification) = ready!(this.notifications.poll_recv(cx)) else {
-                return Poll::Ready(None)
+                return Poll::Ready(None);
             };
 
             // 5. In case the exex is ahead of the new tip, we must skip it
             if let Some(committed) = notification.committed_chain() {
                 // inclusive check because we should start with `exex.head + 1`
                 if this.initial_exex_head.block.number >= committed.tip().number() {
-                    continue
+                    continue;
                 }
             }
 
-            return Poll::Ready(Some(Ok(notification)))
+            return Poll::Ready(Some(Ok(notification)));
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::Wal;
+    use std::collections::BTreeMap;
+
     use alloy_consensus::Header;
     use alloy_eips::BlockNumHash;
     use eyre::OptionExt;
@@ -491,12 +493,14 @@ mod tests {
     use reth_evm_ethereum::EthEvmConfig;
     use reth_primitives_traits::Block as _;
     use reth_provider::{
-        providers::BlockchainProvider, test_utils::create_test_provider_factory, BlockWriter,
-        Chain, DBProvider, DatabaseProviderFactory,
+        BlockWriter, Chain, DBProvider, DatabaseProviderFactory, providers::BlockchainProvider,
+        test_utils::create_test_provider_factory,
     };
-    use reth_testing_utils::generators::{self, random_block, BlockParams};
-    use std::collections::BTreeMap;
+    use reth_testing_utils::generators::{self, BlockParams, random_block};
     use tokio::sync::mpsc;
+
+    use super::*;
+    use crate::Wal;
 
     #[tokio::test]
     async fn exex_notifications_behind_head_canonical() -> eyre::Result<()> {
@@ -528,12 +532,14 @@ mod tests {
 
         let notification = ExExNotification::ChainCommitted {
             new: Arc::new(Chain::new(
-                vec![random_block(
-                    &mut rng,
-                    node_head.number + 1,
-                    BlockParams { parent: Some(node_head.hash), ..Default::default() },
-                )
-                .try_recover()?],
+                vec![
+                    random_block(
+                        &mut rng,
+                        node_head.number + 1,
+                        BlockParams { parent: Some(node_head.hash), ..Default::default() },
+                    )
+                    .try_recover()?,
+                ],
                 Default::default(),
                 BTreeMap::new(),
             )),
@@ -592,16 +598,18 @@ mod tests {
 
         let notification = ExExNotification::ChainCommitted {
             new: Arc::new(Chain::new(
-                vec![Block {
-                    header: Header {
-                        parent_hash: node_head.hash,
-                        number: node_head.number + 1,
+                vec![
+                    Block {
+                        header: Header {
+                            parent_hash: node_head.hash,
+                            number: node_head.number + 1,
+                            ..Default::default()
+                        },
                         ..Default::default()
-                    },
-                    ..Default::default()
-                }
-                .seal_slow()
-                .try_recover()?],
+                    }
+                    .seal_slow()
+                    .try_recover()?,
+                ],
                 Default::default(),
                 BTreeMap::new(),
             )),
@@ -677,12 +685,14 @@ mod tests {
 
         let new_notification = ExExNotification::ChainCommitted {
             new: Arc::new(Chain::new(
-                vec![random_block(
-                    &mut rng,
-                    node_head.number + 1,
-                    BlockParams { parent: Some(node_head.hash), ..Default::default() },
-                )
-                .try_recover()?],
+                vec![
+                    random_block(
+                        &mut rng,
+                        node_head.number + 1,
+                        BlockParams { parent: Some(node_head.hash), ..Default::default() },
+                    )
+                    .try_recover()?,
+                ],
                 Default::default(),
                 BTreeMap::new(),
             )),
@@ -753,12 +763,14 @@ mod tests {
 
         let new_notification = ExExNotification::ChainCommitted {
             new: Arc::new(Chain::new(
-                vec![random_block(
-                    &mut rng,
-                    genesis_block.number + 1,
-                    BlockParams { parent: Some(genesis_hash), ..Default::default() },
-                )
-                .try_recover()?],
+                vec![
+                    random_block(
+                        &mut rng,
+                        genesis_block.number + 1,
+                        BlockParams { parent: Some(genesis_hash), ..Default::default() },
+                    )
+                    .try_recover()?,
+                ],
                 Default::default(),
                 BTreeMap::new(),
             )),

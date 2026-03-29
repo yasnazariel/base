@@ -1,6 +1,11 @@
 //! Utility functions for node startup and shutdown, for example path parsing and retrieving single
 //! blocks from the network.
 
+use std::{
+    env::VarError,
+    path::{Path, PathBuf},
+};
+
 use alloy_consensus::BlockHeader;
 use alloy_eips::BlockHashOrNumber;
 use alloy_rpc_types_engine::{JwtError, JwtSecret};
@@ -10,10 +15,6 @@ use reth_network_p2p::{
     bodies::client::BodiesClient, headers::client::HeadersClient, priority::Priority,
 };
 use reth_primitives_traits::{Block, SealedBlock, SealedHeader};
-use std::{
-    env::VarError,
-    path::{Path, PathBuf},
-};
 use tracing::{debug, info};
 
 /// Parses a user-specified path with support for environment variables and common shorthands (e.g.

@@ -1,7 +1,8 @@
 //! Various error variants that can happen when working with transactions.
 
-use crate::GotExpectedBoxed;
 use alloy_primitives::U256;
+
+use crate::GotExpectedBoxed;
 
 /// Represents error variants that can happen when trying to validate a transaction.
 #[derive(Debug, Clone, Eq, PartialEq, thiserror::Error)]

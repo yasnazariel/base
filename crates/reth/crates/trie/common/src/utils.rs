@@ -1,5 +1,6 @@
 use alloc::vec::Vec;
 use core::cmp::Ordering;
+
 use itertools::Itertools;
 
 /// Merge sorted slices into a sorted `Vec`. First occurrence wins for duplicate keys.

@@ -1,10 +1,11 @@
 use alloc::vec::Vec;
-use alloy_primitives::{Address, Bytes, B256};
+
+use alloy_primitives::{Address, B256, Bytes};
 use reth_storage_errors::provider::ProviderResult;
 use reth_trie_common::{
-    updates::{StorageTrieUpdatesSorted, TrieUpdates, TrieUpdatesSorted},
     AccountProof, HashedPostState, HashedStorage, MultiProof, MultiProofTargets, StorageMultiProof,
     StorageProof, TrieInput,
+    updates::{StorageTrieUpdatesSorted, TrieUpdates, TrieUpdatesSorted},
 };
 
 /// A type that can compute the state root of a given post state.
@@ -45,7 +46,7 @@ pub trait StorageRootProvider {
     /// Returns the storage root of the `HashedStorage` for target address on top of the current
     /// state.
     fn storage_root(&self, address: Address, hashed_storage: HashedStorage)
-        -> ProviderResult<B256>;
+    -> ProviderResult<B256>;
 
     /// Returns the storage proof of the `HashedStorage` for target slot on top of the current
     /// state.

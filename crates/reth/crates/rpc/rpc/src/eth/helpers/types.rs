@@ -12,12 +12,13 @@ pub type EthRpcConverter<ChainSpec> =
 //tests for simulate
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_consensus::{Transaction, TxType};
     use alloy_rpc_types_eth::TransactionRequest;
     use reth_chainspec::MAINNET;
     use reth_rpc_eth_types::simulate::resolve_transaction;
     use revm::database::CacheDB;
+
+    use super::*;
 
     #[test]
     fn test_resolve_transaction_empty_request() {

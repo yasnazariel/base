@@ -1,12 +1,22 @@
+use std::{
+    collections::Bound,
+    error::Error,
+    fmt::{Display, Formatter},
+    io::{Read, Seek},
+    iter::Map,
+    ops::RangeBounds,
+    sync::mpsc,
+};
+
 use alloy_consensus::BlockHeader;
 use alloy_primitives::{BlockHash, BlockNumber, U256};
 use futures_util::{Stream, StreamExt};
 use reth_db_api::{
+    RawKey, RawTable, RawValue,
     cursor::{DbCursorRO, DbCursorRW},
     table::Value,
     tables,
     transaction::{DbTx, DbTxMut},
-    RawKey, RawTable, RawValue,
 };
 use reth_era::{
     common::{decode::DecodeCompressedRlp, file_ops::StreamReader},
@@ -21,24 +31,15 @@ use reth_etl::Collector;
 use reth_fs_util as fs;
 use reth_primitives_traits::{Block, FullBlockBody, FullBlockHeader, NodePrimitives};
 use reth_provider::{
-    providers::StaticFileProviderRWRefMut, BlockReader, BlockWriter, StaticFileProviderFactory,
-    StaticFileSegment, StaticFileWriter,
+    BlockReader, BlockWriter, StaticFileProviderFactory, StaticFileSegment, StaticFileWriter,
+    providers::StaticFileProviderRWRefMut,
 };
 use reth_stages_types::{
     CheckpointBlockRange, EntitiesCheckpoint, HeadersCheckpoint, StageCheckpoint, StageId,
 };
 use reth_storage_api::{
-    errors::ProviderResult, DBProvider, DatabaseProviderFactory, NodePrimitivesProvider,
-    StageCheckpointWriter,
-};
-use std::{
-    collections::Bound,
-    error::Error,
-    fmt::{Display, Formatter},
-    io::{Read, Seek},
-    iter::Map,
-    ops::RangeBounds,
-    sync::mpsc,
+    DBProvider, DatabaseProviderFactory, NodePrimitivesProvider, StageCheckpointWriter,
+    errors::ProviderResult,
 };
 use tracing::info;
 
@@ -162,9 +163,9 @@ where
     B: Block<Header = BH, Body = BB>,
     BH: FullBlockHeader + Value,
     BB: FullBlockBody<
-        Transaction = <<P as NodePrimitivesProvider>::Primitives as NodePrimitives>::SignedTx,
-        OmmerHeader = BH,
-    >,
+            Transaction = <<P as NodePrimitivesProvider>::Primitives as NodePrimitives>::SignedTx,
+            OmmerHeader = BH,
+        >,
     Era: EraMeta + ?Sized,
     P: DBProvider<Tx: DbTxMut> + NodePrimitivesProvider + BlockWriter<Block = B>,
     <P as NodePrimitivesProvider>::Primitives: NodePrimitives<BlockHeader = BH, BlockBody = BB>,
@@ -268,9 +269,9 @@ where
     B: Block<Header = BH, Body = BB>,
     BH: FullBlockHeader + Value,
     BB: FullBlockBody<
-        Transaction = <<P as NodePrimitivesProvider>::Primitives as NodePrimitives>::SignedTx,
-        OmmerHeader = BH,
-    >,
+            Transaction = <<P as NodePrimitivesProvider>::Primitives as NodePrimitives>::SignedTx,
+            OmmerHeader = BH,
+        >,
     P: DBProvider<Tx: DbTxMut> + NodePrimitivesProvider + BlockWriter<Block = B>,
     <P as NodePrimitivesProvider>::Primitives: NodePrimitives<BlockHeader = BH, BlockBody = BB>,
 {
@@ -292,8 +293,8 @@ where
         if number <= last_header_number {
             continue;
         }
-        if let Some(target) = target &&
-            number > target
+        if let Some(target) = target
+            && number > target
         {
             break;
         }
@@ -322,9 +323,9 @@ where
     B: Block<Header = BH, Body = BB>,
     BH: FullBlockHeader + Value,
     BB: FullBlockBody<
-        Transaction = <<P as NodePrimitivesProvider>::Primitives as NodePrimitives>::SignedTx,
-        OmmerHeader = BH,
-    >,
+            Transaction = <<P as NodePrimitivesProvider>::Primitives as NodePrimitives>::SignedTx,
+            OmmerHeader = BH,
+        >,
     P: DBProvider<Tx: DbTxMut> + NodePrimitivesProvider + BlockWriter<Block = B>,
     <P as NodePrimitivesProvider>::Primitives: NodePrimitives<BlockHeader = BH, BlockBody = BB>,
 {
@@ -336,9 +337,9 @@ where
         provider.tx_ref().cursor_write::<RawTable<tables::HeaderNumbers>>()?;
     // If we only have the genesis block hash, then we are at first sync, and we can remove it,
     // add it to the collector and use tx.append on all hashes.
-    let first_sync = if provider.tx_ref().entries::<RawTable<tables::HeaderNumbers>>()? == 1 &&
-        let Some((hash, block_number)) = cursor_header_numbers.last()? &&
-        block_number.value()? == 0
+    let first_sync = if provider.tx_ref().entries::<RawTable<tables::HeaderNumbers>>()? == 1
+        && let Some((hash, block_number)) = cursor_header_numbers.last()?
+        && block_number.value()? == 0
     {
         hash_collector.insert(hash.key()?, 0)?;
         cursor_header_numbers.delete_current()?;

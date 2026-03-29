@@ -1,12 +1,13 @@
-use alloy_eips::BlockHashOrNumber;
-use alloy_primitives::B256;
-use reth_fs_util::FsPathError;
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs},
     path::Path,
     str::FromStr,
     time::Duration,
 };
+
+use alloy_eips::BlockHashOrNumber;
+use alloy_primitives::B256;
+use reth_fs_util::FsPathError;
 
 /// Helper to parse a [Duration] from seconds
 pub fn parse_duration_from_secs(arg: &str) -> eyre::Result<Duration, std::num::ParseIntError> {
@@ -78,15 +79,15 @@ pub enum SocketAddressParsingError {
 /// An error is returned if the value is empty.
 pub fn parse_socket_address(value: &str) -> eyre::Result<SocketAddr, SocketAddressParsingError> {
     if value.is_empty() {
-        return Err(SocketAddressParsingError::Empty)
+        return Err(SocketAddressParsingError::Empty);
     }
 
     if let Some(port) = value.strip_prefix(':').or_else(|| value.strip_prefix("localhost:")) {
         let port: u16 = port.parse()?;
-        return Ok(SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port))
+        return Ok(SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port));
     }
     if let Ok(port) = value.parse() {
-        return Ok(SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port))
+        return Ok(SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port));
     }
     value
         .to_socket_addrs()?
@@ -110,7 +111,7 @@ pub fn read_json_from_file<T: serde::de::DeserializeOwned>(path: &str) -> Result
 pub fn parse_ether_value(value: &str) -> eyre::Result<u128> {
     let eth = value.parse::<f64>()?;
     if eth.is_sign_negative() {
-        return Err(eyre::eyre!("Ether value cannot be negative"))
+        return Err(eyre::eyre!("Ether value cannot be negative"));
     }
     let wei = eth * 1e18;
     Ok(wei as u128)
@@ -118,8 +119,9 @@ pub fn parse_ether_value(value: &str) -> eyre::Result<u128> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use rand::Rng;
+
+    use super::*;
 
     #[test]
     fn parse_socket_addresses() {

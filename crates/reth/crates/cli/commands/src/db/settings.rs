@@ -3,8 +3,8 @@
 use clap::{ArgAction, Parser, Subcommand};
 use reth_db_common::DbTool;
 use reth_provider::{
-    providers::ProviderNodeTypes, DBProvider, DatabaseProviderFactory, MetadataProvider,
-    MetadataWriter, StorageSettings,
+    DBProvider, DatabaseProviderFactory, MetadataProvider, MetadataWriter, StorageSettings,
+    providers::ProviderNodeTypes,
 };
 
 use crate::common::AccessRights;

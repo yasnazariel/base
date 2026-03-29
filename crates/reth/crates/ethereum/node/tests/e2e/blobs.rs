@@ -1,4 +1,8 @@
-use crate::utils::eth_payload_attributes;
+use std::{
+    sync::Arc,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
+
 use alloy_eips::Decodable2718;
 use alloy_genesis::Genesis;
 use reth_chainspec::{ChainSpecBuilder, MAINNET};
@@ -12,10 +16,8 @@ use reth_node_core::{args::RpcServerArgs, node_config::NodeConfig};
 use reth_node_ethereum::EthereumNode;
 use reth_tasks::Runtime;
 use reth_transaction_pool::TransactionPool;
-use std::{
-    sync::Arc,
-    time::{Duration, SystemTime, UNIX_EPOCH},
-};
+
+use crate::utils::eth_payload_attributes;
 
 #[tokio::test]
 async fn can_handle_blobs() -> eyre::Result<()> {
@@ -189,20 +191,24 @@ async fn blob_conversion_at_osaka() -> eyre::Result<()> {
     let second_blob = TransactionTestContext::tx_with_blobs_bytes(1, second.clone()).await?;
 
     // assert both txs have legacy sidecars
-    assert!(PooledTransactionVariant::decode_2718_exact(&first_blob)
-        .unwrap()
-        .as_eip4844()
-        .unwrap()
-        .tx()
-        .sidecar
-        .is_eip4844());
-    assert!(PooledTransactionVariant::decode_2718_exact(&second_blob)
-        .unwrap()
-        .as_eip4844()
-        .unwrap()
-        .tx()
-        .sidecar
-        .is_eip4844());
+    assert!(
+        PooledTransactionVariant::decode_2718_exact(&first_blob)
+            .unwrap()
+            .as_eip4844()
+            .unwrap()
+            .tx()
+            .sidecar
+            .is_eip4844()
+    );
+    assert!(
+        PooledTransactionVariant::decode_2718_exact(&second_blob)
+            .unwrap()
+            .as_eip4844()
+            .unwrap()
+            .tx()
+            .sidecar
+            .is_eip4844()
+    );
 
     // inject first blob tx to the pool
     let blob_tx_hash = node.rpc.inject_tx(first_blob).await?;

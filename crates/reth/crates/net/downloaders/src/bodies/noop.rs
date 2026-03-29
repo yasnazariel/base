@@ -1,3 +1,5 @@
+use std::{fmt::Debug, ops::RangeInclusive};
+
 use alloy_primitives::BlockNumber;
 use futures::Stream;
 use reth_network_p2p::{
@@ -5,7 +7,6 @@ use reth_network_p2p::{
     error::{DownloadError, DownloadResult},
 };
 use reth_primitives_traits::Block;
-use std::{fmt::Debug, ops::RangeInclusive};
 
 /// A [`BodyDownloader`] implementation that does nothing.
 #[derive(Debug, Default)]

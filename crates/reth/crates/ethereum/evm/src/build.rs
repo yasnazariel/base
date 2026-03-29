@@ -1,14 +1,15 @@
 use alloc::{sync::Arc, vec::Vec};
+
 use alloy_consensus::{
+    Block, BlockBody, BlockHeader, EMPTY_OMMER_ROOT_HASH, Header, TxReceipt,
     proofs::{self, calculate_receipt_root},
-    Block, BlockBody, BlockHeader, Header, TxReceipt, EMPTY_OMMER_ROOT_HASH,
 };
 use alloy_eips::merge::BEACON_NONCE;
 use alloy_evm::{block::BlockExecutorFactory, eth::EthBlockExecutionCtx};
 use reth_chainspec::{EthChainSpec, EthereumHardforks};
 use reth_evm::execute::{BlockAssembler, BlockAssemblerInput, BlockExecutionError};
 use reth_execution_types::BlockExecutionResult;
-use reth_primitives_traits::{logs_bloom, Receipt, SignedTransaction};
+use reth_primitives_traits::{Receipt, SignedTransaction, logs_bloom};
 use revm::context::Block as _;
 
 /// Block builder for Ethereum.
@@ -28,10 +29,10 @@ impl<ChainSpec> EthBlockAssembler<ChainSpec> {
 impl<F, ChainSpec> BlockAssembler<F> for EthBlockAssembler<ChainSpec>
 where
     F: for<'a> BlockExecutorFactory<
-        ExecutionCtx<'a> = EthBlockExecutionCtx<'a>,
-        Transaction: SignedTransaction,
-        Receipt: Receipt,
-    >,
+            ExecutionCtx<'a> = EthBlockExecutionCtx<'a>,
+            Transaction: SignedTransaction,
+            Receipt: Receipt,
+        >,
     ChainSpec: EthChainSpec + EthereumHardforks,
 {
     type Block = Block<F::Transaction>;

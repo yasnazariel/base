@@ -1,30 +1,28 @@
+use std::sync::mpsc;
+
+use alloy_primitives::{
+    B256, Bytes, keccak256,
+    map::{B256Map, B256Set, Entry, HashMap},
+};
+use alloy_rlp::EMPTY_STRING_CODE;
+use alloy_trie::EMPTY_ROOT_HASH;
+use itertools::Itertools;
+use reth_execution_errors::{
+    SparseStateTrieErrorKind, SparseTrieError, SparseTrieErrorKind, StateProofError,
+    TrieWitnessError,
+};
+use reth_trie_common::{HashedPostState, MultiProofTargets, Nibbles};
+use reth_trie_sparse::{
+    SparseStateTrie, SparseTrie,
+    provider::{RevealedNode, TrieNodeProvider, TrieNodeProviderFactory},
+};
+
 use crate::{
     hashed_cursor::{HashedCursor, HashedCursorFactory},
     prefix_set::TriePrefixSetsMut,
     proof::{Proof, ProofTrieNodeProviderFactory},
     trie_cursor::TrieCursorFactory,
 };
-use alloy_rlp::EMPTY_STRING_CODE;
-use alloy_trie::EMPTY_ROOT_HASH;
-use reth_trie_common::HashedPostState;
-use reth_trie_sparse::SparseTrie;
-
-use alloy_primitives::{
-    keccak256,
-    map::{B256Map, B256Set, Entry, HashMap},
-    Bytes, B256,
-};
-use itertools::Itertools;
-use reth_execution_errors::{
-    SparseStateTrieErrorKind, SparseTrieError, SparseTrieErrorKind, StateProofError,
-    TrieWitnessError,
-};
-use reth_trie_common::{MultiProofTargets, Nibbles};
-use reth_trie_sparse::{
-    provider::{RevealedNode, TrieNodeProvider, TrieNodeProviderFactory},
-    SparseStateTrie,
-};
-use std::sync::mpsc;
 
 /// State transition witness for the trie.
 #[derive(Debug)]
@@ -107,7 +105,7 @@ where
     pub fn compute(mut self, state: HashedPostState) -> Result<B256Map<Bytes>, TrieWitnessError> {
         let is_state_empty = state.is_empty();
         if is_state_empty && !self.always_include_root_node {
-            return Ok(Default::default())
+            return Ok(Default::default());
         }
 
         let proof_targets = if is_state_empty {
@@ -131,7 +129,7 @@ where
             } else {
                 (EMPTY_ROOT_HASH, Bytes::from([EMPTY_STRING_CODE]))
             };
-            return Ok(B256Map::from_iter([(root_hash, root_node)]))
+            return Ok(B256Map::from_iter([(root_hash, root_node)]));
         }
 
         // Record all nodes from multiproof in the witness

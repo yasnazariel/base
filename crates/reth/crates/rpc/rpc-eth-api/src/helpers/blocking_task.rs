@@ -1,14 +1,15 @@
 //! Spawns a blocking task. CPU heavy tasks are executed with the `rayon` library. IO heavy tasks
 //! are executed on the `tokio` runtime.
 
+use std::sync::Arc;
+
 use futures::Future;
 use reth_rpc_eth_types::EthApiError;
 use reth_tasks::{
-    pool::{BlockingTaskGuard, BlockingTaskPool},
     TaskSpawner,
+    pool::{BlockingTaskGuard, BlockingTaskPool},
 };
-use std::sync::Arc;
-use tokio::sync::{oneshot, AcquireError, OwnedSemaphorePermit, Semaphore};
+use tokio::sync::{AcquireError, OwnedSemaphorePermit, Semaphore, oneshot};
 
 use crate::EthApiTypes;
 

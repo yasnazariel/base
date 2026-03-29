@@ -1,10 +1,12 @@
-use crate::ForkCondition;
 use alloc::{
     format,
     string::{String, ToString},
     vec::Vec,
 };
+
 use alloy_hardforks::Hardfork;
+
+use crate::ForkCondition;
 
 /// A container to pretty-print a hardfork.
 ///

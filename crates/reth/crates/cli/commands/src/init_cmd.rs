@@ -1,13 +1,15 @@
 //! Command that initializes the node from a genesis file.
 
-use crate::common::{AccessRights, CliNodeTypes, Environment, EnvironmentArgs};
+use std::sync::Arc;
+
 use alloy_consensus::BlockHeader;
 use clap::Parser;
 use reth_chainspec::{ChainSpecProvider, EthChainSpec, EthereumHardforks};
 use reth_cli::chainspec::ChainSpecParser;
 use reth_provider::BlockHashReader;
-use std::sync::Arc;
 use tracing::info;
+
+use crate::common::{AccessRights, CliNodeTypes, Environment, EnvironmentArgs};
 
 /// Initializes the database with the genesis block.
 #[derive(Debug, Parser)]

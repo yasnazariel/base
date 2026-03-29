@@ -1,6 +1,7 @@
 //! Engine API specific actions for testing.
 
-use crate::testsuite::{Action, Environment};
+use std::marker::PhantomData;
+
 use alloy_primitives::B256;
 use alloy_rpc_types_engine::{ExecutionPayloadV3, PayloadStatusEnum};
 use alloy_rpc_types_eth::{Block, Header, Receipt, Transaction, TransactionRequest};
@@ -9,8 +10,9 @@ use futures_util::future::BoxFuture;
 use reth_ethereum_primitives::TransactionSigned;
 use reth_node_api::{EngineTypes, PayloadTypes};
 use reth_rpc_api::clients::{EngineApiClient, EthApiClient};
-use std::marker::PhantomData;
 use tracing::debug;
+
+use crate::testsuite::{Action, Environment};
 
 /// Action that sends a newPayload request to a specific node.
 #[derive(Debug)]

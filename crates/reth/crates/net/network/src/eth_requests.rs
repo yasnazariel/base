@@ -1,9 +1,12 @@
 //! Blocks/Headers management for the p2p network.
 
-use crate::{
-    budget::DEFAULT_BUDGET_TRY_DRAIN_DOWNLOADERS, metered_poll_nested_stream_with_budget,
-    metrics::EthRequestHandlerMetrics,
+use std::{
+    future::Future,
+    pin::Pin,
+    task::{Context, Poll},
+    time::Duration,
 };
+
 use alloy_consensus::{BlockHeader, ReceiptWithBloom};
 use alloy_eips::BlockHashOrNumber;
 use alloy_rlp::Encodable;
@@ -18,14 +21,13 @@ use reth_network_p2p::error::RequestResult;
 use reth_network_peers::PeerId;
 use reth_primitives_traits::Block;
 use reth_storage_api::{BlockReader, HeaderProvider};
-use std::{
-    future::Future,
-    pin::Pin,
-    task::{Context, Poll},
-    time::Duration,
-};
 use tokio::sync::{mpsc::Receiver, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
+
+use crate::{
+    budget::DEFAULT_BUDGET_TRY_DRAIN_DOWNLOADERS, metered_poll_nested_stream_with_budget,
+    metrics::EthRequestHandlerMetrics,
+};
 
 // Limits: <https://github.com/ethereum/go-ethereum/blob/b0d44338bbcefee044f1f635a84487cbbd8f0538/eth/protocols/eth/handler.go#L34-L56>
 
@@ -94,7 +96,7 @@ where
             BlockHashOrNumber::Hash(start) => start.into(),
             BlockHashOrNumber::Number(num) => {
                 let Some(hash) = self.client.block_hash(num).unwrap_or_default() else {
-                    return headers
+                    return headers;
                 };
                 hash.into()
             }
@@ -112,7 +114,7 @@ where
                 headers.push(header);
 
                 if headers.len() >= MAX_HEADERS_SERVE || total_bytes > SOFT_RESPONSE_LIMIT {
-                    break
+                    break;
                 }
 
                 match direction {
@@ -121,7 +123,7 @@ where
                         {
                             block = next.into()
                         } else {
-                            break
+                            break;
                         }
                     }
                     HeadersDirection::Falling => {
@@ -133,7 +135,7 @@ where
                             {
                                 block = next.into()
                             } else {
-                                break
+                                break;
                             }
                         } else {
                             block = parent_hash.into()
@@ -141,7 +143,7 @@ where
                     }
                 }
             } else {
-                break
+                break;
             }
         }
 
@@ -177,10 +179,10 @@ where
                 bodies.push(body);
 
                 if bodies.len() >= MAX_BODIES_SERVE || total_bytes > SOFT_RESPONSE_LIMIT {
-                    break
+                    break;
                 }
             } else {
-                break
+                break;
             }
         }
 
@@ -237,13 +239,13 @@ where
 
         for (idx, hash) in block_hashes.into_iter().enumerate() {
             if idx >= MAX_RECEIPTS_SERVE {
-                break
+                break;
             }
 
             let Some(mut block_receipts) =
                 self.client.receipts_by_block(BlockHashOrNumber::Hash(hash)).unwrap_or_default()
             else {
-                break
+                break;
             };
 
             if idx == 0 && first_block_receipt_index > 0 {
@@ -299,10 +301,10 @@ where
                 receipts.push(transformed_receipts);
 
                 if receipts.len() >= MAX_RECEIPTS_SERVE || total_bytes > SOFT_RESPONSE_LIMIT {
-                    break
+                    break;
                 }
             } else {
-                break
+                break;
             }
         }
 

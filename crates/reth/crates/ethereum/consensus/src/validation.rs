@@ -1,11 +1,12 @@
 use alloc::vec::Vec;
-use alloy_consensus::{proofs::calculate_receipt_root, BlockHeader, TxReceipt};
-use alloy_eips::{eip7685::Requests, Encodable2718};
-use alloy_primitives::{Bloom, Bytes, B256};
+
+use alloy_consensus::{BlockHeader, TxReceipt, proofs::calculate_receipt_root};
+use alloy_eips::{Encodable2718, eip7685::Requests};
+use alloy_primitives::{B256, Bloom, Bytes};
 use reth_chainspec::EthereumHardforks;
 use reth_consensus::ConsensusError;
 use reth_primitives_traits::{
-    receipt::gas_spent_by_transactions, Block, GotExpected, Receipt, RecoveredBlock,
+    Block, GotExpected, Receipt, RecoveredBlock, receipt::gas_spent_by_transactions,
 };
 
 /// Validate a block with regard to execution results:
@@ -34,7 +35,7 @@ where
         return Err(ConsensusError::BlockGasUsed {
             gas: GotExpected { got: cumulative_gas_used, expected: block.header().gas_used() },
             gas_spent_by_tx: gas_spent_by_transactions(receipts),
-        })
+        });
     }
 
     // Before Byzantium, receipts contained state root that would mean that expensive
@@ -59,20 +60,20 @@ where
                 .map(|r| Bytes::from(r.with_bloom_ref().encoded_2718()))
                 .collect::<Vec<_>>();
             tracing::debug!(%error, ?receipts, "receipts verification failed");
-            return Err(error)
+            return Err(error);
         }
     }
 
     // Validate that the header requests hash matches the calculated requests hash
     if chain_spec.is_prague_active_at_timestamp(block.header().timestamp()) {
         let Some(header_requests_hash) = block.header().requests_hash() else {
-            return Err(ConsensusError::RequestsHashMissing)
+            return Err(ConsensusError::RequestsHashMissing);
         };
         let requests_hash = requests.requests_hash();
         if requests_hash != header_requests_hash {
             return Err(ConsensusError::BodyRequestsHashDiff(
                 GotExpected::new(requests_hash, header_requests_hash).into(),
-            ))
+            ));
         }
     }
 
@@ -112,13 +113,13 @@ fn compare_receipts_root_and_logs_bloom(
     if calculated_receipts_root != expected_receipts_root {
         return Err(ConsensusError::BodyReceiptRootDiff(
             GotExpected { got: calculated_receipts_root, expected: expected_receipts_root }.into(),
-        ))
+        ));
     }
 
     if calculated_logs_bloom != expected_logs_bloom {
         return Err(ConsensusError::BodyBloomLogDiff(
             GotExpected { got: calculated_logs_bloom, expected: expected_logs_bloom }.into(),
-        ))
+        ));
     }
 
     Ok(())
@@ -126,9 +127,10 @@ fn compare_receipts_root_and_logs_bloom(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_primitives::{b256, hex};
     use reth_ethereum_primitives::Receipt;
+
+    use super::*;
 
     #[test]
     fn test_verify_receipts_success() {
@@ -164,13 +166,15 @@ mod tests {
         let expected_receipts_root = calculated_receipts_root;
         let expected_logs_bloom = calculated_logs_bloom;
 
-        assert!(compare_receipts_root_and_logs_bloom(
-            calculated_receipts_root,
-            calculated_logs_bloom,
-            expected_receipts_root,
-            expected_logs_bloom
-        )
-        .is_ok());
+        assert!(
+            compare_receipts_root_and_logs_bloom(
+                calculated_receipts_root,
+                calculated_logs_bloom,
+                expected_receipts_root,
+                expected_logs_bloom
+            )
+            .is_ok()
+        );
     }
 
     #[test]

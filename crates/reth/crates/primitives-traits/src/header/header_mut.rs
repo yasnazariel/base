@@ -1,8 +1,9 @@
 //! Mutable header utilities.
 
-use crate::BlockHeader;
 use alloy_consensus::Header;
-use alloy_primitives::{BlockHash, BlockNumber, B256, U256};
+use alloy_primitives::{B256, BlockHash, BlockNumber, U256};
+
+use crate::BlockHeader;
 
 /// A helper trait for [`Header`]s that allows for mutable access to the headers values.
 ///

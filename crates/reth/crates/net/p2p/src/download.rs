@@ -1,5 +1,6 @@
-use reth_network_peers::PeerId;
 use std::fmt::Debug;
+
+use reth_network_peers::PeerId;
 
 /// Generic download client for peer penalization
 #[auto_impl::auto_impl(&, Arc, Box)]

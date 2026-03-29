@@ -1,4 +1,10 @@
-use crate::metrics::{BodyDownloaderMetrics, ResponseMetrics};
+use std::{
+    collections::VecDeque,
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll, ready},
+};
+
 use alloy_consensus::BlockHeader;
 use alloy_primitives::B256;
 use futures::{Future, FutureExt};
@@ -10,12 +16,8 @@ use reth_network_p2p::{
 };
 use reth_network_peers::{PeerId, WithPeerId};
 use reth_primitives_traits::{Block, GotExpected, InMemorySize, SealedBlock, SealedHeader};
-use std::{
-    collections::VecDeque,
-    pin::Pin,
-    sync::Arc,
-    task::{ready, Context, Poll},
-};
+
+use crate::metrics::{BodyDownloaderMetrics, ResponseMetrics};
 
 /// Body request implemented as a [Future].
 ///
@@ -133,14 +135,14 @@ where
         // next one exceed the soft response limit, if not then peer either does not have the next
         // block or deliberately sent a single block.
         if bodies.is_empty() {
-            return Err(DownloadError::EmptyResponse)
+            return Err(DownloadError::EmptyResponse);
         }
 
         if response_len > request_len {
             return Err(DownloadError::TooManyBodies(GotExpected {
                 got: response_len,
                 expected: request_len,
-            }))
+            }));
         }
 
         // Buffer block responses
@@ -194,7 +196,7 @@ where
                         hash,
                         number,
                         error: Box::new(error),
-                    })
+                    });
                 }
 
                 self.buffer.push(BlockResponse::Full(block));
@@ -221,7 +223,7 @@ where
 
         loop {
             if this.pending_headers.is_empty() {
-                return Poll::Ready(Ok(std::mem::take(&mut this.buffer)))
+                return Poll::Ready(Ok(std::mem::take(&mut this.buffer)));
             }
 
             // Check if there is a pending requests. It might not exist if all
@@ -236,7 +238,7 @@ where
                     }
                     Err(error) => {
                         if error.is_channel_closed() {
-                            return Poll::Ready(Err(error.into()))
+                            return Poll::Ready(Err(error.into()));
                         }
 
                         this.on_error(error.into(), None);
@@ -255,14 +257,15 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{
-        bodies::test_utils::zip_blocks,
-        test_utils::{generate_bodies, TestBodiesClient},
-    };
     use reth_consensus::test_utils::TestConsensus;
     use reth_ethereum_primitives::Block;
     use reth_testing_utils::{generators, generators::random_header_range};
+
+    use super::*;
+    use crate::{
+        bodies::test_utils::zip_blocks,
+        test_utils::{TestBodiesClient, generate_bodies},
+    };
 
     /// Check if future returns empty bodies without dispatching any requests.
     #[tokio::test]

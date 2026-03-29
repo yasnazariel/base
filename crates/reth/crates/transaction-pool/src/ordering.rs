@@ -1,5 +1,6 @@
-use crate::traits::PoolTransaction;
 use std::{cmp::Ordering, fmt::Debug, marker::PhantomData};
+
+use crate::traits::PoolTransaction;
 
 /// Priority of the transaction that can be missing.
 ///

@@ -1,3 +1,11 @@
+use std::{
+    fmt::Debug,
+    future::Future,
+    ops::RangeInclusive,
+    pin::Pin,
+    task::{Context, Poll, ready},
+};
+
 use alloy_primitives::BlockNumber;
 use futures::Stream;
 use futures_util::{FutureExt, StreamExt};
@@ -8,13 +16,6 @@ use reth_network_p2p::{
 };
 use reth_primitives_traits::Block;
 use reth_tasks::{TaskSpawner, TokioTaskExecutor};
-use std::{
-    fmt::Debug,
-    future::Future,
-    ops::RangeInclusive,
-    pin::Pin,
-    task::{ready, Context, Poll},
-};
 use tokio::sync::{mpsc, mpsc::UnboundedSender};
 use tokio_stream::wrappers::{ReceiverStream, UnboundedReceiverStream};
 use tokio_util::sync::PollSender;
@@ -136,13 +137,13 @@ impl<T: BodyDownloader> Future for SpawnedDownloader<T> {
                         if forward_error_result.is_err() {
                             // channel closed, this means [TaskDownloader] was dropped,
                             // so we can also exit
-                            return Poll::Ready(())
+                            return Poll::Ready(());
                         }
                     }
                 } else {
                     // channel closed, this means [TaskDownloader] was dropped, so we can also
                     // exit
-                    return Poll::Ready(())
+                    return Poll::Ready(());
                 }
             }
 
@@ -152,7 +153,7 @@ impl<T: BodyDownloader> Future for SpawnedDownloader<T> {
                         if this.bodies_tx.send_item(bodies).is_err() {
                             // channel closed, this means [TaskDownloader] was dropped, so we can
                             // also exit
-                            return Poll::Ready(())
+                            return Poll::Ready(());
                         }
                     }
                     None => return Poll::Pending,
@@ -160,7 +161,7 @@ impl<T: BodyDownloader> Future for SpawnedDownloader<T> {
                 Err(_) => {
                     // channel closed, this means [TaskDownloader] was dropped, so we can also
                     // exit
-                    return Poll::Ready(())
+                    return Poll::Ready(());
                 }
             }
         }
@@ -169,19 +170,21 @@ impl<T: BodyDownloader> Future for SpawnedDownloader<T> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use assert_matches::assert_matches;
+    use reth_consensus::test_utils::TestConsensus;
+    use reth_network_p2p::error::DownloadError;
+    use reth_provider::test_utils::create_test_provider_factory;
+
     use super::*;
     use crate::{
         bodies::{
             bodies::BodiesDownloaderBuilder,
             test_utils::{insert_headers, zip_blocks},
         },
-        test_utils::{generate_bodies, TestBodiesClient},
+        test_utils::{TestBodiesClient, generate_bodies},
     };
-    use assert_matches::assert_matches;
-    use reth_consensus::test_utils::TestConsensus;
-    use reth_network_p2p::error::DownloadError;
-    use reth_provider::test_utils::create_test_provider_factory;
-    use std::sync::Arc;
 
     #[tokio::test(flavor = "multi_thread")]
     async fn download_one_by_one_on_task() {

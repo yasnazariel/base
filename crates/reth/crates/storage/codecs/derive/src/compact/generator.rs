@@ -1,8 +1,9 @@
 //! Code generator for the `Compact` trait.
 
+use syn::{Attribute, LitStr};
+
 use super::*;
 use crate::ZstdConfig;
-use syn::{Attribute, LitStr};
 
 /// Generates code to implement the `Compact` trait for a data type.
 pub fn generate_from_to(
@@ -36,11 +37,7 @@ pub fn generate_from_to(
     };
 
     let has_ref_fields = fields.iter().any(|field| {
-        if let FieldTypes::StructField(field) = field {
-            field.is_reference
-        } else {
-            false
-        }
+        if let FieldTypes::StructField(field) = field { field.is_reference } else { false }
     });
 
     let fn_from_compact = if has_ref_fields {
@@ -113,7 +110,7 @@ fn generate_from_compact(
                     let ident = format_ident!("{}", field.name);
                     return Some(quote! {
                         #ident: #ident,
-                    })
+                    });
                 }
                 None
             });

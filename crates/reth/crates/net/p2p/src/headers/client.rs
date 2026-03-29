@@ -1,14 +1,16 @@
-use crate::{download::DownloadClient, error::PeerRequestResult, priority::Priority};
+use std::{
+    fmt::Debug,
+    pin::Pin,
+    task::{Context, Poll, ready},
+};
+
 use alloy_consensus::Header;
 use alloy_eips::BlockHashOrNumber;
 use futures::{Future, FutureExt};
 pub use reth_eth_wire_types::{BlockHeaders, HeadersDirection};
 use reth_primitives_traits::BlockHeader;
-use std::{
-    fmt::Debug,
-    pin::Pin,
-    task::{ready, Context, Poll},
-};
+
+use crate::{download::DownloadClient, error::PeerRequestResult, priority::Priority};
 
 /// The header request struct to be sent to connected peers, which
 /// will proceed to ask them to stream the requested headers to us.

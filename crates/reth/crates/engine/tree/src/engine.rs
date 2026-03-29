@@ -1,11 +1,11 @@
 //! An engine API handler for the chain.
 
-use crate::{
-    backfill::BackfillAction,
-    chain::{ChainHandler, FromOrchestrator, HandlerEvent},
-    download::{BlockDownloader, DownloadAction, DownloadOutcome},
+use std::{
+    fmt::Display,
+    task::{Context, Poll, ready},
 };
-use alloy_primitives::{map::B256Set, B256};
+
+use alloy_primitives::{B256, map::B256Set};
 use crossbeam_channel::Sender;
 use futures::{Stream, StreamExt};
 use reth_chain_state::ExecutedBlock;
@@ -13,11 +13,13 @@ use reth_engine_primitives::{BeaconEngineMessage, ConsensusEngineEvent};
 use reth_ethereum_primitives::EthPrimitives;
 use reth_payload_primitives::PayloadTypes;
 use reth_primitives_traits::{Block, NodePrimitives, SealedBlock};
-use std::{
-    fmt::Display,
-    task::{ready, Context, Poll},
-};
 use tokio::sync::mpsc::UnboundedReceiver;
+
+use crate::{
+    backfill::BackfillAction,
+    chain::{ChainHandler, FromOrchestrator, HandlerEvent},
+    download::{BlockDownloader, DownloadAction, DownloadOutcome},
+};
 
 /// A [`ChainHandler`] that advances the chain based on incoming requests (CL engine API).
 ///
@@ -95,7 +97,7 @@ where
                                 Poll::Ready(HandlerEvent::Event(ev))
                             }
                             HandlerEvent::FatalError => Poll::Ready(HandlerEvent::FatalError),
-                        }
+                        };
                     }
                     RequestHandlerEvent::Download(req) => {
                         // delegate download request to the downloader
@@ -109,7 +111,7 @@ where
                 // and delegate the request to the handler
                 self.handler.on_event(FromEngine::Request(req.into()));
                 // skip downloading in this iteration to allow the handler to process the request
-                continue
+                continue;
             }
 
             // advance the downloader
@@ -118,10 +120,10 @@ where
                     // delegate the downloaded blocks to the handler
                     self.handler.on_event(FromEngine::DownloadedBlocks(blocks));
                 }
-                continue
+                continue;
             }
 
-            return Poll::Pending
+            return Poll::Pending;
         }
     }
 }
@@ -201,7 +203,7 @@ where
 
     fn poll(&mut self, cx: &mut Context<'_>) -> Poll<RequestHandlerEvent<Self::Event>> {
         let Some(ev) = ready!(self.from_tree.poll_recv(cx)) else {
-            return Poll::Ready(RequestHandlerEvent::HandlerEvent(HandlerEvent::FatalError))
+            return Poll::Ready(RequestHandlerEvent::HandlerEvent(HandlerEvent::FatalError));
         };
 
         let ev = match ev {

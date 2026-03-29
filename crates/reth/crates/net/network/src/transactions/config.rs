@@ -1,20 +1,21 @@
 use core::fmt;
 use std::{fmt::Debug, str::FromStr};
 
-use super::{
-    PeerMetadata, DEFAULT_MAX_COUNT_TRANSACTIONS_SEEN_BY_PEER,
-    DEFAULT_SOFT_LIMIT_BYTE_SIZE_POOLED_TRANSACTIONS_RESP_ON_PACK_GET_POOLED_TRANSACTIONS_REQ,
-    SOFT_LIMIT_BYTE_SIZE_POOLED_TRANSACTIONS_RESPONSE,
-};
-use crate::transactions::constants::tx_fetcher::{
-    DEFAULT_MAX_CAPACITY_CACHE_PENDING_FETCH, DEFAULT_MAX_COUNT_CONCURRENT_REQUESTS,
-    DEFAULT_MAX_COUNT_CONCURRENT_REQUESTS_PER_PEER,
-};
 use alloy_eips::eip2718::IsTyped2718;
 use alloy_primitives::B256;
 use derive_more::{Constructor, Display};
 use reth_eth_wire::NetworkPrimitives;
 use reth_network_types::peers::kind::PeerKind;
+
+use super::{
+    DEFAULT_MAX_COUNT_TRANSACTIONS_SEEN_BY_PEER,
+    DEFAULT_SOFT_LIMIT_BYTE_SIZE_POOLED_TRANSACTIONS_RESP_ON_PACK_GET_POOLED_TRANSACTIONS_REQ,
+    PeerMetadata, SOFT_LIMIT_BYTE_SIZE_POOLED_TRANSACTIONS_RESPONSE,
+};
+use crate::transactions::constants::tx_fetcher::{
+    DEFAULT_MAX_CAPACITY_CACHE_PENDING_FETCH, DEFAULT_MAX_COUNT_CONCURRENT_REQUESTS,
+    DEFAULT_MAX_COUNT_CONCURRENT_REQUESTS_PER_PEER,
+};
 
 /// Configuration for managing transactions within the network.
 #[derive(Debug, Clone)]

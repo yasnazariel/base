@@ -54,7 +54,7 @@ alloy-transport.workspace = true
 alloy-consensus.workspace = true
 alloy-rpc-types-eth.workspace = true
 alloy-rpc-types-debug.workspace = true
-alloy-transport-http.workspace = true
+alloy-transport-http = { workspace = true, features = ["reqwest-rustls-tls"] }
 alloy-rpc-types-engine.workspace = true
 base-alloy-chains.workspace = true
 base-alloy-flz.workspace = true

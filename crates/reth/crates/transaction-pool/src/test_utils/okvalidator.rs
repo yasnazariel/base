@@ -1,10 +1,11 @@
 use std::marker::PhantomData;
 
-use crate::{
-    validate::ValidTransaction, EthPooledTransaction, PoolTransaction, TransactionOrigin,
-    TransactionValidationOutcome, TransactionValidator,
-};
 use reth_ethereum_primitives::Block;
+
+use crate::{
+    EthPooledTransaction, PoolTransaction, TransactionOrigin, TransactionValidationOutcome,
+    TransactionValidator, validate::ValidTransaction,
+};
 
 /// A transaction validator that determines all transactions to be valid.
 #[derive(Debug)]

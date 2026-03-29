@@ -1,4 +1,11 @@
-use crate::utils::{test_address, test_rpc_builder};
+use std::{
+    future::Future,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+};
+
 use alloy_rpc_types_eth::{Block, Header, Receipt, Transaction, TransactionRequest};
 use jsonrpsee::{
     core::middleware::{Batch, Notification},
@@ -10,14 +17,9 @@ use reth_rpc_builder::{RpcServerConfig, TransportRpcModuleConfig};
 use reth_rpc_eth_api::EthApiClient;
 use reth_rpc_server_types::RpcModuleSelection;
 use reth_tokio_util::EventSender;
-use std::{
-    future::Future,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
-};
 use tower::Layer;
+
+use crate::utils::{test_address, test_rpc_builder};
 
 #[derive(Clone, Default)]
 struct MyMiddlewareLayer {

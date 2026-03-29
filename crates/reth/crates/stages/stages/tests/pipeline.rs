@@ -1,9 +1,11 @@
 //! Pipeline forward sync and unwind tests.
 
-use alloy_consensus::{constants::ETH_TO_WEI, Header, TxEip1559, TxReceipt};
+use std::sync::Arc;
+
+use alloy_consensus::{Header, TxEip1559, TxReceipt, constants::ETH_TO_WEI};
 use alloy_eips::eip1559::INITIAL_BASE_FEE;
 use alloy_genesis::{Genesis, GenesisAccount};
-use alloy_primitives::{bytes, keccak256, Address, Bytes, TxKind, B256, U256};
+use alloy_primitives::{Address, B256, Bytes, TxKind, U256, bytes, keccak256};
 use reth_chainspec::{ChainSpecBuilder, ChainSpecProvider, MAINNET};
 use reth_config::config::StageConfig;
 use reth_consensus::noop::NoopConsensus;
@@ -14,21 +16,21 @@ use reth_downloaders::{
     headers::reverse_headers::ReverseHeadersDownloaderBuilder,
 };
 use reth_ethereum_primitives::{Block, BlockBody, Transaction};
-use reth_evm::{execute::Executor, ConfigureEvm};
+use reth_evm::{ConfigureEvm, execute::Executor};
 use reth_evm_ethereum::EthEvmConfig;
 use reth_network_p2p::{
     bodies::downloader::BodyDownloader,
     headers::downloader::{HeaderDownloader, SyncTarget},
 };
 use reth_primitives_traits::{
+    RecoveredBlock, SealedBlock,
     crypto::secp256k1::public_key_to_address,
     proofs::{calculate_receipt_root, calculate_transaction_root},
-    RecoveredBlock, SealedBlock,
 };
 use reth_provider::{
-    test_utils::create_test_provider_factory_with_chain_spec, BlockNumReader, DBProvider,
-    DatabaseProviderFactory, HeaderProvider, OriginalValuesKnown, StageCheckpointReader,
-    StateWriter, StaticFileProviderFactory,
+    BlockNumReader, DBProvider, DatabaseProviderFactory, HeaderProvider, OriginalValuesKnown,
+    StageCheckpointReader, StateWriter, StaticFileProviderFactory,
+    test_utils::create_test_provider_factory_with_chain_spec,
 };
 use reth_prune_types::PruneModes;
 use reth_revm::database::StateProviderDatabase;
@@ -41,7 +43,6 @@ use reth_storage_api::{
 use reth_testing_utils::generators::{self, generate_key, sign_tx_with_key_pair};
 use reth_trie::{HashedPostState, KeccakKeyHasher, StateRoot};
 use reth_trie_db::DatabaseStateRoot;
-use std::sync::Arc;
 use tokio::sync::watch;
 
 /// Counter contract deployed bytecode compiled with Solidity 0.8.31.

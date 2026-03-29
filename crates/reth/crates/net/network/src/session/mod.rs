@@ -5,40 +5,38 @@ mod conn;
 mod counter;
 mod handle;
 mod types;
-pub use types::BlockRangeInfo;
-
-use crate::{
-    message::PeerMessage,
-    metrics::SessionManagerMetrics,
-    protocol::{IntoRlpxSubProtocol, OnNotSupported, RlpxSubProtocolHandlers, RlpxSubProtocols},
-    session::active::ActiveSession,
+use std::{
+    collections::HashMap,
+    future::Future,
+    net::SocketAddr,
+    sync::{Arc, atomic::AtomicU64},
+    task::{Context, Poll},
+    time::{Duration, Instant},
 };
+
 use active::QueuedOutgoingMessages;
+pub use conn::EthRlpxConnection;
 use counter::SessionCounter;
-use futures::{future::Either, io, FutureExt, StreamExt};
-use reth_ecies::{stream::ECIESStream, ECIESError};
+use futures::{FutureExt, StreamExt, future::Either, io};
+pub use handle::{
+    ActiveSessionHandle, ActiveSessionMessage, PendingSessionEvent, PendingSessionHandle,
+    SessionCommand,
+};
+use reth_ecies::{ECIESError, stream::ECIESStream};
 use reth_eth_wire::{
-    errors::EthStreamError, handshake::EthRlpxHandshake, multiplex::RlpxProtocolMultiplexer,
-    BlockRangeUpdate, Capabilities, DisconnectReason, EthStream, EthVersion,
+    BlockRangeUpdate, Capabilities, DisconnectReason, EthStream, EthVersion, HANDSHAKE_TIMEOUT,
     HelloMessageWithProtocols, NetworkPrimitives, UnauthedP2PStream, UnifiedStatus,
-    HANDSHAKE_TIMEOUT,
+    errors::EthStreamError, handshake::EthRlpxHandshake, multiplex::RlpxProtocolMultiplexer,
 };
 use reth_ethereum_forks::{ForkFilter, ForkId, ForkTransition, Head};
 use reth_metrics::common::mpsc::MeteredPollSender;
+pub use reth_network_api::{Direction, PeerInfo};
 use reth_network_api::{PeerRequest, PeerRequestSender};
 use reth_network_peers::PeerId;
 use reth_network_types::SessionsConfig;
 use reth_tasks::TaskSpawner;
 use rustc_hash::FxHashMap;
 use secp256k1::SecretKey;
-use std::{
-    collections::HashMap,
-    future::Future,
-    net::SocketAddr,
-    sync::{atomic::AtomicU64, Arc},
-    task::{Context, Poll},
-    time::{Duration, Instant},
-};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     net::TcpStream,
@@ -47,14 +45,14 @@ use tokio::{
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::sync::PollSender;
 use tracing::{debug, instrument, trace};
+pub use types::BlockRangeInfo;
 
-use crate::session::active::RANGE_UPDATE_INTERVAL;
-pub use conn::EthRlpxConnection;
-pub use handle::{
-    ActiveSessionHandle, ActiveSessionMessage, PendingSessionEvent, PendingSessionHandle,
-    SessionCommand,
+use crate::{
+    message::PeerMessage,
+    metrics::SessionManagerMetrics,
+    protocol::{IntoRlpxSubProtocol, OnNotSupported, RlpxSubProtocolHandlers, RlpxSubProtocols},
+    session::active::{ActiveSession, RANGE_UPDATE_INTERVAL},
 };
-pub use reth_network_api::{Direction, PeerInfo};
 
 /// Internal identifier for active sessions.
 #[derive(Debug, Clone, Copy, PartialOrd, PartialEq, Eq, Hash)]
@@ -414,7 +412,7 @@ impl<N: NetworkPrimitives> SessionManager<N> {
     ) {
         if !self.disconnections_counter.has_capacity() {
             // drop the connection if we don't have capacity for gracefully disconnecting
-            return
+            return;
         }
 
         let guard = self.disconnections_counter.clone();
@@ -476,7 +474,7 @@ impl<N: NetworkPrimitives> SessionManager<N> {
                     ActiveSessionMessage::ProtocolBreach { peer_id } => {
                         Poll::Ready(SessionEvent::ProtocolBreach { peer_id })
                     }
-                }
+                };
             }
         }
 
@@ -522,7 +520,7 @@ impl<N: NetworkPrimitives> SessionManager<N> {
                         peer_id,
                         remote_addr,
                         direction,
-                    })
+                    });
                 }
 
                 let (commands_to_session, commands_rx) = mpsc::channel(self.session_command_buffer);
@@ -939,7 +937,7 @@ async fn start_pending_outbound_session<N: NetworkPrimitives>(
                     error,
                 })
                 .await;
-            return
+            return;
         }
     };
     authenticate(
@@ -987,7 +985,7 @@ async fn authenticate<N: NetworkPrimitives>(
                     direction,
                 })
                 .await;
-            return
+            return;
         }
     };
 
@@ -1070,7 +1068,7 @@ async fn authenticate_stream<N: NetworkPrimitives>(
                 session_id,
                 direction,
                 error: Some(PendingSessionHandshakeError::Eth(err.into())),
-            }
+            };
         }
     };
 
@@ -1109,7 +1107,7 @@ async fn authenticate_stream<N: NetworkPrimitives>(
                 session_id,
                 direction,
                 error: Some(PendingSessionHandshakeError::Eth(err.into())),
-            }
+            };
         }
     };
 
@@ -1135,7 +1133,7 @@ async fn authenticate_stream<N: NetworkPrimitives>(
                     session_id,
                     direction,
                     error: Some(PendingSessionHandshakeError::Eth(err)),
-                }
+                };
             }
         }
     } else {
@@ -1165,7 +1163,7 @@ async fn authenticate_stream<N: NetworkPrimitives>(
                     session_id,
                     direction,
                     error: Some(PendingSessionHandshakeError::Eth(err)),
-                }
+                };
             }
         };
 

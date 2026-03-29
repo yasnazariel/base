@@ -1,5 +1,6 @@
-use super::*;
 use syn::Attribute;
+
+use super::*;
 
 /// Generates the flag fieldset struct that is going to be used to store the length of fields and
 /// their potential presence.
@@ -30,7 +31,7 @@ pub(crate) fn generate_flag_struct(
                 .iter()
                 .filter_map(|f| {
                     if let FieldTypes::StructField(f) = f {
-                        return Some(f)
+                        return Some(f);
                     }
                     None
                 })
@@ -41,7 +42,7 @@ pub(crate) fn generate_flag_struct(
     };
 
     if total_bits == 0 {
-        return placeholder_flag_struct(ident, &flags_ident)
+        return placeholder_flag_struct(ident, &flags_ident);
     }
 
     let (total_bytes, unused_bits) = pad_flag_struct(total_bits, &mut field_flags);

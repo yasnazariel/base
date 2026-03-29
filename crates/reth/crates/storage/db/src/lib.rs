@@ -27,30 +27,30 @@ pub mod version;
 #[cfg(feature = "mdbx")]
 pub mod mdbx;
 
+#[cfg(feature = "mdbx")]
+pub use mdbx::{DatabaseEnv, DatabaseEnvKind, create_db, init_db, open_db, open_db_read_only};
+pub use models::ClientVersion;
+pub use reth_db_api::*;
 pub use reth_storage_errors::db::{DatabaseError, DatabaseWriteOperation};
 #[cfg(feature = "mdbx")]
 pub use utils::is_database_empty;
 
-#[cfg(feature = "mdbx")]
-pub use mdbx::{create_db, init_db, open_db, open_db_read_only, DatabaseEnv, DatabaseEnvKind};
-
-pub use models::ClientVersion;
-pub use reth_db_api::*;
-
 /// Collection of database test utilities
 #[cfg(any(test, feature = "test-utils"))]
 pub mod test_utils {
-    use super::*;
-    use crate::mdbx::DatabaseArguments;
-    use parking_lot::RwLock;
-    use reth_db_api::{database::Database, database_metrics::DatabaseMetrics};
-    use reth_fs_util;
     use std::{
         fmt::Formatter,
         path::{Path, PathBuf},
         sync::Arc,
     };
+
+    use parking_lot::RwLock;
+    use reth_db_api::{database::Database, database_metrics::DatabaseMetrics};
+    use reth_fs_util;
     use tempfile::TempDir;
+
+    use super::*;
+    use crate::mdbx::DatabaseArguments;
 
     /// Error during database open
     pub const ERROR_DB_OPEN: &str = "could not open the database file";
@@ -222,19 +222,21 @@ pub mod test_utils {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        init_db,
-        mdbx::DatabaseArguments,
-        open_db, tables,
-        version::{db_version_file_path, DatabaseVersionError},
-    };
+    use std::time::Duration;
+
     use assert_matches::assert_matches;
     use reth_db_api::{
         cursor::DbCursorRO, database::Database, models::ClientVersion, transaction::DbTx,
     };
     use reth_libmdbx::MaxReadTransactionDuration;
-    use std::time::Duration;
     use tempfile::tempdir;
+
+    use crate::{
+        init_db,
+        mdbx::DatabaseArguments,
+        open_db, tables,
+        version::{DatabaseVersionError, db_version_file_path},
+    };
 
     #[test]
     fn test_temp_database_cleanup() {

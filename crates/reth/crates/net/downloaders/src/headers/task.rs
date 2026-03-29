@@ -1,3 +1,10 @@
+use std::{
+    fmt::Debug,
+    future::Future,
+    pin::Pin,
+    task::{Context, Poll, ready},
+};
+
 use alloy_primitives::Sealable;
 use futures::{FutureExt, Stream};
 use futures_util::StreamExt;
@@ -8,12 +15,6 @@ use reth_network_p2p::headers::{
 };
 use reth_primitives_traits::SealedHeader;
 use reth_tasks::{TaskSpawner, TokioTaskExecutor};
-use std::{
-    fmt::Debug,
-    future::Future,
-    pin::Pin,
-    task::{ready, Context, Poll},
-};
 use tokio::sync::{mpsc, mpsc::UnboundedSender};
 use tokio_stream::wrappers::{ReceiverStream, UnboundedReceiverStream};
 use tokio_util::sync::PollSender;
@@ -133,7 +134,7 @@ impl<T: HeaderDownloader> Future for SpawnedDownloader<T> {
                     Poll::Ready(None) => {
                         // channel closed, this means [TaskDownloader] was dropped, so we can also
                         // exit
-                        return Poll::Ready(())
+                        return Poll::Ready(());
                     }
                     Poll::Ready(Some(update)) => match update {
                         DownloaderUpdates::UpdateSyncGap(head, target) => {
@@ -159,7 +160,7 @@ impl<T: HeaderDownloader> Future for SpawnedDownloader<T> {
                             if this.headers_tx.send_item(headers).is_err() {
                                 // channel closed, this means [TaskDownloader] was dropped, so we
                                 // can also exit
-                                return Poll::Ready(())
+                                return Poll::Ready(());
                             }
                         }
                         None => return Poll::Pending,
@@ -168,7 +169,7 @@ impl<T: HeaderDownloader> Future for SpawnedDownloader<T> {
                 Err(_) => {
                     // channel closed, this means [TaskDownloader] was dropped, so
                     // we can also exit
-                    return Poll::Ready(())
+                    return Poll::Ready(());
                 }
             }
         }
@@ -186,13 +187,15 @@ enum DownloaderUpdates<H> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use reth_consensus::test_utils::TestConsensus;
+    use reth_network_p2p::test_utils::TestHeadersClient;
+
     use super::*;
     use crate::headers::{
         reverse_headers::ReverseHeadersDownloaderBuilder, test_utils::child_header,
     };
-    use reth_consensus::test_utils::TestConsensus;
-    use reth_network_p2p::test_utils::TestHeadersClient;
-    use std::sync::Arc;
 
     #[tokio::test(flavor = "multi_thread")]
     async fn download_one_by_one_on_task() {

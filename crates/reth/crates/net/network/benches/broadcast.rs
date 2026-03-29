@@ -1,13 +1,14 @@
 #![allow(missing_docs)]
+use std::sync::Arc;
+
 use alloy_primitives::U256;
 use criterion::*;
 use futures::StreamExt;
 use rand::SeedableRng;
-use reth_network::{test_utils::Testnet, NetworkEventListenerProvider};
+use reth_network::{NetworkEventListenerProvider, test_utils::Testnet};
 use reth_network_api::Peers;
 use reth_provider::test_utils::{ExtendedAccount, MockEthProvider};
-use reth_transaction_pool::{test_utils::TransactionGenerator, PoolTransaction};
-use std::sync::Arc;
+use reth_transaction_pool::{PoolTransaction, test_utils::TransactionGenerator};
 use tokio::{runtime::Runtime as TokioRuntime, sync::mpsc::unbounded_channel};
 
 criterion_group!(

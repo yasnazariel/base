@@ -7,9 +7,10 @@
 //! We disable prewarming to ensure deterministic cache behavior and verify the execution
 //! output state contains the expected account status after SELFDESTRUCT.
 
-use crate::utils::{eth_payload_attributes, eth_payload_attributes_shanghai};
+use std::sync::Arc;
+
 use alloy_network::{EthereumWallet, TransactionBuilder};
-use alloy_primitives::{bytes, Address, Bytes, TxKind, U256};
+use alloy_primitives::{Address, Bytes, TxKind, U256, bytes};
 use alloy_provider::{Provider, ProviderBuilder};
 use alloy_rpc_types_eth::TransactionRequest;
 use futures::StreamExt;
@@ -18,7 +19,8 @@ use reth_e2e_test_utils::setup_engine;
 use reth_node_api::TreeConfig;
 use reth_node_ethereum::EthereumNode;
 use reth_revm::db::BundleAccount;
-use std::sync::Arc;
+
+use crate::utils::{eth_payload_attributes, eth_payload_attributes_shanghai};
 
 const MAX_FEE_PER_GAS: u128 = 20_000_000_000;
 const MAX_PRIORITY_FEE_PER_GAS: u128 = 1_000_000_000;

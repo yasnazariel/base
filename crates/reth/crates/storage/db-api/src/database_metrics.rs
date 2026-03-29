@@ -1,5 +1,6 @@
-use metrics::{counter, gauge, histogram, Label};
 use std::sync::Arc;
+
+use metrics::{Label, counter, gauge, histogram};
 
 /// Represents a type that can report metrics, used mainly with the database. The `report_metrics`
 /// method can be used as a prometheus hook.

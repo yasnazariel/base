@@ -1,27 +1,32 @@
 //! clap [Args](clap::Args) for network related arguments.
 
-use alloy_eips::BlockNumHash;
-use alloy_primitives::B256;
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     ops::Not,
     path::PathBuf,
+    str::FromStr,
 };
 
-use crate::version::version_metadata;
+use alloy_eips::BlockNumHash;
+use alloy_primitives::B256;
 use clap::Args;
 use reth_chainspec::EthChainSpec;
 use reth_cli_util::{get_secret_key, load_secret_key::SecretKeyError};
 use reth_config::Config;
-use reth_discv4::{NodeRecord, DEFAULT_DISCOVERY_ADDR, DEFAULT_DISCOVERY_PORT};
+use reth_discv4::{DEFAULT_DISCOVERY_ADDR, DEFAULT_DISCOVERY_PORT, NodeRecord};
 use reth_discv5::{
-    discv5::ListenConfig, DEFAULT_COUNT_BOOTSTRAP_LOOKUPS, DEFAULT_DISCOVERY_V5_PORT,
+    DEFAULT_COUNT_BOOTSTRAP_LOOKUPS, DEFAULT_DISCOVERY_V5_PORT,
     DEFAULT_SECONDS_BOOTSTRAP_LOOKUP_INTERVAL, DEFAULT_SECONDS_LOOKUP_INTERVAL,
+    discv5::ListenConfig,
 };
 use reth_net_banlist::IpFilter;
-use reth_net_nat::{NatResolver, DEFAULT_NET_IF_NAME};
+use reth_net_nat::{DEFAULT_NET_IF_NAME, NatResolver};
 use reth_network::{
+    HelloMessageWithProtocols, NetworkConfigBuilder, NetworkPrimitives,
     transactions::{
+        DEFAULT_SOFT_LIMIT_BYTE_SIZE_POOLED_TRANSACTIONS_RESP_ON_PACK_GET_POOLED_TRANSACTIONS_REQ,
+        SOFT_LIMIT_BYTE_SIZE_POOLED_TRANSACTIONS_RESPONSE, TransactionFetcherConfig,
+        TransactionPropagationMode, TransactionsManagerConfig,
         config::{TransactionIngressPolicy, TransactionPropagationKind},
         constants::{
             tx_fetcher::{
@@ -32,16 +37,13 @@ use reth_network::{
                 DEFAULT_MAX_COUNT_PENDING_POOL_IMPORTS, DEFAULT_MAX_COUNT_TRANSACTIONS_SEEN_BY_PEER,
             },
         },
-        TransactionFetcherConfig, TransactionPropagationMode, TransactionsManagerConfig,
-        DEFAULT_SOFT_LIMIT_BYTE_SIZE_POOLED_TRANSACTIONS_RESP_ON_PACK_GET_POOLED_TRANSACTIONS_REQ,
-        SOFT_LIMIT_BYTE_SIZE_POOLED_TRANSACTIONS_RESPONSE,
     },
-    HelloMessageWithProtocols, NetworkConfigBuilder, NetworkPrimitives,
 };
-use reth_network_peers::{mainnet_nodes, TrustedPeer};
+use reth_network_peers::{TrustedPeer, mainnet_nodes};
 use secp256k1::SecretKey;
-use std::str::FromStr;
 use tracing::error;
+
+use crate::version::version_metadata;
 
 /// Parameters for configuring the network more granularity via CLI
 #[derive(Debug, Clone, Args, PartialEq, Eq)]
@@ -283,11 +285,7 @@ impl NetworkArgs {
     /// Returns the max outbound peers (1:2 ratio).
     pub fn resolved_max_outbound_peers(&self) -> Option<usize> {
         if let Some(max_peers) = self.max_peers {
-            if max_peers == 0 {
-                Some(0)
-            } else {
-                Some((max_peers / 3).max(1))
-            }
+            if max_peers == 0 { Some(0) } else { Some((max_peers / 3).max(1)) }
         } else {
             self.max_outbound_peers
         }
@@ -654,9 +652,9 @@ impl DiscoveryArgs {
             return false;
         }
 
-        self.enable_discv5_discovery ||
-            self.discv5_addr.is_some() ||
-            self.discv5_addr_ipv6.is_some()
+        self.enable_discv5_discovery
+            || self.discv5_addr.is_some()
+            || self.discv5_addr_ipv6.is_some()
     }
 
     /// Set the discovery port to zero, to allow the OS to assign a random unused port when
@@ -721,16 +719,18 @@ fn parse_block_num_hash(s: &str) -> Result<BlockNumHash, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::{
+        fs,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
     use clap::Parser;
     use reth_chainspec::MAINNET;
     use reth_config::Config;
     use reth_network_peers::NodeRecord;
     use secp256k1::SecretKey;
-    use std::{
-        fs,
-        time::{SystemTime, UNIX_EPOCH},
-    };
+
+    use super::*;
 
     /// A helper type to parse Args more easily
     #[derive(Parser)]
@@ -956,10 +956,12 @@ mod tests {
 
         // Test invalid formats
         assert!(parse_block_num_hash("invalid").is_err());
-        assert!(parse_block_num_hash(
-            "abc=0x1111111111111111111111111111111111111111111111111111111111111111"
-        )
-        .is_err());
+        assert!(
+            parse_block_num_hash(
+                "abc=0x1111111111111111111111111111111111111111111111111111111111111111"
+            )
+            .is_err()
+        );
     }
 
     #[test]

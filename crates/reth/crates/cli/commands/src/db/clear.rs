@@ -1,10 +1,10 @@
 use clap::{Parser, Subcommand};
 use reth_db::static_file::iter_static_files;
 use reth_db_api::{
+    TableViewer, Tables,
     database::Database,
     table::Table,
     transaction::{DbTx, DbTxMut},
-    TableViewer, Tables,
 };
 use reth_db_common::DbTool;
 use reth_node_builder::NodeTypesWithDB;

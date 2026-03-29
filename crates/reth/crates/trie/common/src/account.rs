@@ -3,15 +3,16 @@ pub use alloy_trie::TrieAccount;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::root::storage_root_unhashed;
-    use alloy_consensus::constants::KECCAK_EMPTY;
-    use alloy_genesis::GenesisAccount;
-    use alloy_primitives::{keccak256, Bytes, B256, U256};
     use std::collections::BTreeMap;
 
+    use alloy_consensus::constants::KECCAK_EMPTY;
+    use alloy_genesis::GenesisAccount;
+    use alloy_primitives::{B256, Bytes, U256, keccak256};
     use alloy_trie::EMPTY_ROOT_HASH;
     use reth_primitives_traits::Account;
+
+    use super::*;
+    use crate::root::storage_root_unhashed;
 
     #[test]
     fn test_from_genesis_account_with_default_values() {

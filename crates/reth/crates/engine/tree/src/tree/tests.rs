@@ -1,25 +1,23 @@
-use super::*;
-use crate::{
-    persistence::PersistenceAction,
-    tree::{
-        payload_validator::{BasicEngineValidator, TreeCtx, ValidationOutcome},
-        persistence_state::CurrentPersistenceAction,
-        PersistTarget, TreeConfig,
+use std::{
+    collections::BTreeMap,
+    str::FromStr,
+    sync::{
+        Arc,
+        mpsc::{Receiver, Sender},
     },
 };
-use reth_trie_db::ChangesetCache;
 
 use alloy_eips::eip1898::BlockWithParent;
 use alloy_primitives::{
+    B256, Bytes,
     map::{B256Map, B256Set},
-    Bytes, B256,
 };
 use alloy_rlp::Decodable;
 use alloy_rpc_types_engine::{
     ExecutionData, ExecutionPayloadSidecar, ExecutionPayloadV1, ForkchoiceState,
 };
 use assert_matches::assert_matches;
-use reth_chain_state::{test_utils::TestBlockBuilder, BlockState, ComputedTrieData};
+use reth_chain_state::{BlockState, ComputedTrieData, test_utils::TestBlockBuilder};
 use reth_chainspec::{ChainSpec, HOLESKY, MAINNET};
 use reth_engine_primitives::{EngineApiValidator, ForkchoiceStatus, NoopInvalidBlockHook};
 use reth_ethereum_consensus::EthBeaconConsensus;
@@ -29,15 +27,18 @@ use reth_evm_ethereum::MockEvmConfig;
 use reth_primitives_traits::Block as _;
 use reth_provider::test_utils::MockEthProvider;
 use reth_tasks::spawn_os_thread;
-use std::{
-    collections::BTreeMap,
-    str::FromStr,
-    sync::{
-        mpsc::{Receiver, Sender},
-        Arc,
+use reth_trie_db::ChangesetCache;
+use tokio::sync::oneshot;
+
+use super::*;
+use crate::{
+    persistence::PersistenceAction,
+    tree::{
+        PersistTarget, TreeConfig,
+        payload_validator::{BasicEngineValidator, TreeCtx, ValidationOutcome},
+        persistence_state::CurrentPersistenceAction,
     },
 };
-use tokio::sync::oneshot;
 
 /// Mock engine validator for tests
 #[derive(Debug, Clone)]
@@ -928,8 +929,8 @@ async fn test_get_canonical_blocks_to_persist() {
     assert!(!blocks_to_persist.iter().any(|b| b.recovered_block().hash() == fork_block_hash));
 
     // check that the original block 4 is still included
-    assert!(blocks_to_persist.iter().any(|b| b.recovered_block().number == 4 &&
-        b.recovered_block().hash() == blocks[4].recovered_block().hash()));
+    assert!(blocks_to_persist.iter().any(|b| b.recovered_block().number == 4
+        && b.recovered_block().hash() == blocks[4].recovered_block().hash()));
 
     // check that if we advance persistence, the persistence action is the correct value
     test_harness.tree.advance_persistence().expect("advancing persistence should succeed");
@@ -1021,10 +1022,9 @@ async fn test_engine_tree_live_sync_transition_required_blocks_requested() {
 
     let _ = test_harness
         .tree
-        .on_engine_message(FromEngine::DownloadedBlocks(vec![main_chain
-            .last()
-            .unwrap()
-            .clone_sealed_block()]))
+        .on_engine_message(FromEngine::DownloadedBlocks(vec![
+            main_chain.last().unwrap().clone_sealed_block(),
+        ]))
         .unwrap();
 
     let event = test_harness.from_tree_rx.recv().await.unwrap();

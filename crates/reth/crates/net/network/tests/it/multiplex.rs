@@ -4,7 +4,7 @@
 use std::{
     net::SocketAddr,
     pin::Pin,
-    task::{ready, Context, Poll},
+    task::{Context, Poll, ready},
 };
 
 use alloy_primitives::bytes::BytesMut;
@@ -13,9 +13,9 @@ use reth_eth_wire::{
     capability::SharedCapabilities, multiplex::ProtocolConnection, protocol::Protocol,
 };
 use reth_network::{
+    NetworkConfigBuilder, NetworkEventListenerProvider, NetworkManager,
     protocol::{ConnectionHandler, OnNotSupported, ProtocolHandler},
     test_utils::{NetworkEventStream, Testnet},
-    NetworkConfigBuilder, NetworkEventListenerProvider, NetworkManager,
 };
 use reth_network_api::{Direction, NetworkInfo, PeerId, Peers};
 use reth_provider::{noop::NoopProvider, test_utils::MockEthProvider};
@@ -27,9 +27,10 @@ use crate::multiplex::proto::{PingPongProtoMessage, PingPongProtoMessageKind};
 
 /// A simple Rlpx subprotocol that sends pings and pongs
 mod proto {
-    use super::*;
     use alloy_primitives::bytes::{Buf, BufMut};
     use reth_eth_wire::Capability;
+
+    use super::*;
 
     #[repr(u8)]
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -103,8 +104,8 @@ mod proto {
             buf.put_u8(self.message_type as u8);
             match &self.message {
                 PingPongProtoMessageKind::Ping | PingPongProtoMessageKind::Pong => {}
-                PingPongProtoMessageKind::PingMessage(msg) |
-                PingPongProtoMessageKind::PongMessage(msg) => {
+                PingPongProtoMessageKind::PingMessage(msg)
+                | PingPongProtoMessageKind::PongMessage(msg) => {
                     buf.put(msg.as_bytes());
                 }
             }
@@ -114,7 +115,7 @@ mod proto {
         /// Decodes a `TestProtoMessage` from the given message buffer.
         pub fn decode_message(buf: &mut &[u8]) -> Option<Self> {
             if buf.is_empty() {
-                return None
+                return None;
             }
             let id = buf[0];
             buf.advance(1);
@@ -238,7 +239,7 @@ impl Stream for PingPongProtoConnection {
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
         if let Some(initial_ping) = this.initial_ping.take() {
-            return Poll::Ready(Some(initial_ping.encoded()))
+            return Poll::Ready(Some(initial_ping.encoded()));
         }
 
         loop {
@@ -248,31 +249,31 @@ impl Stream for PingPongProtoConnection {
                         this.pending_pong = Some(response);
                         Poll::Ready(Some(PingPongProtoMessage::ping_message(msg).encoded()))
                     }
-                }
+                };
             }
             let Some(msg) = ready!(this.conn.poll_next_unpin(cx)) else { return Poll::Ready(None) };
 
             let Some(msg) = PingPongProtoMessage::decode_message(&mut &msg[..]) else {
-                return Poll::Ready(None)
+                return Poll::Ready(None);
             };
 
             match msg.message {
                 PingPongProtoMessageKind::Ping => {
-                    return Poll::Ready(Some(PingPongProtoMessage::pong().encoded()))
+                    return Poll::Ready(Some(PingPongProtoMessage::pong().encoded()));
                 }
                 PingPongProtoMessageKind::Pong => {}
                 PingPongProtoMessageKind::PingMessage(msg) => {
-                    return Poll::Ready(Some(PingPongProtoMessage::pong_message(msg).encoded()))
+                    return Poll::Ready(Some(PingPongProtoMessage::pong_message(msg).encoded()));
                 }
                 PingPongProtoMessageKind::PongMessage(msg) => {
                     if let Some(sender) = this.pending_pong.take() {
                         sender.send(msg).ok();
                     }
-                    continue
+                    continue;
                 }
             }
 
-            return Poll::Pending
+            return Poll::Pending;
         }
     }
 }

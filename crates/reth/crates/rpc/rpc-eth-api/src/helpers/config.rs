@@ -1,5 +1,7 @@
 //! Loads chain configuration.
 
+use std::collections::BTreeMap;
+
 use alloy_consensus::BlockHeader;
 use alloy_eips::{
     eip7840::BlobParams,
@@ -10,13 +12,12 @@ use alloy_primitives::Address;
 use jsonrpsee::{core::RpcResult, proc_macros::rpc};
 use reth_chainspec::{ChainSpecProvider, EthChainSpec, EthereumHardforks, Hardforks, Head};
 use reth_errors::{ProviderError, RethError};
-use reth_evm::{precompiles::PrecompilesMap, ConfigureEvm, Evm};
+use reth_evm::{ConfigureEvm, Evm, precompiles::PrecompilesMap};
 use reth_node_api::NodePrimitives;
 use reth_primitives_traits::header::HeaderMut;
 use reth_revm::db::EmptyDB;
 use reth_rpc_eth_types::EthApiError;
 use reth_storage_api::BlockReaderIdExt;
-use std::collections::BTreeMap;
 
 /// RPC endpoint support for [EIP-7910](https://eips.ethereum.org/EIPS/eip-7910)
 #[cfg_attr(not(feature = "client"), rpc(server, namespace = "eth"))]

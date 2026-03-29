@@ -1,6 +1,8 @@
-use crate::transactions::config::{AnnouncementFilteringPolicy, TransactionPropagationPolicy};
-use reth_eth_wire::NetworkPrimitives;
 use std::fmt::Debug;
+
+use reth_eth_wire::NetworkPrimitives;
+
+use crate::transactions::config::{AnnouncementFilteringPolicy, TransactionPropagationPolicy};
 
 /// A container that bundles specific implementations of transaction-related policies,
 ///

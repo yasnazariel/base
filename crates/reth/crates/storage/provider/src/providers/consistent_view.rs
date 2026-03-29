@@ -1,7 +1,8 @@
-use crate::{BlockNumReader, DatabaseProviderFactory, HeaderProvider};
 use alloy_primitives::B256;
 pub use reth_storage_errors::provider::ConsistentViewError;
 use reth_storage_errors::provider::ProviderResult;
+
+use crate::{BlockNumReader, DatabaseProviderFactory, HeaderProvider};
 
 /// A consistent view over state in the database.
 ///
@@ -67,10 +68,10 @@ where
         //
         // To ensure this doesn't happen, we just have to make sure that we fetch from the same
         // data source that we used during initialization. In this case, that is static files
-        if let Some((hash, number)) = self.tip &&
-            provider_ro.sealed_header(number)?.is_none_or(|header| header.hash() != hash)
+        if let Some((hash, number)) = self.tip
+            && provider_ro.sealed_header(number)?.is_none_or(|header| header.hash() != hash)
         {
-            return Err(ConsistentViewError::Reorged { block: hash }.into())
+            return Err(ConsistentViewError::Reorged { block: hash }.into());
         }
 
         Ok(provider_ro)
@@ -79,16 +80,17 @@ where
 
 #[cfg(test)]
 mod tests {
-    use reth_errors::ProviderError;
     use std::str::FromStr;
 
-    use super::*;
-    use crate::{test_utils::create_test_provider_factory, BlockWriter};
     use alloy_primitives::Bytes;
     use assert_matches::assert_matches;
     use reth_chainspec::{ChainSpecProvider, EthChainSpec};
+    use reth_errors::ProviderError;
     use reth_ethereum_primitives::{Block, BlockBody};
-    use reth_primitives_traits::{block::TestBlock, RecoveredBlock, SealedBlock};
+    use reth_primitives_traits::{RecoveredBlock, SealedBlock, block::TestBlock};
+
+    use super::*;
+    use crate::{BlockWriter, test_utils::create_test_provider_factory};
 
     #[test]
     fn test_consistent_view_extend() {

@@ -3,25 +3,27 @@
 //! An `RLPx` stream is multiplexed via the prepended message-id of a framed message.
 //! Capabilities are exchanged via the `RLPx` `Hello` message as pairs of `(id, version)`, <https://github.com/ethereum/devp2p/blob/master/rlpx.md#capability-messaging>
 
-use crate::types::{Receipts69, Receipts70};
+use std::{
+    sync::Arc,
+    task::{Context, Poll, ready},
+};
+
 use alloy_consensus::{BlockHeader, ReceiptWithBloom};
-use alloy_primitives::{Bytes, B256};
+use alloy_primitives::{B256, Bytes};
 use futures::FutureExt;
 use reth_eth_wire::{
-    message::RequestPair, BlockBodies, BlockHeaders, BlockRangeUpdate, EthMessage,
-    EthNetworkPrimitives, GetBlockBodies, GetBlockHeaders, NetworkPrimitives, NewBlock,
-    NewBlockHashes, NewBlockPayload, NewPooledTransactionHashes, NodeData, PooledTransactions,
-    Receipts, SharedTransactions, Transactions,
+    BlockBodies, BlockHeaders, BlockRangeUpdate, EthMessage, EthNetworkPrimitives, GetBlockBodies,
+    GetBlockHeaders, NetworkPrimitives, NewBlock, NewBlockHashes, NewBlockPayload,
+    NewPooledTransactionHashes, NodeData, PooledTransactions, Receipts, SharedTransactions,
+    Transactions, message::RequestPair,
 };
 use reth_eth_wire_types::RawCapabilityMessage;
 use reth_network_api::PeerRequest;
 use reth_network_p2p::error::{RequestError, RequestResult};
 use reth_primitives_traits::Block;
-use std::{
-    sync::Arc,
-    task::{ready, Context, Poll},
-};
 use tokio::sync::oneshot;
+
+use crate::types::{Receipts69, Receipts70};
 
 /// Internal form of a `NewBlock` message
 #[derive(Debug, Clone)]

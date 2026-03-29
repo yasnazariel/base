@@ -1,11 +1,12 @@
 //! Era file format traits and I/O operations.
 
-use crate::e2s::{error::E2sError, types::Version};
 use std::{
     fs::File,
     io::{Read, Seek, Write},
     path::Path,
 };
+
+use crate::e2s::{error::E2sError, types::Version};
 
 /// Represents era file with generic content and identifier types
 pub trait EraFileFormat: Sized {
@@ -228,11 +229,7 @@ impl EraFileType {
     /// Detect file type from URL
     /// By default, it assumes `Era` type
     pub fn from_url(url: &str) -> Self {
-        if url.contains("era1") {
-            Self::Era1
-        } else {
-            Self::Era
-        }
+        if url.contains("era1") { Self::Era1 } else { Self::Era }
     }
 }
 

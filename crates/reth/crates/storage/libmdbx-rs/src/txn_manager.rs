@@ -1,11 +1,12 @@
-use crate::{
-    environment::EnvPtr,
-    error::{mdbx_result, Result},
-    CommitLatency,
-};
 use std::{
     fmt, ptr,
-    sync::mpsc::{sync_channel, Receiver, SyncSender},
+    sync::mpsc::{Receiver, SyncSender, sync_channel},
+};
+
+use crate::{
+    CommitLatency,
+    environment::EnvPtr,
+    error::{Result, mdbx_result},
 };
 
 #[derive(Copy, Clone, Debug)]
@@ -121,17 +122,19 @@ impl TxnManager {
 
 #[cfg(feature = "read-tx-timeouts")]
 mod read_transactions {
+    use std::{
+        backtrace::Backtrace,
+        sync::{Arc, mpsc::sync_channel},
+        time::{Duration, Instant},
+    };
+
+    use dashmap::{DashMap, DashSet};
+    use tracing::{error, trace, warn};
+
     use crate::{
         environment::EnvPtr, error::mdbx_result, transaction::TransactionPtr,
         txn_manager::TxnManager,
     };
-    use dashmap::{DashMap, DashSet};
-    use std::{
-        backtrace::Backtrace,
-        sync::{mpsc::sync_channel, Arc},
-        time::{Duration, Instant},
-    };
-    use tracing::{error, trace, warn};
 
     const READ_TRANSACTIONS_CHECK_INTERVAL: Duration = Duration::from_secs(5);
 
@@ -337,12 +340,14 @@ mod read_transactions {
 
     #[cfg(test)]
     mod tests {
-        use crate::{
-            txn_manager::read_transactions::READ_TRANSACTIONS_CHECK_INTERVAL, Environment, Error,
-            MaxReadTransactionDuration,
-        };
         use std::{thread::sleep, time::Duration};
+
         use tempfile::tempdir;
+
+        use crate::{
+            Environment, Error, MaxReadTransactionDuration,
+            txn_manager::read_transactions::READ_TRANSACTIONS_CHECK_INTERVAL,
+        };
 
         #[test]
         fn txn_manager_read_transactions_duration_set() {

@@ -1,8 +1,9 @@
 //! Tracking of keys having been added and removed from the tries.
 
-use crate::HashedPostState;
-use alloy_primitives::{map::B256Map, B256};
+use alloy_primitives::{B256, map::B256Map};
 use alloy_trie::proof::AddedRemovedKeys;
+
+use crate::HashedPostState;
 
 /// Tracks added and removed keys across account and storage tries.
 #[derive(Debug, Clone)]
@@ -49,7 +50,7 @@ impl MultiAddedRemovedKeys {
                 if account.is_empty() {
                     self.account.insert_removed(*hashed_address);
                 }
-                continue
+                continue;
             }
 
             let storage_removed_keys =
@@ -89,10 +90,11 @@ impl MultiAddedRemovedKeys {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::HashedStorage;
     use alloy_primitives::U256;
     use reth_primitives_traits::Account;
+
+    use super::*;
+    use crate::HashedStorage;
 
     #[test]
     fn test_update_with_state_storage_keys_non_zero() {

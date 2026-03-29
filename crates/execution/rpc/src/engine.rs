@@ -251,8 +251,7 @@ pub struct OpEngineApi<Provider, EngineT: EngineTypes, Pool, Validator> {
     inner: EngineApi<Provider, EngineT, Pool, Validator, OpChainSpec>,
 }
 
-impl<Provider, PayloadT, Pool, Validator> Clone
-    for OpEngineApi<Provider, PayloadT, Pool, Validator>
+impl<Provider, PayloadT, Pool, Validator> Clone for OpEngineApi<Provider, PayloadT, Pool, Validator>
 where
     PayloadT: EngineTypes,
 {

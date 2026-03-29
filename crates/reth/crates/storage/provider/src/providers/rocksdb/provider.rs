@@ -1,23 +1,29 @@
-use super::metrics::{RocksDBMetrics, RocksDBOperation, ROCKSDB_TABLES};
-use crate::providers::{compute_history_rank, needs_prev_shard_check, HistoryInfo};
+use std::{
+    collections::BTreeMap,
+    fmt,
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::Instant,
+};
+
 use alloy_consensus::transaction::TxHashRef;
 use alloy_primitives::{
-    keccak256,
+    Address, B256, BlockNumber, TxNumber, keccak256,
     map::{AddressMap, HashMap},
-    Address, BlockNumber, TxNumber, B256,
 };
 use itertools::Itertools;
 use metrics::Label;
 use parking_lot::Mutex;
 use reth_chain_state::ExecutedBlock;
 use reth_db_api::{
+    BlockNumberList, DatabaseError,
     database_metrics::DatabaseMetrics,
     models::{
-        sharded_key::NUM_OF_INDICES_IN_SHARD, storage_sharded_key::StorageShardedKey, ShardedKey,
-        StorageSettings,
+        ShardedKey, StorageSettings, sharded_key::NUM_OF_INDICES_IN_SHARD,
+        storage_sharded_key::StorageShardedKey,
     },
     table::{Compress, Decode, Decompress, Encode, Table},
-    tables, BlockNumberList, DatabaseError,
+    tables,
 };
 use reth_primitives_traits::BlockBody as _;
 use reth_prune_types::PruneMode;
@@ -26,19 +32,14 @@ use reth_storage_errors::{
     provider::{ProviderError, ProviderResult},
 };
 use rocksdb::{
-    BlockBasedOptions, Cache, ColumnFamilyDescriptor, CompactionPri, DBCompressionType,
+    BlockBasedOptions, Cache, ColumnFamilyDescriptor, CompactionPri, DB, DBCompressionType,
     DBRawIteratorWithThreadMode, IteratorMode, OptimisticTransactionDB,
     OptimisticTransactionOptions, Options, Transaction, WriteBatchWithTransaction, WriteOptions,
-    DB,
-};
-use std::{
-    collections::BTreeMap,
-    fmt,
-    path::{Path, PathBuf},
-    sync::Arc,
-    time::Instant,
 };
 use tracing::instrument;
+
+use super::metrics::{ROCKSDB_TABLES, RocksDBMetrics, RocksDBOperation};
+use crate::providers::{HistoryInfo, compute_history_rank, needs_prev_shard_check};
 
 /// Pending `RocksDB` batches type alias.
 pub(crate) type PendingRocksDBBatches = Arc<Mutex<Vec<WriteBatchWithTransaction<true>>>>;
@@ -623,8 +624,8 @@ impl Drop for RocksDBProviderInner {
                     tracing::warn!(target: "providers::rocksdb", ?e, "Failed to flush WAL on drop");
                 }
                 for cf_name in ROCKSDB_TABLES {
-                    if let Some(cf) = db.cf_handle(cf_name) &&
-                        let Err(e) = db.flush_cf(&cf)
+                    if let Some(cf) = db.cf_handle(cf_name)
+                        && let Err(e) = db.flush_cf(&cf)
                     {
                         tracing::warn!(target: "providers::rocksdb", cf = cf_name, ?e, "Failed to flush CF on drop");
                     }
@@ -1448,8 +1449,8 @@ impl<'a> RocksDBBatch<'a> {
     /// This is called after each `put` or `delete` operation to prevent unbounded memory growth.
     /// Returns immediately if auto-commit is disabled or threshold not reached.
     fn maybe_auto_commit(&mut self) -> ProviderResult<()> {
-        if let Some(threshold) = self.auto_commit_threshold &&
-            self.inner.size_in_bytes() >= threshold
+        if let Some(threshold) = self.auto_commit_threshold
+            && self.inner.size_in_bytes() >= threshold
         {
             tracing::debug!(
                 target: "providers::rocksdb",
@@ -1767,8 +1768,8 @@ impl<'a> RocksDBBatch<'a> {
             }
         }
 
-        if let Some((last_key, last_value)) = last_remaining &&
-            !is_sentinel(&last_key)
+        if let Some((last_key, last_value)) = last_remaining
+            && !is_sentinel(&last_key)
         {
             delete_shard(self, last_key)?;
             put_shard(self, create_sentinel(), &last_value)?;
@@ -2058,8 +2059,8 @@ impl<'a> RocksDBBatch<'a> {
         // Find the first shard that might contain blocks > keep_to.
         // A shard is affected if it's the sentinel (u64::MAX) or its highest_block_number > keep_to
         let boundary_idx = shards.iter().position(|(key, _)| {
-            key.sharded_key.highest_block_number == u64::MAX ||
-                key.sharded_key.highest_block_number > keep_to
+            key.sharded_key.highest_block_number == u64::MAX
+                || key.sharded_key.highest_block_number > keep_to
         });
 
         // Repair path: no shards affected means all blocks <= keep_to, just ensure sentinel exists
@@ -2593,19 +2594,20 @@ const fn convert_log_level(level: LogLevel) -> rocksdb::LogLevel {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::providers::HistoryInfo;
-    use alloy_primitives::{Address, TxHash, B256};
+    use alloy_primitives::{Address, B256, TxHash};
     use reth_db_api::{
         models::{
-            sharded_key::{ShardedKey, NUM_OF_INDICES_IN_SHARD},
-            storage_sharded_key::StorageShardedKey,
             IntegerList,
+            sharded_key::{NUM_OF_INDICES_IN_SHARD, ShardedKey},
+            storage_sharded_key::StorageShardedKey,
         },
         table::Table,
         tables,
     };
     use tempfile::TempDir;
+
+    use super::*;
+    use crate::providers::HistoryInfo;
 
     #[test]
     fn test_with_default_tables_registers_required_column_families() {

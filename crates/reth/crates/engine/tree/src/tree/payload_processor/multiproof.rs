@@ -1,18 +1,19 @@
 //! Multiproof task related functionality.
 
-use crate::tree::payload_processor::bal::bal_to_hashed_post_state;
+use std::{collections::BTreeMap, sync::Arc, time::Instant};
+
 use alloy_eip7928::BlockAccessList;
 use alloy_evm::block::StateChangeSource;
-use alloy_primitives::{keccak256, map::HashSet, B256};
-use crossbeam_channel::{unbounded, Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
+use alloy_primitives::{B256, keccak256, map::HashSet};
+use crossbeam_channel::{Receiver as CrossbeamReceiver, Sender as CrossbeamSender, unbounded};
 use derive_more::derive::Deref;
 use metrics::{Gauge, Histogram};
 use reth_metrics::Metrics;
 use reth_provider::AccountReader;
 use reth_revm::state::EvmState;
 use reth_trie::{
-    added_removed_keys::MultiAddedRemovedKeys, proof_v2, HashedPostState, HashedStorage,
-    MultiProofTargets,
+    HashedPostState, HashedStorage, MultiProofTargets, added_removed_keys::MultiAddedRemovedKeys,
+    proof_v2,
 };
 #[cfg(test)]
 use reth_trie_parallel::stats::ParallelTrieTracker;
@@ -24,9 +25,10 @@ use reth_trie_parallel::{
     },
     targets_v2::MultiProofTargetsV2,
 };
-use revm_primitives::map::{hash_map, B256Map};
-use std::{collections::BTreeMap, sync::Arc, time::Instant};
+use revm_primitives::map::{B256Map, hash_map};
 use tracing::{debug, error, instrument, trace};
+
+use crate::tree::payload_processor::bal::bal_to_hashed_post_state;
 
 /// Source of state changes, either from EVM execution or from a Block Access List.
 #[derive(Clone, Copy)]
@@ -1021,8 +1023,8 @@ impl MultiProofTask {
                 // Batch consecutive prefetch messages up to limits.
                 // EmptyProof messages are handled inline since they're very fast (~100ns)
                 // and shouldn't interrupt batching.
-                while accumulated_count < PREFETCH_MAX_BATCH_TARGETS &&
-                    ctx.accumulated_prefetch_targets.len() < PREFETCH_MAX_BATCH_MESSAGES
+                while accumulated_count < PREFETCH_MAX_BATCH_TARGETS
+                    && ctx.accumulated_prefetch_targets.len() < PREFETCH_MAX_BATCH_MESSAGES
                 {
                     match self.rx.try_recv() {
                         Ok(MultiProofMessage::PrefetchProofs(next_targets)) => {
@@ -1440,7 +1442,7 @@ fn get_proof_targets(
             // If the storage is wiped, we still need to fetch the account proof.
             if storage.wiped && fetched.is_none() {
                 targets.account_targets.push(Into::<proof_v2::Target>::into(*hashed_address));
-                continue
+                continue;
             }
 
             let changed_slots = storage
@@ -1475,8 +1477,8 @@ fn get_proof_targets(
                 .storage
                 .keys()
                 .filter(|slot| {
-                    !fetched.is_some_and(|f| f.contains(*slot)) ||
-                        storage_added_removed_keys.is_some_and(|k| k.is_removed(slot))
+                    !fetched.is_some_and(|f| f.contains(*slot))
+                        || storage_added_removed_keys.is_some_and(|k| k.is_removed(slot))
                 })
                 .peekable();
 
@@ -1510,13 +1512,13 @@ pub(crate) fn dispatch_with_chunking<T, I>(
 where
     I: IntoIterator<Item = T>,
 {
-    let should_chunk = chunking_len > max_targets_for_chunking ||
-        available_account_workers > 1 ||
-        available_storage_workers > 1;
+    let should_chunk = chunking_len > max_targets_for_chunking
+        || available_account_workers > 1
+        || available_storage_workers > 1;
 
-    if should_chunk &&
-        let Some(chunk_size) = chunk_size &&
-        chunking_len > chunk_size
+    if should_chunk
+        && let Some(chunk_size) = chunk_size
+        && chunking_len > chunk_size
     {
         let mut num_chunks = 0usize;
         for chunk in chunker(items, chunk_size) {
@@ -1532,22 +1534,23 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::tree::cached_state::CachedStateProvider;
+    use std::sync::{Arc, OnceLock};
 
-    use super::*;
     use alloy_eip7928::{AccountChanges, BalanceChange};
     use alloy_primitives::Address;
     use reth_provider::{
-        providers::OverlayStateProviderFactory, test_utils::create_test_provider_factory,
         BlockNumReader, BlockReader, ChangeSetReader, DatabaseProviderFactory, LatestStateProvider,
         PruneCheckpointReader, StageCheckpointReader, StateProviderBox, StorageChangeSetReader,
-        StorageSettingsCache,
+        StorageSettingsCache, providers::OverlayStateProviderFactory,
+        test_utils::create_test_provider_factory,
     };
     use reth_trie::MultiProof;
     use reth_trie_db::ChangesetCache;
     use reth_trie_parallel::proof_task::{ProofTaskCtx, ProofWorkerHandle};
     use revm_primitives::{B256, U256};
-    use std::sync::{Arc, OnceLock};
+
+    use super::*;
+    use crate::tree::cached_state::CachedStateProvider;
 
     /// Get a test runtime, creating it if necessary
     fn get_test_runtime() -> &'static reth_tasks::Runtime {

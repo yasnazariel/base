@@ -30,8 +30,8 @@ pub use alloy_rpc_types_eth::FillTransaction;
 pub use block::CachedTransaction;
 pub use builder::config::{EthConfig, EthFilterConfig};
 pub use cache::{
-    config::EthStateCacheConfig, db::StateCacheDb, multi_consumer::MultiConsumerLruCache,
-    EthStateCache,
+    EthStateCache, config::EthStateCacheConfig, db::StateCacheDb,
+    multi_consumer::MultiConsumerLruCache,
 };
 pub use error::{EthApiError, EthResult, RevertError, RpcInvalidTransactionError, SignError};
 pub use fee_history::{FeeHistoryCache, FeeHistoryCacheConfig, FeeHistoryEntry};

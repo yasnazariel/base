@@ -1,13 +1,14 @@
 #![allow(missing_docs)]
 
-use crate::{ExecInput, ExecOutput, Stage, StageError, StageId, UnwindInput, UnwindOutput};
 use std::{
     collections::VecDeque,
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicUsize, Ordering},
     },
 };
+
+use crate::{ExecInput, ExecOutput, Stage, StageError, StageId, UnwindInput, UnwindOutput};
 
 /// A test stage that can be used for testing.
 ///

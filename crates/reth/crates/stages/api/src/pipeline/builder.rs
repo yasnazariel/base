@@ -1,8 +1,9 @@
-use crate::{pipeline::BoxedStage, MetricEventsSender, Pipeline, Stage, StageId, StageSet};
-use alloy_primitives::{BlockNumber, B256};
-use reth_provider::{providers::ProviderNodeTypes, DatabaseProviderFactory, ProviderFactory};
+use alloy_primitives::{B256, BlockNumber};
+use reth_provider::{DatabaseProviderFactory, ProviderFactory, providers::ProviderNodeTypes};
 use reth_static_file::StaticFileProducer;
 use tokio::sync::watch;
+
+use crate::{MetricEventsSender, Pipeline, Stage, StageId, StageSet, pipeline::BoxedStage};
 
 /// Builds a [`Pipeline`].
 #[must_use = "call `build` to construct the pipeline"]

@@ -1,9 +1,10 @@
 //! Perform DNS lookups
 
+use std::future::Future;
+
 use dashmap::DashMap;
 use hickory_resolver::name_server::ConnectionProvider;
 pub use hickory_resolver::{ResolveError, TokioResolver};
-use std::future::Future;
 use tracing::trace;
 
 /// A type that can lookup DNS entries

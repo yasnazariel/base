@@ -2,18 +2,17 @@
 
 use alloy_consensus::EMPTY_ROOT_HASH;
 use alloy_primitives::{
-    keccak256,
+    Address, B256, Bytes, U256, keccak256,
     map::{HashMap, HashSet},
-    Address, Bytes, B256, U256,
 };
 use alloy_rlp::EMPTY_STRING_CODE;
 use reth_db::{cursor::DbCursorRW, tables};
 use reth_db_api::transaction::DbTxMut;
 use reth_primitives_traits::{Account, StorageEntry};
-use reth_provider::{test_utils::create_test_provider_factory, HashingWriter};
+use reth_provider::{HashingWriter, test_utils::create_test_provider_factory};
 use reth_trie::{
-    proof::Proof, witness::TrieWitness, HashedPostState, HashedStorage, MultiProofTargets,
-    StateRoot,
+    HashedPostState, HashedStorage, MultiProofTargets, StateRoot, proof::Proof,
+    witness::TrieWitness,
 };
 use reth_trie_db::{DatabaseProof, DatabaseStateRoot, DatabaseTrieWitness};
 
@@ -91,16 +90,12 @@ fn includes_nodes_for_destroyed_storage_nodes() {
         )]))
         .unwrap();
 
-    let witness =
-        TrieWitness::from_tx(provider.tx_ref())
-            .compute(HashedPostState {
-                accounts: HashMap::from_iter([(hashed_address, Some(Account::default()))]),
-                storages: HashMap::from_iter([(
-                    hashed_address,
-                    HashedStorage::from_iter(true, []),
-                )]), // destroyed
-            })
-            .unwrap();
+    let witness = TrieWitness::from_tx(provider.tx_ref())
+        .compute(HashedPostState {
+            accounts: HashMap::from_iter([(hashed_address, Some(Account::default()))]),
+            storages: HashMap::from_iter([(hashed_address, HashedStorage::from_iter(true, []))]), // destroyed
+        })
+        .unwrap();
     assert!(witness.contains_key(&state_root));
     for node in multiproof.account_subtree.values() {
         assert_eq!(witness.get(&keccak256(node)), Some(node));

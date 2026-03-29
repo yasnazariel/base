@@ -1,7 +1,8 @@
 //! Compressed data decoding utilities.
 
-use crate::e2s::error::E2sError;
 use alloy_rlp::Decodable;
+
+use crate::e2s::error::E2sError;
 
 /// Extension trait for generic decoding from compressed data
 pub trait DecodeCompressedRlp {

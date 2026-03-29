@@ -18,8 +18,8 @@ pub use receipt::*;
 #[cfg(test)]
 mod transaction;
 
-pub use alloy_consensus::{transaction::PooledTransaction, TxType};
 use alloy_consensus::{TxEip4844, TxEip4844WithSidecar};
+pub use alloy_consensus::{TxType, transaction::PooledTransaction};
 use alloy_eips::eip7594::BlobTransactionSidecarVariant;
 
 /// Typed Transaction type without a signature
@@ -35,8 +35,9 @@ pub type PooledTransactionVariant =
 /// Bincode-compatible serde implementations.
 #[cfg(all(feature = "serde", feature = "serde-bincode-compat"))]
 pub mod serde_bincode_compat {
-    pub use super::receipt::serde_bincode_compat::*;
     pub use alloy_consensus::serde_bincode_compat::transaction::*;
+
+    pub use super::receipt::serde_bincode_compat::*;
 }
 
 /// Type alias for the ethereum block

@@ -3,10 +3,12 @@
 //! Provides a no-std compatible [`LazyTrieData`] type for lazily initialized
 //! trie-related data containing sorted hashed state and trie updates.
 
-use crate::{updates::TrieUpdatesSorted, HashedPostStateSorted};
 use alloc::sync::Arc;
 use core::fmt;
+
 use reth_primitives_traits::sync::OnceLock;
+
+use crate::{HashedPostStateSorted, updates::TrieUpdatesSorted};
 
 /// Container for sorted trie data: hashed state and trie updates.
 ///

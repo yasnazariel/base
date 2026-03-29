@@ -7,13 +7,7 @@ use std::{
     ops::{Range, RangeInclusive},
 };
 
-#[cfg(all(unix, feature = "rocksdb"))]
-use crate::providers::rocksdb::RocksDBBatch;
-use crate::{
-    providers::{history_info, HistoryInfo, StaticFileProvider, StaticFileProviderRWRefMut},
-    StaticFileProviderFactory,
-};
-use alloy_primitives::{map::HashMap, Address, BlockNumber, TxHash, TxNumber, B256};
+use alloy_primitives::{Address, B256, BlockNumber, TxHash, TxNumber, map::HashMap};
 use rayon::slice::ParallelSliceMut;
 use reth_db::{
     cursor::{DbCursorRO, DbDupCursorRW},
@@ -24,7 +18,7 @@ use reth_db::{
 };
 use reth_db_api::{
     cursor::DbCursorRW,
-    models::{storage_sharded_key::StorageShardedKey, BlockNumberAddress, ShardedKey},
+    models::{BlockNumberAddress, ShardedKey, storage_sharded_key::StorageShardedKey},
     tables,
     tables::BlockNumberList,
 };
@@ -35,6 +29,13 @@ use reth_static_file_types::StaticFileSegment;
 use reth_storage_api::{ChangeSetReader, DBProvider, NodePrimitivesProvider, StorageSettingsCache};
 use reth_storage_errors::provider::ProviderResult;
 use strum::{Display, EnumIs};
+
+#[cfg(all(unix, feature = "rocksdb"))]
+use crate::providers::rocksdb::RocksDBBatch;
+use crate::{
+    StaticFileProviderFactory,
+    providers::{HistoryInfo, StaticFileProvider, StaticFileProviderRWRefMut, history_info},
+};
 
 /// Type alias for [`EitherReader`] constructors.
 type EitherReaderTy<'a, P, T> =
@@ -998,7 +999,7 @@ where
                 let Some(highest) = highest_static_block else {
                     return Err(ProviderError::MissingHighestStaticFileBlock(
                         StaticFileSegment::AccountChangeSets,
-                    ))
+                    ));
                 };
 
                 let start = *range.start();
@@ -1082,13 +1083,13 @@ impl EitherWriterDestination {
 
 #[cfg(test)]
 mod tests {
-    use crate::{test_utils::create_test_provider_factory, StaticFileWriter};
-
-    use super::*;
     use alloy_primitives::Address;
     use reth_db::models::AccountBeforeTx;
     use reth_static_file_types::StaticFileSegment;
     use reth_storage_api::{DatabaseProviderFactory, StorageSettings};
+
+    use super::*;
+    use crate::{StaticFileWriter, test_utils::create_test_provider_factory};
 
     /// Verifies that `changed_accounts_with_range` correctly caps the query range to the
     /// static file tip when the requested range extends beyond it.
@@ -1197,22 +1198,24 @@ mod tests {
 
 #[cfg(all(test, unix, feature = "rocksdb"))]
 mod rocksdb_tests {
-    use super::*;
-    use crate::{
-        providers::rocksdb::{RocksDBBuilder, RocksDBProvider},
-        test_utils::create_test_provider_factory,
-        RocksDBProviderFactory,
-    };
+    use std::marker::PhantomData;
+
     use alloy_primitives::{Address, B256};
     use reth_db_api::{
-        models::{storage_sharded_key::StorageShardedKey, IntegerList, ShardedKey},
+        models::{IntegerList, ShardedKey, storage_sharded_key::StorageShardedKey},
         tables,
         transaction::DbTxMut,
     };
     use reth_ethereum_primitives::EthPrimitives;
     use reth_storage_api::{DatabaseProviderFactory, StorageSettings};
-    use std::marker::PhantomData;
     use tempfile::TempDir;
+
+    use super::*;
+    use crate::{
+        RocksDBProviderFactory,
+        providers::rocksdb::{RocksDBBuilder, RocksDBProvider},
+        test_utils::create_test_provider_factory,
+    };
 
     fn create_rocksdb_provider() -> (TempDir, RocksDBProvider) {
         let temp_dir = TempDir::new().unwrap();

@@ -1,7 +1,8 @@
-use crate::PayloadTransactions;
 use alloy_consensus::Transaction;
 use alloy_primitives::Address;
 use reth_transaction_pool::PoolTransaction;
+
+use crate::PayloadTransactions;
 
 /// An implementation of [`crate::traits::PayloadTransactions`] that yields
 /// a pre-defined set of transactions.

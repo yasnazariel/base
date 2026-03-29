@@ -1,10 +1,12 @@
-use crate::{Claims, JwtSecret};
-use http::{header::AUTHORIZATION, HeaderValue};
 use std::{
     task::{Context, Poll},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
+
+use http::{HeaderValue, header::AUTHORIZATION};
 use tower::{Layer, Service};
+
+use crate::{Claims, JwtSecret};
 
 /// A layer that adds a new JWT token to every request using `AuthClientService`.
 #[derive(Debug)]
@@ -66,8 +68,8 @@ pub fn secret_to_bearer_header(secret: &JwtSecret) -> HeaderValue {
         "Bearer {}",
         secret
             .encode(&Claims {
-                iat: (SystemTime::now().duration_since(UNIX_EPOCH).unwrap() +
-                    Duration::from_secs(60))
+                iat: (SystemTime::now().duration_since(UNIX_EPOCH).unwrap()
+                    + Duration::from_secs(60))
                 .as_secs(),
                 exp: None,
             })

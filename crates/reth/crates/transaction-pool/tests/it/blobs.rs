@@ -1,9 +1,9 @@
 //! Blob transaction tests
 
 use reth_transaction_pool::{
+    AddedTransactionOutcome, PoolTransaction, TransactionOrigin, TransactionPool,
     error::PoolErrorKind,
     test_utils::{MockTransaction, MockTransactionFactory, TestPoolBuilder},
-    AddedTransactionOutcome, PoolTransaction, TransactionOrigin, TransactionPool,
 };
 
 #[tokio::test(flavor = "multi_thread")]

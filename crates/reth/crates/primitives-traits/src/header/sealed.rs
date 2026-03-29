@@ -1,12 +1,14 @@
-use crate::{sync::OnceLock, InMemorySize, NodePrimitives};
+use core::mem;
+
 pub use alloy_consensus::Header;
 use alloy_consensus::Sealed;
-use alloy_eips::{eip1898::BlockWithParent, BlockNumHash};
-use alloy_primitives::{keccak256, BlockHash, Sealable};
+use alloy_eips::{BlockNumHash, eip1898::BlockWithParent};
+use alloy_primitives::{BlockHash, Sealable, keccak256};
 use alloy_rlp::{Decodable, Encodable};
 use bytes::BufMut;
-use core::mem;
 use derive_more::{AsRef, Deref};
+
+use crate::{InMemorySize, NodePrimitives, sync::OnceLock};
 
 /// Type alias for [`SealedHeader`] generic over the `BlockHeader` type of [`NodePrimitives`].
 pub type SealedHeaderFor<N> = SealedHeader<<N as NodePrimitives>::BlockHeader>;
@@ -275,10 +277,11 @@ mod rpc_compat {
 /// Bincode-compatible [`SealedHeader`] serde implementation.
 #[cfg(feature = "serde-bincode-compat")]
 pub(super) mod serde_bincode_compat {
-    use crate::serde_bincode_compat::SerdeBincodeCompat;
     use alloy_primitives::{BlockHash, Sealable};
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use serde_with::{DeserializeAs, SerializeAs};
+
+    use crate::serde_bincode_compat::SerdeBincodeCompat;
 
     /// Bincode-compatible [`super::SealedHeader`] serde implementation.
     ///
@@ -347,11 +350,12 @@ pub(super) mod serde_bincode_compat {
 
     #[cfg(test)]
     mod tests {
-        use super::super::{serde_bincode_compat, SealedHeader};
         use arbitrary::Arbitrary;
         use rand::Rng;
         use serde::{Deserialize, Serialize};
         use serde_with::serde_as;
+
+        use super::super::{SealedHeader, serde_bincode_compat};
 
         #[test]
         fn test_sealed_header_bincode_roundtrip() {

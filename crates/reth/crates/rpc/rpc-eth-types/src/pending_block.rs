@@ -4,10 +4,9 @@
 
 use std::{sync::Arc, time::Instant};
 
-use crate::block::BlockAndReceipts;
 use alloy_consensus::BlockHeader;
 use alloy_eips::{BlockId, BlockNumberOrTag};
-use alloy_primitives::{BlockHash, TxHash, B256};
+use alloy_primitives::{B256, BlockHash, TxHash};
 use derive_more::Constructor;
 use reth_chain_state::{BlockState, ExecutedBlock};
 use reth_ethereum_primitives::Receipt;
@@ -16,6 +15,8 @@ use reth_primitives_traits::{
     Block, BlockTy, IndexedTx, NodePrimitives, ReceiptTy, RecoveredBlock, SealedHeader,
 };
 use reth_rpc_convert::{RpcConvert, RpcTypes};
+
+use crate::block::BlockAndReceipts;
 
 /// Configured [`reth_evm::EvmEnv`] for a pending block.
 #[derive(Debug, Clone, Constructor)]

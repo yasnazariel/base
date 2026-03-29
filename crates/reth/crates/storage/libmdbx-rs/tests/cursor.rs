@@ -1,6 +1,7 @@
 #![allow(missing_docs)]
-use reth_libmdbx::*;
 use std::borrow::Cow;
+
+use reth_libmdbx::*;
 use tempfile::tempdir;
 
 #[test]

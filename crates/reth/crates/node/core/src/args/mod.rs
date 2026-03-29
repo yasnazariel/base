@@ -74,7 +74,7 @@ pub use era::{DefaultEraHost, EraArgs, EraSourceArgs};
 
 /// `StaticFilesArgs` for configuring static files.
 mod static_files;
-pub use static_files::{StaticFilesArgs, MINIMAL_BLOCKS_PER_FILE};
+pub use static_files::{MINIMAL_BLOCKS_PER_FILE, StaticFilesArgs};
 
 /// `StorageArgs` for configuring storage settings.
 mod storage;

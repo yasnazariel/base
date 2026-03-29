@@ -1,7 +1,11 @@
-use crate::{
-    config::NetworkMode, message::PeerMessage, protocol::RlpxSubProtocol,
-    swarm::NetworkConnectionState, transactions::TransactionsHandle, FetchClient,
+use std::{
+    net::SocketAddr,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
+    },
 };
+
 use alloy_primitives::B256;
 use enr::Enr;
 use futures::StreamExt;
@@ -14,29 +18,27 @@ use reth_eth_wire::{
 };
 use reth_ethereum_forks::Head;
 use reth_network_api::{
-    events::{NetworkPeersEvents, PeerEvent, PeerEventStream},
-    test_utils::{PeersHandle, PeersHandleProvider},
     BlockDownloaderProvider, DiscoveryEvent, NetworkError, NetworkEvent,
     NetworkEventListenerProvider, NetworkInfo, NetworkStatus, PeerInfo, PeerRequest, Peers,
     PeersInfo,
+    events::{NetworkPeersEvents, PeerEvent, PeerEventStream},
+    test_utils::{PeersHandle, PeersHandleProvider},
 };
 use reth_network_p2p::sync::{NetworkSyncUpdater, SyncState, SyncStateProvider};
 use reth_network_peers::{NodeRecord, PeerId};
 use reth_network_types::{PeerAddr, PeerKind, Reputation, ReputationChangeKind};
 use reth_tokio_util::{EventSender, EventStream};
 use secp256k1::SecretKey;
-use std::{
-    net::SocketAddr,
-    sync::{
-        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
-        Arc,
-    },
-};
 use tokio::sync::{
     mpsc::{self, UnboundedSender},
     oneshot,
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
+
+use crate::{
+    FetchClient, config::NetworkMode, message::PeerMessage, protocol::RlpxSubProtocol,
+    swarm::NetworkConnectionState, transactions::TransactionsHandle,
+};
 
 /// A _shareable_ network frontend. Used to interact with the network.
 ///
@@ -418,7 +420,7 @@ impl<N: NetworkPrimitives> SyncStateProvider for NetworkHandle<N> {
     // used to guard the txpool
     fn is_initially_syncing(&self) -> bool {
         if self.inner.initial_sync_done.load(Ordering::Relaxed) {
-            return false
+            return false;
         }
         self.inner.is_syncing.load(Ordering::Relaxed)
     }

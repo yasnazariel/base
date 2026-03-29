@@ -1,10 +1,11 @@
-use crate::{
-    hashed_cursor::HashedCursor, trie_cursor::TrieCursor, walker::TrieWalker, Nibbles, TrieType,
-};
 use alloy_primitives::B256;
 use alloy_trie::proof::AddedRemovedKeys;
 use reth_storage_errors::db::DatabaseError;
 use tracing::{instrument, trace};
+
+use crate::{
+    Nibbles, TrieType, hashed_cursor::HashedCursor, trie_cursor::TrieCursor, walker::TrieWalker,
+};
 
 /// Represents a branch node in the trie.
 #[derive(Debug)]
@@ -122,8 +123,8 @@ where
     ///
     /// If `metrics` feature is enabled, it also updates the metrics.
     fn seek_hashed_entry(&mut self, key: B256) -> Result<Option<(B256, H::Value)>, DatabaseError> {
-        if let Some((last_key, last_value)) = self.last_next_result &&
-            last_key == key
+        if let Some((last_key, last_value)) = self.last_next_result
+            && last_key == key
         {
             trace!(target: "trie::node_iter", seek_key = ?key, "reusing result from last next() call instead of seeking");
             self.last_next_result = None; // Consume the cached value
@@ -217,7 +218,7 @@ where
                             *key,
                             self.walker.hash().unwrap(),
                             self.walker.children_are_in_trie(),
-                        ))))
+                        ))));
                     }
                 }
             }
@@ -227,7 +228,7 @@ where
                 // Check if the walker's key is less than the key of the current hashed entry
                 if self.walker.key().is_some_and(|key| key < &Nibbles::unpack(hashed_key)) {
                     self.should_check_walker_key = false;
-                    continue
+                    continue;
                 }
 
                 // Set the next hashed entry as a leaf node and return
@@ -236,7 +237,7 @@ where
 
                 #[cfg(feature = "metrics")]
                 self.metrics.inc_leaf_nodes_returned();
-                return Ok(Some(TrieElement::Leaf(hashed_key, value)))
+                return Ok(Some(TrieElement::Leaf(hashed_key, value)));
             }
 
             // Handle seeking and advancing based on the previous hashed key
@@ -280,9 +281,9 @@ where
                     // the database, so the walker will advance to the branch node after it. Because
                     // of this, we need to check that the current walker key has a prefix of the key
                     // that we seeked to.
-                    if can_skip_node &&
-                        self.walker.key().is_some_and(|key| key.starts_with(&seek_prefix)) &&
-                        self.walker.children_are_in_trie()
+                    if can_skip_node
+                        && self.walker.key().is_some_and(|key| key.starts_with(&seek_prefix))
+                        && self.walker.children_are_in_trie()
                     {
                         trace!(
                             target: "trie::node_iter",
@@ -292,7 +293,7 @@ where
                         );
 
                         self.should_check_walker_key = false;
-                        continue
+                        continue;
                     }
 
                     self.current_hashed_entry = self.seek_hashed_entry(seek_key)?;
@@ -306,32 +307,34 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{TrieElement, TrieNodeIter};
-    use crate::{
-        hashed_cursor::{
-            mock::MockHashedCursorFactory, noop::NoopHashedCursor, HashedCursorFactory,
-            HashedPostStateCursor,
-        },
-        mock::{KeyVisit, KeyVisitType},
-        trie_cursor::{
-            mock::MockTrieCursorFactory, noop::NoopAccountTrieCursor, TrieCursorFactory,
-        },
-        walker::TrieWalker,
-    };
+    use std::collections::BTreeMap;
+
     use alloy_primitives::{
         b256,
         map::{B256Map, HashMap},
     };
     use alloy_trie::{
-        BranchNodeCompact, HashBuilder, Nibbles, TrieAccount, TrieMask, EMPTY_ROOT_HASH,
+        BranchNodeCompact, EMPTY_ROOT_HASH, HashBuilder, Nibbles, TrieAccount, TrieMask,
     };
     use itertools::Itertools;
     use reth_primitives_traits::Account;
     use reth_trie_common::{
-        prefix_set::PrefixSetMut, updates::TrieUpdates, BranchNode, HashedPostState, LeafNode,
-        RlpNode,
+        BranchNode, HashedPostState, LeafNode, RlpNode, prefix_set::PrefixSetMut,
+        updates::TrieUpdates,
     };
-    use std::collections::BTreeMap;
+
+    use super::{TrieElement, TrieNodeIter};
+    use crate::{
+        hashed_cursor::{
+            HashedCursorFactory, HashedPostStateCursor, mock::MockHashedCursorFactory,
+            noop::NoopHashedCursor,
+        },
+        mock::{KeyVisit, KeyVisitType},
+        trie_cursor::{
+            TrieCursorFactory, mock::MockTrieCursorFactory, noop::NoopAccountTrieCursor,
+        },
+        walker::TrieWalker,
+    };
 
     /// Calculate the branch node stored in the database by feeding the provided state to the hash
     /// builder and taking the trie updates.

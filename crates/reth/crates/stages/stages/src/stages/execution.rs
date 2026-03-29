@@ -1,19 +1,27 @@
-use crate::stages::MERKLE_STAGE_DEFAULT_INCREMENTAL_THRESHOLD;
+use std::{
+    cmp::{Ordering, max},
+    collections::BTreeMap,
+    ops::RangeInclusive,
+    sync::Arc,
+    task::{Context, Poll, ready},
+    time::{Duration, Instant},
+};
+
 use alloy_consensus::BlockHeader;
 use alloy_primitives::BlockNumber;
 use num_traits::Zero;
 use reth_config::config::ExecutionConfig;
 use reth_consensus::FullConsensus;
 use reth_db::{static_file::HeaderMask, tables};
-use reth_evm::{execute::Executor, metrics::ExecutorMetrics, ConfigureEvm};
+use reth_evm::{ConfigureEvm, execute::Executor, metrics::ExecutorMetrics};
 use reth_execution_types::Chain;
 use reth_exex::{ExExManagerHandle, ExExNotification, ExExNotificationSource};
-use reth_primitives_traits::{format_gas_throughput, BlockBody, NodePrimitives};
+use reth_primitives_traits::{BlockBody, NodePrimitives, format_gas_throughput};
 use reth_provider::{
-    providers::{StaticFileProvider, StaticFileWriter},
     BlockHashReader, BlockReader, DBProvider, EitherWriter, ExecutionOutcome, HeaderProvider,
     LatestStateProviderRef, OriginalValuesKnown, ProviderError, StateWriteConfig, StateWriter,
     StaticFileProviderFactory, StatsReader, StorageSettingsCache, TransactionVariant,
+    providers::{StaticFileProvider, StaticFileWriter},
 };
 use reth_revm::database::StateProviderDatabase;
 use reth_stages_api::{
@@ -23,17 +31,10 @@ use reth_stages_api::{
 };
 use reth_static_file_types::StaticFileSegment;
 use reth_trie::KeccakKeyHasher;
-use std::{
-    cmp::{max, Ordering},
-    collections::BTreeMap,
-    ops::RangeInclusive,
-    sync::Arc,
-    task::{ready, Context, Poll},
-    time::{Duration, Instant},
-};
 use tracing::*;
 
 use super::missing_static_data_error;
+use crate::stages::MERKLE_STAGE_DEFAULT_INCREMENTAL_THRESHOLD;
 
 /// The execution stage executes all transactions and
 /// update history indexes.
@@ -168,8 +169,8 @@ where
     ) -> Result<bool, StageError> {
         // We can only prune changesets if we're not executing MerkleStage from scratch (by
         // threshold or first-sync)
-        Ok(max_block - start_block > self.external_clean_threshold ||
-            provider.count_entries::<tables::AccountsTrie>()?.is_zero())
+        Ok(max_block - start_block > self.external_clean_threshold
+            || provider.count_entries::<tables::AccountsTrie>()?.is_zero())
     }
 
     /// Performs consistency check on static files.
@@ -196,7 +197,7 @@ where
         // On old nodes, if there's any receipts pruning configured, receipts are written directly
         // to database and inconsistencies are expected.
         if EitherWriter::receipts_destination(provider).is_database() {
-            return Ok(())
+            return Ok(());
         }
 
         // Get next expected receipt number
@@ -235,10 +236,10 @@ where
             Ordering::Less => {
                 // If we are already in the process of unwind, this might be fine because we will
                 // fix the inconsistency right away.
-                if let Some(unwind_to) = unwind_to &&
-                    unwind_to <= static_file_block_num
+                if let Some(unwind_to) = unwind_to
+                    && unwind_to <= static_file_block_num
                 {
-                    return Ok(())
+                    return Ok(());
                 }
 
                 // Otherwise, this is a real inconsistency - database has more blocks than static
@@ -248,7 +249,7 @@ where
                     &static_file_provider,
                     provider,
                     StaticFileSegment::Receipts,
-                )?)
+                )?);
             }
         }
 
@@ -288,7 +289,7 @@ where
     /// Execute the stage
     fn execute(&mut self, provider: &Provider, input: ExecInput) -> Result<ExecOutput, StageError> {
         if input.target_reached() {
-            return Ok(ExecOutput::done(input.checkpoint()))
+            return Ok(ExecOutput::done(input.checkpoint()));
         }
 
         let start_block = input.next_block();
@@ -356,7 +357,7 @@ where
                 return Err(StageError::Block {
                     block: Box::new(block.block_with_parent()),
                     error: BlockErrorKind::Validation(err),
-                })
+                });
             }
             results.push(result);
 
@@ -393,7 +394,7 @@ where
                 cumulative_gas,
                 batch_start.elapsed(),
             ) {
-                break
+                break;
             }
         }
 
@@ -431,7 +432,7 @@ where
                 // means that we didn't send the notification to ExExes
                 return Err(StageError::PostExecuteCommit(
                     "Previous post execute commit input wasn't processed",
-                ))
+                ));
             }
         }
 
@@ -445,15 +446,15 @@ where
                 let Some(reverts) =
                     state.bundle.reverts.get_mut((block_number - start_block) as usize)
                 else {
-                    break
+                    break;
                 };
 
                 // If both account history and storage history pruning is configured, clear reverts
                 // for this block.
                 if prune_modes
                     .account_history
-                    .is_some_and(|m| m.should_prune(block_number, max_block)) &&
-                    prune_modes
+                    .is_some_and(|m| m.should_prune(block_number, max_block))
+                    && prune_modes
                         .storage_history
                         .is_some_and(|m| m.should_prune(block_number, max_block))
                 {
@@ -514,7 +515,7 @@ where
         if range.is_empty() {
             return Ok(UnwindOutput {
                 checkpoint: input.checkpoint.with_block_number(input.unwind_to),
-            })
+            });
         }
 
         self.ensure_consistency(provider, input.checkpoint.block_number, Some(unwind_to))?;
@@ -642,8 +643,8 @@ where
                 block_range: CheckpointBlockRange { from: start_block, to: max_block },
                 progress: EntitiesCheckpoint {
                     processed,
-                    total: processed +
-                        calculate_gas_used_from_headers(provider, start_block..=max_block)?,
+                    total: processed
+                        + calculate_gas_used_from_headers(provider, start_block..=max_block)?,
                 },
             }
         }
@@ -682,14 +683,14 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{stages::MERKLE_STAGE_DEFAULT_REBUILD_THRESHOLD, test_utils::TestStageDB};
-    use alloy_primitives::{address, hex_literal::hex, keccak256, Address, B256, U256};
+    use std::collections::BTreeMap;
+
+    use alloy_primitives::{Address, B256, U256, address, hex_literal::hex, keccak256};
     use alloy_rlp::Decodable;
     use assert_matches::assert_matches;
     use reth_chainspec::ChainSpecBuilder;
     use reth_db_api::{
-        models::{metadata::StorageSettings, AccountBeforeTx},
+        models::{AccountBeforeTx, metadata::StorageSettings},
         transaction::{DbTx, DbTxMut},
     };
     use reth_ethereum_consensus::EthBeaconConsensus;
@@ -697,14 +698,16 @@ mod tests {
     use reth_evm_ethereum::EthEvmConfig;
     use reth_primitives_traits::{Account, Bytecode, SealedBlock, StorageEntry};
     use reth_provider::{
-        test_utils::create_test_provider_factory, AccountReader, BlockWriter,
-        DatabaseProviderFactory, ReceiptProvider, StaticFileProviderFactory,
+        AccountReader, BlockWriter, DatabaseProviderFactory, ReceiptProvider,
+        StaticFileProviderFactory, test_utils::create_test_provider_factory,
     };
     use reth_prune::PruneModes;
     use reth_prune_types::{PruneMode, ReceiptsLogPruneConfig};
     use reth_stages_api::StageUnitCheckpoint;
     use reth_testing_utils::generators;
-    use std::collections::BTreeMap;
+
+    use super::*;
+    use crate::{stages::MERKLE_STAGE_DEFAULT_REBUILD_THRESHOLD, test_utils::TestStageDB};
 
     fn stage() -> ExecutionStage<EthEvmConfig> {
         let evm_config =

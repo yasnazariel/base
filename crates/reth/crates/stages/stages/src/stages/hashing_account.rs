@@ -1,11 +1,17 @@
-use alloy_primitives::{keccak256, B256};
+use std::{
+    fmt::Debug,
+    ops::{Range, RangeInclusive},
+    sync::mpsc::{self, Receiver},
+};
+
+use alloy_primitives::{B256, keccak256};
 use itertools::Itertools;
 use reth_config::config::{EtlConfig, HashingConfig};
 use reth_db_api::{
+    RawKey, RawTable, RawValue,
     cursor::{DbCursorRO, DbCursorRW},
     tables,
     transaction::{DbTx, DbTxMut},
-    RawKey, RawTable, RawValue,
 };
 use reth_etl::Collector;
 use reth_primitives_traits::Account;
@@ -17,11 +23,6 @@ use reth_stages_api::{
     StageError, StageId, UnwindInput, UnwindOutput,
 };
 use reth_storage_errors::provider::ProviderResult;
-use std::{
-    fmt::Debug,
-    ops::{Range, RangeInclusive},
-    sync::mpsc::{self, Receiver},
-};
 use tracing::*;
 
 /// Maximum number of channels that can exist in memory.
@@ -67,16 +68,16 @@ impl AccountHashingStage {
     ) -> Result<Vec<(alloy_primitives::Address, Account)>, StageError>
     where
         N::Primitives: reth_primitives_traits::NodePrimitives<
-            Block = reth_ethereum_primitives::Block,
-            BlockHeader = reth_primitives_traits::Header,
-        >,
+                Block = reth_ethereum_primitives::Block,
+                BlockHeader = reth_primitives_traits::Header,
+            >,
     {
         use alloy_primitives::U256;
         use reth_db_api::models::AccountBeforeTx;
         use reth_provider::{BlockWriter, StaticFileProviderFactory, StaticFileWriter};
         use reth_testing_utils::{
             generators,
-            generators::{random_block_range, random_eoa_accounts, BlockRangeParams},
+            generators::{BlockRangeParams, random_block_range, random_eoa_accounts},
         };
 
         let mut rng = generators::rng();
@@ -154,7 +155,7 @@ where
     /// tables.
     fn execute(&mut self, provider: &Provider, input: ExecInput) -> Result<ExecOutput, StageError> {
         if input.target_reached() {
-            return Ok(ExecOutput::done(input.checkpoint()))
+            return Ok(ExecOutput::done(input.checkpoint()));
         }
 
         // If using hashed state as canonical, execution already writes to `HashedAccounts`,
@@ -317,17 +318,18 @@ fn stage_checkpoint_progress(provider: &impl StatsReader) -> ProviderResult<Enti
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::test_utils::{
-        stage_test_suite_ext, ExecuteStageTestRunner, StageTestRunner, TestRunnerError,
-        UnwindStageTestRunner,
-    };
     use alloy_primitives::U256;
     use assert_matches::assert_matches;
     use reth_primitives_traits::Account;
     use reth_provider::providers::StaticFileWriter;
     use reth_stages_api::StageUnitCheckpoint;
     use test_utils::*;
+
+    use super::*;
+    use crate::test_utils::{
+        ExecuteStageTestRunner, StageTestRunner, TestRunnerError, UnwindStageTestRunner,
+        stage_test_suite_ext,
+    };
 
     stage_test_suite_ext!(AccountHashingTestRunner, account_hashing);
 
@@ -372,10 +374,11 @@ mod tests {
     }
 
     mod test_utils {
-        use super::*;
-        use crate::test_utils::TestStageDB;
         use alloy_primitives::Address;
         use reth_provider::DatabaseProviderFactory;
+
+        use super::*;
+        use crate::test_utils::TestStageDB;
 
         pub(crate) struct AccountHashingTestRunner {
             pub(crate) db: TestStageDB,
@@ -489,7 +492,7 @@ mod tests {
                     let start_block = input.next_block();
                     let end_block = output.checkpoint.block_number;
                     if start_block > end_block {
-                        return Ok(())
+                        return Ok(());
                     }
                 }
                 self.check_hashed_accounts()

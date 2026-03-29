@@ -1,6 +1,7 @@
-use super::ExecutedBlock;
+use std::{borrow::Cow, sync::OnceLock};
+
 use alloy_consensus::BlockHeader;
-use alloy_primitives::{keccak256, Address, BlockNumber, Bytes, StorageKey, StorageValue, B256};
+use alloy_primitives::{Address, B256, BlockNumber, Bytes, StorageKey, StorageValue, keccak256};
 use reth_errors::ProviderResult;
 use reth_primitives_traits::{Account, Bytecode, NodePrimitives};
 use reth_storage_api::{
@@ -8,11 +9,12 @@ use reth_storage_api::{
     StateProvider, StateProviderBox, StateRootProvider, StorageRootProvider,
 };
 use reth_trie::{
-    updates::TrieUpdates, AccountProof, HashedPostState, HashedStorage, MultiProof,
-    MultiProofTargets, StorageMultiProof, TrieInput,
+    AccountProof, HashedPostState, HashedStorage, MultiProof, MultiProofTargets, StorageMultiProof,
+    TrieInput, updates::TrieUpdates,
 };
 use revm_database::BundleState;
-use std::{borrow::Cow, sync::OnceLock};
+
+use super::ExecutedBlock;
 
 /// A state provider that stores references to in-memory blocks along with their state as well as a
 /// reference of the historical state provider for fallback lookups.

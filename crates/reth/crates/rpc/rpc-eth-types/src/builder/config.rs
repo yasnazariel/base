@@ -2,18 +2,18 @@
 
 use std::time::Duration;
 
+use reqwest::Url;
+use reth_rpc_server_types::constants::{
+    DEFAULT_ETH_PROOF_WINDOW, DEFAULT_MAX_BLOCKING_IO_REQUEST, DEFAULT_MAX_BLOCKS_PER_FILTER,
+    DEFAULT_MAX_LOGS_PER_RESPONSE, DEFAULT_MAX_SIMULATE_BLOCKS, DEFAULT_MAX_TRACE_FILTER_BLOCKS,
+    DEFAULT_PROOF_PERMITS, RPC_DEFAULT_SEND_RAW_TX_SYNC_TIMEOUT_SECS, default_max_tracing_requests,
+};
+use serde::{Deserialize, Serialize};
+
 use crate::{
     EthStateCacheConfig, FeeHistoryCacheConfig, ForwardConfig, GasPriceOracleConfig,
     RPC_DEFAULT_GAS_CAP,
 };
-use reqwest::Url;
-use reth_rpc_server_types::constants::{
-    default_max_tracing_requests, DEFAULT_ETH_PROOF_WINDOW, DEFAULT_MAX_BLOCKING_IO_REQUEST,
-    DEFAULT_MAX_BLOCKS_PER_FILTER, DEFAULT_MAX_LOGS_PER_RESPONSE, DEFAULT_MAX_SIMULATE_BLOCKS,
-    DEFAULT_MAX_TRACE_FILTER_BLOCKS, DEFAULT_PROOF_PERMITS,
-    RPC_DEFAULT_SEND_RAW_TX_SYNC_TIMEOUT_SECS,
-};
-use serde::{Deserialize, Serialize};
 
 /// Default value for stale filter ttl
 pub const DEFAULT_STALE_FILTER_TTL: Duration = Duration::from_secs(5 * 60);

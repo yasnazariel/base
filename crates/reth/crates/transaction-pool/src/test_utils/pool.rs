@@ -2,15 +2,17 @@
 
 #![allow(dead_code)]
 
-use crate::{
-    error::PoolErrorKind,
-    pool::{state::SubPool, txpool::TxPool, AddedTransaction},
-    test_utils::{MockOrdering, MockTransactionDistribution, MockTransactionFactory},
-    TransactionOrdering,
-};
-use alloy_primitives::{map::AddressMap, Address, U256};
-use rand::Rng;
 use std::ops::{Deref, DerefMut};
+
+use alloy_primitives::{Address, U256, map::AddressMap};
+use rand::Rng;
+
+use crate::{
+    TransactionOrdering,
+    error::PoolErrorKind,
+    pool::{AddedTransaction, state::SubPool, txpool::TxPool},
+    test_utils::{MockOrdering, MockTransactionDistribution, MockTransactionFactory},
+};
 
 /// A wrapped `TxPool` with additional helpers for testing
 pub(crate) struct MockPool<T: TransactionOrdering = MockOrdering> {
@@ -138,8 +140,8 @@ impl<R: Rng> MockTransactionSimulator<R> {
                         Ok(res) => res,
                         Err(e) => match e.kind {
                             // skip pool capacity/replacement errors (not relevant)
-                            PoolErrorKind::SpammerExceededCapacity(_) |
-                            PoolErrorKind::ReplacementUnderpriced => return,
+                            PoolErrorKind::SpammerExceededCapacity(_)
+                            | PoolErrorKind::ReplacementUnderpriced => return,
                             _ => panic!("unexpected error: {e:?}"),
                         },
                     };
@@ -181,8 +183,8 @@ impl<R: Rng> MockTransactionSimulator<R> {
                         Ok(res) => res,
                         Err(e) => match e.kind {
                             // skip pool capacity/replacement errors (not relevant)
-                            PoolErrorKind::SpammerExceededCapacity(_) |
-                            PoolErrorKind::ReplacementUnderpriced => return,
+                            PoolErrorKind::SpammerExceededCapacity(_)
+                            | PoolErrorKind::ReplacementUnderpriced => return,
                             _ => panic!("unexpected error: {e:?}"),
                         },
                     };
@@ -229,8 +231,8 @@ impl<R: Rng> MockTransactionSimulator<R> {
                         Ok(res) => res,
                         Err(e) => match e.kind {
                             // skip pool capacity/replacement errors (not relevant)
-                            PoolErrorKind::SpammerExceededCapacity(_) |
-                            PoolErrorKind::ReplacementUnderpriced => return,
+                            PoolErrorKind::SpammerExceededCapacity(_)
+                            | PoolErrorKind::ReplacementUnderpriced => return,
                             _ => panic!("unexpected error: {e:?}"),
                         },
                     };
@@ -283,8 +285,8 @@ impl<R: Rng> MockTransactionSimulator<R> {
                         Ok(res) => res,
                         Err(e) => match e.kind {
                             // skip pool capacity/replacement errors (not relevant)
-                            PoolErrorKind::SpammerExceededCapacity(_) |
-                            PoolErrorKind::ReplacementUnderpriced => return,
+                            PoolErrorKind::SpammerExceededCapacity(_)
+                            | PoolErrorKind::ReplacementUnderpriced => return,
                             _ => panic!("unexpected error: {e:?}"),
                         },
                     };

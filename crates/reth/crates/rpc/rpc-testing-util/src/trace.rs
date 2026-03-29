@@ -1,8 +1,13 @@
 //! Helpers for testing trace calls.
 
+use std::{
+    pin::Pin,
+    task::{Context, Poll},
+};
+
 use alloy_eips::BlockId;
-use alloy_primitives::{map::HashSet, Bytes, TxHash, B256};
-use alloy_rpc_types_eth::{transaction::TransactionRequest, Index};
+use alloy_primitives::{B256, Bytes, TxHash, map::HashSet};
+use alloy_rpc_types_eth::{Index, transaction::TransactionRequest};
 use alloy_rpc_types_trace::{
     filter::TraceFilter,
     opcode::BlockOpcodeGas,
@@ -12,10 +17,6 @@ use alloy_rpc_types_trace::{
 use futures::{Stream, StreamExt};
 use jsonrpsee::core::client::Error as RpcError;
 use reth_rpc_api::clients::TraceApiClient;
-use std::{
-    pin::Pin,
-    task::{Context, Poll},
-};
 
 /// A type alias that represents the result of a raw transaction trace stream.
 type RawTransactionTraceResult<'a> =
@@ -580,11 +581,12 @@ where
 }
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_eips::BlockNumberOrTag;
     use alloy_rpc_types_trace::filter::TraceFilterMode;
     use futures::future::join;
     use jsonrpsee::http_client::HttpClientBuilder;
+
+    use super::*;
 
     const fn assert_is_stream<St: Stream>(_: &St) {}
 

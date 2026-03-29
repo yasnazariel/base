@@ -1,10 +1,12 @@
 //! Tests fetching a list of files
-use crate::StubClient;
+use std::str::FromStr;
+
 use reqwest::Url;
 use reth_era_downloader::EraClient;
-use std::str::FromStr;
 use tempfile::tempdir;
 use test_case::test_case;
+
+use crate::StubClient;
 
 #[test_case("https://mainnet.era1.nimbus.team/"; "nimbus")]
 #[test_case("https://era1.ethportal.net/"; "ethportal")]

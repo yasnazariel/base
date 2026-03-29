@@ -1,14 +1,16 @@
 //! Metered cache, which also provides storage for senders in order to queue queries that result in
 //! a cache miss.
 
-use super::metrics::CacheMetrics;
-use reth_primitives_traits::InMemorySize;
-use schnellru::{ByLength, Limiter, LruMap};
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::{HashMap, hash_map::Entry},
     fmt::{self, Debug, Formatter},
     hash::Hash,
 };
+
+use reth_primitives_traits::InMemorySize;
+use schnellru::{ByLength, Limiter, LruMap};
+
+use super::metrics::CacheMetrics;
 
 /// A multi-consumer LRU cache.
 pub struct MultiConsumerLruCache<K, V, L, S>
@@ -100,8 +102,8 @@ where
     {
         let size = value.size();
 
-        if self.cache.limiter().is_over_the_limit(self.cache.len() + 1) &&
-            let Some((_, evicted)) = self.cache.pop_oldest()
+        if self.cache.limiter().is_over_the_limit(self.cache.len() + 1)
+            && let Some((_, evicted)) = self.cache.pop_oldest()
         {
             // update tracked memory with the evicted value
             self.memory_usage = self.memory_usage.saturating_sub(evicted.size());

@@ -1,14 +1,16 @@
 //! Pruning and full node arguments
 
-use crate::{args::error::ReceiptsLogError, primitives::EthereumHardfork};
+use std::{collections::BTreeMap, ops::Not, sync::OnceLock};
+
 use alloy_primitives::{Address, BlockNumber};
-use clap::{builder::RangedU64ValueParser, Args};
+use clap::{Args, builder::RangedU64ValueParser};
 use reth_chainspec::EthereumHardforks;
 use reth_config::config::PruneConfig;
 use reth_prune_types::{
-    PruneMode, PruneModes, ReceiptsLogPruneConfig, MINIMUM_DISTANCE, MINIMUM_UNWIND_SAFE_DISTANCE,
+    MINIMUM_DISTANCE, MINIMUM_UNWIND_SAFE_DISTANCE, PruneMode, PruneModes, ReceiptsLogPruneConfig,
 };
-use std::{collections::BTreeMap, ops::Not, sync::OnceLock};
+
+use crate::{args::error::ReceiptsLogError, primitives::EthereumHardfork};
 
 /// Global static pruning defaults
 static PRUNING_DEFAULTS: OnceLock<DefaultPruningValues> = OnceLock::new();
@@ -393,9 +395,10 @@ pub(crate) fn parse_receipts_log_filter(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_primitives::address;
     use clap::Parser;
+
+    use super::*;
 
     /// A helper type to parse Args more easily
     #[derive(Parser)]

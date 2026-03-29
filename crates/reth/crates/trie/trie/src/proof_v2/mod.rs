@@ -7,17 +7,19 @@
 //! - Re-uses cursors across calculations
 //! - Supports generic value types with lazy evaluation
 
-use crate::{
-    hashed_cursor::{HashedCursor, HashedStorageCursor},
-    trie_cursor::{depth_first, TrieCursor, TrieStorageCursor},
-};
-use alloy_primitives::{keccak256, B256, U256};
+use std::cmp::Ordering;
+
+use alloy_primitives::{B256, U256, keccak256};
 use alloy_rlp::Encodable;
 use alloy_trie::{BranchNodeCompact, TrieMask};
 use reth_execution_errors::trie::StateProofError;
 use reth_trie_common::{BranchNode, BranchNodeMasks, Nibbles, ProofTrieNode, RlpNode, TrieNode};
-use std::cmp::Ordering;
 use tracing::{error, instrument, trace};
+
+use crate::{
+    hashed_cursor::{HashedCursor, HashedStorageCursor},
+    trie_cursor::{TrieCursor, TrieStorageCursor, depth_first},
+};
 
 mod value;
 pub use value::*;
@@ -192,7 +194,8 @@ where
         let (mut lower, mut upper) = targets.current();
 
         trace!(target: TRACE_TARGET, ?path, target = ?lower, "should_retain: called");
-        debug_assert!(self.retained_proofs.last().is_none_or(
+        debug_assert!(
+            self.retained_proofs.last().is_none_or(
                 |ProofTrieNode { path: last_retained_path, .. }| {
                     depth_first::cmp(path, last_retained_path) == Ordering::Greater
                 }
@@ -225,16 +228,16 @@ where
             // point the target for 0xabc2 will not match the branch due to its prefix, but any of
             // the other targets would, so we need to check those as well.
             if lower.key.starts_with(path) {
-                return !check_min_len ||
-                    (path.len() >= lower.min_len as usize ||
-                        targets
+                return !check_min_len
+                    || (path.len() >= lower.min_len as usize
+                        || targets
                             .skip_iter()
                             .take_while(|target| target.key.starts_with(path))
-                            .any(|target| path.len() >= target.min_len as usize) ||
-                        targets
+                            .any(|target| path.len() >= target.min_len as usize)
+                        || targets
                             .rev_iter()
                             .take_while(|target| target.key.starts_with(path))
-                            .any(|target| path.len() >= target.min_len as usize))
+                            .any(|target| path.len() >= target.min_len as usize));
             }
 
             // If the path isn't in the current range then iterate forward until it is (or until
@@ -243,7 +246,7 @@ where
                 (lower, upper) = targets.next();
                 trace!(target: TRACE_TARGET, target = ?lower, "upper target <= path, next target");
             } else {
-                return false
+                return false;
             }
         }
     }
@@ -261,7 +264,7 @@ where
     ) -> Result<RlpNode, StateProofError> {
         // If the child is already an `RlpNode` then there is nothing to do.
         if let ProofTrieBranchChild::RlpNode(rlp_node) = child {
-            return Ok(rlp_node)
+            return Ok(rlp_node);
         }
 
         // If we should retain the child then do so.
@@ -352,7 +355,7 @@ where
         // changes.
         if let ProofTrieBranchChild::RlpNode(_) = child {
             self.child_stack.push(child);
-            return Ok(())
+            return Ok(());
         }
 
         // Only commit immediately if retained for the proof. Otherwise, defer conversion
@@ -593,21 +596,23 @@ where
                     // If the child stack is empty then this is the first leaf, push it and be done
                     self.child_stack
                         .push(ProofTrieBranchChild::Leaf { short_key: key, value: val });
-                    return Ok(())
+                    return Ok(());
                 }
                 None => {
                     // If the child stack is not empty then it must only have a single other child
                     // which is either a leaf or extension with a non-zero short key.
                     debug_assert_eq!(self.child_stack.len(), 1);
-                    debug_assert!(!self
-                        .child_stack
-                        .last()
-                        .expect("already checked for emptiness")
-                        .short_key()
-                        .is_empty());
+                    debug_assert!(
+                        !self
+                            .child_stack
+                            .last()
+                            .expect("already checked for emptiness")
+                            .short_key()
+                            .is_empty()
+                    );
                     let (nibble, short_key) = self.push_new_branch(key);
                     self.push_new_leaf(targets, nibble, short_key, val)?;
-                    return Ok(())
+                    return Ok(());
                 }
             };
 
@@ -620,7 +625,7 @@ where
             // children. We can pop it and loop back to the top to try again with its parent branch.
             if common_prefix_len < self.branch_path.len() {
                 self.pop_branch(targets)?;
-                continue
+                continue;
             }
 
             // If the current branch is a prefix of the new key then the leaf is a child of the
@@ -639,7 +644,7 @@ where
                 self.push_new_leaf(targets, nibble, short_key, val)?;
             }
 
-            return Ok(())
+            return Ok(());
         }
     }
 
@@ -689,8 +694,8 @@ where
         }
 
         // Loop over all keys in the range, calling `push_leaf` on each.
-        while let Some((key, _)) = hashed_cursor_current.as_ref() &&
-            upper_bound.is_none_or(|upper_bound| key < &upper_bound)
+        while let Some((key, _)) = hashed_cursor_current.as_ref()
+            && upper_bound.is_none_or(|upper_bound| key < &upper_bound)
         {
             let (key, val) =
                 core::mem::take(hashed_cursor_current).expect("while-let checks for Some");
@@ -744,7 +749,7 @@ where
             self.branch_path = cached_path;
             self.branch_stack
                 .push(Self::new_from_cached_branch(cached_branch, cached_path.len() as u8));
-            return Ok(())
+            return Ok(());
         }
 
         // Get the nibble which should be set in the parent branch's `state_mask` for this new
@@ -764,12 +769,14 @@ where
             // Similarly, if there is a branch on the `branch_stack` but its `state_mask` bit for
             // this new branch is already set, then there must be a leaf/extension with a short-key
             // to be split.
-            debug_assert!(!self
-                .child_stack
-                .last()
-                .expect("already checked for emptiness")
-                .short_key()
-                .is_empty());
+            debug_assert!(
+                !self
+                    .child_stack
+                    .last()
+                    .expect("already checked for emptiness")
+                    .short_key()
+                    .is_empty()
+            );
 
             // Split that leaf/extension's short key with a new branch.
             let (nibble, short_key) = self.push_new_branch(cached_path);
@@ -831,13 +838,13 @@ where
         // If the `uncalculated_lower_bound` is None it indicates that there can be no more
         // leaf data, so similarly there can be no more branches.
         let Some(uncalculated_lower_bound) = uncalculated_lower_bound else {
-            return Ok(PopCachedBranchOutcome::Exhausted)
+            return Ok(PopCachedBranchOutcome::Exhausted);
         };
 
         // If [`TrieCursorState::path`] returns None it means that the cursor has been
         // exhausted, so there can be no more cached data.
         let Some(mut trie_cursor_path) = trie_cursor_state.path() else {
-            return Ok(PopCachedBranchOutcome::Exhausted)
+            return Ok(PopCachedBranchOutcome::Exhausted);
         };
 
         // If the trie cursor is seeked to a branch whose leaves have already been processed
@@ -851,13 +858,13 @@ where
             if let Some(new_trie_cursor_path) = trie_cursor_state.path() {
                 trie_cursor_path = new_trie_cursor_path
             } else {
-                return Ok(PopCachedBranchOutcome::Exhausted)
+                return Ok(PopCachedBranchOutcome::Exhausted);
             };
         }
 
         // If the trie cursor has exceeded the sub-trie then we consider it to be exhausted.
         if !trie_cursor_path.starts_with(sub_trie_prefix) {
-            return Ok(PopCachedBranchOutcome::Exhausted)
+            return Ok(PopCachedBranchOutcome::Exhausted);
         }
 
         // At this point we can be sure that the cursor is in an `Available` state. We know for
@@ -987,7 +994,8 @@ where
             // under-construction branch.
             let next_child_nibbles = curr_state_mask ^ cached_state_mask;
             debug_assert_eq!(
-                cached_state_mask | next_child_nibbles, cached_state_mask,
+                cached_state_mask | next_child_nibbles,
+                cached_state_mask,
                 "curr_branch has state_mask bits set which aren't set on cached_branch. curr_branch:{:?}",
                 curr_state_mask,
             );
@@ -1012,7 +1020,7 @@ where
                 // be the next possible prefix, if any.
                 uncalculated_lower_bound = increment_and_strip_trailing_zeros(&cached_path);
 
-                continue
+                continue;
             }
 
             // Determine the next nibble of the branch which has not yet been constructed, and
@@ -1066,7 +1074,7 @@ where
                     // Push the current cached branch back onto the stack before looping.
                     self.cached_branch_stack.push((cached_path, cached_branch));
 
-                    continue
+                    continue;
                 }
             }
 
@@ -1085,8 +1093,8 @@ where
             // the cached branch for this child. We push it onto the `cached_branch_stack` and loop
             // back to the top.
             if let TrieCursorState::Available(next_cached_path, next_cached_branch) =
-                &trie_cursor_state &&
-                next_cached_path.starts_with(&child_path)
+                &trie_cursor_state
+                && next_cached_path.starts_with(&child_path)
             {
                 // Push the current cached branch back on before pushing its child and then looping
                 self.cached_branch_stack.push((cached_path, cached_branch));
@@ -1193,8 +1201,8 @@ where
             //
             // This can specifically happen when there is a cached branch which shouldn't exist, or
             // if state mask bit is set on a cached branch which shouldn't be.
-            if let Some(prev_lower) = prev_uncalculated_lower_bound.as_ref() &&
-                calc_lower_bound < *prev_lower
+            if let Some(prev_lower) = prev_uncalculated_lower_bound.as_ref()
+                && calc_lower_bound < *prev_lower
             {
                 let msg = format!(
                     "next_uncached_key_range went backwards: calc_lower={calc_lower_bound:?} < \
@@ -1302,7 +1310,7 @@ where
         // If there are no targets then nothing could be returned, return early.
         if targets.is_empty() {
             trace!(target: TRACE_TARGET, "Empty targets, returning");
-            return Ok(Vec::new())
+            return Ok(Vec::new());
         }
 
         // Initialize the variables which track the state of the two cursors. Both indicate the
@@ -1413,7 +1421,8 @@ where
         // The root node is at the empty path - it must exist since retain_root is true. Otherwise
         // targets was empty, so there should be no other retained proofs.
         debug_assert_eq!(
-            proofs.len(), 1,
+            proofs.len(),
+            1,
             "prefix is empty, retain_root is true, and targets is empty, so there must be only the root node"
         );
 
@@ -1460,7 +1469,7 @@ where
                 path: Nibbles::default(),
                 node: TrieNode::EmptyRoot,
                 masks: None,
-            }])
+            }]);
         }
 
         // Don't call `set_hashed_address` on the trie cursor until after the previous shortcut has
@@ -1488,7 +1497,7 @@ where
                 path: Nibbles::default(),
                 node: TrieNode::EmptyRoot,
                 masks: None,
-            })
+            });
         }
 
         // Don't call `set_hashed_address` on the trie cursor until after the previous shortcut has
@@ -1644,25 +1653,26 @@ fn increment_and_strip_trailing_zeros(nibbles: &Nibbles) -> Option<Nibbles> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{
-        hashed_cursor::{
-            mock::MockHashedCursorFactory, HashedCursorFactory, HashedCursorMetricsCache,
-            InstrumentedHashedCursor,
-        },
-        proof::Proof,
-        trie_cursor::{
-            depth_first, mock::MockTrieCursorFactory, InstrumentedTrieCursor, TrieCursorFactory,
-            TrieCursorMetricsCache,
-        },
-    };
     use alloy_primitives::map::{B256Map, B256Set};
     use alloy_rlp::Decodable;
     use itertools::Itertools;
     use reth_primitives_traits::Account;
     use reth_trie_common::{
-        updates::{StorageTrieUpdates, TrieUpdates},
         HashedPostState, MultiProofTargets, TrieNode,
+        updates::{StorageTrieUpdates, TrieUpdates},
+    };
+
+    use super::*;
+    use crate::{
+        hashed_cursor::{
+            HashedCursorFactory, HashedCursorMetricsCache, InstrumentedHashedCursor,
+            mock::MockHashedCursorFactory,
+        },
+        proof::Proof,
+        trie_cursor::{
+            InstrumentedTrieCursor, TrieCursorFactory, TrieCursorMetricsCache, depth_first,
+            mock::MockTrieCursorFactory,
+        },
     };
 
     /// Target to use with the `tracing` crate.
@@ -1905,10 +1915,11 @@ mod tests {
     }
 
     mod proptest_tests {
-        use super::*;
-        use alloy_primitives::{map::B256Map, U256};
+        use alloy_primitives::{U256, map::B256Map};
         use proptest::prelude::*;
         use reth_trie_common::HashedPostState;
+
+        use super::*;
 
         /// Generate a strategy for Account values
         fn account_strategy() -> impl Strategy<Value = Account> {

@@ -1,11 +1,13 @@
 //! Trait for specifying `eth` network dependent API types.
 
-use crate::{AsEthApiError, FromEthApiError, RpcNodeCore};
+use std::error::Error;
+
 use alloy_rpc_types_eth::Block;
 use reth_rpc_convert::{RpcConvert, SignableTxRequest};
 pub use reth_rpc_convert::{RpcTransaction, RpcTxReq, RpcTypes};
 use reth_storage_api::ProviderTx;
-use std::error::Error;
+
+use crate::{AsEthApiError, FromEthApiError, RpcNodeCore};
 
 /// Network specific `eth` API types.
 ///

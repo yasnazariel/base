@@ -1,14 +1,12 @@
-use super::{
-    metrics::{StaticFileProviderMetrics, StaticFileProviderOperation},
-    LoadedJarRef,
+use std::{
+    fmt::Debug,
+    ops::{Deref, RangeBounds, RangeInclusive},
+    sync::Arc,
 };
-use crate::{
-    to_range, BlockHashReader, BlockNumReader, HeaderProvider, ReceiptProvider,
-    TransactionsProvider,
-};
+
 use alloy_consensus::transaction::TransactionMeta;
-use alloy_eips::{eip2718::Encodable2718, BlockHashOrNumber};
-use alloy_primitives::{Address, BlockHash, BlockNumber, TxHash, TxNumber, B256};
+use alloy_eips::{BlockHashOrNumber, eip2718::Encodable2718};
+use alloy_primitives::{Address, B256, BlockHash, BlockNumber, TxHash, TxNumber};
 use reth_chainspec::ChainInfo;
 use reth_db::static_file::{
     BlockHashMask, HeaderMask, HeaderWithHashMask, ReceiptMask, StaticFileCursor, TransactionMask,
@@ -20,10 +18,14 @@ use reth_primitives_traits::{SealedHeader, SignedTransaction};
 use reth_static_file_types::{ChangesetOffset, ChangesetOffsetReader};
 use reth_storage_api::range_size_hint;
 use reth_storage_errors::provider::{ProviderError, ProviderResult};
-use std::{
-    fmt::Debug,
-    ops::{Deref, RangeBounds, RangeInclusive},
-    sync::Arc,
+
+use super::{
+    LoadedJarRef,
+    metrics::{StaticFileProviderMetrics, StaticFileProviderOperation},
+};
+use crate::{
+    BlockHashReader, BlockNumReader, HeaderProvider, ReceiptProvider, TransactionsProvider,
+    to_range,
 };
 /// Provider over a specific `NippyJar` and range.
 #[derive(Debug)]
@@ -205,7 +207,7 @@ impl<N: NodePrimitives<BlockHeader: Value>> HeaderProvider for StaticFileJarProv
             {
                 let sealed = SealedHeader::new(header, hash);
                 if !predicate(&sealed) {
-                    break
+                    break;
                 }
                 headers.push(sealed);
             }
@@ -360,10 +362,10 @@ impl<N: NodePrimitives<SignedTx: Decompress + SignedTransaction, Receipt: Decomp
     }
 
     fn receipt_by_hash(&self, hash: TxHash) -> ProviderResult<Option<Self::Receipt>> {
-        if let Some(tx_static_file) = &self.auxiliary_jar &&
-            let Some(num) = tx_static_file.transaction_id(hash)?
+        if let Some(tx_static_file) = &self.auxiliary_jar
+            && let Some(num) = tx_static_file.transaction_id(hash)?
         {
-            return self.receipt(num)
+            return self.receipt(num);
         }
         Ok(None)
     }

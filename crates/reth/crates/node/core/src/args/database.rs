@@ -2,17 +2,19 @@
 
 use std::{fmt, str::FromStr, time::Duration};
 
-use crate::version::default_client_version;
 use clap::{
+    Arg, Args, Command, Error,
     builder::{PossibleValue, TypedValueParser},
     error::ErrorKind,
-    value_parser, Arg, Args, Command, Error,
+    value_parser,
 };
 use reth_db::{
-    mdbx::{MaxReadTransactionDuration, SyncMode},
     ClientVersion,
+    mdbx::{MaxReadTransactionDuration, SyncMode},
 };
 use reth_storage_errors::db::LogLevel;
+
+use crate::version::default_client_version;
 
 /// Parameters for database configuration
 #[derive(Debug, Args, PartialEq, Eq, Default, Clone, Copy)]
@@ -156,7 +158,7 @@ impl FromStr for ByteSize {
             }
             2 => (parts[0], parts[1]),
             _ => {
-                return Err("Invalid format. Use '<number><unit>' or '<number> <unit>'.".to_string())
+                return Err("Invalid format. Use '<number><unit>' or '<number> <unit>'.".to_string());
             }
         };
 
@@ -205,9 +207,10 @@ fn parse_byte_size(s: &str) -> Result<usize, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use clap::Parser;
     use reth_db::mdbx::{GIGABYTE, KILOBYTE, MEGABYTE, TERABYTE};
+
+    use super::*;
 
     /// A helper type to parse Args more easily
     #[derive(Parser)]

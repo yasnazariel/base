@@ -1,22 +1,23 @@
+use std::{
+    io,
+    time::{Duration, Instant},
+};
+
 use crossterm::{
     event::{self, Event, KeyCode, MouseEventKind},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use ratatui::{
+    Frame, Terminal,
     backend::{Backend, CrosstermBackend},
     layout::{Alignment, Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
-    Frame, Terminal,
 };
 use reth_db_api::{
-    table::{Table, TableRow},
     RawValue,
-};
-use std::{
-    io,
-    time::{Duration, Instant},
+    table::{Table, TableRow},
 };
 use tracing::error;
 
@@ -50,11 +51,7 @@ impl<T: Table> Entries<T> {
     /// Creates new empty [Entries] as [`Entries::RawValues`] if `raw_values == true` and as
     /// [`Entries::Values`] if `raw == false`.
     const fn new_with_raw_values(raw_values: bool) -> Self {
-        if raw_values {
-            Self::RawValues(Vec::new())
-        } else {
-            Self::Values(Vec::new())
-        }
+        if raw_values { Self::RawValues(Vec::new()) } else { Self::Values(Vec::new()) }
     }
 
     /// Sets the internal entries [Vec], converting the [`Table::Value`] into
@@ -293,7 +290,7 @@ where
             }
         }
 
-        return Ok(false)
+        return Ok(false);
     }
 
     match event {

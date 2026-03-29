@@ -1,6 +1,7 @@
-use crate::EventStream;
 use tokio::sync::broadcast::{self, Sender};
 use tracing::trace;
+
+use crate::EventStream;
 
 const DEFAULT_SIZE_BROADCAST_CHANNEL: usize = 2000;
 
@@ -49,12 +50,13 @@ impl<T: Clone + Send + Sync + 'static> EventSender<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use tokio::{
         task,
-        time::{timeout, Duration},
+        time::{Duration, timeout},
     };
     use tokio_stream::StreamExt;
+
+    use super::*;
 
     #[tokio::test]
     async fn test_event_broadcast_to_listener() {

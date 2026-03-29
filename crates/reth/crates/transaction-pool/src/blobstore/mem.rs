@@ -1,11 +1,13 @@
-use crate::blobstore::{BlobStore, BlobStoreCleanupStat, BlobStoreError, BlobStoreSize};
+use std::sync::Arc;
+
 use alloy_eips::{
     eip4844::{BlobAndProofV1, BlobAndProofV2},
     eip7594::BlobTransactionSidecarVariant,
 };
-use alloy_primitives::{map::B256Map, B256};
+use alloy_primitives::{B256, map::B256Map};
 use parking_lot::RwLock;
-use std::sync::Arc;
+
+use crate::blobstore::{BlobStore, BlobStoreCleanupStat, BlobStoreError, BlobStoreSize};
 
 /// An in-memory blob store.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -73,7 +75,7 @@ impl BlobStore for InMemoryBlobStore {
         txs: Vec<(B256, BlobTransactionSidecarVariant)>,
     ) -> Result<(), BlobStoreError> {
         if txs.is_empty() {
-            return Ok(())
+            return Ok(());
         }
         let mut store = self.inner.store.write();
         let mut total_add = 0;
@@ -96,7 +98,7 @@ impl BlobStore for InMemoryBlobStore {
 
     fn delete_all(&self, txs: Vec<B256>) -> Result<(), BlobStoreError> {
         if txs.is_empty() {
-            return Ok(())
+            return Ok(());
         }
         let mut store = self.inner.store.write();
         let mut total_sub = 0;
@@ -214,13 +216,14 @@ fn insert_size(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_eips::{
-        eip4844::{kzg_to_versioned_hash, Blob, BlobAndProofV2, Bytes48},
+        eip4844::{Blob, BlobAndProofV2, Bytes48, kzg_to_versioned_hash},
         eip7594::{
             BlobTransactionSidecarEip7594, BlobTransactionSidecarVariant, CELLS_PER_EXT_BLOB,
         },
     };
+
+    use super::*;
 
     fn eip7594_single_blob_sidecar() -> (BlobTransactionSidecarVariant, B256, BlobAndProofV2) {
         let blob = Blob::default();

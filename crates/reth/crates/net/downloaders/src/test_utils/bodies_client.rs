@@ -1,4 +1,14 @@
-use alloy_primitives::{map::B256Map, B256};
+use std::{
+    fmt::Debug,
+    ops::RangeInclusive,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+    time::Duration,
+};
+
+use alloy_primitives::{B256, map::B256Map};
 use reth_ethereum_primitives::BlockBody;
 use reth_network_p2p::{
     bodies::client::{BodiesClient, BodiesFut},
@@ -6,15 +16,6 @@ use reth_network_p2p::{
     priority::Priority,
 };
 use reth_network_peers::PeerId;
-use std::{
-    fmt::Debug,
-    ops::RangeInclusive,
-    sync::{
-        atomic::{AtomicU64, Ordering},
-        Arc,
-    },
-    time::Duration,
-};
 use tokio::sync::Mutex;
 
 /// A [`BodiesClient`] for testing.
@@ -96,7 +97,7 @@ impl BodiesClient for TestBodiesClient {
 
         Box::pin(async move {
             if should_respond_empty {
-                return Ok((PeerId::default(), vec![]).into())
+                return Ok((PeerId::default(), vec![]).into());
             }
 
             if should_delay {

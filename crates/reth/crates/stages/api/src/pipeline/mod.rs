@@ -1,38 +1,41 @@
 mod ctrl;
 mod event;
-pub use crate::pipeline::ctrl::ControlFlow;
-use crate::{PipelineTarget, StageCheckpoint, StageId};
-use alloy_primitives::{BlockNumber, B256};
-pub use event::*;
-use futures_util::Future;
-use reth_primitives_traits::constants::BEACON_CONSENSUS_REORG_UNWIND_DEPTH;
-use reth_provider::{
-    providers::ProviderNodeTypes, BlockHashReader, BlockNumReader, ChainStateBlockReader,
-    ChainStateBlockWriter, DBProvider, DatabaseProviderFactory, ProviderFactory,
-    PruneCheckpointReader, StageCheckpointReader, StageCheckpointWriter,
-};
-use reth_prune::PrunerBuilder;
-use reth_static_file::StaticFileProducer;
-use reth_tokio_util::{EventSender, EventStream};
 use std::{
     pin::Pin,
     time::{Duration, Instant},
 };
+
+use alloy_primitives::{B256, BlockNumber};
+pub use event::*;
+use futures_util::Future;
+use reth_primitives_traits::constants::BEACON_CONSENSUS_REORG_UNWIND_DEPTH;
+use reth_provider::{
+    BlockHashReader, BlockNumReader, ChainStateBlockReader, ChainStateBlockWriter, DBProvider,
+    DatabaseProviderFactory, ProviderFactory, PruneCheckpointReader, StageCheckpointReader,
+    StageCheckpointWriter, providers::ProviderNodeTypes,
+};
+use reth_prune::PrunerBuilder;
+use reth_static_file::StaticFileProducer;
+use reth_tokio_util::{EventSender, EventStream};
 use tokio::sync::watch;
 use tracing::*;
+
+pub use crate::pipeline::ctrl::ControlFlow;
+use crate::{PipelineTarget, StageCheckpoint, StageId};
 
 mod builder;
 mod progress;
 mod set;
 
-use crate::{
-    BlockErrorKind, ExecInput, ExecOutput, MetricEvent, MetricEventsSender, PipelineError, Stage,
-    StageError, StageExt, UnwindInput,
-};
 pub use builder::*;
 use progress::*;
 use reth_errors::RethResult;
 pub use set::*;
+
+use crate::{
+    BlockErrorKind, ExecInput, ExecOutput, MetricEvent, MetricEventsSender, PipelineError, Stage,
+    StageError, StageExt, UnwindInput,
+};
 
 /// A container for a queued stage.
 pub(crate) type BoxedStage<DB> = Box<dyn Stage<DB>>;
@@ -159,14 +162,14 @@ impl<N: ProviderNodeTypes> Pipeline<N> {
                     PipelineTarget::Sync(tip) => self.set_tip(tip),
                     PipelineTarget::Unwind(target) => {
                         if let Err(err) = self.move_to_static_files() {
-                            return (self, Err(err.into()))
+                            return (self, Err(err.into()));
                         }
                         if let Err(err) = self.unwind(target, None) {
-                            return (self, Err(err))
+                            return (self, Err(err));
                         }
                         self.progress.update(target);
 
-                        return (self, Ok(ControlFlow::Continue { block_number: target }))
+                        return (self, Ok(ControlFlow::Continue { block_number: target }));
                     }
                 }
             }
@@ -186,13 +189,14 @@ impl<N: ProviderNodeTypes> Pipeline<N> {
             let next_action = self.run_loop().await?;
 
             if next_action.is_unwind() && self.fail_on_unwind {
-                return Err(PipelineError::UnexpectedUnwind)
+                return Err(PipelineError::UnexpectedUnwind);
             }
 
             // Terminate the loop early if it's reached the maximum user
             // configured block.
-            if next_action.should_continue() &&
-                self.progress
+            if next_action.should_continue()
+                && self
+                    .progress
                     .minimum_block_number
                     .zip(self.max_block)
                     .is_some_and(|(progress, target)| progress >= target)
@@ -204,7 +208,7 @@ impl<N: ProviderNodeTypes> Pipeline<N> {
                     max_block = ?self.max_block,
                     "Terminating pipeline."
                 );
-                return Ok(())
+                return Ok(());
             }
         }
     }
@@ -242,7 +246,7 @@ impl<N: ProviderNodeTypes> Pipeline<N> {
                 ControlFlow::Continue { block_number } => self.progress.update(block_number),
                 ControlFlow::Unwind { target, bad_block } => {
                     self.unwind(target, Some(bad_block.block.number))?;
-                    return Ok(ControlFlow::Unwind { target, bad_block })
+                    return Ok(ControlFlow::Unwind { target, bad_block });
                 }
             }
 
@@ -333,7 +337,7 @@ impl<N: ProviderNodeTypes> Pipeline<N> {
                 );
                 self.event_sender.notify(PipelineEvent::Skipped { stage_id });
 
-                continue
+                continue;
             }
 
             info!(
@@ -384,8 +388,8 @@ impl<N: ProviderNodeTypes> Pipeline<N> {
 
                         // If None, that means the finalized block is not written so we should
                         // always save in that case
-                        if last_saved_finalized_block_number.is_none() ||
-                            Some(checkpoint.block_number) < last_saved_finalized_block_number
+                        if last_saved_finalized_block_number.is_none()
+                            || Some(checkpoint.block_number) < last_saved_finalized_block_number
                         {
                             provider_rw.save_finalized_block_number(BlockNumber::from(
                                 checkpoint.block_number,
@@ -401,7 +405,7 @@ impl<N: ProviderNodeTypes> Pipeline<N> {
                     Err(err) => {
                         self.event_sender.notify(PipelineEvent::Error { stage_id });
 
-                        return Err(PipelineError::Stage(StageError::Fatal(Box::new(err))))
+                        return Err(PipelineError::Stage(StageError::Fatal(Box::new(err))));
                     }
                 }
             }
@@ -440,7 +444,7 @@ impl<N: ProviderNodeTypes> Pipeline<N> {
                 // We reached the maximum block, so we skip the stage
                 return Ok(ControlFlow::NoProgress {
                     block_number: prev_checkpoint.map(|progress| progress.block_number),
-                })
+                });
             }
 
             let exec_input = ExecInput { target, checkpoint: prev_checkpoint };
@@ -513,7 +517,7 @@ impl<N: ProviderNodeTypes> Pipeline<N> {
                             ControlFlow::Continue { block_number }
                         } else {
                             ControlFlow::NoProgress { block_number: Some(block_number) }
-                        })
+                        });
                     }
                 }
                 Err(err) => {
@@ -521,7 +525,7 @@ impl<N: ProviderNodeTypes> Pipeline<N> {
                     self.event_sender.notify(PipelineEvent::Error { stage_id });
 
                     if let Some(ctrl) = self.on_stage_error(stage_id, prev_checkpoint, err)? {
-                        return Ok(ctrl)
+                        return Ok(ctrl);
                     }
                 }
             }
@@ -538,8 +542,8 @@ impl<N: ProviderNodeTypes> Pipeline<N> {
             warn!(target: "sync::pipeline", stage = %stage_id, ?local_head, ?header, %error, "Stage encountered detached head");
 
             if let Some(last_detached_head_unwind_target) = self.last_detached_head_unwind_target {
-                if local_head.block.hash == last_detached_head_unwind_target &&
-                    header.block.number == local_head.block.number + 1
+                if local_head.block.hash == last_detached_head_unwind_target
+                    && header.block.number == local_head.block.number + 1
                 {
                     self.detached_head_attempts += 1;
                 } else {
@@ -657,15 +661,16 @@ impl<N: ProviderNodeTypes> std::fmt::Debug for Pipeline<N> {
 mod tests {
     use std::sync::atomic::Ordering;
 
-    use super::*;
-    use crate::{test_utils::TestStage, UnwindOutput};
     use assert_matches::assert_matches;
     use reth_consensus::ConsensusError;
     use reth_errors::ProviderError;
-    use reth_provider::test_utils::{create_test_provider_factory, MockNodeTypesWithDB};
+    use reth_provider::test_utils::{MockNodeTypesWithDB, create_test_provider_factory};
     use reth_prune::PruneModes;
     use reth_testing_utils::generators::{self, random_block_with_parent};
     use tokio_stream::StreamExt;
+
+    use super::*;
+    use crate::{UnwindOutput, test_utils::TestStage};
 
     #[test]
     fn record_progress_calculates_outliers() {

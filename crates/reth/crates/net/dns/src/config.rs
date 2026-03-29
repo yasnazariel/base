@@ -1,4 +1,3 @@
-use crate::tree::LinkEntry;
 use std::{
     collections::HashSet,
     num::{NonZeroU32, NonZeroUsize},
@@ -7,6 +6,8 @@ use std::{
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+
+use crate::tree::LinkEntry;
 
 /// Settings for the [`DnsDiscoveryService`](crate::DnsDiscoveryService).
 #[derive(Debug, Clone)]

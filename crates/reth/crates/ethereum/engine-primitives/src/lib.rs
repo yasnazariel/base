@@ -12,17 +12,16 @@
 extern crate alloc;
 
 mod payload;
-pub use payload::{payload_id, BlobSidecars, EthBuiltPayload, EthPayloadBuilderAttributes};
+pub use payload::{BlobSidecars, EthBuiltPayload, EthPayloadBuilderAttributes, payload_id};
 
 mod error;
-pub use error::*;
-
 use alloy_rpc_types_engine::{ExecutionData, ExecutionPayload};
 pub use alloy_rpc_types_engine::{
     ExecutionPayloadEnvelopeV2, ExecutionPayloadEnvelopeV3, ExecutionPayloadEnvelopeV4,
     ExecutionPayloadEnvelopeV5, ExecutionPayloadEnvelopeV6, ExecutionPayloadV1,
     PayloadAttributes as EthPayloadAttributes,
 };
+pub use error::*;
 use reth_engine_primitives::EngineTypes;
 use reth_payload_primitives::{BuiltPayload, PayloadTypes};
 use reth_primitives_traits::{NodePrimitives, SealedBlock};
@@ -35,13 +34,13 @@ pub struct EthEngineTypes<T: PayloadTypes = EthPayloadTypes> {
 }
 
 impl<
-        T: PayloadTypes<
+    T: PayloadTypes<
             ExecutionData = ExecutionData,
             BuiltPayload: BuiltPayload<
                 Primitives: NodePrimitives<Block = reth_ethereum_primitives::Block>,
             >,
         >,
-    > PayloadTypes for EthEngineTypes<T>
+> PayloadTypes for EthEngineTypes<T>
 {
     type ExecutionData = T::ExecutionData;
     type BuiltPayload = T::BuiltPayload;

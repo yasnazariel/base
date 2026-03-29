@@ -1,18 +1,20 @@
 //! Functionality related to tree state.
 
-use crate::engine::EngineApiKind;
+use std::{
+    collections::{BTreeMap, VecDeque, btree_map, hash_map},
+    ops::Bound,
+};
+
 use alloy_eips::BlockNumHash;
 use alloy_primitives::{
+    B256, BlockNumber,
     map::{B256Map, B256Set},
-    BlockNumber, B256,
 };
 use reth_chain_state::{DeferredTrieData, EthPrimitives, ExecutedBlock, LazyOverlay};
 use reth_primitives_traits::{AlloyBlockHeader, NodePrimitives, SealedHeader};
-use std::{
-    collections::{btree_map, hash_map, BTreeMap, VecDeque},
-    ops::Bound,
-};
 use tracing::debug;
+
+use crate::engine::EngineApiKind;
 
 /// Keeps track of the state of the tree.
 ///
@@ -216,13 +218,13 @@ impl<N: NodePrimitives> TreeState<N> {
     pub fn is_canonical(&self, hash: B256) -> bool {
         let mut current_block = self.current_canonical_head.hash;
         if current_block == hash {
-            return true
+            return true;
         }
 
         while let Some(executed) = self.blocks_by_hash.get(&current_block) {
             current_block = executed.recovered_block().parent_hash();
             if current_block == hash {
-                return true
+                return true;
             }
         }
 
@@ -237,7 +239,7 @@ impl<N: NodePrimitives> TreeState<N> {
         // If the last persisted hash is not canonical, then we don't want to remove any canonical
         // blocks yet.
         if !self.is_canonical(last_persisted_hash) {
-            return
+            return;
         }
 
         // First, let's walk back the canonical chain and remove canonical blocks lower than the
@@ -387,19 +389,19 @@ impl<N: NodePrimitives> TreeState<N> {
         // If the second block's parent is the first block's hash, then it is a direct child
         // and we can return early.
         if second.parent == first.hash {
-            return true
+            return true;
         }
 
         // If the second block is lower than, or has the same block number, they are not
         // descendants.
         if second.block.number <= first.number {
-            return false
+            return false;
         }
 
         // iterate through parents of the second until we reach the number
         let Some(mut current_block) = self.blocks_by_hash.get(&second.parent) else {
             // If we can't find its parent in the tree, we can't continue, so return false
-            return false
+            return false;
         };
 
         while current_block.recovered_block().number() > first.number + 1 {
@@ -407,7 +409,7 @@ impl<N: NodePrimitives> TreeState<N> {
                 self.blocks_by_hash.get(&current_block.recovered_block().parent_hash())
             else {
                 // If we can't find its parent in the tree, we can't continue, so return false
-                return false
+                return false;
             };
 
             current_block = block;
@@ -453,8 +455,9 @@ pub struct PreparedCanonicalOverlay {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use reth_chain_state::test_utils::TestBlockBuilder;
+
+    use super::*;
 
     #[test]
     fn test_tree_state_normal_descendant() {
@@ -535,10 +538,14 @@ mod tests {
         tree_state.insert_executed(fork_block_4.clone());
         assert_eq!(tree_state.blocks_by_hash.len(), 8);
 
-        assert!(tree_state.parent_to_child[&fork_block_3.recovered_block().hash()]
-            .contains(&fork_block_4.recovered_block().hash()));
-        assert!(tree_state.parent_to_child[&fork_block_4.recovered_block().hash()]
-            .contains(&fork_block_5.recovered_block().hash()));
+        assert!(
+            tree_state.parent_to_child[&fork_block_3.recovered_block().hash()]
+                .contains(&fork_block_4.recovered_block().hash())
+        );
+        assert!(
+            tree_state.parent_to_child[&fork_block_4.recovered_block().hash()]
+                .contains(&fork_block_5.recovered_block().hash())
+        );
 
         assert_eq!(tree_state.blocks_by_number[&4].len(), 2);
         assert_eq!(tree_state.blocks_by_number[&5].len(), 2);

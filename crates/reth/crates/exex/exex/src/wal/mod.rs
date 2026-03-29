@@ -9,18 +9,17 @@ pub use storage::Storage;
 mod metrics;
 use metrics::Metrics;
 mod error;
-pub use error::{WalError, WalResult};
-
 use std::{
     path::Path,
     sync::{
-        atomic::{AtomicU32, Ordering},
         Arc,
+        atomic::{AtomicU32, Ordering},
     },
 };
 
 use alloy_eips::BlockNumHash;
 use alloy_primitives::B256;
+pub use error::{WalError, WalResult};
 use parking_lot::{RwLock, RwLockReadGuard};
 use reth_exex_types::ExExNotification;
 use reth_tracing::tracing::{debug, instrument};
@@ -169,7 +168,7 @@ where
         // Remove notifications from the storage.
         if file_ids.is_empty() {
             debug!(target: "exex::wal", "No notifications were finalized from the storage");
-            return Ok(())
+            return Ok(());
         }
 
         let (removed_notifications, removed_size) = self.storage.remove_notifications(file_ids)?;
@@ -199,7 +198,7 @@ where
         &self,
     ) -> WalResult<Box<dyn Iterator<Item = WalResult<ExExNotification<N>>> + '_>> {
         let Some(range) = self.storage.files_range()? else {
-            return Ok(Box::new(std::iter::empty()))
+            return Ok(Box::new(std::iter::empty()));
         };
 
         Ok(Box::new(self.storage.iter_notifications(range).map(|entry| Ok(entry?.2))))
@@ -223,7 +222,7 @@ where
     ) -> WalResult<Option<ExExNotification<N>>> {
         let Some(file_id) = self.wal.block_cache().get_file_id_by_committed_block_hash(block_hash)
         else {
-            return Ok(None)
+            return Ok(None);
         };
 
         self.wal
@@ -235,15 +234,17 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::wal::{cache::CachedBlock, error::WalResult, Wal};
+    use std::{collections::BTreeMap, sync::Arc};
+
     use alloy_primitives::B256;
     use itertools::Itertools;
     use reth_exex_types::ExExNotification;
     use reth_provider::Chain;
     use reth_testing_utils::generators::{
-        self, random_block, random_block_range, BlockParams, BlockRangeParams,
+        self, BlockParams, BlockRangeParams, random_block, random_block_range,
     };
-    use std::{collections::BTreeMap, sync::Arc};
+
+    use crate::wal::{Wal, cache::CachedBlock, error::WalResult};
 
     fn read_notifications(wal: &Wal) -> WalResult<Vec<ExExNotification>> {
         wal.inner.storage.files_range()?.map_or(Ok(Vec::new()), |range| {

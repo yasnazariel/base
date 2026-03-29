@@ -1,13 +1,14 @@
-use alloy_primitives::B256;
-use parking_lot::Mutex;
-use reth_metrics::{metrics::Counter, Metrics};
-use reth_trie::{
-    updates::{TrieUpdates, TrieUpdatesSorted},
-    HashedPostState, HashedPostStateSorted, TrieInputSorted,
-};
 use std::{
     fmt,
     sync::{Arc, LazyLock},
+};
+
+use alloy_primitives::B256;
+use parking_lot::Mutex;
+use reth_metrics::{Metrics, metrics::Counter};
+use reth_trie::{
+    HashedPostState, HashedPostStateSorted, TrieInputSorted,
+    updates::{TrieUpdates, TrieUpdatesSorted},
 };
 use tracing::instrument;
 
@@ -392,15 +393,17 @@ impl ComputedTrieData {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use alloy_primitives::{map::B256Map, U256};
-    use reth_primitives_traits::Account;
-    use reth_trie::updates::TrieUpdates;
     use std::{
         sync::Arc,
         thread,
         time::{Duration, Instant},
     };
+
+    use alloy_primitives::{U256, map::B256Map};
+    use reth_primitives_traits::Account;
+    use reth_trie::updates::TrieUpdates;
+
+    use super::*;
 
     fn empty_bundle() -> ComputedTrieData {
         ComputedTrieData {

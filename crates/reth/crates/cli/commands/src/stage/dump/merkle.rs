@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use super::setup;
 use alloy_primitives::{Address, BlockNumber};
 use eyre::Result;
 use reth_config::config::EtlConfig;
@@ -12,17 +11,19 @@ use reth_evm::ConfigureEvm;
 use reth_exex::ExExManagerHandle;
 use reth_node_core::dirs::{ChainPath, DataDirPath};
 use reth_provider::{
-    providers::{ProviderNodeTypes, RocksDBProvider, StaticFileProvider},
     DatabaseProviderFactory, ProviderFactory,
+    providers::{ProviderNodeTypes, RocksDBProvider, StaticFileProvider},
 };
 use reth_stages::{
-    stages::{
-        AccountHashingStage, ExecutionStage, MerkleStage, StorageHashingStage,
-        MERKLE_STAGE_DEFAULT_REBUILD_THRESHOLD,
-    },
     ExecutionStageThresholds, Stage, StageCheckpoint, UnwindInput,
+    stages::{
+        AccountHashingStage, ExecutionStage, MERKLE_STAGE_DEFAULT_REBUILD_THRESHOLD, MerkleStage,
+        StorageHashingStage,
+    },
 };
 use tracing::info;
+
+use super::setup;
 
 pub(crate) async fn dump_merkle_stage<N>(
     db_tool: &DbTool<N>,
@@ -174,7 +175,7 @@ where
             checkpoint: Some(StageCheckpoint::new(from)),
         };
         if stage.execute(&provider, input)?.done {
-            break
+            break;
         }
     }
 

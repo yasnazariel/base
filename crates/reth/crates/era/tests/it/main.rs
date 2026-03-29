@@ -6,6 +6,14 @@
 //!
 //! Files are downloaded from [`MAINNET_URL`] and [`SEPOLIA_URL`].
 
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    str::FromStr,
+    sync::{Arc, Mutex},
+};
+
+use eyre::{Result, eyre};
 use reqwest::{Client, Url};
 use reth_era::{
     common::file_ops::{EraFileType, FileReader},
@@ -14,14 +22,6 @@ use reth_era::{
     era1::file::{Era1File, Era1Reader},
 };
 use reth_era_downloader::EraClient;
-use std::{
-    collections::HashMap,
-    path::PathBuf,
-    str::FromStr,
-    sync::{Arc, Mutex},
-};
-
-use eyre::{eyre, Result};
 use tempfile::TempDir;
 
 mod era;

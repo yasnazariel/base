@@ -1,6 +1,7 @@
-use reth_chainspec::{ChainSpec, DEV, HOLESKY, HOODI, MAINNET, SEPOLIA};
-use reth_cli::chainspec::{parse_genesis, ChainSpecParser};
 use std::sync::Arc;
+
+use reth_chainspec::{ChainSpec, DEV, HOLESKY, HOODI, MAINNET, SEPOLIA};
+use reth_cli::chainspec::{ChainSpecParser, parse_genesis};
 
 /// Chains supported by reth. First value should be used as the default.
 pub const SUPPORTED_CHAINS: &[&str] = &["mainnet", "sepolia", "holesky", "hoodi", "dev"];
@@ -37,8 +38,9 @@ impl ChainSpecParser for EthereumChainSpecParser {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use reth_chainspec::EthereumHardforks;
+
+    use super::*;
 
     #[test]
     fn parse_known_chain_spec() {

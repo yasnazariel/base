@@ -1,12 +1,14 @@
-use crate::PruneLimiter;
+use std::{fmt::Debug, ops::RangeBounds};
+
 use reth_db_api::{
+    DatabaseError,
     cursor::{DbCursorRO, DbCursorRW, RangeWalker},
     table::{DupSort, Table, TableRow},
     transaction::{DbTx, DbTxMut},
-    DatabaseError,
 };
-use std::{fmt::Debug, ops::RangeBounds};
 use tracing::debug;
+
+use crate::PruneLimiter;
 
 pub(crate) trait DbTxPruneExt: DbTxMut + DbTx {
     /// Clear the entire table in a single operation.
@@ -45,7 +47,7 @@ pub(crate) trait DbTxPruneExt: DbTxMut + DbTx {
                     "Pruning limit reached"
                 );
                 done = false;
-                break
+                break;
             }
 
             let key = keys.next().expect("peek() said Some");
@@ -88,7 +90,7 @@ pub(crate) trait DbTxPruneExt: DbTxMut + DbTx {
                     table = %T::NAME,
                     "Pruning limit reached"
                 );
-                break false
+                break false;
             }
 
             let done = self.prune_table_with_range_step(
@@ -99,7 +101,7 @@ pub(crate) trait DbTxPruneExt: DbTxMut + DbTx {
             )?;
 
             if done {
-                break true
+                break true;
             }
             deleted_entries += 1;
         };
@@ -158,7 +160,7 @@ pub(crate) trait DbTxPruneExt: DbTxMut + DbTx {
                     table = %T::NAME,
                     "Pruning limit reached"
                 );
-                break false
+                break false;
             }
 
             let Some(res) = walker.next() else { break true };
@@ -186,17 +188,19 @@ impl<Tx> DbTxPruneExt for Tx where Tx: DbTxMut + DbTx {}
 
 #[cfg(test)]
 mod tests {
-    use super::DbTxPruneExt;
-    use crate::PruneLimiter;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
     use reth_db_api::tables;
     use reth_primitives_traits::SignerRecoverable;
     use reth_provider::{DBProvider, DatabaseProviderFactory};
     use reth_stages::test_utils::{StorageKind, TestStageDB};
-    use reth_testing_utils::generators::{self, random_block_range, BlockRangeParams};
-    use std::sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    };
+    use reth_testing_utils::generators::{self, BlockRangeParams, random_block_range};
+
+    use super::DbTxPruneExt;
+    use crate::PruneLimiter;
 
     struct CountingIter {
         data: Vec<u64>,

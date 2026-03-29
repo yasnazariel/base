@@ -3,22 +3,24 @@
 //! A stream type for handling both eth and snap protocol messages over a single `RLPx` connection.
 //! Provides message encoding/decoding, ID multiplexing, and protocol message processing.
 
-use super::message::MAX_MESSAGE_SIZE;
-use crate::{
-    message::{EthBroadcastMessage, ProtocolBroadcastMessage},
-    EthMessage, EthMessageID, EthNetworkPrimitives, EthVersion, NetworkPrimitives, ProtocolMessage,
-    RawCapabilityMessage, SnapMessageId, SnapProtocolMessage,
-};
-use alloy_rlp::{Bytes, BytesMut, Encodable};
 use core::fmt::Debug;
-use futures::{Sink, SinkExt};
-use pin_project::pin_project;
 use std::{
     marker::PhantomData,
     pin::Pin,
-    task::{ready, Context, Poll},
+    task::{Context, Poll, ready},
 };
+
+use alloy_rlp::{Bytes, BytesMut, Encodable};
+use futures::{Sink, SinkExt};
+use pin_project::pin_project;
 use tokio_stream::Stream;
+
+use super::message::MAX_MESSAGE_SIZE;
+use crate::{
+    EthMessage, EthMessageID, EthNetworkPrimitives, EthVersion, NetworkPrimitives, ProtocolMessage,
+    RawCapabilityMessage, SnapMessageId, SnapProtocolMessage,
+    message::{EthBroadcastMessage, ProtocolBroadcastMessage},
+};
 
 /// Error type for the eth and snap stream
 #[derive(thiserror::Error, Debug)]
@@ -236,9 +238,9 @@ where
                     Err(EthSnapStreamError::InvalidMessage(self.eth_version, err.to_string()))
                 }
             }
-        } else if message_id > EthMessageID::max(self.eth_version) &&
-            message_id <=
-                EthMessageID::message_count(self.eth_version) + SnapMessageId::TrieNodes as u8
+        } else if message_id > EthMessageID::max(self.eth_version)
+            && message_id
+                <= EthMessageID::message_count(self.eth_version) + SnapMessageId::TrieNodes as u8
         {
             // Checks for multiplexed snap message IDs :
             // - message_id > EthMessageID::max() : ensures it's not an eth message
@@ -288,14 +290,15 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{EthMessage, SnapProtocolMessage};
     use alloy_eips::BlockHashOrNumber;
     use alloy_primitives::B256;
     use alloy_rlp::Encodable;
     use reth_eth_wire_types::{
-        message::RequestPair, GetAccountRangeMessage, GetBlockHeaders, HeadersDirection,
+        GetAccountRangeMessage, GetBlockHeaders, HeadersDirection, message::RequestPair,
     };
+
+    use super::*;
+    use crate::{EthMessage, SnapProtocolMessage};
 
     // Helper to create eth message and its bytes
     fn create_eth_message() -> (EthMessage<EthNetworkPrimitives>, BytesMut) {
@@ -405,8 +408,8 @@ mod tests {
         // This should be decoded as eth message
         let eth_boundary_result = inner.decode_message(eth_boundary_bytes);
         assert!(
-            eth_boundary_result.is_err() ||
-                matches!(eth_boundary_result, Ok(EthSnapMessage::Eth(_)))
+            eth_boundary_result.is_err()
+                || matches!(eth_boundary_result, Ok(EthSnapMessage::Eth(_)))
         );
 
         // Create a bytes buffer with message ID just above eth max, it should be snap min

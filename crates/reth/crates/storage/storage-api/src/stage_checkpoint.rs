@@ -1,4 +1,5 @@
 use alloc::{string::String, vec::Vec};
+
 use alloy_primitives::BlockNumber;
 use reth_stages_types::{StageCheckpoint, StageId};
 use reth_storage_errors::provider::ProviderResult;
@@ -22,7 +23,7 @@ pub trait StageCheckpointReader: Send {
 pub trait StageCheckpointWriter {
     /// Save stage checkpoint.
     fn save_stage_checkpoint(&self, id: StageId, checkpoint: StageCheckpoint)
-        -> ProviderResult<()>;
+    -> ProviderResult<()>;
 
     /// Save stage checkpoint progress.
     fn save_stage_checkpoint_progress(

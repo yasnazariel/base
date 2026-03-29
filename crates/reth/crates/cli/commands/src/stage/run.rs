@@ -2,7 +2,8 @@
 //!
 //! Stage debugging tool
 
-use crate::common::{AccessRights, CliNodeComponents, CliNodeTypes, Environment, EnvironmentArgs};
+use std::{any::Any, net::SocketAddr, sync::Arc, time::Instant};
+
 use alloy_eips::BlockHashOrNumber;
 use alloy_primitives::Sealable;
 use clap::Parser;
@@ -33,16 +34,17 @@ use reth_provider::{
     StageCheckpointWriter,
 };
 use reth_stages::{
+    ExecInput, ExecOutput, ExecutionStageThresholds, Stage, StageExt, UnwindInput, UnwindOutput,
     stages::{
         AccountHashingStage, BodyStage, ExecutionStage, HeaderStage, IndexAccountHistoryStage,
         IndexStorageHistoryStage, MerkleStage, SenderRecoveryStage, StorageHashingStage,
         TransactionLookupStage,
     },
-    ExecInput, ExecOutput, ExecutionStageThresholds, Stage, StageExt, UnwindInput, UnwindOutput,
 };
-use std::{any::Any, net::SocketAddr, sync::Arc, time::Instant};
 use tokio::sync::watch;
 use tracing::*;
+
+use crate::common::{AccessRights, CliNodeComponents, CliNodeTypes, Environment, EnvironmentArgs};
 
 /// `reth stage` command
 #[derive(Debug, Parser)]
@@ -182,7 +184,7 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + Hardforks + EthereumHardforks>
                         match fetch_client.get_header(BlockHashOrNumber::Number(self.to)).await {
                             Ok(header) => {
                                 if let Some(header) = header.into_data() {
-                                    break header
+                                    break header;
                                 }
                             }
                             Err(error) if error.is_retryable() => {
@@ -240,8 +242,8 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + Hardforks + EthereumHardforks>
                                 config.stages.bodies.downloader_max_buffered_blocks_size_bytes,
                             )
                             .with_concurrent_requests_range(
-                                config.stages.bodies.downloader_min_concurrent_requests..=
-                                    config.stages.bodies.downloader_max_concurrent_requests,
+                                config.stages.bodies.downloader_min_concurrent_requests
+                                    ..=config.stages.bodies.downloader_max_concurrent_requests,
                             )
                             .build(fetch_client, consensus.clone(), provider_factory.clone()),
                     );
@@ -368,7 +370,7 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + Hardforks + EthereumHardforks>
             }
 
             if done {
-                break
+                break;
             }
         }
         info!(target: "reth::cli", stage = %self.stage, time = ?start.elapsed(), "Finished stage");

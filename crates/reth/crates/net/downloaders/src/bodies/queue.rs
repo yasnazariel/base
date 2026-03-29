@@ -1,8 +1,12 @@
-use super::request::BodiesRequestFuture;
-use crate::metrics::BodyDownloaderMetrics;
+use std::{
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll},
+};
+
 use alloy_consensus::BlockHeader;
 use alloy_primitives::BlockNumber;
-use futures::{stream::FuturesUnordered, Stream};
+use futures::{Stream, stream::FuturesUnordered};
 use futures_util::StreamExt;
 use reth_consensus::Consensus;
 use reth_network_p2p::{
@@ -10,11 +14,9 @@ use reth_network_p2p::{
     error::DownloadResult,
 };
 use reth_primitives_traits::{Block, SealedHeader};
-use std::{
-    pin::Pin,
-    sync::Arc,
-    task::{Context, Poll},
-};
+
+use super::request::BodiesRequestFuture;
+use crate::metrics::BodyDownloaderMetrics;
 
 /// The wrapper around [`FuturesUnordered`] that keeps information
 /// about the blocks currently being requested.

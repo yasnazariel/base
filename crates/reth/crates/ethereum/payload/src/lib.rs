@@ -9,20 +9,22 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![allow(clippy::useless_let_if_seq)]
 
+use std::sync::Arc;
+
 use alloy_consensus::Transaction;
 use alloy_primitives::U256;
 use alloy_rlp::Encodable;
 use reth_basic_payload_builder::{
-    is_better_payload, BuildArguments, BuildOutcome, MissingPayloadBehaviour, PayloadBuilder,
-    PayloadConfig,
+    BuildArguments, BuildOutcome, MissingPayloadBehaviour, PayloadBuilder, PayloadConfig,
+    is_better_payload,
 };
 use reth_chainspec::{ChainSpecProvider, EthChainSpec, EthereumHardforks};
 use reth_consensus_common::validation::MAX_RLP_BLOCK_SIZE;
 use reth_errors::{BlockExecutionError, BlockValidationError, ConsensusError};
 use reth_ethereum_primitives::{EthPrimitives, TransactionSigned};
 use reth_evm::{
-    execute::{BlockBuilder, BlockBuilderOutcome},
     ConfigureEvm, Evm, NextBlockEnvAttributes,
+    execute::{BlockBuilder, BlockBuilderOutcome},
 };
 use reth_evm_ethereum::EthEvmConfig;
 use reth_payload_builder::{BlobSidecars, EthBuiltPayload, EthPayloadBuilderAttributes};
@@ -32,12 +34,11 @@ use reth_primitives_traits::transaction::error::InvalidTransactionError;
 use reth_revm::{database::StateProviderDatabase, db::State};
 use reth_storage_api::StateProviderFactory;
 use reth_transaction_pool::{
-    error::{Eip4844PoolTransactionError, InvalidPoolTransactionError},
     BestTransactions, BestTransactionsAttributes, PoolTransaction, TransactionPool,
     ValidPoolTransaction,
+    error::{Eip4844PoolTransactionError, InvalidPoolTransactionError},
 };
 use revm::context_interface::Block as _;
-use std::sync::Arc;
 use tracing::{debug, trace, warn};
 
 mod config;
@@ -223,12 +224,12 @@ where
                 &pool_tx,
                 &InvalidPoolTransactionError::ExceedsGasLimit(pool_tx.gas_limit(), block_gas_limit),
             );
-            continue
+            continue;
         }
 
         // check if the job was cancelled, if so we can exit early
         if cancel.is_cancelled() {
-            return Ok(BuildOutcome::Cancelled)
+            return Ok(BuildOutcome::Cancelled);
         }
 
         // convert tx to a signed transaction
@@ -247,7 +248,7 @@ where
                     limit: MAX_RLP_BLOCK_SIZE,
                 },
             );
-            continue
+            continue;
         }
 
         // There's only limited amount of blob space available per block, so we need to check if
@@ -271,14 +272,14 @@ where
                         },
                     ),
                 );
-                continue
+                continue;
             }
 
             let blob_sidecar_result = 'sidecar: {
                 let Some(sidecar) =
                     pool.get_blob(*tx.hash()).map_err(PayloadBuilderError::other)?
                 else {
-                    break 'sidecar Err(Eip4844PoolTransactionError::MissingEip4844BlobSidecar)
+                    break 'sidecar Err(Eip4844PoolTransactionError::MissingEip4844BlobSidecar);
                 };
 
                 if is_osaka {
@@ -298,7 +299,7 @@ where
                 Ok(sidecar) => Some(sidecar),
                 Err(error) => {
                     best_txs.mark_invalid(&pool_tx, &InvalidPoolTransactionError::Eip4844(error));
-                    continue
+                    continue;
                 }
             };
         }
@@ -322,7 +323,7 @@ where
                         ),
                     );
                 }
-                continue
+                continue;
             }
             // this is an error that we should treat as fatal for this attempt
             Err(err) => return Err(PayloadBuilderError::evm(err)),
@@ -357,7 +358,7 @@ where
         // Release db
         drop(builder);
         // can skip building the block
-        return Ok(BuildOutcome::Aborted { fees: total_fees, cached_reads })
+        return Ok(BuildOutcome::Aborted { fees: total_fees, cached_reads });
     }
 
     let BlockBuilderOutcome { execution_result, block, .. } =

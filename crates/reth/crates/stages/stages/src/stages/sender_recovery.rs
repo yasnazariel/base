@@ -1,13 +1,15 @@
+use std::{fmt::Debug, ops::Range, sync::mpsc, time::Instant};
+
 use alloy_primitives::{Address, BlockNumber, TxNumber};
 use reth_config::config::SenderRecoveryConfig;
 use reth_consensus::ConsensusError;
 use reth_db::static_file::TransactionMask;
 use reth_db_api::{
+    RawValue,
     cursor::DbCursorRW,
     table::Value,
     tables,
     transaction::{DbTx, DbTxMut},
-    RawValue,
 };
 use reth_primitives_traits::{GotExpected, NodePrimitives, SignedTransaction};
 use reth_provider::{
@@ -21,7 +23,6 @@ use reth_stages_api::{
     StageId, UnwindInput, UnwindOutput,
 };
 use reth_static_file_types::StaticFileSegment;
-use std::{fmt::Debug, ops::Range, sync::mpsc, time::Instant};
 use thiserror::Error;
 use tracing::*;
 
@@ -100,8 +101,8 @@ where
                 )
             })
             .transpose()?
-            .flatten() &&
-            target_prunable_block > input.checkpoint().block_number
+            .flatten()
+            && target_prunable_block > input.checkpoint().block_number
         {
             input.checkpoint = Some(StageCheckpoint::new(target_prunable_block));
 
@@ -123,7 +124,7 @@ where
         }
 
         if input.target_reached() {
-            return Ok(ExecOutput::done(input.checkpoint()))
+            return Ok(ExecOutput::done(input.checkpoint()));
         }
 
         let Some(range_output) =
@@ -142,7 +143,7 @@ where
                 checkpoint: StageCheckpoint::new(input.target())
                     .with_entities_stage_checkpoint(stage_checkpoint(provider)?),
                 done: true,
-            })
+            });
         };
         let end_block = *range_output.block_range.end();
 
@@ -173,7 +174,7 @@ where
                 while let Some((block, index)) = blocks_with_indices.peek() {
                     if index.contains_tx(tx) {
                         block_numbers.push(*block);
-                        return block_numbers
+                        return block_numbers;
                     }
                     blocks_with_indices.next();
                 }
@@ -293,7 +294,7 @@ where
                                     .into(),
                             ))
                         }
-                    }
+                    };
                 }
             };
 
@@ -363,7 +364,7 @@ where
                         // We exit early since we could not process this chunk.
                         let _ = recovered_senders_tx
                             .send(Err(Box::new(SenderRecoveryStageError::StageError(err.into()))));
-                        break
+                        break;
                     }
                 };
 
@@ -386,7 +387,7 @@ where
 
                         // Finish early
                         if is_err {
-                            break
+                            break;
                         }
                     }
                 });
@@ -459,25 +460,26 @@ struct FailedSenderRecoveryError {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::test_utils::{
-        stage_test_suite_ext, ExecuteStageTestRunner, StageTestRunner, StorageKind,
-        TestRunnerError, TestStageDB, UnwindStageTestRunner,
-    };
-    use alloy_primitives::{BlockNumber, B256};
+    use alloy_primitives::{B256, BlockNumber};
     use assert_matches::assert_matches;
     use reth_db_api::{cursor::DbCursorRO, models::StorageSettings};
     use reth_ethereum_primitives::{Block, TransactionSigned};
     use reth_primitives_traits::{SealedBlock, SignerRecoverable};
     use reth_provider::{
-        providers::StaticFileWriter, BlockBodyIndicesProvider, DatabaseProviderFactory,
-        PruneCheckpointWriter, StaticFileProviderFactory, TransactionsProvider,
+        BlockBodyIndicesProvider, DatabaseProviderFactory, PruneCheckpointWriter,
+        StaticFileProviderFactory, TransactionsProvider, providers::StaticFileWriter,
     };
     use reth_prune_types::{PruneCheckpoint, PruneMode};
     use reth_stages_api::StageUnitCheckpoint;
     use reth_static_file_types::StaticFileSegment;
     use reth_testing_utils::generators::{
-        self, random_block, random_block_range, BlockParams, BlockRangeParams,
+        self, BlockParams, BlockRangeParams, random_block, random_block_range,
+    };
+
+    use super::*;
+    use crate::test_utils::{
+        ExecuteStageTestRunner, StageTestRunner, StorageKind, TestRunnerError, TestStageDB,
+        UnwindStageTestRunner, stage_test_suite_ext,
     };
 
     stage_test_suite_ext!(SenderRecoveryTestRunner, sender_recovery);
@@ -798,7 +800,7 @@ mod tests {
                     let end_block = output.checkpoint.block_number;
 
                     if start_block > end_block {
-                        return Ok(())
+                        return Ok(());
                     }
 
                     let mut body_cursor =

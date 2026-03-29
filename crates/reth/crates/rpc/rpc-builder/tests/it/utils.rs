@@ -1,25 +1,25 @@
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+
 use alloy_rpc_types_engine::{ClientCode, ClientVersionV1};
 use reth_chainspec::MAINNET;
 use reth_consensus::noop::NoopConsensus;
 use reth_engine_primitives::ConsensusEngineHandle;
 use reth_ethereum_engine_primitives::EthEngineTypes;
 use reth_ethereum_primitives::EthPrimitives;
-use reth_tokio_util::EventSender;
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
-
 use reth_evm_ethereum::EthEvmConfig;
 use reth_network_api::noop::NoopNetwork;
 use reth_node_ethereum::EthereumEngineValidator;
 use reth_payload_builder::test_utils::spawn_test_payload_service;
 use reth_provider::test_utils::NoopProvider;
 use reth_rpc_builder::{
-    auth::{AuthRpcModule, AuthServerConfig, AuthServerHandle},
     RpcModuleBuilder, RpcServerConfig, RpcServerHandle, TransportRpcModuleConfig,
+    auth::{AuthRpcModule, AuthServerConfig, AuthServerHandle},
 };
-use reth_rpc_engine_api::{capabilities::EngineCapabilities, EngineApi};
+use reth_rpc_engine_api::{EngineApi, capabilities::EngineCapabilities};
 use reth_rpc_layer::JwtSecret;
 use reth_rpc_server_types::RpcModuleSelection;
 use reth_tasks::TokioTaskExecutor;
+use reth_tokio_util::EventSender;
 use reth_transaction_pool::{
     noop::NoopTransactionPool,
     test_utils::{TestPool, TestPoolBuilder},
@@ -127,8 +127,8 @@ pub async fn launch_http_ws_same_port(modules: impl Into<RpcModuleSelection>) ->
 }
 
 /// Returns an [`RpcModuleBuilder`] with testing components.
-pub fn test_rpc_builder(
-) -> RpcModuleBuilder<EthPrimitives, NoopProvider, TestPool, NoopNetwork, EthEvmConfig, NoopConsensus>
+pub fn test_rpc_builder()
+-> RpcModuleBuilder<EthPrimitives, NoopProvider, TestPool, NoopNetwork, EthEvmConfig, NoopConsensus>
 {
     RpcModuleBuilder::default()
         .with_provider(NoopProvider::default())

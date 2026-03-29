@@ -3,15 +3,16 @@
 //! This basis of this file has been taken from the discv5 codebase:
 //! <https://github.com/sigp/discv5>
 
+use std::{
+    collections::{HashMap, HashSet},
+    time::Duration,
+};
+
 use alloy_primitives::bytes::Bytes;
 use alloy_rlp::Encodable;
 use reth_net_banlist::BanList;
 use reth_net_nat::{NatResolver, ResolveNatInterval};
 use reth_network_peers::NodeRecord;
-use std::{
-    collections::{HashMap, HashSet},
-    time::Duration,
-};
 
 /// Configuration parameters that define the performance of the discovery network.
 #[derive(Clone, Debug)]
@@ -313,8 +314,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_resolve_external_ip_interval_uses_interval_at() {
-        use reth_net_nat::NatResolver;
         use std::net::{IpAddr, Ipv4Addr};
+
+        use reth_net_nat::NatResolver;
 
         let ip_addr = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1));
 

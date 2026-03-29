@@ -1,20 +1,20 @@
-use crate::{
-    traits::{BlockSource, ReceiptProvider},
-    AccountReader, BlockHashReader, BlockIdReader, BlockNumReader, BlockReader, BlockReaderIdExt,
-    ChainSpecProvider, ChangeSetReader, HeaderProvider, PruneCheckpointReader,
-    ReceiptProviderIdExt, StateProvider, StateProviderBox, StateProviderFactory, StateReader,
-    StateRootProvider, TransactionVariant, TransactionsProvider,
+use std::{
+    collections::BTreeMap,
+    fmt::Debug,
+    ops::{RangeBounds, RangeInclusive},
+    sync::Arc,
 };
+
 use alloy_consensus::{
+    BlockHeader,
     constants::EMPTY_ROOT_HASH,
     transaction::{TransactionMeta, TxHashRef},
-    BlockHeader,
 };
 use alloy_eips::{BlockHashOrNumber, BlockId, BlockNumberOrTag};
 use alloy_primitives::{
+    Address, B256, BlockHash, BlockNumber, Bytes, StorageKey, StorageValue, TxHash, TxNumber, U256,
     keccak256,
     map::{AddressMap, B256Map, HashMap},
-    Address, BlockHash, BlockNumber, Bytes, StorageKey, StorageValue, TxHash, TxNumber, B256, U256,
 };
 use parking_lot::Mutex;
 use reth_chain_state::{CanonStateNotifications, CanonStateSubscriptions};
@@ -39,16 +39,18 @@ use reth_storage_api::{
 };
 use reth_storage_errors::provider::{ConsistentViewError, ProviderError, ProviderResult};
 use reth_trie::{
-    updates::TrieUpdates, AccountProof, HashedPostState, HashedStorage, MultiProof,
-    MultiProofTargets, StorageMultiProof, StorageProof, TrieInput,
-};
-use std::{
-    collections::BTreeMap,
-    fmt::Debug,
-    ops::{RangeBounds, RangeInclusive},
-    sync::Arc,
+    AccountProof, HashedPostState, HashedStorage, MultiProof, MultiProofTargets, StorageMultiProof,
+    StorageProof, TrieInput, updates::TrieUpdates,
 };
 use tokio::sync::broadcast;
+
+use crate::{
+    AccountReader, BlockHashReader, BlockIdReader, BlockNumReader, BlockReader, BlockReaderIdExt,
+    ChainSpecProvider, ChangeSetReader, HeaderProvider, PruneCheckpointReader,
+    ReceiptProviderIdExt, StateProvider, StateProviderBox, StateProviderFactory, StateReader,
+    StateRootProvider, TransactionVariant, TransactionsProvider,
+    traits::{BlockSource, ReceiptProvider},
+};
 
 /// A mock implementation for Provider interfaces.
 #[derive(Debug)]
@@ -410,7 +412,7 @@ impl<T: NodePrimitives, ChainSpec: EthChainSpec + 'static> TransactionsProvider
                         excess_blob_gas: block.header().excess_blob_gas(),
                         timestamp: block.header().timestamp(),
                     };
-                    return Ok(Some((tx.clone(), meta)))
+                    return Ok(Some((tx.clone(), meta)));
                 }
             }
         }
@@ -1081,10 +1083,11 @@ impl<T: NodePrimitives, ChainSpec: Send + Sync> NodePrimitivesProvider
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_consensus::Header;
     use alloy_primitives::BlockHash;
     use reth_ethereum_primitives::Receipt;
+
+    use super::*;
 
     #[test]
     fn test_mock_provider_receipts() {

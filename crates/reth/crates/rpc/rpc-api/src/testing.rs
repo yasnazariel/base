@@ -6,9 +6,8 @@
 //! explicit operator flag.
 
 use alloy_rpc_types_engine::ExecutionPayloadEnvelopeV5;
+pub use alloy_rpc_types_engine::{TESTING_BUILD_BLOCK_V1, TestingBuildBlockRequestV1};
 use jsonrpsee::proc_macros::rpc;
-
-pub use alloy_rpc_types_engine::{TestingBuildBlockRequestV1, TESTING_BUILD_BLOCK_V1};
 
 /// Testing RPC interface for building a block in a single call.
 ///

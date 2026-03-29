@@ -51,9 +51,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::{p2pstream::P2PMessage, DisconnectReason};
     use alloy_primitives::hex;
     use alloy_rlp::{Decodable, Encodable};
+
+    use crate::{DisconnectReason, p2pstream::P2PMessage};
 
     fn all_reasons() -> Vec<DisconnectReason> {
         vec![

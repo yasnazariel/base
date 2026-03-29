@@ -1,21 +1,23 @@
 //! Handles query execution
 
-use crate::{
-    error::{LookupError, LookupResult},
-    resolver::Resolver,
-    sync::ResolveKind,
-    tree::{DnsEntry, LinkEntry, TreeRootEntry},
-};
-use enr::EnrKeyUnambiguous;
-use reth_tokio_util::ratelimit::{Rate, RateLimit};
 use std::{
     collections::VecDeque,
     future::Future,
     num::NonZeroUsize,
     pin::Pin,
     sync::Arc,
-    task::{ready, Context, Poll},
+    task::{Context, Poll, ready},
     time::Duration,
+};
+
+use enr::EnrKeyUnambiguous;
+use reth_tokio_util::ratelimit::{Rate, RateLimit};
+
+use crate::{
+    error::{LookupError, LookupResult},
+    resolver::Resolver,
+    sync::ResolveKind,
+    tree::{DnsEntry, LinkEntry, TreeRootEntry},
 };
 
 /// The `QueryPool` provides an aggregate state machine for driving queries to completion.
@@ -75,19 +77,19 @@ impl<R: Resolver, K: EnrKeyUnambiguous> QueryPool<R, K> {
         loop {
             // drain buffered events first
             if let Some(event) = self.queued_outcomes.pop_front() {
-                return Poll::Ready(event)
+                return Poll::Ready(event);
             }
 
             // queue in new queries if we have capacity
             'queries: while self.active_queries.len() < self.rate_limit.limit() as usize {
-                if self.rate_limit.poll_ready(cx).is_ready() &&
-                    let Some(query) = self.queued_queries.pop_front()
+                if self.rate_limit.poll_ready(cx).is_ready()
+                    && let Some(query) = self.queued_queries.pop_front()
                 {
                     self.rate_limit.tick();
                     self.active_queries.push(query);
-                    continue 'queries
+                    continue 'queries;
                 }
-                break
+                break;
             }
 
             // advance all queries
@@ -102,7 +104,7 @@ impl<R: Resolver, K: EnrKeyUnambiguous> QueryPool<R, K> {
             }
 
             if self.queued_outcomes.is_empty() {
-                return Poll::Pending
+                return Poll::Pending;
             }
         }
     }
@@ -212,9 +214,10 @@ async fn lookup_with_timeout<R: Resolver>(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{resolver::TimeoutResolver, DnsDiscoveryConfig, MapResolver};
     use std::future::poll_fn;
+
+    use super::*;
+    use crate::{DnsDiscoveryConfig, MapResolver, resolver::TimeoutResolver};
 
     #[tokio::test]
     async fn test_rate_limit() {

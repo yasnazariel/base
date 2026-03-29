@@ -1,4 +1,13 @@
+use alloy_consensus::EMPTY_ROOT_HASH;
+use alloy_primitives::{Address, B256, keccak256};
+use alloy_rlp::{BufMut, Encodable};
+use alloy_trie::proof::AddedRemovedKeys;
+use reth_execution_errors::{StateRootError, StorageRootError};
+use reth_primitives_traits::Account;
+use tracing::{Span, debug, instrument, trace};
+
 use crate::{
+    HashBuilder, Nibbles, TRIE_ACCOUNT_RLP_MAX_SIZE,
     hashed_cursor::{HashedCursor, HashedCursorFactory, HashedStorageCursor},
     node_iter::{TrieElement, TrieNodeIter},
     prefix_set::{PrefixSet, TriePrefixSets},
@@ -10,15 +19,7 @@ use crate::{
     trie_cursor::{TrieCursor, TrieCursorFactory},
     updates::{StorageTrieUpdates, TrieUpdates},
     walker::TrieWalker,
-    HashBuilder, Nibbles, TRIE_ACCOUNT_RLP_MAX_SIZE,
 };
-use alloy_consensus::EMPTY_ROOT_HASH;
-use alloy_primitives::{keccak256, Address, B256};
-use alloy_rlp::{BufMut, Encodable};
-use alloy_trie::proof::AddedRemovedKeys;
-use reth_execution_errors::{StateRootError, StorageRootError};
-use reth_primitives_traits::Account;
-use tracing::{debug, instrument, trace, Span};
 
 /// The default updates after which root algorithms should return intermediate progress rather than
 /// finishing the computation.
@@ -229,7 +230,7 @@ where
                         hash_builder,
                         account_root_state.last_hashed_key,
                         Some(storage_state),
-                    ))
+                    ));
                 }
             }
 
@@ -288,7 +289,7 @@ where
                             hash_builder,
                             hashed_address,
                             Some(storage_state),
-                        ))
+                        ));
                     }
 
                     // decide if we need to return intermediate progress
@@ -300,7 +301,7 @@ where
                             hash_builder,
                             hashed_address,
                             None,
-                        ))
+                        ));
                     }
                 }
             }
@@ -394,9 +395,9 @@ impl StateRootContext {
         H: HashedCursor,
         K: AsRef<AddedRemovedKeys>,
     {
-        (self.updated_storage_nodes +
-            account_node_iter.walker.removed_keys_len() +
-            hash_builder.updates_len()) as u64
+        (self.updated_storage_nodes
+            + account_node_iter.walker.removed_keys_len()
+            + hash_builder.updates_len()) as u64
     }
 
     /// Processes the result of a storage root calculation.
@@ -625,7 +626,7 @@ where
                 EMPTY_ROOT_HASH,
                 0,
                 StorageTrieUpdates::deleted(),
-            ))
+            ));
         }
 
         let mut tracker = TrieTracker::default();
@@ -689,7 +690,7 @@ where
                             Box::new(state),
                             hashed_entries_walked,
                             trie_updates,
-                        ))
+                        ));
                     }
                 }
             }

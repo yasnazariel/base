@@ -1,15 +1,17 @@
 //! A payload builder service task that does nothing.
 
-use crate::{service::PayloadServiceCommand, PayloadBuilderHandle};
-use futures_util::{ready, StreamExt};
-use reth_payload_primitives::{PayloadBuilderAttributes, PayloadTypes};
 use std::{
     future::Future,
     pin::Pin,
     task::{Context, Poll},
 };
+
+use futures_util::{StreamExt, ready};
+use reth_payload_primitives::{PayloadBuilderAttributes, PayloadTypes};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
+
+use crate::{PayloadBuilderHandle, service::PayloadServiceCommand};
 
 /// A service task that does not build any payloads.
 #[derive(Debug)]
@@ -42,7 +44,7 @@ where
         let this = self.get_mut();
         loop {
             let Some(cmd) = ready!(this.command_rx.poll_next_unpin(cx)) else {
-                return Poll::Ready(())
+                return Poll::Ready(());
             };
             match cmd {
                 PayloadServiceCommand::BuildNewPayload(attr, tx) => {

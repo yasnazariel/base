@@ -1,5 +1,7 @@
 //! Core import functionality without CLI dependencies.
 
+use std::{path::Path, sync::Arc};
+
 use alloy_primitives::B256;
 use futures::StreamExt;
 use reth_config::Config;
@@ -7,7 +9,7 @@ use reth_consensus::FullConsensus;
 use reth_db_api::{tables, transaction::DbTx};
 use reth_downloaders::{
     bodies::bodies::BodiesDownloaderBuilder,
-    file_client::{ChunkedFileReader, FileClient, DEFAULT_BYTE_LEN_CHUNK_CHAIN_FILE},
+    file_client::{ChunkedFileReader, DEFAULT_BYTE_LEN_CHUNK_CHAIN_FILE, FileClient},
     headers::reverse_headers::ReverseHeadersDownloaderBuilder,
 };
 use reth_evm::ConfigureEvm;
@@ -18,13 +20,12 @@ use reth_network_p2p::{
 use reth_node_api::BlockTy;
 use reth_node_events::node::NodeEvent;
 use reth_provider::{
-    providers::ProviderNodeTypes, BlockNumReader, HeaderProvider, ProviderError, ProviderFactory,
-    StageCheckpointReader,
+    BlockNumReader, HeaderProvider, ProviderError, ProviderFactory, StageCheckpointReader,
+    providers::ProviderNodeTypes,
 };
 use reth_prune::PruneModes;
-use reth_stages::{prelude::*, ControlFlow, Pipeline, StageId, StageSet};
+use reth_stages::{ControlFlow, Pipeline, StageId, StageSet, prelude::*};
 use reth_static_file::StaticFileProducer;
-use std::{path::Path, sync::Arc};
 use tokio::sync::watch;
 use tracing::{debug, error, info, warn};
 
@@ -62,8 +63,8 @@ pub struct ImportResult {
 impl ImportResult {
     /// Returns true if all blocks and transactions were imported successfully.
     pub fn is_complete(&self) -> bool {
-        self.total_decoded_blocks == self.total_imported_blocks &&
-            self.total_decoded_txns == self.total_imported_txns
+        self.total_decoded_blocks == self.total_imported_blocks
+            && self.total_decoded_txns == self.total_imported_txns
     }
 
     /// Returns true if the import was successful, considering stop-on-invalid-block mode.

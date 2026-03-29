@@ -14,10 +14,12 @@
 //! **Warning:** This namespace allows building arbitrary blocks. Never expose it
 //! on public-facing RPC endpoints without proper authentication.
 
+use std::sync::Arc;
+
 use alloy_consensus::{Header, Transaction};
 use alloy_eips::eip2718::Decodable2718;
 use alloy_evm::{Evm, RecoveredTx};
-use alloy_primitives::{map::HashSet, Address, U256};
+use alloy_primitives::{Address, U256, map::HashSet};
 use alloy_rlp::Encodable;
 use alloy_rpc_types_engine::ExecutionPayloadEnvelopeV5;
 use async_trait::async_trait;
@@ -27,19 +29,18 @@ use reth_consensus_common::validation::MAX_RLP_BLOCK_SIZE;
 use reth_errors::RethError;
 use reth_ethereum_engine_primitives::EthBuiltPayload;
 use reth_ethereum_primitives::EthPrimitives;
-use reth_evm::{execute::BlockBuilder, ConfigureEvm, NextBlockEnvAttributes};
+use reth_evm::{ConfigureEvm, NextBlockEnvAttributes, execute::BlockBuilder};
 use reth_primitives_traits::{
-    transaction::{recover::try_recover_signers, signed::RecoveryError},
     AlloyBlockHeader as BlockTrait, TxTy,
+    transaction::{recover::try_recover_signers, signed::RecoveryError},
 };
 use reth_revm::{database::StateProviderDatabase, db::State};
 use reth_rpc_api::{TestingApiServer, TestingBuildBlockRequestV1};
-use reth_rpc_eth_api::{helpers::Call, FromEthApiError};
+use reth_rpc_eth_api::{FromEthApiError, helpers::Call};
 use reth_rpc_eth_types::EthApiError;
 use reth_storage_api::{BlockReader, HeaderProvider};
 use revm::context::Block;
 use revm_primitives::map::DefaultHashBuilder;
-use std::sync::Arc;
 use tracing::debug;
 
 /// Testing API handler.
@@ -140,10 +141,10 @@ where
                     let tx_rlp_len = tx.tx().length();
                     if is_osaka {
                         // 1KB overhead for block header
-                        let estimated_block_size = block_transactions_rlp_length +
-                            tx_rlp_len +
-                            withdrawals_rlp_length +
-                            1024;
+                        let estimated_block_size = block_transactions_rlp_length
+                            + tx_rlp_len
+                            + withdrawals_rlp_length
+                            + 1024;
                         if estimated_block_size > MAX_RLP_BLOCK_SIZE {
                             if skip_invalid_transactions {
                                 debug!(

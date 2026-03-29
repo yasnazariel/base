@@ -1,8 +1,8 @@
 //! Thread-safe cancellation primitives for cooperative task cancellation.
 
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
     Arc,
+    atomic::{AtomicBool, Ordering},
 };
 
 /// A thread-safe cancellation token that can be shared across threads.

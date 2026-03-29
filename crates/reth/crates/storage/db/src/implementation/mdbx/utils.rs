@@ -1,10 +1,11 @@
 //! Small database table utilities and helper functions.
 
-use crate::{
-    table::{Decode, Decompress, Table, TableRow},
-    DatabaseError,
-};
 use std::borrow::Cow;
+
+use crate::{
+    DatabaseError,
+    table::{Decode, Decompress, Table, TableRow},
+};
 
 /// Helper function to decode a `(key, value)` pair.
 pub(crate) fn decoder<'a, T>(

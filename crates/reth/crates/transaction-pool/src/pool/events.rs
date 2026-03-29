@@ -1,10 +1,12 @@
-use crate::{traits::PropagateKind, PoolTransaction, SubPool, ValidPoolTransaction};
-use alloy_primitives::{TxHash, B256};
 use std::sync::Arc;
 
-use crate::pool::QueuedReason;
+use alloy_primitives::{B256, TxHash};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+
+use crate::{
+    PoolTransaction, SubPool, ValidPoolTransaction, pool::QueuedReason, traits::PropagateKind,
+};
 
 /// An event that happened to a transaction and contains its full body where possible.
 #[derive(Debug)]

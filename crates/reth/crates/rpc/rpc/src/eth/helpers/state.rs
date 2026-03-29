@@ -1,12 +1,13 @@
 //! Contains RPC handler implementations specific to state.
 
-use crate::EthApi;
 use reth_rpc_convert::RpcConvert;
 use reth_rpc_eth_api::{
-    helpers::{EthState, LoadPendingBlock, LoadState},
     RpcNodeCore,
+    helpers::{EthState, LoadPendingBlock, LoadState},
 };
 use reth_rpc_eth_types::EthApiError;
+
+use crate::EthApi;
 
 impl<N, Rpc> EthState for EthApi<N, Rpc>
 where
@@ -29,22 +30,22 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::eth::helpers::types::EthRpcConverter;
-
-    use super::*;
     use alloy_primitives::{
-        map::{AddressMap, B256Map},
         Address, StorageKey, StorageValue, U256,
+        map::{AddressMap, B256Map},
     };
     use reth_chainspec::ChainSpec;
     use reth_evm_ethereum::EthEvmConfig;
     use reth_network_api::noop::NoopNetwork;
     use reth_provider::{
-        test_utils::{ExtendedAccount, MockEthProvider, NoopProvider},
         ChainSpecProvider,
+        test_utils::{ExtendedAccount, MockEthProvider, NoopProvider},
     };
     use reth_rpc_eth_api::{helpers::EthState, node::RpcNodeCoreAdapter};
-    use reth_transaction_pool::test_utils::{testing_pool, TestPool};
+    use reth_transaction_pool::test_utils::{TestPool, testing_pool};
+
+    use super::*;
+    use crate::eth::helpers::types::EthRpcConverter;
 
     fn noop_eth_api() -> EthApi<
         RpcNodeCoreAdapter<NoopProvider, TestPool, NoopNetwork, EthEvmConfig>,

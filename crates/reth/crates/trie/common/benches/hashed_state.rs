@@ -1,6 +1,6 @@
 #![allow(missing_docs, unreachable_pub)]
 use alloy_primitives::{B256, U256};
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use reth_primitives_traits::Account;
 use reth_trie_common::{HashedPostState, HashedStorage};

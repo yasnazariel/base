@@ -1,7 +1,8 @@
 use alloc::vec::Vec;
+use core::ops::RangeBounds;
+
 use alloy_eips::BlockHashOrNumber;
 use alloy_primitives::{BlockHash, BlockNumber};
-use core::ops::RangeBounds;
 use reth_primitives_traits::{BlockHeader, SealedHeader};
 use reth_storage_errors::provider::ProviderResult;
 

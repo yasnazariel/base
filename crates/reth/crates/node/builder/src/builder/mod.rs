@@ -2,25 +2,20 @@
 
 #![allow(clippy::type_complexity, missing_debug_implementations)]
 
-use crate::{
-    common::WithConfigs,
-    components::NodeComponentsBuilder,
-    node::FullNode,
-    rpc::{RethRpcAddOns, RethRpcServerHandles, RpcContext},
-    BlockReaderFor, DebugNode, DebugNodeLauncher, EngineNodeLauncher, LaunchNode, Node,
-};
+use std::sync::Arc;
+
 use alloy_eips::eip4844::env_settings::EnvKzgSettings;
 use futures::Future;
 use reth_chainspec::{EthChainSpec, EthereumHardforks, Hardforks};
 use reth_db_api::{database::Database, database_metrics::DatabaseMetrics};
 use reth_exex::ExExContext;
 use reth_network::{
-    transactions::{
-        config::{AnnouncementFilteringPolicy, StrictEthAnnouncementFilter},
-        TransactionPropagationPolicy, TransactionsManagerConfig,
-    },
     NetworkBuilder, NetworkConfig, NetworkConfigBuilder, NetworkHandle, NetworkManager,
     NetworkPrimitives,
+    transactions::{
+        TransactionPropagationPolicy, TransactionsManagerConfig,
+        config::{AnnouncementFilteringPolicy, StrictEthAnnouncementFilter},
+    },
 };
 use reth_node_api::{
     FullNodeTypes, FullNodeTypesAdapter, NodeAddOns, NodeTypes, NodeTypesWithDBAdapter,
@@ -32,14 +27,21 @@ use reth_node_core::{
     primitives::Head,
 };
 use reth_provider::{
-    providers::{BlockchainProvider, NodeTypesForProvider},
     ChainSpecProvider, FullProvider,
+    providers::{BlockchainProvider, NodeTypesForProvider},
 };
 use reth_tasks::TaskExecutor;
 use reth_transaction_pool::{PoolConfig, PoolTransaction, TransactionPool};
 use secp256k1::SecretKey;
-use std::sync::Arc;
 use tracing::{info, trace, warn};
+
+use crate::{
+    BlockReaderFor, DebugNode, DebugNodeLauncher, EngineNodeLauncher, LaunchNode, Node,
+    common::WithConfigs,
+    components::NodeComponentsBuilder,
+    node::FullNode,
+    rpc::{RethRpcAddOns, RethRpcServerHandles, RpcContext},
+};
 
 pub mod add_ons;
 
@@ -197,11 +199,7 @@ impl<DB, ChainSpec> NodeBuilder<DB, ChainSpec> {
     where
         F: FnOnce(Self) -> Result<Self, R>,
     {
-        if cond {
-            f(self)
-        } else {
-            Ok(self)
-        }
+        if cond { f(self) } else { Ok(self) }
     }
 
     /// Apply a function to the builder
@@ -217,11 +215,7 @@ impl<DB, ChainSpec> NodeBuilder<DB, ChainSpec> {
     where
         F: FnOnce(Self) -> Self,
     {
-        if cond {
-            f(self)
-        } else {
-            self
-        }
+        if cond { f(self) } else { self }
     }
 }
 
@@ -489,11 +483,7 @@ where
     where
         F: FnOnce(Self) -> Result<Self, R>,
     {
-        if cond {
-            f(self)
-        } else {
-            Ok(self)
-        }
+        if cond { f(self) } else { Ok(self) }
     }
 
     /// Apply a function to the builder
@@ -509,11 +499,7 @@ where
     where
         F: FnOnce(Self) -> Self,
     {
-        if cond {
-            f(self)
-        } else {
-            self
-        }
+        if cond { f(self) } else { self }
     }
 
     /// Sets the hook that is run once the node's components are initialized.
@@ -650,11 +636,7 @@ where
         R: Future<Output = eyre::Result<E>> + Send,
         E: Future<Output = eyre::Result<()>> + Send,
     {
-        if cond {
-            self.install_exex(exex_id, exex)
-        } else {
-            self
-        }
+        if cond { self.install_exex(exex_id, exex) } else { self }
     }
 
     /// Launches the node with the given launcher.

@@ -1,20 +1,22 @@
-use crate::{
-    bodies::client::BodiesClient,
-    download::DownloadClient,
-    error::PeerRequestResult,
-    headers::client::{HeadersClient, HeadersRequest},
-    priority::Priority,
-    BlockClient,
-};
+use std::{ops::RangeInclusive, sync::Arc};
+
 use alloy_consensus::Header;
 use alloy_eips::{BlockHashOrNumber, BlockNumHash};
-use alloy_primitives::{map::B256Map, B256};
+use alloy_primitives::{B256, map::B256Map};
 use parking_lot::Mutex;
 use reth_eth_wire_types::HeadersDirection;
 use reth_ethereum_primitives::{Block, BlockBody};
 use reth_network_peers::{PeerId, WithPeerId};
 use reth_primitives_traits::{SealedBlock, SealedHeader};
-use std::{ops::RangeInclusive, sync::Arc};
+
+use crate::{
+    BlockClient,
+    bodies::client::BodiesClient,
+    download::DownloadClient,
+    error::PeerRequestResult,
+    headers::client::{HeadersClient, HeadersRequest},
+    priority::Priority,
+};
 
 /// A headers+bodies client that stores the headers and bodies in memory, with an artificial soft
 /// bodies response limit that is set to 20 by default.

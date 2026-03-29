@@ -1,8 +1,9 @@
 //! Helper aliases when working with [`ConfigureEvm`] and the traits in this crate.
 
+use alloy_evm::{Database, EvmEnv, EvmFactory, block::BlockExecutorFactory};
+use revm::{Inspector, inspector::NoOpInspector};
+
 use crate::ConfigureEvm;
-use alloy_evm::{block::BlockExecutorFactory, Database, EvmEnv, EvmFactory};
-use revm::{inspector::NoOpInspector, Inspector};
 
 /// Helper to access [`EvmFactory`] for a given [`ConfigureEvm`].
 pub type EvmFactoryFor<Evm> =

@@ -1,8 +1,15 @@
 //! Stream wrapper that simulates reorgs.
 
+use std::{
+    collections::VecDeque,
+    future::Future,
+    pin::Pin,
+    task::{Context, Poll, ready},
+};
+
 use alloy_consensus::{BlockHeader, Transaction};
 use alloy_rpc_types_engine::{ForkchoiceState, PayloadStatus};
-use futures::{stream::FuturesUnordered, Stream, StreamExt, TryFutureExt};
+use futures::{Stream, StreamExt, TryFutureExt, stream::FuturesUnordered};
 use itertools::Either;
 use reth_chainspec::{ChainSpecProvider, EthChainSpec};
 use reth_engine_primitives::{
@@ -11,21 +18,15 @@ use reth_engine_primitives::{
 use reth_engine_tree::tree::EngineValidator;
 use reth_errors::{BlockExecutionError, BlockValidationError, RethError, RethResult};
 use reth_evm::{
-    execute::{BlockBuilder, BlockBuilderOutcome},
     ConfigureEvm,
+    execute::{BlockBuilder, BlockBuilderOutcome},
 };
 use reth_payload_primitives::{BuiltPayload, EngineApiMessageVersion, PayloadTypes};
 use reth_primitives_traits::{
-    block::Block as _, BlockBody as _, BlockTy, HeaderTy, SealedBlock, SignedTransaction,
+    BlockBody as _, BlockTy, HeaderTy, SealedBlock, SignedTransaction, block::Block as _,
 };
 use reth_revm::{database::StateProviderDatabase, db::State};
-use reth_storage_api::{errors::ProviderError, BlockReader, StateProviderFactory};
-use std::{
-    collections::VecDeque,
-    future::Future,
-    pin::Pin,
-    task::{ready, Context, Poll},
-};
+use reth_storage_api::{BlockReader, StateProviderFactory, errors::ProviderError};
 use tokio::sync::oneshot;
 use tracing::*;
 
@@ -127,7 +128,7 @@ where
                     }
                     Err(_) => {}
                 };
-                continue
+                continue;
             }
 
             if let EngineReorgState::Reorg { queue } = &mut this.state {
@@ -173,7 +174,7 @@ where
                             return Poll::Ready(Some(BeaconEngineMessage::NewPayload {
                                 payload,
                                 tx,
-                            }))
+                            }));
                         }
                     };
                     let reorg_forkchoice_state = ForkchoiceState {
@@ -206,7 +207,7 @@ where
                         },
                     ]);
                     *this.state = EngineReorgState::Reorg { queue };
-                    continue
+                    continue;
                 }
                 (
                     Some(BeaconEngineMessage::ForkchoiceUpdated {
@@ -231,7 +232,7 @@ where
                 }
                 (item, _) => item,
             };
-            return Poll::Ready(item)
+            return Poll::Ready(item);
         }
     }
 }
@@ -264,7 +265,7 @@ where
                 .block_by_hash(previous_hash)?
                 .ok_or_else(|| ProviderError::HeaderNotFound(previous_hash.into()))?;
             if depth == 0 {
-                break 'target reorg_target.seal_slow()
+                break 'target reorg_target.seal_slow();
             }
 
             depth -= 1;
@@ -295,7 +296,7 @@ where
     for tx in candidate_transactions {
         // ensure we still have capacity for this transaction
         if cumulative_gas_used + tx.gas_limit() > reorg_target.gas_limit() {
-            continue
+            continue;
         }
 
         let tx_recovered =
@@ -307,7 +308,7 @@ where
                 error,
             })) => {
                 trace!(target: "engine::stream::reorg", hash = %hash, ?error, "Error executing transaction from next block");
-                continue
+                continue;
             }
             // Treat error as fatal
             Err(error) => return Err(RethError::Execution(error)),

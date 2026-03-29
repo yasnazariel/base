@@ -1,22 +1,24 @@
-use crate::{common::CliNodeTypes, db::checksum::ChecksumViewer};
+use std::time::Duration;
+
 use clap::Parser;
 use comfy_table::{Cell, Row, Table as ComfyTable};
 use eyre::WrapErr;
 use human_bytes::human_bytes;
 use itertools::Itertools;
 use reth_chainspec::EthereumHardforks;
-use reth_db::{mdbx, static_file::iter_static_files, DatabaseEnv};
-use reth_db_api::{database::Database, TableViewer, Tables};
+use reth_db::{DatabaseEnv, mdbx, static_file::iter_static_files};
+use reth_db_api::{TableViewer, Tables, database::Database};
 use reth_db_common::DbTool;
 use reth_fs_util as fs;
 use reth_node_builder::{NodePrimitives, NodeTypesWithDB, NodeTypesWithDBAdapter};
 use reth_node_core::dirs::{ChainPath, DataDirPath};
 use reth_provider::{
-    providers::{ProviderNodeTypes, StaticFileProvider},
     RocksDBProviderFactory,
+    providers::{ProviderNodeTypes, StaticFileProvider},
 };
 use reth_static_file_types::SegmentRangeInclusive;
-use std::time::Duration;
+
+use crate::{common::CliNodeTypes, db::checksum::ChecksumViewer};
 
 #[derive(Parser, Debug)]
 /// The arguments for the `reth db stats` command
@@ -371,10 +373,10 @@ impl Command {
                         .add_cell(Cell::new(human_bytes(segment_config_size as f64)));
                 }
                 row.add_cell(Cell::new(human_bytes(
-                    (segment_data_size +
-                        segment_index_size +
-                        segment_offsets_size +
-                        segment_config_size) as f64,
+                    (segment_data_size
+                        + segment_index_size
+                        + segment_offsets_size
+                        + segment_config_size) as f64,
                 )));
                 table.add_row(row);
             }

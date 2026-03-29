@@ -1,8 +1,9 @@
-use crate::{
-    table::{Compress, Decode, Decompress, DupSort, Encode, IntoVec, Key, Table, Value},
-    DatabaseError,
-};
 use serde::{Deserialize, Serialize};
+
+use crate::{
+    DatabaseError,
+    table::{Compress, Decode, Decompress, DupSort, Encode, IntoVec, Key, Table, Value},
+};
 
 /// Tuple with `RawKey<T::Key>` and `RawValue<T::Value>`.
 pub type TableRawRow<T> = (RawKey<<T as Table>::Key>, RawValue<<T as Table>::Value>);

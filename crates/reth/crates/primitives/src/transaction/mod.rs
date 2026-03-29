@@ -1,11 +1,11 @@
 //! Transaction types.
 
-use crate::Recovered;
 pub use alloy_consensus::transaction::PooledTransaction;
 use once_cell as _;
 #[expect(deprecated)]
 pub use pooled::PooledTransactionsElementEcRecovered;
 pub use reth_primitives_traits::{
+    FillTxEnv, WithEncoded,
     sync::{LazyLock, OnceLock},
     transaction::{
         error::{
@@ -13,10 +13,11 @@ pub use reth_primitives_traits::{
         },
         signed::SignedTransaction,
     },
-    FillTxEnv, WithEncoded,
 };
 pub use signature::{recover_signer, recover_signer_unchecked};
 pub use tx_type::TxType;
+
+use crate::Recovered;
 
 /// Handling transaction signature operations, including signature recovery,
 /// applying chain IDs, and EIP-2 validation.

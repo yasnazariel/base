@@ -1,10 +1,11 @@
-use crate::{Compact, Vec};
 use alloy_consensus::{
-    transaction::RlpEcdsaEncodableTx, EthereumTxEnvelope, Signed, Transaction, TxEip1559,
-    TxEip2930, TxEip7702, TxLegacy, TxType,
+    EthereumTxEnvelope, Signed, Transaction, TxEip1559, TxEip2930, TxEip7702, TxLegacy, TxType,
+    transaction::RlpEcdsaEncodableTx,
 };
 use alloy_primitives::Signature;
 use bytes::{Buf, BufMut};
+
+use crate::{Compact, Vec};
 
 /// A trait for extracting transaction without type and signature and serializing it using
 /// [`Compact`] encoding.

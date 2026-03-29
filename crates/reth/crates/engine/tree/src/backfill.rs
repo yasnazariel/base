@@ -7,11 +7,12 @@
 //!
 //! These modes are mutually exclusive and the node can only be in one mode at a time.
 
+use std::task::{Context, Poll, ready};
+
 use futures::FutureExt;
 use reth_provider::providers::ProviderNodeTypes;
 use reth_stages_api::{ControlFlow, Pipeline, PipelineError, PipelineTarget, PipelineWithResult};
 use reth_tasks::TaskSpawner;
-use std::task::{ready, Context, Poll};
 use tokio::sync::oneshot;
 use tracing::trace;
 
@@ -124,7 +125,7 @@ impl<N: ProviderNodeTypes> PipelineSync<N> {
                 "Pipeline target cannot be zero hash."
             );
             // precaution to never sync to the zero hash
-            return
+            return;
         }
         self.pending_pipeline_target = Some(target);
     }
@@ -187,14 +188,14 @@ impl<N: ProviderNodeTypes> BackfillSync for PipelineSync<N> {
     fn poll(&mut self, cx: &mut Context<'_>) -> Poll<BackfillEvent> {
         // try to spawn a pipeline if a target is set
         if let Some(event) = self.try_spawn_pipeline() {
-            return Poll::Ready(event)
+            return Poll::Ready(event);
         }
 
         // make sure we poll the pipeline if it's active, and return any ready pipeline events
         if self.is_pipeline_active() {
             // advance the pipeline
             if let Poll::Ready(event) = self.poll_pipeline(cx) {
-                return Poll::Ready(event)
+                return Poll::Ready(event);
             }
         }
 
@@ -228,11 +229,11 @@ impl<N: ProviderNodeTypes> PipelineState<N> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::test_utils::{insert_headers_into_client, TestPipelineBuilder};
+    use std::{collections::VecDeque, future::poll_fn, sync::Arc};
+
     use alloy_consensus::Header;
     use alloy_eips::eip1559::ETHEREUM_BLOCK_GAS_LIMIT_30M;
-    use alloy_primitives::{BlockNumber, B256};
+    use alloy_primitives::{B256, BlockNumber};
     use assert_matches::assert_matches;
     use futures::poll;
     use reth_chainspec::{ChainSpecBuilder, MAINNET};
@@ -242,7 +243,9 @@ mod tests {
     use reth_stages::ExecOutput;
     use reth_stages_api::StageCheckpoint;
     use reth_tasks::TokioTaskExecutor;
-    use std::{collections::VecDeque, future::poll_fn, sync::Arc};
+
+    use super::*;
+    use crate::test_utils::{TestPipelineBuilder, insert_headers_into_client};
 
     struct TestHarness {
         pipeline_sync: PipelineSync<MockNodeTypesWithDB>,

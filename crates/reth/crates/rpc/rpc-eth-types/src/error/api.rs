@@ -1,7 +1,6 @@
 //! Helper traits to wrap generic l1 errors, in network specific error type configured in
 //! `reth_rpc_eth_api::EthApiTypes`.
 
-use crate::{simulate::EthSimulateError, EthApiError, RevertError};
 use alloy_primitives::Bytes;
 use reth_errors::ProviderError;
 use reth_evm::{ConfigureEvm, EvmErrorFor, HaltReasonFor};
@@ -9,6 +8,7 @@ use reth_revm::db::bal::EvmDatabaseError;
 use revm::{context::result::ExecutionResult, context_interface::result::HaltReason};
 
 use super::RpcInvalidTransactionError;
+use crate::{EthApiError, RevertError, simulate::EthSimulateError};
 
 /// Helper trait to wrap core [`EthApiError`].
 pub trait FromEthApiError: From<EthApiError> {
@@ -60,7 +60,7 @@ pub trait AsEthApiError {
     /// [`RpcInvalidTransactionError::GasTooHigh`].
     fn is_gas_too_high(&self) -> bool {
         if let Some(err) = self.as_err() {
-            return err.is_gas_too_high()
+            return err.is_gas_too_high();
         }
 
         false
@@ -70,7 +70,7 @@ pub trait AsEthApiError {
     /// [`RpcInvalidTransactionError::GasTooLow`].
     fn is_gas_too_low(&self) -> bool {
         if let Some(err) = self.as_err() {
-            return err.is_gas_too_low()
+            return err.is_gas_too_low();
         }
 
         false

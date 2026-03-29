@@ -1,11 +1,12 @@
 //! A rate limit implementation to enforce a specific rate.
 
 use std::{
-    future::{poll_fn, Future},
+    future::{Future, poll_fn},
     pin::Pin,
     task::{Context, Poll},
     time::Duration,
 };
+
 use tokio::time::Sleep;
 
 /// Given a [`Rate`] this type enforces a rate limit.
@@ -38,7 +39,7 @@ impl RateLimit {
             State::Ready { .. } => return Poll::Ready(()),
             State::Limited => {
                 if Pin::new(&mut self.sleep).poll(cx).is_pending() {
-                    return Poll::Pending
+                    return Poll::Pending;
                 }
             }
         }
@@ -121,8 +122,9 @@ impl Rate {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use tokio::time;
+
+    use super::*;
 
     #[tokio::test]
     async fn test_rate_limit() {

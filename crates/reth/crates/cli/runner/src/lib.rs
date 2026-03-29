@@ -10,8 +10,9 @@
 
 //! Entrypoint for running commands.
 
-use reth_tasks::{PanickedTaskError, TaskExecutor};
 use std::{future::Future, pin::pin, sync::mpsc, time::Duration};
+
+use reth_tasks::{PanickedTaskError, TaskExecutor};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info};
 

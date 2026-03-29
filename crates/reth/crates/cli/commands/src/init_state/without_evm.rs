@@ -1,16 +1,17 @@
+use std::path::Path;
+
 use alloy_consensus::BlockHeader;
-use alloy_primitives::{BlockNumber, B256};
+use alloy_primitives::{B256, BlockNumber};
 use alloy_rlp::Decodable;
 use reth_codecs::Compact;
 use reth_node_builder::NodePrimitives;
 use reth_primitives_traits::{SealedBlock, SealedHeader, SealedHeaderFor};
 use reth_provider::{
-    providers::StaticFileProvider, BlockWriter, ProviderResult, StageCheckpointWriter,
-    StaticFileProviderFactory, StaticFileWriter,
+    BlockWriter, ProviderResult, StageCheckpointWriter, StaticFileProviderFactory,
+    StaticFileWriter, providers::StaticFileProvider,
 };
 use reth_stages::{StageCheckpoint, StageId};
 use reth_static_file_types::StaticFileSegment;
-use std::path::Path;
 use tracing::info;
 
 /// Reads the header RLP from a file and returns the Header.
@@ -118,7 +119,7 @@ where
         StaticFileSegment::TransactionSenders,
     ] {
         if sf_provider.get_highest_static_file_block(segment).is_none() {
-            continue
+            continue;
         }
         let tx_clone = tx.clone();
         let provider = sf_provider.clone();
@@ -159,7 +160,7 @@ where
     while let Ok(append_result) = rx.recv() {
         if let Err(err) = append_result {
             tracing::error!(target: "reth::cli", "Error appending dummy chain: {err}");
-            return Err(err)
+            return Err(err);
         }
     }
 
@@ -172,7 +173,7 @@ where
         StaticFileSegment::TransactionSenders,
     ] {
         if sf_provider.get_highest_static_file_block(segment).is_none() {
-            continue
+            continue;
         }
         assert_eq!(
             sf_provider.latest_writer(segment)?.user_header().block_end(),
@@ -186,13 +187,15 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::io::Write;
+
     use alloy_consensus::Header;
     use alloy_primitives::{address, b256};
     use reth_db_common::init::init_genesis;
-    use reth_provider::{test_utils::create_test_provider_factory, DatabaseProviderFactory};
-    use std::io::Write;
+    use reth_provider::{DatabaseProviderFactory, test_utils::create_test_provider_factory};
     use tempfile::NamedTempFile;
+
+    use super::*;
 
     #[test]
     fn test_read_header_from_file_hex_string() {

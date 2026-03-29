@@ -1,9 +1,7 @@
 //! CLI definition and entrypoint to executable
 
-use crate::{
-    app::{run_commands_with, CliApp},
-    chainspec::EthereumChainSpecParser,
-};
+use std::{ffi::OsString, fmt, future::Future, marker::PhantomData, sync::Arc};
+
 use clap::{Parser, Subcommand};
 use reth_chainspec::{ChainSpec, EthChainSpec, Hardforks};
 use reth_cli::chainspec::ChainSpecParser;
@@ -25,8 +23,12 @@ use reth_node_core::{
 use reth_node_metrics::recorder::install_prometheus_recorder;
 use reth_rpc_server_types::{DefaultRpcModuleValidator, RpcModuleValidator};
 use reth_tracing::{FileWorkerGuard, Layers};
-use std::{ffi::OsString, fmt, future::Future, marker::PhantomData, sync::Arc};
 use tracing::{info, warn};
+
+use crate::{
+    app::{CliApp, run_commands_with},
+    chainspec::EthereumChainSpecParser,
+};
 
 /// The main reth cli interface.
 ///
@@ -73,11 +75,11 @@ impl Cli {
 }
 
 impl<
-        C: ChainSpecParser,
-        Ext: clap::Args + fmt::Debug,
-        Rpc: RpcModuleValidator,
-        SubCmd: crate::app::ExtendedCommand + Subcommand + fmt::Debug,
-    > Cli<C, Ext, Rpc, SubCmd>
+    C: ChainSpecParser,
+    Ext: clap::Args + fmt::Debug,
+    Rpc: RpcModuleValidator,
+    SubCmd: crate::app::ExtendedCommand + Subcommand + fmt::Debug,
+> Cli<C, Ext, Rpc, SubCmd>
 {
     /// Configures the CLI and returns a [`CliApp`] instance.
     ///
@@ -359,11 +361,12 @@ impl<C: ChainSpecParser, Ext: clap::Args + fmt::Debug, SubCmd: Subcommand + fmt:
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::chainspec::SUPPORTED_CHAINS;
     use clap::CommandFactory;
     use reth_chainspec::SEPOLIA;
     use reth_node_core::args::ColorMode;
+
+    use super::*;
+    use crate::chainspec::SUPPORTED_CHAINS;
 
     #[test]
     fn parse_color_mode() {
@@ -579,10 +582,12 @@ mod tests {
 
     #[test]
     fn test_extensible_subcommands() {
-        use crate::app::ExtendedCommand;
+        use std::sync::atomic::{AtomicBool, Ordering};
+
         use reth_cli_runner::CliRunner;
         use reth_rpc_server_types::DefaultRpcModuleValidator;
-        use std::sync::atomic::{AtomicBool, Ordering};
+
+        use crate::app::ExtendedCommand;
 
         #[derive(Debug, Subcommand)]
         enum CustomCommands {

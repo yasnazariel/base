@@ -1,22 +1,17 @@
 //! Types and traits for validating blocks and payloads.
 
-use crate::tree::{
-    cached_state::CachedStateProvider,
-    error::{InsertBlockError, InsertBlockErrorKind, InsertPayloadError},
-    instrumented_state::InstrumentedStateProvider,
-    payload_processor::PayloadProcessor,
-    precompile_cache::{CachedPrecompile, CachedPrecompileMetrics, PrecompileCacheMap},
-    sparse_trie::StateRootComputeOutcome,
-    EngineApiMetrics, EngineApiTreeState, ExecutionEnv, PayloadHandle, StateProviderBuilder,
-    StateProviderDatabase, TreeConfig,
+use std::{
+    collections::HashMap,
+    panic::{self, AssertUnwindSafe},
+    sync::{Arc, mpsc::RecvTimeoutError},
+    time::Instant,
 };
+
 use alloy_consensus::transaction::{Either, TxHashRef};
 use alloy_eip7928::BlockAccessList;
-use alloy_eips::{eip1898::BlockWithParent, eip4895::Withdrawal, NumHash};
+use alloy_eips::{NumHash, eip1898::BlockWithParent, eip4895::Withdrawal};
 use alloy_evm::Evm;
 use alloy_primitives::B256;
-
-use crate::tree::payload_processor::receipt_root_task::{IndexedReceipt, ReceiptRootTaskHandle};
 use reth_chain_state::{CanonicalInMemoryState, DeferredTrieData, ExecutedBlock, LazyOverlay};
 use reth_consensus::{ConsensusError, FullConsensus, ReceiptRootBloom};
 use reth_engine_primitives::{
@@ -24,8 +19,8 @@ use reth_engine_primitives::{
 };
 use reth_errors::{BlockExecutionError, ProviderResult};
 use reth_evm::{
-    block::BlockExecutor, execute::ExecutableTxFor, ConfigureEvm, EvmEnvFor, ExecutionCtxFor,
-    SpecFor,
+    ConfigureEvm, EvmEnvFor, ExecutionCtxFor, SpecFor, block::BlockExecutor,
+    execute::ExecutableTxFor,
 };
 use reth_payload_primitives::{
     BuiltPayload, InvalidPayloadAttributesError, NewPayloadError, PayloadTypes,
@@ -35,23 +30,31 @@ use reth_primitives_traits::{
     SealedHeader, SignerRecoverable,
 };
 use reth_provider::{
-    providers::OverlayStateProviderFactory, BlockExecutionOutput, BlockNumReader, BlockReader,
-    ChangeSetReader, DatabaseProviderFactory, DatabaseProviderROFactory, HashedPostStateProvider,
-    ProviderError, PruneCheckpointReader, StageCheckpointReader, StateProvider,
-    StateProviderFactory, StateReader, StorageChangeSetReader, StorageSettingsCache,
+    BlockExecutionOutput, BlockNumReader, BlockReader, ChangeSetReader, DatabaseProviderFactory,
+    DatabaseProviderROFactory, HashedPostStateProvider, ProviderError, PruneCheckpointReader,
+    StageCheckpointReader, StateProvider, StateProviderFactory, StateReader,
+    StorageChangeSetReader, StorageSettingsCache, providers::OverlayStateProviderFactory,
 };
-use reth_revm::db::{states::bundle_state::BundleRetention, State};
-use reth_trie::{updates::TrieUpdates, HashedPostState, StateRoot};
+use reth_revm::db::{State, states::bundle_state::BundleRetention};
+use reth_trie::{HashedPostState, StateRoot, updates::TrieUpdates};
 use reth_trie_db::ChangesetCache;
 use reth_trie_parallel::root::{ParallelStateRoot, ParallelStateRootError};
 use revm_primitives::Address;
-use std::{
-    collections::HashMap,
-    panic::{self, AssertUnwindSafe},
-    sync::{mpsc::RecvTimeoutError, Arc},
-    time::Instant,
-};
 use tracing::{debug, debug_span, error, info, instrument, trace, warn};
+
+use crate::tree::{
+    EngineApiMetrics, EngineApiTreeState, ExecutionEnv, PayloadHandle, StateProviderBuilder,
+    StateProviderDatabase, TreeConfig,
+    cached_state::CachedStateProvider,
+    error::{InsertBlockError, InsertBlockErrorKind, InsertPayloadError},
+    instrumented_state::InstrumentedStateProvider,
+    payload_processor::{
+        PayloadProcessor,
+        receipt_root_task::{IndexedReceipt, ReceiptRootTaskHandle},
+    },
+    precompile_cache::{CachedPrecompile, CachedPrecompileMetrics, PrecompileCacheMap},
+    sparse_trie::StateRootComputeOutcome,
+};
 
 /// Context providing access to tree state during validation.
 ///
@@ -290,7 +293,7 @@ where
         // Validate block consensus rules which includes header validation
         if let Err(consensus_err) = self.validate_block_inner(&block) {
             // Header validation error takes precedence over execution error
-            return Err(InsertBlockError::new(block, consensus_err.into()).into())
+            return Err(InsertBlockError::new(block, consensus_err.into()).into());
         }
 
         // Also validate against the parent
@@ -298,7 +301,7 @@ where
             self.consensus.validate_header_against_parent(block.sealed_header(), parent_block)
         {
             // Parent validation error takes precedence over execution error
-            return Err(InsertBlockError::new(block, consensus_err.into()).into())
+            return Err(InsertBlockError::new(block, consensus_err.into()).into());
         }
 
         // No header validation errors, return the original execution error
@@ -338,7 +341,7 @@ where
                     Ok(val) => val,
                     Err(e) => {
                         let block = self.convert_to_block(input)?;
-                        return Err(InsertBlockError::new(block, e.into()).into())
+                        return Err(InsertBlockError::new(block, e.into()).into());
                     }
                 }
             };
@@ -371,7 +374,7 @@ where
                 self.convert_to_block(input)?,
                 ProviderError::HeaderNotFound(parent_hash.into()).into(),
             )
-            .into())
+            .into());
         };
         let mut state_provider = ensure_ok!(provider_builder.build());
         drop(_enter);
@@ -384,7 +387,7 @@ where
                 self.convert_to_block(input)?,
                 ProviderError::HeaderNotFound(parent_hash.into()).into(),
             )
-            .into())
+            .into());
         };
 
         let evm_env = debug_span!(target: "engine::tree::payload_validator", "evm env")
@@ -413,11 +416,13 @@ where
         let txs = self.tx_iterator_for(&input)?;
 
         // Extract the BAL, if valid and available
-        let block_access_list = ensure_ok!(input
-            .block_access_list()
-            .transpose()
-            // Eventually gets converted to a `InsertBlockErrorKind::Other`
-            .map_err(Box::<dyn std::error::Error + Send + Sync>::from))
+        let block_access_list = ensure_ok!(
+            input
+                .block_access_list()
+                .transpose()
+                // Eventually gets converted to a `InsertBlockErrorKind::Other`
+                .map_err(Box::<dyn std::error::Error + Send + Sync>::from)
+        )
         .map(Arc::new);
 
         // Create lazy overlay from ancestors - this doesn't block, allowing execution to start
@@ -617,7 +622,7 @@ where
                 )
                 .into(),
             )
-            .into())
+            .into());
         }
 
         if let Some(valid_block_tx) = valid_block_tx {
@@ -643,11 +648,7 @@ where
         // check memory first
         let header = state.tree_state.sealed_header_by_hash(&hash);
 
-        if header.is_some() {
-            Ok(header)
-        } else {
-            self.provider.sealed_header_by_hash(hash)
-        }
+        if header.is_some() { Ok(header) } else { self.provider.sealed_header_by_hash(hash) }
     }
 
     /// Validate if block is correct and satisfies all the consensus rules that concern the header
@@ -656,12 +657,12 @@ where
     fn validate_block_inner(&self, block: &SealedBlock<N::Block>) -> Result<(), ConsensusError> {
         if let Err(e) = self.consensus.validate_header(block.sealed_header()) {
             error!(target: "engine::tree::payload_validator", ?block, "Failed to validate header {}: {e}", block.hash());
-            return Err(e)
+            return Err(e);
         }
 
         if let Err(e) = self.consensus.validate_block_pre_execution(block) {
             error!(target: "engine::tree::payload_validator", ?block, "Failed to validate block {}: {e}", block.hash());
-            return Err(e)
+            return Err(e);
         }
 
         Ok(())
@@ -1073,7 +1074,7 @@ where
         trace!(target: "engine::tree::payload_validator", block=?block.num_hash(), "Validating block consensus");
         // validate block consensus rules
         if let Err(e) = self.validate_block_inner(block) {
-            return Err(e.into())
+            return Err(e.into());
         }
 
         // now validate against the parent
@@ -1082,7 +1083,7 @@ where
             self.consensus.validate_header_against_parent(block.sealed_header(), parent_block)
         {
             warn!(target: "engine::tree::payload_validator", ?block, "Failed to validate header {} against parent: {e}", block.hash());
-            return Err(e.into())
+            return Err(e.into());
         }
         drop(_enter);
 
@@ -1095,7 +1096,7 @@ where
         {
             // call post-block hook
             self.on_invalid_block(parent_block, block, output, None, ctx.state_mut());
-            return Err(err.into())
+            return Err(err.into());
         }
         drop(_enter);
 
@@ -1110,7 +1111,7 @@ where
         {
             // call post-block hook
             self.on_invalid_block(parent_block, block, output, None, ctx.state_mut());
-            return Err(err.into())
+            return Err(err.into());
         }
 
         // record post-execution validation duration
@@ -1218,7 +1219,7 @@ where
                 self.provider.clone(),
                 historical,
                 Some(blocks),
-            )))
+            )));
         }
 
         // Check if the block is persisted
@@ -1226,7 +1227,7 @@ where
             debug!(target: "engine::tree::payload_validator", %hash, number = %header.number(), "found canonical state for block in database, creating provider builder");
             // For persisted blocks, we create a builder that will fetch state directly from the
             // database
-            return Ok(Some(StateProviderBuilder::new(self.provider.clone(), hash, None)))
+            return Ok(Some(StateProviderBuilder::new(self.provider.clone(), hash, None)));
         }
 
         debug!(target: "engine::tree::payload_validator", %hash, "no canonical state found for block");
@@ -1258,7 +1259,7 @@ where
     ) {
         if state.invalid_headers.get(&block.hash()).is_some() {
             // we already marked this block as invalid
-            return
+            return;
         }
         self.invalid_block_hook.on_invalid_block(parent_header, block, output, trie_updates);
     }

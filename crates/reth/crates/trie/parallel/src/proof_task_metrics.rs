@@ -1,11 +1,13 @@
-use crate::value_encoder::ValueEncoderStats;
-use reth_metrics::{metrics::Histogram, Metrics};
+use std::time::Duration;
+
+use reth_metrics::{Metrics, metrics::Histogram};
 use reth_trie::{
+    TrieType,
     hashed_cursor::{HashedCursorMetrics, HashedCursorMetricsCache},
     trie_cursor::{TrieCursorMetrics, TrieCursorMetricsCache},
-    TrieType,
 };
-use std::time::Duration;
+
+use crate::value_encoder::ValueEncoderStats;
 
 /// Metrics for the proof task.
 #[derive(Clone, Metrics)]

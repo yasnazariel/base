@@ -1,26 +1,27 @@
 //! Utils for `stages`.
-use alloy_primitives::{map::AddressMap, Address, BlockNumber, TxNumber, B256};
+use std::{collections::HashMap, hash::Hash, ops::RangeBounds};
+
+use alloy_primitives::{Address, B256, BlockNumber, TxNumber, map::AddressMap};
 use reth_config::config::EtlConfig;
 use reth_db_api::{
+    BlockNumberList,
     cursor::{DbCursorRO, DbCursorRW},
     models::{
-        sharded_key::NUM_OF_INDICES_IN_SHARD, storage_sharded_key::StorageShardedKey,
         AccountBeforeTx, AddressStorageKey, BlockNumberAddress, ShardedKey,
+        sharded_key::NUM_OF_INDICES_IN_SHARD, storage_sharded_key::StorageShardedKey,
     },
     table::{Decode, Decompress, Table},
     transaction::DbTx,
-    BlockNumberList,
 };
 use reth_etl::Collector;
 use reth_primitives_traits::NodePrimitives;
 use reth_provider::{
-    providers::StaticFileProvider, to_range, BlockReader, DBProvider, EitherWriter, ProviderError,
-    StaticFileProviderFactory,
+    BlockReader, DBProvider, EitherWriter, ProviderError, StaticFileProviderFactory,
+    providers::StaticFileProvider, to_range,
 };
 use reth_stages_api::StageError;
 use reth_static_file_types::StaticFileSegment;
 use reth_storage_api::{ChangeSetReader, StorageChangeSetReader};
-use std::{collections::HashMap, hash::Hash, ops::RangeBounds};
 use tracing::info;
 
 /// Number of blocks before pushing indices from cache to [`Collector`]
@@ -189,7 +190,7 @@ where
     let mut insert_fn = |key: AddressStorageKey, indices: Vec<u64>| {
         let last = indices.last().expect("qed");
         collector.insert(
-            StorageShardedKey::new(key.0 .0, key.0 .1, *last),
+            StorageShardedKey::new(key.0.0, key.0.1, *last),
             BlockNumberList::new_pre_sorted(indices.into_iter()),
         )?;
         Ok::<(), StageError>(())
@@ -284,8 +285,8 @@ where
 
             // On incremental sync, merge with the existing last shard from the database.
             // The last shard is stored with key (address, u64::MAX) so we can find it.
-            if !append_only &&
-                let Some(last_shard) = writer.get_last_account_history_shard(address)?
+            if !append_only
+                && let Some(last_shard) = writer.get_last_account_history_shard(address)?
             {
                 current_list.extend(last_shard.iter());
             }
@@ -422,13 +423,13 @@ where
     // To be extra safe, we make sure that the last tx num matches the last block from its indices.
     // If not, get it.
     loop {
-        if let Some(indices) = provider.block_body_indices(last_block)? &&
-            indices.last_tx_num() <= last_tx_num
+        if let Some(indices) = provider.block_body_indices(last_block)?
+            && indices.last_tx_num() <= last_tx_num
         {
-            break
+            break;
         }
         if last_block == 0 {
-            break
+            break;
         }
         last_block -= 1;
     }
@@ -498,8 +499,8 @@ where
 
             // On incremental sync, merge with the existing last shard from the database.
             // The last shard is stored with key (address, storage_key, u64::MAX) so we can find it.
-            if !append_only &&
-                let Some(last_shard) =
+            if !append_only
+                && let Some(last_shard) =
                     writer.get_last_storage_history_shard(partial_key.0, partial_key.1)?
             {
                 current_list.extend(last_shard.iter());

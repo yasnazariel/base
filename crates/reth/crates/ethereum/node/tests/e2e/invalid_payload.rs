@@ -3,16 +3,17 @@
 //! This module tests the scenario where a node receives invalid payloads (e.g., with modified
 //! state roots) before receiving valid ones, ensuring the node can recover and continue.
 
-use crate::utils::eth_payload_attributes;
+use std::sync::Arc;
+
 use alloy_primitives::B256;
 use alloy_rpc_types_engine::{ExecutionPayloadV3, PayloadStatusEnum};
-use rand::{rngs::StdRng, Rng, SeedableRng};
+use rand::{Rng, SeedableRng, rngs::StdRng};
 use reth_chainspec::{ChainSpecBuilder, MAINNET};
 use reth_e2e_test_utils::{setup_engine, transaction::TransactionTestContext};
 use reth_node_ethereum::EthereumNode;
-
 use reth_rpc_api::EngineApiClient;
-use std::sync::Arc;
+
+use crate::utils::eth_payload_attributes;
 
 /// Tests that a node can handle receiving an invalid payload (with wrong state root)
 /// followed by the correct payload, and continue operating normally.
@@ -302,8 +303,7 @@ async fn can_handle_invalid_payload_with_transactions() -> eyre::Result<()> {
 
     println!(
         "Invalid payload (with tx) response: {:?} (state_root changed from {original_state_root} to {})",
-        invalid_result.status,
-        invalid_payload.payload_inner.payload_inner.state_root
+        invalid_result.status, invalid_payload.payload_inner.payload_inner.state_root
     );
 
     assert!(

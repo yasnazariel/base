@@ -1,18 +1,20 @@
 //! [`jsonrpsee`] transport adapter implementation for IPC.
 
-use crate::stream_codec::StreamCodec;
+use std::{io, time::Duration};
+
 use futures::{StreamExt, TryFutureExt};
 use interprocess::local_socket::{
-    tokio::{prelude::*, RecvHalf, SendHalf},
     GenericFilePath,
+    tokio::{RecvHalf, SendHalf, prelude::*},
 };
 use jsonrpsee::{
     async_client::{Client, ClientBuilder},
     core::client::{ReceivedMessage, TransportReceiverT, TransportSenderT},
 };
-use std::{io, time::Duration};
 use tokio::io::AsyncWriteExt;
 use tokio_util::codec::FramedRead;
+
+use crate::stream_codec::StreamCodec;
 
 /// Sending end of IPC transport.
 #[derive(Debug)]
@@ -150,9 +152,10 @@ pub enum IpcError {
 
 #[cfg(test)]
 mod tests {
+    use interprocess::local_socket::ListenerOptions;
+
     use super::*;
     use crate::server::dummy_name;
-    use interprocess::local_socket::ListenerOptions;
 
     #[tokio::test]
     async fn test_connect() {

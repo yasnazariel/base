@@ -1,11 +1,11 @@
 #![allow(missing_docs)]
 use alloy_primitives::Address;
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use proptest::{prelude::*, strategy::ValueTree, test_runner::TestRunner};
 use reth_transaction_pool::{
-    batcher::{BatchTxProcessor, BatchTxRequest},
-    test_utils::{testing_pool, MockTransaction},
     TransactionOrigin, TransactionPool,
+    batcher::{BatchTxProcessor, BatchTxRequest},
+    test_utils::{MockTransaction, testing_pool},
 };
 use tokio::sync::oneshot;
 

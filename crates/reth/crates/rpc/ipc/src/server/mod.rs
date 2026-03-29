@@ -1,42 +1,48 @@
 //! JSON-RPC IPC server implementation
 
-use crate::server::connection::{IpcConn, JsonRpcStream};
-use futures::StreamExt;
-use futures_util::future::Either;
-use interprocess::local_socket::{
-    tokio::prelude::{LocalSocketListener, LocalSocketStream},
-    traits::tokio::{Listener, Stream},
-    GenericFilePath, ListenerOptions, ToFsName,
-};
-use jsonrpsee::{
-    core::{middleware::layer::RpcLoggerLayer, JsonRawValue, TEN_MB_SIZE_BYTES},
-    server::{
-        middleware::rpc::RpcServiceT, stop_channel, ConnectionGuard, ConnectionPermit, IdProvider,
-        RandomIntegerIdProvider, ServerHandle, StopHandle,
-    },
-    BoundedSubscriptions, MethodResponse, MethodSink, Methods,
-};
 use std::{
     future::Future,
     io,
-    pin::{pin, Pin},
+    pin::{Pin, pin},
     sync::Arc,
     task::{Context, Poll},
 };
+
+use futures::StreamExt;
+use futures_util::future::Either;
+use interprocess::local_socket::{
+    GenericFilePath, ListenerOptions, ToFsName,
+    tokio::prelude::{LocalSocketListener, LocalSocketStream},
+    traits::tokio::{Listener, Stream},
+};
+use jsonrpsee::{
+    BoundedSubscriptions, MethodResponse, MethodSink, Methods,
+    core::{JsonRawValue, TEN_MB_SIZE_BYTES, middleware::layer::RpcLoggerLayer},
+    server::{
+        ConnectionGuard, ConnectionPermit, IdProvider, RandomIntegerIdProvider, ServerHandle,
+        StopHandle, middleware::rpc::RpcServiceT, stop_channel,
+    },
+};
 use tokio::{
     io::{AsyncRead, AsyncWrite, AsyncWriteExt},
-    sync::oneshot,
+    sync::{mpsc, oneshot},
 };
-use tower::{layer::util::Identity, Layer, Service};
-use tracing::{debug, instrument, trace, warn, Instrument};
+use tokio_stream::wrappers::ReceiverStream;
+use tower::{
+    Layer, Service,
+    layer::{
+        LayerFn,
+        util::{Identity, Stack},
+    },
+};
+use tracing::{Instrument, debug, instrument, trace, warn};
+
+use crate::server::connection::{IpcConn, JsonRpcStream};
 // re-export so can be used during builder setup
 use crate::{
     server::{connection::IpcConnDriver, rpc_service::RpcServiceCfg},
     stream_codec::StreamCodec,
 };
-use tokio::sync::mpsc;
-use tokio_stream::wrappers::ReceiverStream;
-use tower::layer::{util::Stack, LayerFn};
 
 mod connection;
 mod ipc;
@@ -144,8 +150,8 @@ where
                 {
                     // set permissions only on unix
                     use std::os::unix::fs::PermissionsExt;
-                    if let Some(perms_str) = &self.cfg.ipc_socket_permissions &&
-                        let Ok(mode) = u32::from_str_radix(&perms_str.replace("0o", ""), 8)
+                    if let Some(perms_str) = &self.cfg.ipc_socket_permissions
+                        && let Ok(mode) = u32::from_str_radix(&perms_str.replace("0o", ""), 8)
                     {
                         let perms = std::fs::Permissions::from_mode(mode);
                         let _ = std::fs::set_permissions(&self.endpoint, perms);
@@ -768,10 +774,11 @@ pub fn dummy_name() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::client::IpcClientBuilder;
+    use std::pin::pin;
+
     use futures::future::select;
     use jsonrpsee::{
+        PendingSubscriptionSink, RpcModule, SubscriptionMessage,
         core::{
             client::{self, ClientT, Error, Subscription, SubscriptionClientT},
             middleware::{Batch, BatchEntry, Notification},
@@ -779,12 +786,13 @@ mod tests {
         },
         rpc_params,
         types::Request,
-        PendingSubscriptionSink, RpcModule, SubscriptionMessage,
     };
     use reth_tracing::init_test_tracing;
-    use std::pin::pin;
     use tokio::sync::broadcast;
     use tokio_stream::wrappers::BroadcastStream;
+
+    use super::*;
+    use crate::client::IpcClientBuilder;
 
     #[tokio::test]
     #[cfg(unix)]

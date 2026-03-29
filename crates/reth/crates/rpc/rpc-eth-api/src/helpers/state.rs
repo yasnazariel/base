@@ -1,11 +1,9 @@
 //! Loads a pending block from database. Helper trait for `eth_` block, transaction, call and trace
 //! RPC methods.
 
-use super::{EthApiSpec, LoadPendingBlock, SpawnBlocking};
-use crate::{EthApiTypes, FromEthApiError, RpcNodeCore, RpcNodeCoreExt};
 use alloy_consensus::constants::KECCAK_EMPTY;
 use alloy_eips::BlockId;
-use alloy_primitives::{Address, Bytes, B256, U256};
+use alloy_primitives::{Address, B256, Bytes, U256};
 use alloy_rpc_types_eth::{Account, AccountInfo, EIP1186AccountProofResponse};
 use alloy_serde::JsonStorageKey;
 use futures::Future;
@@ -14,13 +12,16 @@ use reth_evm::{ConfigureEvm, EvmEnvFor};
 use reth_primitives_traits::SealedHeaderFor;
 use reth_rpc_convert::RpcConvert;
 use reth_rpc_eth_types::{
-    error::FromEvmError, EthApiError, PendingBlockEnv, RpcInvalidTransactionError,
+    EthApiError, PendingBlockEnv, RpcInvalidTransactionError, error::FromEvmError,
 };
 use reth_storage_api::{
     BlockIdReader, BlockNumReader, BlockReaderIdExt, StateProvider, StateProviderBox,
     StateProviderFactory,
 };
 use reth_transaction_pool::TransactionPool;
+
+use super::{EthApiSpec, LoadPendingBlock, SpawnBlocking};
+use crate::{EthApiTypes, FromEthApiError, RpcNodeCore, RpcNodeCoreExt};
 
 /// Helper methods for `eth_` methods relating to state (accounts).
 pub trait EthState: LoadState + SpawnBlocking {
@@ -114,7 +115,7 @@ pub trait EthState: LoadState + SpawnBlocking {
                 .ok_or(EthApiError::HeaderNotFound(block_id))?;
             let max_window = self.max_proof_window();
             if chain_info.best_number.saturating_sub(block_number) > max_window {
-                return Err(EthApiError::ExceedsMaxProofWindow.into())
+                return Err(EthApiError::ExceedsMaxProofWindow.into());
             }
 
             self.spawn_blocking_io_fut(move |this| async move {
@@ -149,7 +150,7 @@ pub trait EthState: LoadState + SpawnBlocking {
                 .ok_or(EthApiError::HeaderNotFound(block_id))?;
             let max_window = this.max_proof_window();
             if chain_info.best_number.saturating_sub(block_number) > max_window {
-                return Err(EthApiError::ExceedsMaxProofWindow.into())
+                return Err(EthApiError::ExceedsMaxProofWindow.into());
             }
 
             let balance = account.balance;
@@ -223,10 +224,10 @@ pub trait LoadState:
         Self: SpawnBlocking,
     {
         async move {
-            if at.is_pending() &&
-                let Ok(Some(state)) = self.local_pending_state().await
+            if at.is_pending()
+                && let Ok(Some(state)) = self.local_pending_state().await
             {
-                return Ok(state)
+                return Ok(state);
             }
 
             self.provider().state_by_block_id(at).map_err(Self::Error::from_eth_err)

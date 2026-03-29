@@ -1,18 +1,19 @@
 //! Common db operations
 
+use std::{path::Path, rc::Rc, sync::Arc};
+
 use boyer_moore_magiclen::BMByte;
 use eyre::Result;
 use reth_db_api::{
+    DatabaseError, RawTable, TableRawRow,
     cursor::{DbCursorRO, DbDupCursorRO},
     database::Database,
     table::{Decode, Decompress, DupSort, Table, TableRow},
     transaction::{DbTx, DbTxMut},
-    DatabaseError, RawTable, TableRawRow,
 };
 use reth_fs_util as fs;
 use reth_node_types::NodeTypesWithDB;
-use reth_provider::{providers::ProviderNodeTypes, ChainSpecProvider, DBProvider, ProviderFactory};
-use std::{path::Path, rc::Rc, sync::Arc};
+use reth_provider::{ChainSpecProvider, DBProvider, ProviderFactory, providers::ProviderNodeTypes};
 use tracing::info;
 
 /// Wrapper over DB that implements many useful DB queries.
@@ -50,18 +51,18 @@ impl<N: NodeTypesWithDB> DbTool<N> {
                     let (key, value) = (k.into_key(), v.into_value());
 
                     if key.len() + value.len() < filter.min_row_size {
-                        return None
+                        return None;
                     }
                     if key.len() < filter.min_key_size {
-                        return None
+                        return None;
                     }
                     if value.len() < filter.min_value_size {
-                        return None
+                        return None;
                     }
 
                     let result = || {
                         if filter.only_count {
-                            return None
+                            return None;
                         }
                         Some((
                             <T as Table>::Key::decode(&key).unwrap(),
@@ -71,16 +72,16 @@ impl<N: NodeTypesWithDB> DbTool<N> {
 
                     match &*bmb {
                         Some(searcher) => {
-                            if searcher.find_first_in(&value).is_some() ||
-                                searcher.find_first_in(&key).is_some()
+                            if searcher.find_first_in(&value).is_some()
+                                || searcher.find_first_in(&key).is_some()
                             {
                                 hits += 1;
-                                return result()
+                                return result();
                             }
                         }
                         None => {
                             hits += 1;
-                            return result()
+                            return result();
                         }
                     }
                 }

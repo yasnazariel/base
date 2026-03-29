@@ -1,10 +1,12 @@
-use crate::{EraMeta, BLOCKS_PER_FILE};
-use alloy_primitives::{hex, hex::ToHexExt, BlockNumber};
-use eyre::{eyre, OptionExt};
-use futures_util::{stream, Stream};
+use std::{fmt::Debug, io, io::BufRead, path::Path, str::FromStr};
+
+use alloy_primitives::{BlockNumber, hex, hex::ToHexExt};
+use eyre::{OptionExt, eyre};
+use futures_util::{Stream, stream};
 use reth_fs_util as fs;
 use sha2::{Digest, Sha256};
-use std::{fmt::Debug, io, io::BufRead, path::Path, str::FromStr};
+
+use crate::{BLOCKS_PER_FILE, EraMeta};
 
 /// Creates a new ordered asynchronous [`Stream`] of ERA1 files read from `dir`.
 pub fn read_dir(
@@ -19,8 +21,8 @@ pub fn read_dir(
             (|| {
                 let path = entry?.path();
 
-                if path.extension() == Some("era1".as_ref()) &&
-                    let Some(last) = path.components().next_back()
+                if path.extension() == Some("era1".as_ref())
+                    && let Some(last) = path.components().next_back()
                 {
                     let str = last.as_os_str().to_string_lossy().to_string();
                     let parts = str.split('-').collect::<Vec<_>>();

@@ -1,5 +1,7 @@
 #![allow(missing_docs)]
 
+use std::collections::HashMap;
+
 use alloy_primitives::{B256, U256};
 use criterion::{measurement::WallTime, *};
 use rand::SeedableRng;
@@ -7,18 +9,17 @@ use reth_eth_wire::EthVersion;
 use reth_eth_wire_types::EthNetworkPrimitives;
 use reth_network::{
     test_utils::{
-        transactions::{buffer_hash_to_tx_fetcher, new_mock_session},
         Testnet,
+        transactions::{buffer_hash_to_tx_fetcher, new_mock_session},
     },
     transactions::{
-        fetcher::TransactionFetcher, TransactionFetcherConfig, TransactionPropagationMode::Max,
-        TransactionsManagerConfig,
+        TransactionFetcherConfig, TransactionPropagationMode::Max, TransactionsManagerConfig,
+        fetcher::TransactionFetcher,
     },
 };
 use reth_network_peers::PeerId;
 use reth_provider::test_utils::{ExtendedAccount, MockEthProvider};
-use reth_transaction_pool::{test_utils::TransactionGenerator, PoolTransaction, TransactionPool};
-use std::collections::HashMap;
+use reth_transaction_pool::{PoolTransaction, TransactionPool, test_utils::TransactionGenerator};
 use tokio::runtime::Runtime as TokioRuntime;
 
 criterion_group!(

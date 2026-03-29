@@ -1,10 +1,14 @@
 //! Logic to export from database era1 block history
 //! and injecting them into era1 files with `Era1Writer`.
 
-use crate::calculate_td_by_number;
+use std::{
+    path::PathBuf,
+    time::{Duration, Instant},
+};
+
 use alloy_consensus::BlockHeader;
-use alloy_primitives::{BlockNumber, B256, U256};
-use eyre::{eyre, Result};
+use alloy_primitives::{B256, BlockNumber, U256};
+use eyre::{Result, eyre};
 use reth_era::{
     common::file_ops::{EraFileId, StreamWriter},
     e2s::types::IndexEntry,
@@ -13,7 +17,7 @@ use reth_era::{
         types::{
             execution::{
                 Accumulator, BlockTuple, CompressedBody, CompressedHeader, CompressedReceipts,
-                TotalDifficulty, MAX_BLOCKS_PER_ERA1,
+                MAX_BLOCKS_PER_ERA1, TotalDifficulty,
             },
             group::{BlockIndex, Era1Id},
         },
@@ -22,11 +26,9 @@ use reth_era::{
 use reth_fs_util as fs;
 use reth_primitives_traits::Block;
 use reth_storage_api::{BlockNumReader, BlockReader, HeaderProvider};
-use std::{
-    path::PathBuf,
-    time::{Duration, Instant},
-};
 use tracing::{debug, info, warn};
+
+use crate::calculate_td_by_number;
 
 const REPORT_INTERVAL_SECS: u64 = 10;
 const ENTRY_HEADER_SIZE: usize = 8;
@@ -318,9 +320,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::ExportConfig;
     use reth_era::era1::types::execution::MAX_BLOCKS_PER_ERA1;
     use tempfile::tempdir;
+
+    use crate::ExportConfig;
 
     #[test]
     fn test_export_config_validation() {

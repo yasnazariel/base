@@ -1,13 +1,15 @@
-use crate::{metrics::SyncMetrics, StageCheckpoint, StageId};
-use alloy_primitives::BlockNumber;
 use std::{
     future::Future,
     pin::Pin,
-    task::{ready, Context, Poll},
+    task::{Context, Poll, ready},
     time::Duration,
 };
+
+use alloy_primitives::BlockNumber;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tracing::trace;
+
+use crate::{StageCheckpoint, StageId, metrics::SyncMetrics};
 
 /// Alias type for metric producers to use.
 pub type MetricEventsSender = UnboundedSender<MetricEvent>;
@@ -96,7 +98,7 @@ impl Future for MetricsListener {
         loop {
             let Some(event) = ready!(this.events_rx.poll_recv(cx)) else {
                 // Channel has closed
-                return Poll::Ready(())
+                return Poll::Ready(());
             };
 
             this.handle_event(event);

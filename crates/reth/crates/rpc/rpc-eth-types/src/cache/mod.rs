@@ -1,11 +1,16 @@
 //! Async caching support for eth RPC
 
-use super::{EthStateCacheConfig, MultiConsumerLruCache};
-use crate::block::CachedTransaction;
-use alloy_consensus::{transaction::TxHashRef, BlockHeader};
+use std::{
+    future::Future,
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll},
+};
+
+use alloy_consensus::{BlockHeader, transaction::TxHashRef};
 use alloy_eips::BlockHashOrNumber;
-use alloy_primitives::{TxHash, B256};
-use futures::{stream::FuturesOrdered, Stream, StreamExt};
+use alloy_primitives::{B256, TxHash};
+use futures::{Stream, StreamExt, stream::FuturesOrdered};
 use reth_chain_state::CanonStateNotification;
 use reth_errors::{ProviderError, ProviderResult};
 use reth_execution_types::Chain;
@@ -13,17 +18,15 @@ use reth_primitives_traits::{Block, BlockBody, NodePrimitives, RecoveredBlock};
 use reth_storage_api::{BlockReader, TransactionVariant};
 use reth_tasks::{TaskSpawner, TokioTaskExecutor};
 use schnellru::{ByLength, Limiter, LruMap};
-use std::{
-    future::Future,
-    pin::Pin,
-    sync::Arc,
-    task::{Context, Poll},
-};
 use tokio::sync::{
-    mpsc::{unbounded_channel, UnboundedSender},
-    oneshot, Semaphore,
+    Semaphore,
+    mpsc::{UnboundedSender, unbounded_channel},
+    oneshot,
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
+
+use super::{EthStateCacheConfig, MultiConsumerLruCache};
+use crate::block::CachedTransaction;
 
 pub mod config;
 pub mod db;
@@ -258,11 +261,7 @@ impl<N: NodePrimitives> EthStateCache<N> {
         });
 
         let blocks = rx.await.unwrap_or_default();
-        if blocks.is_empty() {
-            None
-        } else {
-            Some(blocks)
-        }
+        if blocks.is_empty() { None } else { Some(blocks) }
     }
 
     /// Looks up a transaction by its hash in the cache index.
@@ -363,8 +362,8 @@ where
     fn remove_block_transactions(&mut self, block: &RecoveredBlock<Provider::Block>) {
         let block_hash = block.hash();
         for tx in block.body().transactions() {
-            if let Some((mapped_hash, _)) = self.tx_hash_index.get(tx.tx_hash()) &&
-                *mapped_hash == block_hash
+            if let Some((mapped_hash, _)) = self.tx_hash_index.get(tx.tx_hash())
+                && *mapped_hash == block_hash
             {
                 self.tx_hash_index.remove(tx.tx_hash());
             }
@@ -484,7 +483,7 @@ where
                         CacheAction::GetBlockWithSenders { block_hash, response_tx } => {
                             if let Some(block) = this.full_block_cache.get(&block_hash).cloned() {
                                 let _ = response_tx.send(Ok(Some(block)));
-                                continue
+                                continue;
                             }
 
                             // block is not in the cache, request it if this is the first consumer
@@ -515,7 +514,7 @@ where
                             // check if block is cached
                             if let Some(receipts) = this.receipts_cache.get(&block_hash).cloned() {
                                 let _ = response_tx.send(Ok(Some(receipts)));
-                                continue
+                                continue;
                             }
 
                             // block is not in the cache, request it if this is the first consumer
@@ -542,13 +541,13 @@ where
                             // check if the header is cached
                             if let Some(header) = this.headers_cache.get(&block_hash).cloned() {
                                 let _ = response_tx.send(Ok(header));
-                                continue
+                                continue;
                             }
 
                             // it's possible we have the entire block cached
                             if let Some(block) = this.full_block_cache.get(&block_hash) {
                                 let _ = response_tx.send(Ok(block.clone_header()));
-                                continue
+                                continue;
                             }
 
                             // header is not in the cache, request it if this is the first

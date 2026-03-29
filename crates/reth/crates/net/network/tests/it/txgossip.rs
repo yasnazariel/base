@@ -1,21 +1,22 @@
 //! Testing gossiping of transactions.
+use std::sync::Arc;
+
 use alloy_consensus::TxLegacy;
 use alloy_primitives::{Signature, U256};
 use futures::StreamExt;
 use reth_ethereum_primitives::TransactionSigned;
 use reth_network::{
+    NetworkEvent, NetworkEventListenerProvider, Peers,
     test_utils::{NetworkEventStream, Testnet},
     transactions::config::{
         TransactionIngressPolicy, TransactionPropagationKind, TransactionsManagerConfig,
     },
-    NetworkEvent, NetworkEventListenerProvider, Peers,
 };
-use reth_network_api::{events::PeerEvent, PeerKind, PeersInfo};
+use reth_network_api::{PeerKind, PeersInfo, events::PeerEvent};
 use reth_provider::test_utils::{ExtendedAccount, MockEthProvider};
 use reth_transaction_pool::{
-    test_utils::TransactionGenerator, AddedTransactionOutcome, PoolTransaction, TransactionPool,
+    AddedTransactionOutcome, PoolTransaction, TransactionPool, test_utils::TransactionGenerator,
 };
-use std::sync::Arc;
 use tokio::join;
 
 #[tokio::test(flavor = "multi_thread")]
@@ -284,8 +285,8 @@ async fn test_sending_invalid_transactions() {
             NetworkEvent::Peer(PeerEvent::SessionClosed { peer_id, .. }) => {
                 assert_eq!(peer_id, *peer0.peer_id());
             }
-            NetworkEvent::ActivePeerSession { .. } |
-            NetworkEvent::Peer(PeerEvent::SessionEstablished { .. }) => {
+            NetworkEvent::ActivePeerSession { .. }
+            | NetworkEvent::Peer(PeerEvent::SessionEstablished { .. }) => {
                 panic!("unexpected SessionEstablished event")
             }
             NetworkEvent::Peer(PeerEvent::PeerAdded(_)) => {

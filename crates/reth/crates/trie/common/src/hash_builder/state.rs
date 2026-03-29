@@ -1,7 +1,9 @@
-use crate::TrieMask;
 use alloc::vec::Vec;
-use alloy_trie::{hash_builder::HashBuilderValue, nodes::RlpNode, HashBuilder};
+
+use alloy_trie::{HashBuilder, hash_builder::HashBuilderValue, nodes::RlpNode};
 use nybbles::Nibbles;
+
+use crate::TrieMask;
 
 /// The hash builder state for storing in the database.
 /// Check the `reth-trie` crate for more info on hash builder.
@@ -151,8 +153,9 @@ impl reth_codecs::Compact for HashBuilderState {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use reth_codecs::Compact;
+
+    use super::*;
 
     #[test]
     fn hash_builder_state_regression() {

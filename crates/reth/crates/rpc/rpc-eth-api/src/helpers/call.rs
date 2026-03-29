@@ -3,48 +3,49 @@
 
 use core::fmt;
 
-use super::{LoadBlock, LoadPendingBlock, LoadState, LoadTransaction, SpawnBlocking, Trace};
-use crate::{
-    helpers::estimate::EstimateCall, FromEvmError, FullEthApiTypes, RpcBlock, RpcNodeCore,
-};
-use alloy_consensus::{transaction::TxHashRef, BlockHeader};
+use alloy_consensus::{BlockHeader, transaction::TxHashRef};
 use alloy_eips::eip2930::AccessListResult;
-use alloy_evm::overrides::{apply_block_overrides, apply_state_overrides, OverrideBlockHashes};
+use alloy_evm::overrides::{OverrideBlockHashes, apply_block_overrides, apply_state_overrides};
 use alloy_network::TransactionBuilder;
-use alloy_primitives::{Bytes, B256, U256};
+use alloy_primitives::{B256, Bytes, U256};
 use alloy_rpc_types_eth::{
+    BlockId, Bundle, EthCallResponse, StateContext, TransactionInfo,
     simulate::{SimBlock, SimulatePayload, SimulatedBlock},
     state::{EvmOverrides, StateOverride},
-    BlockId, Bundle, EthCallResponse, StateContext, TransactionInfo,
 };
 use futures::Future;
 use reth_errors::{ProviderError, RethError};
 use reth_evm::{
-    env::BlockEnvironment, execute::BlockBuilder, ConfigureEvm, Evm, EvmEnvFor, HaltReasonFor,
-    InspectorFor, TransactionEnv, TxEnvFor,
+    ConfigureEvm, Evm, EvmEnvFor, HaltReasonFor, InspectorFor, TransactionEnv, TxEnvFor,
+    env::BlockEnvironment, execute::BlockBuilder,
 };
 use reth_node_api::BlockBody;
 use reth_primitives_traits::Recovered;
 use reth_revm::{
     cancelled::CancelOnDrop,
     database::StateProviderDatabase,
-    db::{bal::EvmDatabaseError, State},
+    db::{State, bal::EvmDatabaseError},
 };
 use reth_rpc_convert::{RpcConvert, RpcTxReq};
 use reth_rpc_eth_types::{
+    EthApiError, StateCacheDb,
     cache::db::StateProviderTraitObjWrapper,
     error::{AsEthApiError, FromEthApiError},
     simulate::{self, EthSimulateError},
-    EthApiError, StateCacheDb,
 };
 use reth_storage_api::{BlockIdReader, ProviderTx, StateProviderBox};
 use revm::{
-    context::Block,
-    context_interface::{result::ResultAndState, Transaction},
     Database, DatabaseCommit,
+    context::Block,
+    context_interface::{Transaction, result::ResultAndState},
 };
 use revm_inspectors::{access_list::AccessListInspector, transfer::TransferInspector};
 use tracing::{trace, warn};
+
+use super::{LoadBlock, LoadPendingBlock, LoadState, LoadTransaction, SpawnBlocking, Trace};
+use crate::{
+    FromEvmError, FullEthApiTypes, RpcBlock, RpcNodeCore, helpers::estimate::EstimateCall,
+};
 
 /// Result type for `eth_simulateV1` RPC method.
 pub type SimulatedBlocksResult<N, E> = Result<Vec<SimulatedBlock<RpcBlock<N>>>, E>;
@@ -73,7 +74,7 @@ pub trait EthCall: EstimateCall + Call + LoadPendingBlock + LoadBlock + FullEthA
     ) -> impl Future<Output = SimulatedBlocksResult<Self::NetworkTypes, Self::Error>> + Send {
         async move {
             if payload.block_state_calls.len() > self.max_simulate_blocks() as usize {
-                return Err(EthApiError::InvalidParams("too many blocks.".to_string()).into())
+                return Err(EthApiError::InvalidParams("too many blocks.".to_string()).into());
             }
 
             let block = block.unwrap_or_default();
@@ -86,7 +87,7 @@ pub trait EthCall: EstimateCall + Call + LoadPendingBlock + LoadBlock + FullEthA
             } = payload;
 
             if block_state_calls.is_empty() {
-                return Err(EthApiError::InvalidParams(String::from("calls are empty.")).into())
+                return Err(EthApiError::InvalidParams(String::from("calls are empty.")).into());
             }
 
             let base_block =
@@ -630,7 +631,7 @@ pub trait Call:
                 .spawn_with_call_at(request, at, overrides, move |db, evm_env, tx_env| {
                     if cancel.is_cancelled() {
                         // callsite dropped the guard
-                        return Err(EthApiError::InternalEthError.into())
+                        return Err(EthApiError::InternalEthError.into());
                     }
                     this.transact(db, evm_env, tx_env)
                 })
@@ -782,7 +783,7 @@ pub trait Call:
         for tx in transactions {
             if *tx.tx_hash() == target_tx_hash {
                 // reached the target transaction
-                break
+                break;
             }
 
             let tx_env = self.evm_config().tx_env(tx);

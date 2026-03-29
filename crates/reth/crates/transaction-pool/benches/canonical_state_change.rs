@@ -1,18 +1,19 @@
 #![allow(missing_docs)]
+use std::time::Duration;
+
 use alloy_consensus::Transaction;
-use alloy_primitives::{map::AddressMap, Address, B256, U256};
-use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
+use alloy_primitives::{Address, B256, U256, map::AddressMap};
+use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 use proptest::{prelude::*, strategy::ValueTree, test_runner::TestRunner};
 use rand::prelude::SliceRandom;
 use reth_ethereum_primitives::{Block, BlockBody};
 use reth_execution_types::ChangedAccount;
 use reth_primitives_traits::{Header, SealedBlock};
 use reth_transaction_pool::{
-    test_utils::{MockTransaction, TestPoolBuilder},
     BlockInfo, CanonicalStateUpdate, PoolConfig, PoolTransaction, PoolUpdateKind, SubPoolLimit,
     TransactionOrigin, TransactionPool, TransactionPoolExt,
+    test_utils::{MockTransaction, TestPoolBuilder},
 };
-use std::time::Duration;
 /// Generates a set of transactions for multiple senders
 fn generate_transactions(num_senders: usize, txs_per_sender: usize) -> Vec<MockTransaction> {
     let mut runner = TestRunner::deterministic();

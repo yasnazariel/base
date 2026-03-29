@@ -1,16 +1,18 @@
 //! Contains [Chain], a chain of blocks and their final state.
 
-use crate::ExecutionOutcome;
 use alloc::{borrow::Cow, collections::BTreeMap, vec::Vec};
-use alloy_consensus::{transaction::Recovered, BlockHeader, TxReceipt};
-use alloy_eips::{eip1898::ForkBlock, eip2718::Encodable2718, BlockNumHash};
-use alloy_primitives::{Address, BlockHash, BlockNumber, Log, TxHash};
 use core::{fmt, ops::RangeInclusive};
+
+use alloy_consensus::{BlockHeader, TxReceipt, transaction::Recovered};
+use alloy_eips::{BlockNumHash, eip1898::ForkBlock, eip2718::Encodable2718};
+use alloy_primitives::{Address, BlockHash, BlockNumber, Log, TxHash};
 use reth_primitives_traits::{
-    transaction::signed::SignedTransaction, Block, BlockBody, IndexedTx, NodePrimitives,
-    RecoveredBlock, SealedHeader,
+    Block, BlockBody, IndexedTx, NodePrimitives, RecoveredBlock, SealedHeader,
+    transaction::signed::SignedTransaction,
 };
 use reth_trie_common::LazyTrieData;
+
+use crate::ExecutionOutcome;
 
 /// A chain of blocks and their final state.
 ///
@@ -146,13 +148,13 @@ impl<N: NodePrimitives> Chain<N> {
         block_number: BlockNumber,
     ) -> Option<ExecutionOutcome<N::Receipt>> {
         if self.tip().number() == block_number {
-            return Some(self.execution_outcome.clone())
+            return Some(self.execution_outcome.clone());
         }
 
         if self.blocks.contains_key(&block_number) {
             let mut execution_outcome = self.execution_outcome.clone();
             execution_outcome.revert_to(block_number);
-            return Some(execution_outcome)
+            return Some(execution_outcome);
         }
         None
     }
@@ -330,7 +332,7 @@ impl<N: NodePrimitives> Chain<N> {
         let chain_tip = self.tip();
         let other_fork_block = other.fork_block();
         if chain_tip.hash() != other_fork_block.hash {
-            return Err(other)
+            return Err(other);
         }
 
         // Insert blocks from other chain
@@ -460,16 +462,18 @@ pub struct BlockReceipts<T = reth_ethereum_primitives::Receipt> {
 /// Bincode-compatible [`Chain`] serde implementation.
 #[cfg(feature = "serde-bincode-compat")]
 pub(super) mod serde_bincode_compat {
-    use crate::{serde_bincode_compat, ExecutionOutcome};
     use alloc::{borrow::Cow, collections::BTreeMap, sync::Arc};
+
     use alloy_primitives::BlockNumber;
     use reth_ethereum_primitives::EthPrimitives;
     use reth_primitives_traits::{
-        serde_bincode_compat::{RecoveredBlock, SerdeBincodeCompat},
         Block, NodePrimitives,
+        serde_bincode_compat::{RecoveredBlock, SerdeBincodeCompat},
     };
-    use serde::{ser::SerializeMap, Deserialize, Deserializer, Serialize, Serializer};
+    use serde::{Deserialize, Deserializer, Serialize, Serializer, ser::SerializeMap};
     use serde_with::{DeserializeAs, SerializeAs};
+
+    use crate::{ExecutionOutcome, serde_bincode_compat};
 
     /// Bincode-compatible [`super::Chain`] serde implementation.
     ///
@@ -635,12 +639,13 @@ pub(super) mod serde_bincode_compat {
 
     #[cfg(test)]
     mod tests {
-        use super::super::{serde_bincode_compat, Chain};
         use arbitrary::Arbitrary;
         use rand::Rng;
         use reth_primitives_traits::RecoveredBlock;
         use serde::{Deserialize, Serialize};
         use serde_with::serde_as;
+
+        use super::super::{Chain, serde_bincode_compat};
 
         #[test]
         fn test_chain_bincode_roundtrip() {
@@ -657,8 +662,10 @@ pub(super) mod serde_bincode_compat {
             rand::rng().fill(bytes.as_mut_slice());
             let data = Data {
                 chain: Chain::new(
-                    vec![RecoveredBlock::arbitrary(&mut arbitrary::Unstructured::new(&bytes))
-                        .unwrap()],
+                    vec![
+                        RecoveredBlock::arbitrary(&mut arbitrary::Unstructured::new(&bytes))
+                            .unwrap(),
+                    ],
                     Default::default(),
                     BTreeMap::new(),
                 ),
@@ -675,11 +682,12 @@ pub(super) mod serde_bincode_compat {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_consensus::TxType;
     use alloy_primitives::{Address, B256};
     use reth_ethereum_primitives::Receipt;
     use revm::{database::BundleState, primitives::HashMap, state::AccountInfo};
+
+    use super::*;
 
     #[test]
     fn chain_append() {

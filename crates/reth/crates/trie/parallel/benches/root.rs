@@ -1,20 +1,21 @@
 #![allow(missing_docs, unreachable_pub)]
+use std::collections::HashMap;
+
 use alloy_primitives::{B256, U256};
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use proptest::{prelude::*, strategy::ValueTree, test_runner::TestRunner};
 use proptest_arbitrary_interop::arb;
 use reth_primitives_traits::Account;
 use reth_provider::{
-    providers::OverlayStateProviderFactory, test_utils::create_test_provider_factory, StateWriter,
-    TrieWriter,
+    StateWriter, TrieWriter, providers::OverlayStateProviderFactory,
+    test_utils::create_test_provider_factory,
 };
 use reth_trie::{
-    hashed_cursor::HashedPostStateCursorFactory, HashedPostState, HashedStorage, StateRoot,
-    TrieInput,
+    HashedPostState, HashedStorage, StateRoot, TrieInput,
+    hashed_cursor::HashedPostStateCursorFactory,
 };
 use reth_trie_db::{DatabaseHashedCursorFactory, DatabaseStateRoot};
 use reth_trie_parallel::root::ParallelStateRoot;
-use std::collections::HashMap;
 
 pub fn calculate_state_root(c: &mut Criterion) {
     let mut group = c.benchmark_group("Calculate State Root");

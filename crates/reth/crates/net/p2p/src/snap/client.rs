@@ -1,9 +1,10 @@
-use crate::{download::DownloadClient, error::PeerRequestResult, priority::Priority};
 use futures::Future;
 use reth_eth_wire_types::snap::{
     AccountRangeMessage, ByteCodesMessage, GetAccountRangeMessage, GetByteCodesMessage,
     GetStorageRangesMessage, GetTrieNodesMessage, StorageRangesMessage, TrieNodesMessage,
 };
+
+use crate::{download::DownloadClient, error::PeerRequestResult, priority::Priority};
 
 /// Response types for snap sync requests
 #[derive(Debug, Clone, PartialEq, Eq)]

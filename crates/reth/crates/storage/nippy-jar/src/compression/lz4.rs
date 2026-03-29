@@ -1,5 +1,6 @@
-use crate::{compression::Compression, NippyJarError};
 use serde::{Deserialize, Serialize};
+
+use crate::{NippyJarError, compression::Compression};
 
 /// Wrapper type for `lz4_flex` that implements [`Compression`].
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -42,7 +43,7 @@ impl Compression for Lz4 {
                 Err(err) => {
                     multiplier *= 2;
                     if multiplier == 16 {
-                        return Err(NippyJarError::Custom(err.to_string()))
+                        return Err(NippyJarError::Custom(err.to_string()));
                     }
                 }
             }

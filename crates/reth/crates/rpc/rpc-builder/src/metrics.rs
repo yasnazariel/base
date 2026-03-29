@@ -1,13 +1,3 @@
-use jsonrpsee::{
-    core::middleware::{Batch, Notification},
-    server::middleware::rpc::RpcServiceT,
-    types::Request,
-    MethodResponse, RpcModule,
-};
-use reth_metrics::{
-    metrics::{Counter, Histogram},
-    Metrics,
-};
 use std::{
     collections::HashMap,
     future::Future,
@@ -15,6 +5,17 @@ use std::{
     sync::Arc,
     task::{Context, Poll},
     time::Instant,
+};
+
+use jsonrpsee::{
+    MethodResponse, RpcModule,
+    core::middleware::{Batch, Notification},
+    server::middleware::rpc::RpcServiceT,
+    types::Request,
+};
+use reth_metrics::{
+    Metrics,
+    metrics::{Counter, Histogram},
 };
 use tower::Layer;
 

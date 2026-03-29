@@ -1,20 +1,21 @@
 #![allow(missing_docs)]
 #![allow(unexpected_cfgs)]
 
+use std::ops::RangeInclusive;
+
 use alloy_primitives::BlockNumber;
-use criterion::{criterion_main, measurement::WallTime, BenchmarkGroup, Criterion};
+use criterion::{BenchmarkGroup, Criterion, criterion_main, measurement::WallTime};
 use reth_config::config::{EtlConfig, TransactionLookupConfig};
-use reth_db::{test_utils::TempDatabase, Database, DatabaseEnv};
+use reth_db::{Database, DatabaseEnv, test_utils::TempDatabase};
 use reth_provider::{
-    test_utils::MockNodeTypesWithDB, DBProvider, DatabaseProvider, DatabaseProviderFactory,
+    DBProvider, DatabaseProvider, DatabaseProviderFactory, test_utils::MockNodeTypesWithDB,
 };
 use reth_stages::{
+    StageCheckpoint,
     stages::{MerkleStage, SenderRecoveryStage, TransactionLookupStage},
     test_utils::TestStageDB,
-    StageCheckpoint,
 };
 use reth_stages_api::{ExecInput, Stage, StageExt, UnwindInput};
-use std::ops::RangeInclusive;
 use tokio::runtime::Runtime;
 
 mod setup;

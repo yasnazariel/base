@@ -1,30 +1,27 @@
 //! Helper function for calculating Merkle proofs and hashes.
-pub use alloy_trie::root::ordered_trie_root_with_encoder;
-
+/// Calculates the root hash for ommer/uncle headers.
+#[doc(inline)]
+pub use alloy_consensus::proofs::calculate_ommers_root;
 pub use alloy_consensus::proofs::calculate_receipt_root;
-
 /// Calculate a transaction root.
 ///
 /// `(rlp(index), encoded(tx))` pairs.
 #[doc(inline)]
 pub use alloy_consensus::proofs::calculate_transaction_root;
-
 /// Calculates the root hash of the withdrawals.
 #[doc(inline)]
 pub use alloy_consensus::proofs::calculate_withdrawals_root;
-
-/// Calculates the root hash for ommer/uncle headers.
-#[doc(inline)]
-pub use alloy_consensus::proofs::calculate_ommers_root;
+pub use alloy_trie::root::ordered_trie_root_with_encoder;
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use alloy_consensus::EMPTY_ROOT_HASH;
     use alloy_genesis::GenesisAccount;
-    use alloy_primitives::{b256, hex_literal::hex, Address, B256, U256};
+    use alloy_primitives::{Address, B256, U256, b256, hex_literal::hex};
     use alloy_trie::root::{state_root_ref_unhashed, state_root_unhashed};
     use reth_chainspec::{HOLESKY, MAINNET, SEPOLIA};
-    use std::collections::HashMap;
 
     #[test]
     fn check_empty_state_root() {

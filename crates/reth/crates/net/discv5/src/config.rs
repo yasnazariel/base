@@ -9,14 +9,14 @@ use std::{
 use alloy_primitives::Bytes;
 use derive_more::Display;
 use discv5::{
-    multiaddr::{Multiaddr, Protocol},
     ListenConfig,
+    multiaddr::{Multiaddr, Protocol},
 };
 use reth_ethereum_forks::{EnrForkIdEntry, ForkId};
 use reth_network_peers::NodeRecord;
 use tracing::debug;
 
-use crate::{enr::discv4_id_to_multiaddr_id, filter::MustNotIncludeKeys, NetworkStackId};
+use crate::{NetworkStackId, enr::discv4_id_to_multiaddr_id, filter::MustNotIncludeKeys};
 
 /// The default address for discv5 via UDP is IPv4.
 ///
@@ -152,8 +152,8 @@ impl ConfigBuilder {
     /// Adds a comma-separated list of enodes, serialized unsigned node records, to boot nodes.
     pub fn add_serialized_unsigned_boot_nodes(mut self, enodes: &[&str]) -> Self {
         for node in enodes {
-            if let Ok(node) = node.parse() &&
-                let Ok(node) = BootNode::from_unsigned(node)
+            if let Ok(node) = node.parse()
+                && let Ok(node) = BootNode::from_unsigned(node)
             {
                 self.bootstrap_nodes.insert(node);
             }
@@ -350,8 +350,8 @@ impl Config {
 /// Returns the IPv4 discovery socket if one is configured.
 pub const fn ipv4(listen_config: &ListenConfig) -> Option<SocketAddrV4> {
     match listen_config {
-        ListenConfig::Ipv4 { ip, port } |
-        ListenConfig::DualStack { ipv4: ip, ipv4_port: port, .. } => {
+        ListenConfig::Ipv4 { ip, port }
+        | ListenConfig::DualStack { ipv4: ip, ipv4_port: port, .. } => {
             Some(SocketAddrV4::new(*ip, *port))
         }
         ListenConfig::Ipv6 { .. } => None,
@@ -362,8 +362,8 @@ pub const fn ipv4(listen_config: &ListenConfig) -> Option<SocketAddrV4> {
 pub const fn ipv6(listen_config: &ListenConfig) -> Option<SocketAddrV6> {
     match listen_config {
         ListenConfig::Ipv4 { .. } => None,
-        ListenConfig::Ipv6 { ip, port } |
-        ListenConfig::DualStack { ipv6: ip, ipv6_port: port, .. } => {
+        ListenConfig::Ipv6 { ip, port }
+        | ListenConfig::DualStack { ipv6: ip, ipv6_port: port, .. } => {
             Some(SocketAddrV6::new(*ip, *port, 0, 0))
         }
     }
@@ -411,8 +411,8 @@ pub fn discv5_sockets_wrt_rlpx_addr(
             let discv5_socket_ipv6 =
                 discv5_addr_ipv6.map(|ip| SocketAddrV6::new(ip, discv5_port_ipv6, 0, 0));
 
-            if let Some(discv5_addr) = discv5_addr_ipv4 &&
-                discv5_addr != rlpx_addr
+            if let Some(discv5_addr) = discv5_addr_ipv4
+                && discv5_addr != rlpx_addr
             {
                 debug!(target: "net::discv5",
                     %discv5_addr,
@@ -430,8 +430,8 @@ pub fn discv5_sockets_wrt_rlpx_addr(
             let discv5_socket_ipv4 =
                 discv5_addr_ipv4.map(|ip| SocketAddrV4::new(ip, discv5_port_ipv4));
 
-            if let Some(discv5_addr) = discv5_addr_ipv6 &&
-                discv5_addr != rlpx_addr
+            if let Some(discv5_addr) = discv5_addr_ipv6
+                && discv5_addr != rlpx_addr
             {
                 debug!(target: "net::discv5",
                     %discv5_addr,
@@ -481,9 +481,11 @@ impl BootNode {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use alloy_primitives::hex;
     use std::net::SocketAddrV4;
+
+    use alloy_primitives::hex;
+
+    use super::*;
 
     const MULTI_ADDRESSES: &str = "/ip4/184.72.129.189/udp/30301/p2p/16Uiu2HAmSG2hdLwyQHQmG4bcJBgD64xnW63WMTLcrNq6KoZREfGb,/ip4/3.231.11.52/udp/30301/p2p/16Uiu2HAmMy4V8bi3XP7KDfSLQcLACSvTLroRRwEsTyFUKo8NCkkp,/ip4/54.198.153.150/udp/30301/p2p/16Uiu2HAmSVsb7MbRf1jg3Dvd6a3n5YNqKQwn1fqHCFgnbqCsFZKe,/ip4/3.220.145.177/udp/30301/p2p/16Uiu2HAm74pBDGdQ84XCZK27GRQbGFFwQ7RsSqsPwcGmCR3Cwn3B,/ip4/3.231.138.188/udp/30301/p2p/16Uiu2HAmMnTiJwgFtSVGV14ZNpwAvS1LUoF4pWWeNtURuV6C3zYB";
     const BOOT_NODES_OP_MAINNET_AND_BASE_MAINNET: &[&str] = &[
@@ -511,9 +513,9 @@ mod test {
         for node in config.bootstrap_nodes {
             let BootNode::Enr(node) = node else { panic!() };
             assert!(
-                socket_1 == node.udp4_socket().unwrap() && socket_1 == node.tcp4_socket().unwrap() ||
-                    socket_2 == node.udp4_socket().unwrap() &&
-                        socket_2 == node.tcp4_socket().unwrap()
+                socket_1 == node.udp4_socket().unwrap() && socket_1 == node.tcp4_socket().unwrap()
+                    || socket_2 == node.udp4_socket().unwrap()
+                        && socket_2 == node.tcp4_socket().unwrap()
             );
             assert_eq!("84b4940500", hex::encode(node.get_raw_rlp("opstack").unwrap()));
         }

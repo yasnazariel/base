@@ -1,4 +1,12 @@
-use crate::metrics::PersistenceMetrics;
+use std::{
+    sync::{
+        Arc,
+        mpsc::{Receiver, SendError, Sender},
+    },
+    thread::JoinHandle,
+    time::Instant,
+};
+
 use alloy_eips::BlockNumHash;
 use crossbeam_channel::Sender as CrossbeamSender;
 use reth_chain_state::ExecutedBlock;
@@ -6,22 +14,16 @@ use reth_errors::ProviderError;
 use reth_ethereum_primitives::EthPrimitives;
 use reth_primitives_traits::NodePrimitives;
 use reth_provider::{
-    providers::ProviderNodeTypes, BlockExecutionWriter, BlockHashReader, ChainStateBlockWriter,
-    DBProvider, DatabaseProviderFactory, ProviderFactory, SaveBlocksMode,
+    BlockExecutionWriter, BlockHashReader, ChainStateBlockWriter, DBProvider,
+    DatabaseProviderFactory, ProviderFactory, SaveBlocksMode, providers::ProviderNodeTypes,
 };
 use reth_prune::{PrunerError, PrunerWithFactory};
 use reth_stages_api::{MetricEvent, MetricEventsSender};
 use reth_tasks::spawn_os_thread;
-use std::{
-    sync::{
-        mpsc::{Receiver, SendError, Sender},
-        Arc,
-    },
-    thread::JoinHandle,
-    time::Instant,
-};
 use thiserror::Error;
 use tracing::{debug, error, instrument};
+
+use crate::metrics::PersistenceMetrics;
 
 /// Writes parts of reth's in memory tree state to the database and static files.
 ///
@@ -352,13 +354,14 @@ impl Drop for ServiceGuard {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_primitives::B256;
     use reth_chain_state::test_utils::TestBlockBuilder;
     use reth_exex_types::FinishedExExHeight;
     use reth_provider::test_utils::create_test_provider_factory;
     use reth_prune::Pruner;
     use tokio::sync::mpsc::unbounded_channel;
+
+    use super::*;
 
     fn default_persistence_handle() -> PersistenceHandle<EthPrimitives> {
         let provider = create_test_provider_factory();

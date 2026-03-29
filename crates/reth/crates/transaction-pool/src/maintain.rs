@@ -1,45 +1,47 @@
 //! Support for maintaining the state of the transaction pool
 
-use crate::{
-    blobstore::{BlobSidecarConverter, BlobStoreCanonTracker, BlobStoreUpdates},
-    error::PoolError,
-    metrics::MaintainPoolMetrics,
-    traits::{CanonicalStateUpdate, EthPoolTransaction, TransactionPool, TransactionPoolExt},
-    AllPoolTransactions, BlobTransactionSidecarVariant, BlockInfo, PoolTransaction, PoolUpdateKind,
-    TransactionOrigin,
-};
-use alloy_consensus::{transaction::TxHashRef, BlockHeader, Typed2718};
-use alloy_eips::{BlockNumberOrTag, Decodable2718, Encodable2718};
-use alloy_primitives::{
-    map::{AddressSet, HashSet},
-    Address, BlockHash, BlockNumber, Bytes,
-};
-use alloy_rlp::Encodable;
-use futures_util::{
-    future::{BoxFuture, Fuse, FusedFuture},
-    FutureExt, Stream, StreamExt,
-};
-use reth_chain_state::CanonStateNotification;
-use reth_chainspec::{ChainSpecProvider, EthChainSpec, EthereumHardforks};
-use reth_execution_types::ChangedAccount;
-use reth_fs_util::FsPathError;
-use reth_primitives_traits::{
-    transaction::signed::SignedTransaction, NodePrimitives, SealedHeader,
-};
-use reth_storage_api::{errors::provider::ProviderError, BlockReaderIdExt, StateProviderFactory};
-use reth_tasks::TaskSpawner;
-use serde::{Deserialize, Serialize};
 use std::{
     borrow::Borrow,
     hash::{Hash, Hasher},
     path::{Path, PathBuf},
     sync::Arc,
 };
+
+use alloy_consensus::{BlockHeader, Typed2718, transaction::TxHashRef};
+use alloy_eips::{BlockNumberOrTag, Decodable2718, Encodable2718};
+use alloy_primitives::{
+    Address, BlockHash, BlockNumber, Bytes,
+    map::{AddressSet, HashSet},
+};
+use alloy_rlp::Encodable;
+use futures_util::{
+    FutureExt, Stream, StreamExt,
+    future::{BoxFuture, Fuse, FusedFuture},
+};
+use reth_chain_state::CanonStateNotification;
+use reth_chainspec::{ChainSpecProvider, EthChainSpec, EthereumHardforks};
+use reth_execution_types::ChangedAccount;
+use reth_fs_util::FsPathError;
+use reth_primitives_traits::{
+    NodePrimitives, SealedHeader, transaction::signed::SignedTransaction,
+};
+use reth_storage_api::{BlockReaderIdExt, StateProviderFactory, errors::provider::ProviderError};
+use reth_tasks::TaskSpawner;
+use serde::{Deserialize, Serialize};
 use tokio::{
     sync::oneshot,
     time::{self, Duration},
 };
 use tracing::{debug, error, info, trace, warn};
+
+use crate::{
+    AllPoolTransactions, BlobTransactionSidecarVariant, BlockInfo, PoolTransaction, PoolUpdateKind,
+    TransactionOrigin,
+    blobstore::{BlobSidecarConverter, BlobStoreCanonTracker, BlobStoreUpdates},
+    error::PoolError,
+    metrics::MaintainPoolMetrics,
+    traits::{CanonicalStateUpdate, EthPoolTransaction, TransactionPool, TransactionPoolExt},
+};
 
 /// Maximum amount of time non-executable transaction are queued.
 pub const MAX_QUEUED_TRANSACTION_LIFETIME: Duration = Duration::from_secs(3 * 60 * 60);
@@ -234,8 +236,8 @@ pub async fn maintain_transaction_pool<N, Client, P, St, Tasks>(
 
         // check if we have a new finalized block
         if let Some(finalized) =
-            last_finalized_block.update(client.finalized_block_number().ok().flatten()) &&
-            let BlobStoreUpdates::Finalized(blobs) =
+            last_finalized_block.update(client.finalized_block_number().ok().flatten())
+            && let BlobStoreUpdates::Finalized(blobs) =
                 blob_store_tracker.on_finalized_block(finalized)
         {
             metrics.inc_deleted_tracked_blobs(blobs.len());
@@ -328,8 +330,8 @@ pub async fn maintain_transaction_pool<N, Client, P, St, Tasks>(
                 let old_first = old_blocks.first();
 
                 // check if the reorg is not canonical with the pool's block
-                if !(old_first.parent_hash() == pool_info.last_seen_block_hash ||
-                    new_first.parent_hash() == pool_info.last_seen_block_hash)
+                if !(old_first.parent_hash() == pool_info.last_seen_block_hash
+                    || new_first.parent_hash() == pool_info.last_seen_block_hash)
                 {
                     // the new block points to a higher block than the oldest block in the old chain
                     maintained_state = MaintainedPoolState::Drifted;
@@ -475,7 +477,7 @@ pub async fn maintain_transaction_pool<N, Client, P, St, Tasks>(
                     // keep track of mined blob transactions
                     blob_store_tracker.add_new_chain_blocks(&blocks);
 
-                    continue
+                    continue;
                 }
 
                 let mut changed_accounts = Vec::with_capacity(state.state().len());
@@ -510,9 +512,9 @@ pub async fn maintain_transaction_pool<N, Client, P, St, Tasks>(
                 blob_store_tracker.add_new_chain_blocks(&blocks);
 
                 // If Osaka activates in 2 slots we need to convert blobs to new format.
-                if !chain_spec.is_osaka_active_at_timestamp(tip.timestamp()) &&
-                    !chain_spec.is_osaka_active_at_timestamp(tip.timestamp().saturating_add(12)) &&
-                    chain_spec.is_osaka_active_at_timestamp(tip.timestamp().saturating_add(24))
+                if !chain_spec.is_osaka_active_at_timestamp(tip.timestamp())
+                    && !chain_spec.is_osaka_active_at_timestamp(tip.timestamp().saturating_add(12))
+                    && chain_spec.is_osaka_active_at_timestamp(tip.timestamp().saturating_add(24))
                 {
                     let pool = pool.clone();
                     let spawner = task_spawner.clone();
@@ -708,14 +710,14 @@ where
     P: TransactionPool<Transaction: PoolTransaction<Consensus: SignedTransaction>>,
 {
     if !file_path.exists() {
-        return Ok(())
+        return Ok(());
     }
 
     debug!(target: "txpool", txs_file =?file_path, "Check local persistent storage for saved transactions");
     let data = reth_fs_util::read(file_path)?;
 
     if data.is_empty() {
-        return Ok(())
+        return Ok(());
     }
 
     let pool_transactions: Vec<(TransactionOrigin, <P as TransactionPool>::Transaction)> =
@@ -767,7 +769,7 @@ where
     let local_transactions = pool.get_local_transactions();
     if local_transactions.is_empty() {
         trace!(target: "txpool", "no local transactions to save");
-        return
+        return;
     }
 
     let local_transactions = local_transactions
@@ -784,7 +786,7 @@ where
         Ok(data) => data,
         Err(err) => {
             warn!(target: "txpool", %err, txs_file=?file_path, "failed to serialize local transactions to json");
-            return
+            return;
         }
     };
 
@@ -839,7 +841,7 @@ pub async fn backup_local_transactions_task<P>(
 {
     let Some(transactions_path) = config.transactions_path else {
         // nothing to do
-        return
+        return;
     };
 
     if let Err(err) = load_and_reinsert_transactions(pool.clone(), &transactions_path).await {
@@ -856,18 +858,19 @@ pub async fn backup_local_transactions_task<P>(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{
-        blobstore::InMemoryBlobStore, validate::EthTransactionValidatorBuilder,
-        CoinbaseTipOrdering, EthPooledTransaction, Pool, TransactionOrigin,
-    };
     use alloy_eips::eip2718::Decodable2718;
-    use alloy_primitives::{hex, U256};
+    use alloy_primitives::{U256, hex};
     use reth_ethereum_primitives::PooledTransactionVariant;
     use reth_evm_ethereum::EthEvmConfig;
     use reth_fs_util as fs;
     use reth_provider::test_utils::{ExtendedAccount, MockEthProvider};
     use reth_tasks::Runtime;
+
+    use super::*;
+    use crate::{
+        CoinbaseTipOrdering, EthPooledTransaction, Pool, TransactionOrigin,
+        blobstore::InMemoryBlobStore, validate::EthTransactionValidatorBuilder,
+    };
 
     #[test]
     fn changed_acc_entry() {

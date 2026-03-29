@@ -1,5 +1,7 @@
+use std::collections::HashSet;
+
 use alloy_consensus::Header;
-use alloy_primitives::{hex, B256};
+use alloy_primitives::{B256, hex};
 use arbitrary::Arbitrary;
 use eyre::Result;
 use proptest::{
@@ -14,7 +16,6 @@ use reth_db_api::{
 };
 use reth_ethereum_primitives::TransactionSigned;
 use reth_fs_util as fs;
-use std::collections::HashSet;
 use tracing::error;
 
 const VECTORS_FOLDER: &str = "testdata/micro/db";
@@ -132,7 +133,7 @@ where
         let key: T::Key = start_keys.new_tree(runner).map_err(|e| eyre::eyre!("{e}"))?.current();
 
         if !seen_keys.insert(key.clone()) {
-            continue
+            continue;
         }
 
         let mut values: Vec<T::Value> =

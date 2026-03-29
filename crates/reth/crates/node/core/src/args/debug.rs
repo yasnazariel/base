@@ -1,11 +1,12 @@
 //! clap [Args](clap::Args) for debugging purposes
 
+use std::{collections::HashSet, ffi::OsStr, fmt, path::PathBuf, str::FromStr};
+
 use alloy_primitives::B256;
 use clap::{
-    builder::{PossibleValue, TypedValueParser},
     Arg, Args, Command,
+    builder::{PossibleValue, TypedValueParser},
 };
-use std::{collections::HashSet, ffi::OsStr, fmt, path::PathBuf, str::FromStr};
 use strum::{AsRefStr, EnumIter, IntoStaticStr, ParseError, VariantArray, VariantNames};
 
 /// Parameters for debugging purposes
@@ -236,7 +237,7 @@ impl FromStr for InvalidBlockSelection {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.is_empty() {
-            return Ok(Self(Default::default()))
+            return Ok(Self(Default::default()));
         }
         let hooks = s.split(',').map(str::trim).peekable();
         Self::try_from_selection(hooks)
@@ -340,8 +341,9 @@ impl InvalidBlockHookType {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use clap::Parser;
+
+    use super::*;
 
     /// A helper type to parse Args more easily
     #[derive(Parser)]

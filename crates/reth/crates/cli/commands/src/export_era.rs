@@ -1,14 +1,16 @@
 //! Command exporting block data to convert them to ERA1 files.
 
-use crate::common::{AccessRights, CliNodeTypes, Environment, EnvironmentArgs};
+use std::{path::PathBuf, sync::Arc};
+
 use clap::{Args, Parser};
 use reth_chainspec::{EthChainSpec, EthereumHardforks};
 use reth_cli::chainspec::ChainSpecParser;
 use reth_era::era1::types::execution::MAX_BLOCKS_PER_ERA1;
 use reth_era_utils as era1;
 use reth_provider::DatabaseProviderFactory;
-use std::{path::PathBuf, sync::Arc};
 use tracing::info;
+
+use crate::common::{AccessRights, CliNodeTypes, Environment, EnvironmentArgs};
 
 // Default folder name for era1 export files
 const ERA1_EXPORT_FOLDER_NAME: &str = "era1-export";

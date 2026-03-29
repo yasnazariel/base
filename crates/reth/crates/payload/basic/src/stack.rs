@@ -1,16 +1,15 @@
-use crate::{
-    BuildArguments, BuildOutcome, HeaderForPayload, PayloadBuilder, PayloadBuilderAttributes,
-    PayloadBuilderError, PayloadConfig,
-};
+use std::{error::Error, fmt};
 
-use alloy_eips::eip4895::Withdrawals;
+use alloy_eips::{eip4895::Withdrawals, eip7685::Requests};
 use alloy_primitives::{Address, B256, U256};
 use reth_payload_builder::PayloadId;
 use reth_payload_primitives::BuiltPayload;
 use reth_primitives_traits::{NodePrimitives, SealedBlock};
 
-use alloy_eips::eip7685::Requests;
-use std::{error::Error, fmt};
+use crate::{
+    BuildArguments, BuildOutcome, HeaderForPayload, PayloadBuilder, PayloadBuilderAttributes,
+    PayloadBuilderError, PayloadConfig,
+};
 
 /// hand rolled Either enum to handle two builder types
 #[derive(Debug, Clone)]
@@ -204,11 +203,7 @@ where
                     config: PayloadConfig { parent_header, attributes: left_attr },
                     cancel,
                     best_payload: best_payload.and_then(|payload| {
-                        if let Either::Left(p) = payload {
-                            Some(p)
-                        } else {
-                            None
-                        }
+                        if let Either::Left(p) = payload { Some(p) } else { None }
                     }),
                 };
                 self.left.try_build(left_args).map(|out| out.map_payload(Either::Left))
@@ -219,11 +214,7 @@ where
                     config: PayloadConfig { parent_header, attributes: right_attr },
                     cancel,
                     best_payload: best_payload.and_then(|payload| {
-                        if let Either::Right(p) = payload {
-                            Some(p)
-                        } else {
-                            None
-                        }
+                        if let Either::Right(p) = payload { Some(p) } else { None }
                     }),
                 };
                 self.right.try_build(right_args).map(|out| out.map_payload(Either::Right))

@@ -1,6 +1,7 @@
 #![allow(missing_docs)]
 
 use std::{env, error::Error};
+
 use vergen::{BuildBuilder, CargoBuilder, Emitter};
 use vergen_git2::Git2Builder;
 

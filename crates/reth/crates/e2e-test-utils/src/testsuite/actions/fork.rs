@@ -1,9 +1,7 @@
 //! Fork creation actions for the e2e testing framework.
 
-use crate::testsuite::{
-    actions::{produce_blocks::ProduceBlocks, Sequence},
-    Action, BlockInfo, Environment,
-};
+use std::marker::PhantomData;
+
 use alloy_rpc_types_engine::{ForkchoiceState, PayloadAttributes};
 use alloy_rpc_types_eth::{Block, Header, Receipt, Transaction, TransactionRequest};
 use eyre::Result;
@@ -11,8 +9,12 @@ use futures_util::future::BoxFuture;
 use reth_ethereum_primitives::TransactionSigned;
 use reth_node_api::{EngineTypes, PayloadTypes};
 use reth_rpc_api::clients::EthApiClient;
-use std::marker::PhantomData;
 use tracing::debug;
+
+use crate::testsuite::{
+    Action, BlockInfo, Environment,
+    actions::{Sequence, produce_blocks::ProduceBlocks},
+};
 
 /// Fork base target for fork creation
 #[derive(Debug, Clone)]

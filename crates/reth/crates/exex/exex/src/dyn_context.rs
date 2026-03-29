@@ -1,13 +1,14 @@
 //! Mirrored version of [`ExExContext`](`crate::ExExContext`)
 //! without generic abstraction over [Node](`reth_node_api::FullNodeComponents`)
 
+use std::fmt::Debug;
+
 use alloy_eips::BlockNumHash;
 use reth_chainspec::EthChainSpec;
 use reth_ethereum_primitives::EthPrimitives;
 use reth_node_api::{FullNodeComponents, HeaderTy, NodePrimitives, NodeTypes, PrimitivesTy};
 use reth_node_core::node_config::NodeConfig;
 use reth_provider::BlockReader;
-use std::fmt::Debug;
 use tokio::sync::mpsc;
 
 use crate::{ExExContext, ExExEvent, ExExNotificationsStream};

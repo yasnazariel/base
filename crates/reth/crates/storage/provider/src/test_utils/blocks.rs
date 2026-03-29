@@ -1,13 +1,12 @@
 //! Dummy blocks and data for tests
-use crate::{DBProvider, DatabaseProviderRW, ExecutionOutcome};
-use alloy_consensus::{TxLegacy, EMPTY_OMMER_ROOT_HASH};
-use alloy_primitives::{
-    b256, hex_literal::hex, map::HashMap, Address, BlockNumber, Bytes, Log, TxKind, B256, U256,
-};
+use std::{str::FromStr, sync::LazyLock};
 
-use alloy_consensus::Header;
+use alloy_consensus::{EMPTY_OMMER_ROOT_HASH, Header, TxLegacy};
 use alloy_eips::eip4895::{Withdrawal, Withdrawals};
-use alloy_primitives::Signature;
+use alloy_primitives::{
+    Address, B256, BlockNumber, Bytes, Log, Signature, TxKind, U256, b256, hex_literal::hex,
+    map::HashMap,
+};
 use reth_db_api::{database::Database, models::StoredBlockBodyIndices, tables};
 use reth_ethereum_primitives::{BlockBody, Receipt, Transaction, TransactionSigned, TxType};
 use reth_node_types::NodeTypes;
@@ -15,7 +14,8 @@ use reth_primitives_traits::{Account, RecoveredBlock, SealedBlock, SealedHeader}
 use reth_trie::root::{state_root_unhashed, storage_root_unhashed};
 use revm_database::BundleState;
 use revm_state::AccountInfo;
-use std::{str::FromStr, sync::LazyLock};
+
+use crate::{DBProvider, DatabaseProviderRW, ExecutionOutcome};
 
 /// Assert genesis block
 pub fn assert_genesis_block<DB: Database, N: NodeTypes>(

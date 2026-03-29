@@ -1,12 +1,14 @@
-use crate::{
-    provider::TrieNodeProvider, LeafUpdate, ParallelSparseTrie, SparseTrie as SparseTrieTrait,
-    SparseTrieUpdates,
-};
 use alloc::{boxed::Box, vec::Vec};
-use alloy_primitives::{map::B256Map, B256};
+
+use alloy_primitives::{B256, map::B256Map};
 use reth_execution_errors::{SparseTrieErrorKind, SparseTrieResult};
 use reth_trie_common::{BranchNodeMasks, Nibbles, RlpNode, TrieMask, TrieNode};
 use tracing::instrument;
+
+use crate::{
+    LeafUpdate, ParallelSparseTrie, SparseTrie as SparseTrieTrait, SparseTrieUpdates,
+    provider::TrieNodeProvider,
+};
 
 /// A sparse trie that is either in a "blind" state (no nodes are revealed, root node hash is
 /// unknown) or in a "revealed" state (root node has been revealed and the trie can be updated).
@@ -122,22 +124,14 @@ impl<T: SparseTrieTrait> RevealableSparseTrie<T> {
     ///
     /// Returns `None` if the trie is blinded.
     pub const fn as_revealed_ref(&self) -> Option<&T> {
-        if let Self::Revealed(revealed) = self {
-            Some(revealed)
-        } else {
-            None
-        }
+        if let Self::Revealed(revealed) = self { Some(revealed) } else { None }
     }
 
     /// Returns a mutable reference to the underlying revealed sparse trie.
     ///
     /// Returns `None` if the trie is blinded.
     pub fn as_revealed_mut(&mut self) -> Option<&mut T> {
-        if let Self::Revealed(revealed) = self {
-            Some(revealed)
-        } else {
-            None
-        }
+        if let Self::Revealed(revealed) = self { Some(revealed) } else { None }
     }
 
     /// Wipes the trie by removing all nodes and values,

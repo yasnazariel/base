@@ -5,7 +5,7 @@ use std::io;
 use reth_eth_wire_types::{DisconnectReason, UnknownDisconnectReason};
 use reth_primitives_traits::GotExpected;
 
-use crate::{capability::SharedCapabilityError, ProtocolVersion};
+use crate::{ProtocolVersion, capability::SharedCapabilityError};
 
 /// Errors when sending/receiving p2p messages. These should result in kicking the peer.
 #[derive(thiserror::Error, Debug)]
@@ -82,8 +82,8 @@ impl P2PStreamError {
     /// Returns the [`DisconnectReason`] if it is the `Disconnected` variant.
     pub const fn as_disconnected(&self) -> Option<DisconnectReason> {
         let reason = match self {
-            Self::HandshakeError(P2PHandshakeError::Disconnected(reason)) |
-            Self::Disconnected(reason) => reason,
+            Self::HandshakeError(P2PHandshakeError::Disconnected(reason))
+            | Self::Disconnected(reason) => reason,
             _ => return None,
         };
 

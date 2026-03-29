@@ -1,5 +1,6 @@
-use crate::StaticFileTargets;
 use core::time::Duration;
+
+use crate::StaticFileTargets;
 
 /// An event emitted by the static file producer.
 #[derive(Debug, PartialEq, Eq, Clone)]

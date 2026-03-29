@@ -1,17 +1,19 @@
-use super::{
-    AccountReader, BlockHashReader, BlockIdReader, StateProofProvider, StateRootProvider,
-    StorageRootProvider,
-};
 use alloc::boxed::Box;
+
 use alloy_consensus::constants::KECCAK_EMPTY;
 use alloy_eips::{BlockId, BlockNumberOrTag};
-use alloy_primitives::{Address, BlockHash, BlockNumber, StorageKey, StorageValue, B256, U256};
+use alloy_primitives::{Address, B256, BlockHash, BlockNumber, StorageKey, StorageValue, U256};
 use auto_impl::auto_impl;
 use reth_execution_types::ExecutionOutcome;
 use reth_primitives_traits::Bytecode;
 use reth_storage_errors::provider::ProviderResult;
 use reth_trie_common::HashedPostState;
 use revm_database::BundleState;
+
+use super::{
+    AccountReader, BlockHashReader, BlockIdReader, StateProofProvider, StateRootProvider,
+    StorageRootProvider,
+};
 
 /// This just receives state, or [`ExecutionOutcome`], from the provider
 #[auto_impl::auto_impl(&, Box)]
@@ -75,10 +77,10 @@ pub trait StateProvider:
 
         if let Some(code_hash) = acc.bytecode_hash {
             if code_hash == KECCAK_EMPTY {
-                return Ok(None)
+                return Ok(None);
             }
             // Get the code from the code hash
-            return self.bytecode_by_hash(&code_hash)
+            return self.bytecode_by_hash(&code_hash);
         }
 
         // Return `None` if no code hash is set

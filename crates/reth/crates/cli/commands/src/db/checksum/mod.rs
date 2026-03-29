@@ -1,25 +1,27 @@
-use crate::{
-    common::CliNodeTypes,
-    db::get::{maybe_json_value_parser, table_key},
-};
-use alloy_primitives::map::foldhash::fast::FixedState;
-use clap::Parser;
-use itertools::Itertools;
-use reth_chainspec::EthereumHardforks;
-use reth_db::{static_file::iter_static_files, DatabaseEnv};
-use reth_db_api::{
-    cursor::DbCursorRO, table::Table, transaction::DbTx, RawKey, RawTable, RawValue, TableViewer,
-    Tables,
-};
-use reth_db_common::DbTool;
-use reth_node_builder::{NodeTypesWithDB, NodeTypesWithDBAdapter};
-use reth_provider::{providers::ProviderNodeTypes, DBProvider, StaticFileProviderFactory};
-use reth_static_file_types::StaticFileSegment;
 use std::{
     hash::{BuildHasher, Hasher},
     time::{Duration, Instant},
 };
+
+use alloy_primitives::map::foldhash::fast::FixedState;
+use clap::Parser;
+use itertools::Itertools;
+use reth_chainspec::EthereumHardforks;
+use reth_db::{DatabaseEnv, static_file::iter_static_files};
+use reth_db_api::{
+    RawKey, RawTable, RawValue, TableViewer, Tables, cursor::DbCursorRO, table::Table,
+    transaction::DbTx,
+};
+use reth_db_common::DbTool;
+use reth_node_builder::{NodeTypesWithDB, NodeTypesWithDBAdapter};
+use reth_provider::{DBProvider, StaticFileProviderFactory, providers::ProviderNodeTypes};
+use reth_static_file_types::StaticFileSegment;
 use tracing::{info, warn};
+
+use crate::{
+    common::CliNodeTypes,
+    db::get::{maybe_json_value_parser, table_key},
+};
 
 #[cfg(all(unix, feature = "rocksdb"))]
 mod rocksdb;
@@ -267,7 +269,7 @@ impl<N: ProviderNodeTypes> TableViewer<(u64, Duration)> for ChecksumViewer<'_, N
 
             total = index + 1;
             if total >= limit {
-                break
+                break;
             }
         }
 

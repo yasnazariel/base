@@ -24,11 +24,18 @@
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-use alloy_consensus::{constants::KECCAK_EMPTY, BlockHeader};
+use std::{
+    collections::BTreeMap,
+    future::{Future, IntoFuture},
+    ops::{RangeBounds, RangeInclusive},
+    sync::Arc,
+};
+
+use alloy_consensus::{BlockHeader, constants::KECCAK_EMPTY};
 use alloy_eips::{BlockHashOrNumber, BlockNumberOrTag};
-use alloy_network::{primitives::HeaderResponse, BlockResponse};
-use alloy_primitives::{Address, BlockHash, BlockNumber, StorageKey, TxHash, TxNumber, B256, U256};
-use alloy_provider::{ext::DebugApi, network::Network, Provider};
+use alloy_network::{BlockResponse, primitives::HeaderResponse};
+use alloy_primitives::{Address, B256, BlockHash, BlockNumber, StorageKey, TxHash, TxNumber, U256};
+use alloy_provider::{Provider, ext::DebugApi, network::Network};
 use alloy_rpc_types::{AccountInfo, BlockId};
 use alloy_rpc_types_engine::ForkchoiceState;
 use dashmap::DashMap;
@@ -57,13 +64,7 @@ use reth_storage_api::{
     BlockBodyIndicesProvider, BlockReaderIdExt, BlockSource, DBProvider, NodePrimitivesProvider,
     ReceiptProviderIdExt, StatsReader,
 };
-use reth_trie::{updates::TrieUpdates, AccountProof, HashedPostState, MultiProof, TrieInput};
-use std::{
-    collections::BTreeMap,
-    future::{Future, IntoFuture},
-    ops::{RangeBounds, RangeInclusive},
-    sync::Arc,
-};
+use reth_trie::{AccountProof, HashedPostState, MultiProof, TrieInput, updates::TrieUpdates};
 use tokio::{runtime::Handle, sync::broadcast};
 use tracing::{trace, warn};
 
@@ -1098,11 +1099,7 @@ where
                 .await
                 .map_err(ProviderError::other)?;
 
-            if code.is_empty() {
-                Ok(None)
-            } else {
-                Ok(Some(Bytecode::new_raw(code)))
-            }
+            if code.is_empty() { Ok(None) } else { Ok(Some(Bytecode::new_raw(code))) }
         })
     }
 

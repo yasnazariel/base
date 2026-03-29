@@ -1,3 +1,27 @@
+use std::{
+    str::FromStr,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+
+use alloy_consensus::{BlockHeader, Sealable};
+use alloy_primitives::U256;
+use chrono::Local;
+use reth_chain_state::{CanonStateNotification, CanonStateSubscriptions};
+use reth_network_api::{NetworkInfo, Peers};
+use reth_primitives_traits::{Block, BlockBody};
+use reth_storage_api::{BlockReader, BlockReaderIdExt, NodePrimitivesProvider};
+use reth_transaction_pool::TransactionPool;
+use serde_json::Value;
+use tokio::{
+    sync::{Mutex, RwLock, mpsc},
+    time::{interval, sleep, timeout},
+};
+use tokio_stream::StreamExt;
+use tokio_tungstenite::connect_async;
+use tracing::{debug, info};
+use url::Url;
+
 use crate::{
     connection::ConnWrapper,
     credentials::EthstatsCredentials,
@@ -7,29 +31,6 @@ use crate::{
         PayloadStats, PendingMsg, PendingStats, PingMsg, StatsMsg, TxStats, UncleStats,
     },
 };
-use alloy_consensus::{BlockHeader, Sealable};
-use alloy_primitives::U256;
-use reth_chain_state::{CanonStateNotification, CanonStateSubscriptions};
-use reth_network_api::{NetworkInfo, Peers};
-use reth_primitives_traits::{Block, BlockBody};
-use reth_storage_api::{BlockReader, BlockReaderIdExt, NodePrimitivesProvider};
-use reth_transaction_pool::TransactionPool;
-
-use chrono::Local;
-use serde_json::Value;
-use std::{
-    str::FromStr,
-    sync::Arc,
-    time::{Duration, Instant},
-};
-use tokio::{
-    sync::{mpsc, Mutex, RwLock},
-    time::{interval, sleep, timeout},
-};
-use tokio_stream::StreamExt;
-use tokio_tungstenite::connect_async;
-use tracing::{debug, info};
-use url::Url;
 
 /// Number of historical blocks to include in a history update sent to the `EthStats` server
 const HISTORY_UPDATE_RANGE: u64 = 50;
@@ -182,8 +183,8 @@ where
         let response =
             timeout(READ_TIMEOUT, conn.read_json()).await.map_err(|_| EthStatsError::Timeout)??;
 
-        if let Some(ack) = response.get("emit") &&
-            ack.get(0) == Some(&Value::String("ready".to_string()))
+        if let Some(ack) = response.get("emit")
+            && ack.get(0) == Some(&Value::String("ready".to_string()))
         {
             info!(
                 target: "ethstats",
@@ -650,8 +651,8 @@ where
             tokio::spawn(async move {
                 loop {
                     let head = canonical_stream.next().await;
-                    if let Some(head) = head &&
-                        head_tx.send(head).await.is_err()
+                    if let Some(head) = head
+                        && head_tx.send(head).await.is_err()
                     {
                         break;
                     }
@@ -738,8 +739,8 @@ where
     /// Attempts to close the connection cleanly and logs any errors
     /// that occur during the process.
     async fn disconnect(&self) {
-        if let Some(conn) = self.conn.write().await.take() &&
-            let Err(e) = conn.close().await
+        if let Some(conn) = self.conn.write().await.take()
+            && let Err(e) = conn.close().await
         {
             debug!(target: "ethstats", "Error closing connection: {}", e);
         }
@@ -754,14 +755,15 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use futures_util::{SinkExt, StreamExt};
     use reth_network_api::noop::NoopNetwork;
     use reth_storage_api::noop::NoopProvider;
     use reth_transaction_pool::noop::NoopTransactionPool;
     use serde_json::json;
     use tokio::{net::TcpListener, sync::Notify};
-    use tokio_tungstenite::tungstenite::protocol::{frame::Utf8Bytes, Message};
+    use tokio_tungstenite::tungstenite::protocol::{Message, frame::Utf8Bytes};
+
+    use super::*;
 
     const TEST_HOST: &str = "127.0.0.1";
     const TEST_PORT: u16 = 0; // Let OS choose port
@@ -790,8 +792,8 @@ mod tests {
 
             // Handle ping
             while let Some(Ok(msg)) = ws_stream.next().await {
-                if let Message::Text(text) = msg &&
-                    text.contains("node-ping")
+                if let Message::Text(text) = msg
+                    && text.contains("node-ping")
                 {
                     let pong = json!({
                         "emit": ["node-pong", {"id": "test-node"}]

@@ -1,26 +1,16 @@
 //! Various noop implementations for traits.
 
-use crate::{
-    AccountReader, BlockBodyIndicesProvider, BlockHashReader, BlockIdReader, BlockNumReader,
-    BlockReader, BlockReaderIdExt, BlockSource, BytecodeReader, ChangeSetReader,
-    HashedPostStateProvider, HeaderProvider, NodePrimitivesProvider, PruneCheckpointReader,
-    ReceiptProvider, ReceiptProviderIdExt, StageCheckpointReader, StateProofProvider,
-    StateProvider, StateProviderBox, StateProviderFactory, StateReader, StateRootProvider,
-    StorageRootProvider, TransactionVariant, TransactionsProvider,
-};
-
-#[cfg(feature = "db-api")]
-use crate::{DBProvider, DatabaseProviderFactory, StorageChangeSetReader, StorageSettingsCache};
 use alloc::{boxed::Box, string::String, sync::Arc, vec::Vec};
-use alloy_consensus::transaction::TransactionMeta;
-use alloy_eips::{BlockHashOrNumber, BlockId, BlockNumberOrTag};
-use alloy_primitives::{
-    Address, BlockHash, BlockNumber, Bytes, StorageKey, StorageValue, TxHash, TxNumber, B256,
-};
 use core::{
     fmt::Debug,
     marker::PhantomData,
     ops::{RangeBounds, RangeInclusive},
+};
+
+use alloy_consensus::transaction::TransactionMeta;
+use alloy_eips::{BlockHashOrNumber, BlockId, BlockNumberOrTag};
+use alloy_primitives::{
+    Address, B256, BlockHash, BlockNumber, Bytes, StorageKey, StorageValue, TxHash, TxNumber,
 };
 use reth_chainspec::{ChainInfo, ChainSpecProvider, EthChainSpec, MAINNET};
 #[cfg(feature = "db-api")]
@@ -35,9 +25,20 @@ use reth_prune_types::{PruneCheckpoint, PruneSegment};
 use reth_stages_types::{StageCheckpoint, StageId};
 use reth_storage_errors::provider::{ProviderError, ProviderResult};
 use reth_trie_common::{
-    updates::TrieUpdates, AccountProof, HashedPostState, HashedStorage, MultiProof,
-    MultiProofTargets, StorageMultiProof, StorageProof, TrieInput,
+    AccountProof, HashedPostState, HashedStorage, MultiProof, MultiProofTargets, StorageMultiProof,
+    StorageProof, TrieInput, updates::TrieUpdates,
 };
+
+use crate::{
+    AccountReader, BlockBodyIndicesProvider, BlockHashReader, BlockIdReader, BlockNumReader,
+    BlockReader, BlockReaderIdExt, BlockSource, BytecodeReader, ChangeSetReader,
+    HashedPostStateProvider, HeaderProvider, NodePrimitivesProvider, PruneCheckpointReader,
+    ReceiptProvider, ReceiptProviderIdExt, StageCheckpointReader, StateProofProvider,
+    StateProvider, StateProviderBox, StateProviderFactory, StateReader, StateRootProvider,
+    StorageRootProvider, TransactionVariant, TransactionsProvider,
+};
+#[cfg(feature = "db-api")]
+use crate::{DBProvider, DatabaseProviderFactory, StorageChangeSetReader, StorageSettingsCache};
 
 /// Supports various api interfaces for testing purposes.
 #[derive(Debug)]

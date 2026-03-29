@@ -12,9 +12,10 @@
 extern crate alloc;
 
 use alloc::{boxed::Box, fmt::Debug, string::String, sync::Arc, vec::Vec};
-use alloy_consensus::Header;
-use alloy_primitives::{BlockHash, BlockNumber, Bloom, B256};
 use core::error::Error;
+
+use alloy_consensus::Header;
+use alloy_primitives::{B256, BlockHash, BlockNumber, Bloom};
 
 /// Pre-computed receipt root and logs bloom.
 ///
@@ -23,10 +24,10 @@ use core::error::Error;
 pub type ReceiptRootBloom = (B256, Bloom);
 use reth_execution_types::BlockExecutionResult;
 use reth_primitives_traits::{
-    constants::{GAS_LIMIT_BOUND_DIVISOR, MAXIMUM_GAS_LIMIT_BLOCK, MINIMUM_GAS_LIMIT},
-    transaction::error::InvalidTransactionError,
     Block, GotExpected, GotExpectedBoxed, NodePrimitives, RecoveredBlock, SealedBlock,
     SealedHeader,
+    constants::{GAS_LIMIT_BOUND_DIVISOR, MAXIMUM_GAS_LIMIT_BLOCK, MINIMUM_GAS_LIMIT},
+    transaction::error::InvalidTransactionError,
 };
 
 /// A consensus implementation that does nothing.
@@ -209,9 +210,7 @@ pub enum ConsensusError {
     },
 
     /// Error when the block number does not match the parent block number.
-    #[error(
-        "block number {block_number} does not match parent block number {parent_block_number}"
-    )]
+    #[error("block number {block_number} does not match parent block number {parent_block_number}")]
     ParentBlockNumberMismatch {
         /// The parent block number.
         parent_block_number: BlockNumber,
@@ -357,7 +356,9 @@ pub enum ConsensusError {
     },
 
     /// Error when the child gas limit exceeds the maximum allowed increase.
-    #[error("child gas_limit {child_gas_limit} exceeds the max allowed increase ({parent_gas_limit}/{GAS_LIMIT_BOUND_DIVISOR})")]
+    #[error(
+        "child gas_limit {child_gas_limit} exceeds the max allowed increase ({parent_gas_limit}/{GAS_LIMIT_BOUND_DIVISOR})"
+    )]
     GasLimitInvalidIncrease {
         /// The parent gas limit.
         parent_gas_limit: u64,
@@ -379,14 +380,18 @@ pub enum ConsensusError {
     /// Error indicating that the block gas limit is above the allowed maximum.
     ///
     /// This error occurs when the gas limit is more than the specified maximum gas limit.
-    #[error("child gas limit {block_gas_limit} is above the maximum allowed limit ({MAXIMUM_GAS_LIMIT_BLOCK})")]
+    #[error(
+        "child gas limit {block_gas_limit} is above the maximum allowed limit ({MAXIMUM_GAS_LIMIT_BLOCK})"
+    )]
     GasLimitInvalidBlockMaximum {
         /// block gas limit.
         block_gas_limit: u64,
     },
 
     /// Error when the child gas limit exceeds the maximum allowed decrease.
-    #[error("child gas_limit {child_gas_limit} is below the max allowed decrease ({parent_gas_limit}/{GAS_LIMIT_BOUND_DIVISOR})")]
+    #[error(
+        "child gas_limit {child_gas_limit} is below the max allowed decrease ({parent_gas_limit}/{GAS_LIMIT_BOUND_DIVISOR})"
+    )]
     GasLimitInvalidDecrease {
         /// The parent gas limit.
         parent_gas_limit: u64,

@@ -1,3 +1,5 @@
+use std::future::Future;
+
 use alloy_consensus::Sealable;
 use alloy_primitives::B256;
 use reth_node_api::{
@@ -7,7 +9,6 @@ use reth_node_api::{
 use reth_primitives_traits::{Block, SealedBlock};
 use reth_tracing::tracing::warn;
 use ringbuffer::{AllocRingBuffer, RingBuffer};
-use std::future::Future;
 use tokio::sync::mpsc;
 
 /// Supplies consensus client with new blocks sent in `tx` and a callback to find specific blocks

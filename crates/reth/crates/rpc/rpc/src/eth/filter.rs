@@ -1,38 +1,5 @@
 //! `eth_` `Filter` RPC handler implementation
 
-use alloy_consensus::BlockHeader;
-use alloy_eips::BlockNumberOrTag;
-use alloy_primitives::{Sealable, TxHash};
-use alloy_rpc_types_eth::{
-    BlockNumHash, Filter, FilterBlockOption, FilterChanges, FilterId, Log,
-    PendingTransactionFilterKind,
-};
-use async_trait::async_trait;
-use futures::{
-    future::TryFutureExt,
-    stream::{FuturesOrdered, StreamExt},
-    Future,
-};
-use itertools::Itertools;
-use jsonrpsee::{core::RpcResult, server::IdProvider};
-use reth_errors::ProviderError;
-use reth_primitives_traits::{NodePrimitives, SealedHeader};
-use reth_rpc_eth_api::{
-    helpers::{EthBlocks, LoadReceipt},
-    EngineEthFilter, EthApiTypes, EthFilterApiServer, FullEthApiTypes, QueryLimits, RpcConvert,
-    RpcNodeCoreExt, RpcTransaction,
-};
-use reth_rpc_eth_types::{
-    logs_utils::{self, append_matching_block_logs, ProviderOrBlock},
-    EthApiError, EthFilterConfig, EthStateCache, EthSubscriptionIdProvider,
-};
-use reth_rpc_server_types::{result::rpc_error_with_code, ToRpcResult};
-use reth_storage_api::{
-    BlockHashReader, BlockIdReader, BlockNumReader, BlockReader, HeaderProvider, ProviderBlock,
-    ProviderReceipt, ReceiptProvider,
-};
-use reth_tasks::TaskSpawner;
-use reth_transaction_pool::{NewSubpoolTransactionStream, PoolTransaction, TransactionPool};
 use std::{
     collections::{HashMap, VecDeque},
     fmt,
@@ -42,8 +9,42 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+
+use alloy_consensus::BlockHeader;
+use alloy_eips::BlockNumberOrTag;
+use alloy_primitives::{Sealable, TxHash};
+use alloy_rpc_types_eth::{
+    BlockNumHash, Filter, FilterBlockOption, FilterChanges, FilterId, Log,
+    PendingTransactionFilterKind,
+};
+use async_trait::async_trait;
+use futures::{
+    Future,
+    future::TryFutureExt,
+    stream::{FuturesOrdered, StreamExt},
+};
+use itertools::Itertools;
+use jsonrpsee::{core::RpcResult, server::IdProvider};
+use reth_errors::ProviderError;
+use reth_primitives_traits::{NodePrimitives, SealedHeader};
+use reth_rpc_eth_api::{
+    EngineEthFilter, EthApiTypes, EthFilterApiServer, FullEthApiTypes, QueryLimits, RpcConvert,
+    RpcNodeCoreExt, RpcTransaction,
+    helpers::{EthBlocks, LoadReceipt},
+};
+use reth_rpc_eth_types::{
+    EthApiError, EthFilterConfig, EthStateCache, EthSubscriptionIdProvider,
+    logs_utils::{self, ProviderOrBlock, append_matching_block_logs},
+};
+use reth_rpc_server_types::{ToRpcResult, result::rpc_error_with_code};
+use reth_storage_api::{
+    BlockHashReader, BlockIdReader, BlockNumReader, BlockReader, HeaderProvider, ProviderBlock,
+    ProviderReceipt, ReceiptProvider,
+};
+use reth_tasks::TaskSpawner;
+use reth_transaction_pool::{NewSubpoolTransactionStream, PoolTransaction, TransactionPool};
 use tokio::{
-    sync::{mpsc::Receiver, oneshot, Mutex},
+    sync::{Mutex, mpsc::Receiver, oneshot},
     time::MissedTickBehavior,
 };
 use tracing::{debug, error, trace};
@@ -233,7 +234,7 @@ where
 
             if filter.block > best_number {
                 // no new blocks since the last poll
-                return Ok(FilterChanges::Empty)
+                return Ok(FilterChanges::Empty);
             }
 
             // update filter
@@ -308,7 +309,7 @@ where
                 *inner_filter.clone()
             } else {
                 // Not a log filter
-                return Err(EthFilterError::FilterNotFound(id))
+                return Err(EthFilterError::FilterNotFound(id));
             }
         };
 
@@ -471,7 +472,7 @@ where
                 let Some((receipts, maybe_block)) =
                     self.eth_cache().get_receipts_and_maybe_block(block_hash).await?
                 else {
-                    return Err(ProviderError::HeaderNotFound(block_hash.into()).into())
+                    return Err(ProviderError::HeaderNotFound(block_hash.into()).into());
                 };
 
                 // Get header - from cached block if available, otherwise from provider
@@ -516,8 +517,8 @@ where
                     }
                     // Try to get pending block and receipts
                     if let Ok(Some(pending_block)) = self.eth_api.local_pending_block().await {
-                        if let BlockNumberOrTag::Number(to_block) = to_block &&
-                            to_block < pending_block.block.number()
+                        if let BlockNumberOrTag::Number(to_block) = to_block
+                            && to_block < pending_block.block.number()
                         {
                             // this block range is empty based on the user input
                             return Ok(Vec::new());
@@ -555,14 +556,14 @@ where
                     .flatten();
 
                 // Return error if toBlock exceeds current head
-                if let Some(t) = to &&
-                    t > info.best_number
+                if let Some(t) = to
+                    && t > info.best_number
                 {
                     return Err(EthFilterError::BlockRangeExceedsHead);
                 }
 
-                if let Some(f) = from &&
-                    f > info.best_number
+                if let Some(f) = from
+                    && f > info.best_number
                 {
                     // start block higher than local head, can return empty
                     return Ok(Vec::new());
@@ -623,13 +624,13 @@ where
 
         // perform boundary checks first
         if to_block < from_block {
-            return Err(EthFilterError::InvalidBlockRangeParams)
+            return Err(EthFilterError::InvalidBlockRangeParams);
         }
 
         if let Some(max_blocks_per_filter) =
             limits.max_blocks_per_filter.filter(|limit| to_block - from_block > *limit)
         {
-            return Err(EthFilterError::QueryExceedsMaxBlocks(max_blocks_per_filter))
+            return Err(EthFilterError::QueryExceedsMaxBlocks(max_blocks_per_filter));
         }
 
         let (tx, rx) = oneshot::channel();
@@ -674,7 +675,7 @@ where
 
             while let Some(header) = headers_iter.next() {
                 if !filter.matches_bloom(header.logs_bloom()) {
-                    continue
+                    continue;
                 }
 
                 let current_number = header.number();
@@ -724,9 +725,9 @@ where
             // size check but only if range is multiple blocks, so we always return all
             // logs of a single block
             let is_multi_block_range = from_block != to_block;
-            if let Some(max_logs_per_response) = limits.max_logs_per_response &&
-                is_multi_block_range &&
-                all_logs.len() > max_logs_per_response
+            if let Some(max_logs_per_response) = limits.max_logs_per_response
+                && is_multi_block_range
+                && all_logs.len() > max_logs_per_response
             {
                 debug!(
                     target: "rpc::eth::filter",
@@ -900,7 +901,7 @@ impl Iterator for BlockRangeInclusiveIter {
         let start = self.iter.next()?;
         let end = (start + self.step).min(self.end);
         if start > end {
-            return None
+            return None;
         }
         Some((start, end))
     }
@@ -950,10 +951,10 @@ impl From<EthFilterError> for jsonrpsee::types::error::ErrorObject<'static> {
                 rpc_error_with_code(jsonrpsee::types::error::INTERNAL_ERROR_CODE, err.to_string())
             }
             EthFilterError::EthAPIError(err) => err.into(),
-            err @ (EthFilterError::InvalidBlockRangeParams |
-            EthFilterError::QueryExceedsMaxBlocks(_) |
-            EthFilterError::QueryExceedsMaxResults { .. } |
-            EthFilterError::BlockRangeExceedsHead) => {
+            err @ (EthFilterError::InvalidBlockRangeParams
+            | EthFilterError::QueryExceedsMaxBlocks(_)
+            | EthFilterError::QueryExceedsMaxResults { .. }
+            | EthFilterError::BlockRangeExceedsHead) => {
                 rpc_error_with_code(jsonrpsee::types::error::INVALID_PARAMS_CODE, err.to_string())
             }
         }
@@ -1004,12 +1005,12 @@ enum RangeMode<
 }
 
 impl<
-        Eth: RpcNodeCoreExt<Provider: BlockIdReader, Pool: TransactionPool>
-            + EthApiTypes
-            + LoadReceipt
-            + EthBlocks
-            + 'static,
-    > RangeMode<Eth>
+    Eth: RpcNodeCoreExt<Provider: BlockIdReader, Pool: TransactionPool>
+        + EthApiTypes
+        + LoadReceipt
+        + EthBlocks
+        + 'static,
+> RangeMode<Eth>
 {
     /// Creates a new `RangeMode`.
     fn new(
@@ -1091,12 +1092,12 @@ struct CachedMode<
 }
 
 impl<
-        Eth: RpcNodeCoreExt<Provider: BlockIdReader, Pool: TransactionPool>
-            + EthApiTypes
-            + LoadReceipt
-            + EthBlocks
-            + 'static,
-    > CachedMode<Eth>
+    Eth: RpcNodeCoreExt<Provider: BlockIdReader, Pool: TransactionPool>
+        + EthApiTypes
+        + LoadReceipt
+        + EthBlocks
+        + 'static,
+> CachedMode<Eth>
 {
     async fn next(&mut self) -> Result<Option<ReceiptBlockResult<Eth::Provider>>, EthFilterError> {
         for header in self.headers_iter.by_ref() {
@@ -1137,12 +1138,12 @@ struct RangeBlockMode<
 }
 
 impl<
-        Eth: RpcNodeCoreExt<Provider: BlockIdReader, Pool: TransactionPool>
-            + EthApiTypes
-            + LoadReceipt
-            + EthBlocks
-            + 'static,
-    > RangeBlockMode<Eth>
+    Eth: RpcNodeCoreExt<Provider: BlockIdReader, Pool: TransactionPool>
+        + EthApiTypes
+        + LoadReceipt
+        + EthBlocks
+        + 'static,
+> RangeBlockMode<Eth>
 {
     async fn next(&mut self) -> Result<Option<ReceiptBlockResult<Eth::Provider>>, EthFilterError> {
         loop {
@@ -1307,8 +1308,8 @@ impl<
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{eth::EthApi, EthApiBuilder};
+    use std::{collections::VecDeque, sync::Arc};
+
     use alloy_network::Ethereum;
     use alloy_primitives::FixedBytes;
     use rand::Rng;
@@ -1322,8 +1323,10 @@ mod tests {
     use reth_rpc_eth_types::receipt::EthReceiptConverter;
     use reth_tasks::TokioTaskExecutor;
     use reth_testing_utils::generators;
-    use reth_transaction_pool::test_utils::{testing_pool, TestPool};
-    use std::{collections::VecDeque, sync::Arc};
+    use reth_transaction_pool::test_utils::{TestPool, testing_pool};
+
+    use super::*;
+    use crate::{EthApiBuilder, eth::EthApi};
 
     #[test]
     fn test_block_range_iter() {

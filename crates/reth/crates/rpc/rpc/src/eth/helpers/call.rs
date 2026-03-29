@@ -1,12 +1,13 @@
 //! Contains RPC handler implementations specific to endpoints that call/execute within evm.
 
-use crate::EthApi;
 use reth_rpc_convert::RpcConvert;
 use reth_rpc_eth_api::{
-    helpers::{estimate::EstimateCall, Call, EthCall},
     FromEvmError, RpcNodeCore,
+    helpers::{Call, EthCall, estimate::EstimateCall},
 };
 use reth_rpc_eth_types::EthApiError;
+
+use crate::EthApi;
 
 impl<N, Rpc> EthCall for EthApi<N, Rpc>
 where

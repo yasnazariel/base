@@ -1,14 +1,15 @@
 //! Module that interacts with MDBX.
 
-use crate::{
-    lockfile::StorageLock,
-    metrics::DatabaseEnvMetrics,
-    tables::{self, Tables},
-    utils::default_page_size,
-    DatabaseError, TableSet,
+use std::{
+    collections::HashMap,
+    ops::{Deref, Range},
+    path::Path,
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
 };
+
 use eyre::Context;
-use metrics::{gauge, Label};
+use metrics::{Label, gauge};
 use reth_db_api::{
     cursor::{DbCursorRO, DbCursorRW},
     database::Database,
@@ -17,19 +18,20 @@ use reth_db_api::{
     transaction::{DbTx, DbTxMut},
 };
 use reth_libmdbx::{
-    ffi, DatabaseFlags, Environment, EnvironmentFlags, Geometry, HandleSlowReadersReturnCode,
-    MaxReadTransactionDuration, Mode, PageSize, SyncMode, RO, RW,
+    DatabaseFlags, Environment, EnvironmentFlags, Geometry, HandleSlowReadersReturnCode,
+    MaxReadTransactionDuration, Mode, PageSize, RO, RW, SyncMode, ffi,
 };
 use reth_storage_errors::db::LogLevel;
 use reth_tracing::tracing::error;
-use std::{
-    collections::HashMap,
-    ops::{Deref, Range},
-    path::Path,
-    sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
-};
 use tx::Tx;
+
+use crate::{
+    DatabaseError, TableSet,
+    lockfile::StorageLock,
+    metrics::DatabaseEnvMetrics,
+    tables::{self, Tables},
+    utils::default_page_size,
+};
 
 pub mod cursor;
 pub mod tx;
@@ -498,7 +500,7 @@ impl DatabaseEnv {
                     LogLevel::Extra => 7,
                 });
             } else {
-                return Err(DatabaseError::LogLevelUnavailable(log_level))
+                return Err(DatabaseError::LogLevelUnavailable(log_level));
             }
         }
 
@@ -611,7 +613,7 @@ impl DatabaseEnv {
     /// Records version that accesses the database with write privileges.
     pub fn record_client_version(&self, version: ClientVersion) -> Result<(), DatabaseError> {
         if version.is_empty() {
-            return Ok(())
+            return Ok(());
         }
 
         let tx = self.tx_mut()?;
@@ -640,16 +642,10 @@ impl Deref for DatabaseEnv {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{
-        tables::{
-            AccountsHistory, CanonicalHeaders, Headers, PlainAccountState, PlainStorageState,
-        },
-        test_utils::*,
-        AccountChangeSets,
-    };
+    use std::str::FromStr;
+
     use alloy_consensus::Header;
-    use alloy_primitives::{address, Address, B256, U256};
+    use alloy_primitives::{Address, B256, U256, address};
     use reth_db_api::{
         cursor::{DbDupCursorRO, DbDupCursorRW, ReverseWalker, Walker},
         models::{AccountBeforeTx, IntegerList, ShardedKey},
@@ -658,8 +654,16 @@ mod tests {
     use reth_libmdbx::Error;
     use reth_primitives_traits::{Account, StorageEntry};
     use reth_storage_errors::db::{DatabaseWriteError, DatabaseWriteOperation};
-    use std::str::FromStr;
     use tempfile::TempDir;
+
+    use super::*;
+    use crate::{
+        AccountChangeSets,
+        tables::{
+            AccountsHistory, CanonicalHeaders, Headers, PlainAccountState, PlainStorageState,
+        },
+        test_utils::*,
+    };
 
     /// Create database for testing. Returns the `TempDir` to prevent cleanup until test ends.
     fn create_test_db(kind: DatabaseEnvKind) -> (TempDir, DatabaseEnv) {
@@ -1366,12 +1370,17 @@ mod tests {
                 key: (transition_id - 1).encode().into(),
             }
         ));
-        assert!(cursor
-            .append(
-                transition_id,
-                &AccountBeforeTx { address: Address::with_last_byte(subkey_to_append), info: None }
-            )
-            .is_ok());
+        assert!(
+            cursor
+                .append(
+                    transition_id,
+                    &AccountBeforeTx {
+                        address: Address::with_last_byte(subkey_to_append),
+                        info: None
+                    }
+                )
+                .is_ok()
+        );
     }
 
     #[test]

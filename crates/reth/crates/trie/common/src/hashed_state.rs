@@ -1,26 +1,24 @@
+use alloc::{borrow::Cow, vec::Vec};
 use core::ops::Not;
 
-use crate::{
-    added_removed_keys::MultiAddedRemovedKeys,
-    prefix_set::{PrefixSetMut, TriePrefixSetsMut},
-    utils::{extend_sorted_vec, kway_merge_sorted},
-    KeyHasher, MultiProofTargets, Nibbles,
-};
-use alloc::{borrow::Cow, vec::Vec};
 use alloy_primitives::{
-    keccak256,
-    map::{hash_map, B256Map, HashMap, HashSet},
-    Address, B256, U256,
+    Address, B256, U256, keccak256,
+    map::{B256Map, HashMap, HashSet, hash_map},
 };
 use itertools::Itertools;
 #[cfg(feature = "rayon")]
+use rayon::prelude::{FromParallelIterator, IntoParallelIterator, ParallelIterator};
+#[cfg(feature = "rayon")]
 pub use rayon::*;
 use reth_primitives_traits::Account;
-
-#[cfg(feature = "rayon")]
-use rayon::prelude::{FromParallelIterator, IntoParallelIterator, ParallelIterator};
-
 use revm_database::{AccountStatus, BundleAccount};
+
+use crate::{
+    KeyHasher, MultiProofTargets, Nibbles,
+    added_removed_keys::MultiAddedRemovedKeys,
+    prefix_set::{PrefixSetMut, TriePrefixSetsMut},
+    utils::{extend_sorted_vec, kway_merge_sorted},
+};
 
 /// In-memory hashed state that stores account and storage changes with keccak256-hashed keys in
 /// hash maps.
@@ -214,10 +212,10 @@ impl HashedPostState {
                 Some(storage_in_targets) => {
                     let mut storage_not_in_targets = HashedStorage::default();
                     storage.storage.retain(|&slot, value| {
-                        if storage_in_targets.contains(&slot) &&
-                            !storage_added_removed_keys.is_some_and(|k| k.is_removed(&slot))
+                        if storage_in_targets.contains(&slot)
+                            && !storage_added_removed_keys.is_some_and(|k| k.is_removed(&slot))
                         {
-                            return true
+                            return true;
                         }
 
                         storage_not_in_targets.storage.insert(slot, *value);
@@ -252,7 +250,7 @@ impl HashedPostState {
         });
         self.accounts.retain(|&address, account| {
             if targets.contains_key(&address) {
-                return true
+                return true;
             }
 
             state_updates_not_in_targets.accounts.insert(address, *account);
@@ -271,8 +269,9 @@ impl HashedPostState {
 
     /// Returns the number of items that will be considered during chunking in `[Self::chunks]`.
     pub fn chunking_length(&self) -> usize {
-        self.accounts.len() +
-            self.storages
+        self.accounts.len()
+            + self
+                .storages
                 .values()
                 .map(|storage| if storage.wiped { 1 } else { 0 } + storage.storage.len())
                 .sum::<usize>()
@@ -907,21 +906,18 @@ impl Iterator for ChunkedHashedPostState {
             current_size += 1;
         }
 
-        if chunk.is_empty() {
-            None
-        } else {
-            Some(chunk)
-        }
+        if chunk.is_empty() { None } else { Some(chunk) }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use alloy_primitives::Bytes;
+    use revm_database::{StorageWithOriginalValues, states::StorageSlot};
+    use revm_state::{AccountInfo, Bytecode};
+
     use super::*;
     use crate::KeccakKeyHasher;
-    use alloy_primitives::Bytes;
-    use revm_database::{states::StorageSlot, StorageWithOriginalValues};
-    use revm_state::{AccountInfo, Bytecode};
 
     #[test]
     fn hashed_state_wiped_extension() {
@@ -1728,11 +1724,13 @@ mod tests {
 /// Bincode-compatible hashed state type serde implementations.
 #[cfg(feature = "serde-bincode-compat")]
 pub mod serde_bincode_compat {
-    use super::Account;
     use alloc::borrow::Cow;
-    use alloy_primitives::{map::B256Map, B256, U256};
+
+    use alloy_primitives::{B256, U256, map::B256Map};
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use serde_with::{DeserializeAs, SerializeAs};
+
+    use super::Account;
 
     /// Bincode-compatible [`super::HashedPostState`] serde implementation.
     ///
@@ -1961,17 +1959,17 @@ pub mod serde_bincode_compat {
 
     #[cfg(test)]
     mod tests {
+        use alloy_primitives::{B256, U256};
+        use reth_primitives_traits::Account;
+        use serde::{Deserialize, Serialize, de::DeserializeOwned};
+        use serde_with::serde_as;
+
         use crate::{
             hashed_state::{
                 HashedPostState, HashedPostStateSorted, HashedStorage, HashedStorageSorted,
             },
             serde_bincode_compat,
         };
-        use alloy_primitives::{B256, U256};
-        use reth_primitives_traits::Account;
-        use serde::de::DeserializeOwned;
-        use serde::{Deserialize, Serialize};
-        use serde_with::serde_as;
 
         fn roundtrip<T>(value: &T) -> T
         where

@@ -1,11 +1,12 @@
-use crate::{
-    cursor::{DbCursorRO, DbCursorRW, DbDupCursorRO, DbDupCursorRW},
-    transaction::{DbTx, DbTxMut},
-    DatabaseError,
-};
+use std::fmt::Debug;
 
 use serde::{Deserialize, Serialize};
-use std::fmt::Debug;
+
+use crate::{
+    DatabaseError,
+    cursor::{DbCursorRO, DbCursorRW, DbDupCursorRO, DbDupCursorRW},
+    transaction::{DbTx, DbTxMut},
+};
 
 /// Trait that will transform the data to be saved in the DB in a (ideally) compressed format
 pub trait Compress: Send + Sync + Sized + Debug {

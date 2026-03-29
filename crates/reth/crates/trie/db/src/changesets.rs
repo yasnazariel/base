@@ -7,28 +7,29 @@
 //! - **Reorg support**: Quickly access changesets to revert blocks during chain reorganizations
 //! - **Memory efficiency**: Automatic eviction ensures bounded memory usage
 
-use crate::{DatabaseStateRoot, DatabaseTrieCursorFactory};
-use alloy_primitives::{map::B256Map, BlockNumber, B256};
+use std::{collections::BTreeMap, ops::RangeInclusive, sync::Arc, time::Instant};
+
+use alloy_primitives::{B256, BlockNumber, map::B256Map};
 use parking_lot::RwLock;
+#[cfg(feature = "metrics")]
+use reth_metrics::{
+    Metrics,
+    metrics::{Counter, Gauge},
+};
 use reth_storage_api::{
     BlockNumReader, ChangeSetReader, DBProvider, StageCheckpointReader, StorageChangeSetReader,
     StorageSettingsCache,
 };
 use reth_storage_errors::provider::{ProviderError, ProviderResult};
 use reth_trie::{
+    StateRoot, TrieInputSorted,
     changesets::compute_trie_changesets,
     trie_cursor::{InMemoryTrieCursorFactory, TrieCursor, TrieCursorFactory},
-    StateRoot, TrieInputSorted,
 };
 use reth_trie_common::updates::{StorageTrieUpdatesSorted, TrieUpdatesSorted};
-use std::{collections::BTreeMap, ops::RangeInclusive, sync::Arc, time::Instant};
 use tracing::debug;
 
-#[cfg(feature = "metrics")]
-use reth_metrics::{
-    metrics::{Counter, Gauge},
-    Metrics,
-};
+use crate::{DatabaseStateRoot, DatabaseTrieCursorFactory};
 
 /// Computes trie changesets for a block.
 ///
@@ -679,8 +680,9 @@ impl ChangesetCacheInner {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_primitives::map::{B256Map, HashMap};
+
+    use super::*;
 
     // Helper function to create empty TrieUpdatesSorted for testing
     fn create_test_changesets() -> Arc<TrieUpdatesSorted> {

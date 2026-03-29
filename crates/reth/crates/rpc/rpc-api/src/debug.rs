@@ -2,14 +2,14 @@ use alloy_eip7928::BlockAccessList;
 use alloy_eips::{BlockId, BlockNumberOrTag};
 use alloy_genesis::ChainConfig;
 use alloy_json_rpc::RpcObject;
-use alloy_primitives::{Address, Bytes, B256, U64};
+use alloy_primitives::{Address, B256, Bytes, U64};
 use alloy_rpc_types_debug::ExecutionWitness;
 use alloy_rpc_types_eth::{Bundle, StateContext};
 use alloy_rpc_types_trace::geth::{
     BlockTraceResult, GethDebugTracingCallOptions, GethDebugTracingOptions, GethTrace, TraceResult,
 };
 use jsonrpsee::{core::RpcResult, proc_macros::rpc};
-use reth_trie_common::{updates::TrieUpdates, HashedPostState};
+use reth_trie_common::{HashedPostState, updates::TrieUpdates};
 
 /// Debug rpc interface.
 #[cfg_attr(not(feature = "client"), rpc(server, namespace = "debug"))]
@@ -143,7 +143,7 @@ pub trait DebugApi<TxReq: RpcObject> {
     /// The first argument is the block number or tag.
     #[method(name = "executionWitness")]
     async fn debug_execution_witness(&self, block: BlockNumberOrTag)
-        -> RpcResult<ExecutionWitness>;
+    -> RpcResult<ExecutionWitness>;
 
     /// The `debug_executionWitnessByBlockHash` method allows for re-execution of a block with the
     /// purpose of generating an execution witness. The witness comprises of a map of all hashed

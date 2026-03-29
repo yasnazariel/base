@@ -1,9 +1,10 @@
 #![allow(deprecated)] // necessary to all defining deprecated `PruneSegment` variants
 
-use crate::{MINIMUM_DISTANCE, MINIMUM_UNWIND_SAFE_DISTANCE};
 use derive_more::Display;
 use strum::{EnumIter, IntoEnumIterator};
 use thiserror::Error;
+
+use crate::{MINIMUM_DISTANCE, MINIMUM_UNWIND_SAFE_DISTANCE};
 
 /// Segment of the data that can be pruned.
 ///

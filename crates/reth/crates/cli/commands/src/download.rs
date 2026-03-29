@@ -1,11 +1,3 @@
-use crate::common::EnvironmentArgs;
-use clap::Parser;
-use eyre::Result;
-use lz4::Decoder;
-use reqwest::{blocking::Client as BlockingClient, header::RANGE, Client, StatusCode};
-use reth_chainspec::{EthChainSpec, EthereumHardforks};
-use reth_cli::chainspec::ChainSpecParser;
-use reth_fs_util as fs;
 use std::{
     borrow::Cow,
     fs::OpenOptions,
@@ -14,11 +6,21 @@ use std::{
     sync::{Arc, OnceLock},
     time::{Duration, Instant},
 };
+
+use clap::Parser;
+use eyre::Result;
+use lz4::Decoder;
+use reqwest::{Client, StatusCode, blocking::Client as BlockingClient, header::RANGE};
+use reth_chainspec::{EthChainSpec, EthereumHardforks};
+use reth_cli::chainspec::ChainSpecParser;
+use reth_fs_util as fs;
 use tar::Archive;
 use tokio::task;
 use tracing::info;
 use url::Url;
 use zstd::stream::read::Decoder as ZstdDecoder;
+
+use crate::common::EnvironmentArgs;
 
 const BYTE_UNITS: [&str; 4] = ["B", "KB", "MB", "GB"];
 const MERKLE_BASE_URL: &str = "https://downloads.merkle.io";
@@ -279,8 +281,8 @@ impl<R: Read> ProgressReader<R> {
 impl<R: Read> Read for ProgressReader<R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let bytes = self.reader.read(buf)?;
-        if bytes > 0 &&
-            let Err(e) = self.progress.update(bytes as u64)
+        if bytes > 0
+            && let Err(e) = self.progress.update(bytes as u64)
         {
             return Err(io::Error::other(e));
         }
@@ -387,8 +389,8 @@ fn resumable_download(url: &str, target_dir: &Path) -> Result<(PathBuf, u64)> {
     for attempt in 1..=MAX_DOWNLOAD_RETRIES {
         let existing_size = fs::metadata(&part_path).map(|m| m.len()).unwrap_or(0);
 
-        if let Some(total) = total_size &&
-            existing_size >= total
+        if let Some(total) = total_size
+            && existing_size >= total
         {
             fs::rename(&part_path, &final_path)?;
             info!(target: "reth::cli", "Download complete: {}", final_path.display());
@@ -505,8 +507,8 @@ fn download_and_extract(url: &str, format: CompressionFormat, target_dir: &Path)
 fn blocking_download_and_extract(url: &str, target_dir: &Path) -> Result<()> {
     let format = CompressionFormat::from_url(url)?;
 
-    if let Ok(parsed_url) = Url::parse(url) &&
-        parsed_url.scheme() == "file"
+    if let Ok(parsed_url) = Url::parse(url)
+        && parsed_url.scheme() == "file"
     {
         let file_path = parsed_url
             .to_file_path()

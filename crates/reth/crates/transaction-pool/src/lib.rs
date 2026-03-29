@@ -278,35 +278,13 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 
-pub use crate::{
-    batcher::{BatchTxProcessor, BatchTxRequest},
-    blobstore::{BlobStore, BlobStoreError},
-    config::{
-        LocalTransactionConfig, PoolConfig, PriceBumpConfig, SubPoolLimit,
-        DEFAULT_MAX_INFLIGHT_DELEGATED_SLOTS, DEFAULT_PRICE_BUMP,
-        DEFAULT_TXPOOL_ADDITIONAL_VALIDATION_TASKS, MAX_NEW_PENDING_TXS_NOTIFICATIONS,
-        REPLACE_BLOB_PRICE_BUMP, TXPOOL_MAX_ACCOUNT_SLOTS_PER_SENDER,
-        TXPOOL_SUBPOOL_MAX_SIZE_MB_DEFAULT, TXPOOL_SUBPOOL_MAX_TXS_DEFAULT,
-    },
-    error::PoolResult,
-    ordering::{CoinbaseTipOrdering, Priority, TransactionOrdering},
-    pool::{
-        blob_tx_priority, fee_delta, state::SubPool, AddedTransactionOutcome,
-        AllTransactionsEvents, FullTransactionEvent, NewTransactionEvent, TransactionEvent,
-        TransactionEvents, TransactionListenerKind,
-    },
-    traits::*,
-    validate::{
-        EthTransactionValidator, TransactionValidationOutcome, TransactionValidationTaskExecutor,
-        TransactionValidator, ValidPoolTransaction,
-    },
-};
-use crate::{identifier::TransactionId, pool::PoolInner};
+use std::sync::Arc;
+
 use alloy_eips::{
     eip4844::{BlobAndProofV1, BlobAndProofV2},
     eip7594::BlobTransactionSidecarVariant,
 };
-use alloy_primitives::{map::AddressSet, Address, TxHash, B256, U256};
+use alloy_primitives::{Address, B256, TxHash, U256, map::AddressSet};
 use aquamarine as _;
 use reth_chainspec::{ChainSpecProvider, EthereumHardforks};
 use reth_eth_wire_types::HandleMempoolData;
@@ -315,9 +293,33 @@ use reth_evm_ethereum::EthEvmConfig;
 use reth_execution_types::ChangedAccount;
 use reth_primitives_traits::{HeaderTy, Recovered};
 use reth_storage_api::{BlockReaderIdExt, StateProviderFactory};
-use std::sync::Arc;
 use tokio::sync::mpsc::Receiver;
 use tracing::{instrument, trace};
+
+pub use crate::{
+    batcher::{BatchTxProcessor, BatchTxRequest},
+    blobstore::{BlobStore, BlobStoreError},
+    config::{
+        DEFAULT_MAX_INFLIGHT_DELEGATED_SLOTS, DEFAULT_PRICE_BUMP,
+        DEFAULT_TXPOOL_ADDITIONAL_VALIDATION_TASKS, LocalTransactionConfig,
+        MAX_NEW_PENDING_TXS_NOTIFICATIONS, PoolConfig, PriceBumpConfig, REPLACE_BLOB_PRICE_BUMP,
+        SubPoolLimit, TXPOOL_MAX_ACCOUNT_SLOTS_PER_SENDER, TXPOOL_SUBPOOL_MAX_SIZE_MB_DEFAULT,
+        TXPOOL_SUBPOOL_MAX_TXS_DEFAULT,
+    },
+    error::PoolResult,
+    ordering::{CoinbaseTipOrdering, Priority, TransactionOrdering},
+    pool::{
+        AddedTransactionOutcome, AllTransactionsEvents, FullTransactionEvent, NewTransactionEvent,
+        TransactionEvent, TransactionEvents, TransactionListenerKind, blob_tx_priority, fee_delta,
+        state::SubPool,
+    },
+    traits::*,
+    validate::{
+        EthTransactionValidator, TransactionValidationOutcome, TransactionValidationTaskExecutor,
+        TransactionValidator, ValidPoolTransaction,
+    },
+};
+use crate::{identifier::TransactionId, pool::PoolInner};
 
 pub mod error;
 pub mod maintain;
@@ -507,7 +509,7 @@ where
     ) -> Vec<PoolResult<AddedTransactionOutcome>> {
         let transactions: Vec<_> = transactions.into_iter().collect();
         if transactions.is_empty() {
-            return Vec::new()
+            return Vec::new();
         }
         let origins: Vec<_> = transactions.iter().map(|(origin, _)| *origin).collect();
         let validated = self.pool.validator().validate_transactions(transactions).await;

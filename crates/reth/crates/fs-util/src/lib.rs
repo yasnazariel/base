@@ -6,12 +6,13 @@
     issue_tracker_base_url = "https://github.com/paradigmxyz/reth/issues/"
 )]
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
-use serde::{de::DeserializeOwned, Serialize};
 use std::{
     fs::{self, File, OpenOptions, ReadDir},
     io::{self, BufWriter, Error, Write},
     path::{Path, PathBuf},
 };
+
+use serde::{Serialize, de::DeserializeOwned};
 
 /// Result alias for [`FsPathError`].
 pub type Result<T> = std::result::Result<T, FsPathError>;

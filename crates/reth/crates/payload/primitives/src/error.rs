@@ -1,9 +1,10 @@
 //! Error types for payload operations.
 
 use alloc::{boxed::Box, string::ToString};
+use core::error;
+
 use alloy_primitives::B256;
 use alloy_rpc_types_engine::{ForkchoiceUpdateError, PayloadError, PayloadStatusEnum};
-use core::error;
 use reth_errors::{BlockExecutionError, ProviderError, RethError};
 use tokio::sync::oneshot;
 

@@ -1,10 +1,11 @@
 //! reth's static file database table import and access
 
+use std::path::Path;
+
 use reth_nippy_jar::{NippyJar, NippyJarError};
 use reth_static_file_types::{
     SegmentHeader, SegmentRangeInclusive, StaticFileMap, StaticFileSegment,
 };
-use std::path::Path;
 
 mod cursor;
 pub use cursor::StaticFileCursor;
@@ -31,8 +32,8 @@ pub fn iter_static_files(path: &Path) -> Result<SortedStaticFiles, NippyJarError
         .map_err(|err| NippyJarError::Custom(err.to_string()))?
         .filter_map(Result::ok);
     for entry in entries {
-        if entry.metadata().is_ok_and(|metadata| metadata.is_file()) &&
-            let Some((segment, _)) =
+        if entry.metadata().is_ok_and(|metadata| metadata.is_file())
+            && let Some((segment, _)) =
                 StaticFileSegment::parse_filename(&entry.file_name().to_string_lossy())
         {
             let jar = NippyJar::<SegmentHeader>::load(&entry.path())?;

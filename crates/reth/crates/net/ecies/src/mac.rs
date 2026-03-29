@@ -10,7 +10,7 @@
 //! For more information, refer to the [Ethereum MAC specification](https://github.com/ethereum/devp2p/blob/master/rlpx.md#mac).
 
 use aes::Aes256Enc;
-use alloy_primitives::{Keccak256, B128, B256};
+use alloy_primitives::{B128, B256, Keccak256};
 use block_padding::NoPadding;
 use cipher::BlockEncrypt;
 use digest::KeyInit;

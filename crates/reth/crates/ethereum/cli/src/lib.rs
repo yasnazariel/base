@@ -19,10 +19,11 @@ pub use interface::{Cli, Commands, NoSubCmd};
 
 #[cfg(test)]
 mod test {
-    use crate::chainspec::EthereumChainSpecParser;
     use clap::Parser;
     use reth_chainspec::DEV;
     use reth_cli_commands::NodeCommand;
+
+    use crate::chainspec::EthereumChainSpecParser;
 
     #[test]
     #[ignore = "reth cmd output differs when optimism feature enabled"]

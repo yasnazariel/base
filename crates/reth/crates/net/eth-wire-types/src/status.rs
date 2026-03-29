@@ -1,11 +1,13 @@
-use crate::EthVersion;
+use core::fmt::{Debug, Display};
+
 use alloy_chains::{Chain, NamedChain};
 use alloy_hardforks::{EthereumHardfork, ForkId, Head};
-use alloy_primitives::{hex, B256, U256};
+use alloy_primitives::{B256, U256, hex};
 use alloy_rlp::{BufMut, Encodable, RlpDecodable, RlpEncodable};
-use core::fmt::{Debug, Display};
 use reth_chainspec::{EthChainSpec, Hardforks, MAINNET};
 use reth_codecs_derive::add_arbitrary_tests;
+
+use crate::EthVersion;
 
 /// `UnifiedStatus` is an internal superset of all ETH status fields for all `eth/` versions.
 ///
@@ -366,13 +368,25 @@ impl Debug for StatusEth69 {
             write!(
                 f,
                 "StatusEth69 {{\n\tversion: {:?},\n\tchain: {:?},\n\tgenesis: {},\n\tforkid: {:X?},\n\tearliest: {},\n\tlatest: {},\n\tblockhash: {}\n}}",
-                self.version, self.chain, hexed_genesis, self.forkid, self.earliest, self.latest, hexed_blockhash
+                self.version,
+                self.chain,
+                hexed_genesis,
+                self.forkid,
+                self.earliest,
+                self.latest,
+                hexed_blockhash
             )
         } else {
             write!(
                 f,
                 "StatusEth69 {{ version: {:?}, chain: {:?}, genesis: {}, forkid: {:X?}, earliest: {}, latest: {}, blockhash: {} }}",
-                self.version, self.chain, hexed_genesis, self.forkid, self.earliest, self.latest, hexed_blockhash
+                self.version,
+                self.chain,
+                hexed_genesis,
+                self.forkid,
+                self.earliest,
+                self.latest,
+                hexed_blockhash
             )
         }
     }
@@ -457,15 +471,17 @@ impl Display for StatusMessage {
 }
 #[cfg(test)]
 mod tests {
-    use crate::{EthVersion, Status, StatusEth69, StatusMessage, UnifiedStatus};
+    use std::str::FromStr;
+
     use alloy_consensus::constants::MAINNET_GENESIS_HASH;
     use alloy_genesis::Genesis;
     use alloy_hardforks::{EthereumHardfork, ForkHash, ForkId, Head};
-    use alloy_primitives::{b256, hex, B256, U256};
+    use alloy_primitives::{B256, U256, b256, hex};
     use alloy_rlp::{Decodable, Encodable};
     use rand::Rng;
     use reth_chainspec::{Chain, ChainSpec, ForkCondition, NamedChain};
-    use std::str::FromStr;
+
+    use crate::{EthVersion, Status, StatusEth69, StatusMessage, UnifiedStatus};
 
     #[test]
     fn encode_eth_status_message() {
@@ -566,7 +582,9 @@ mod tests {
 
     #[test]
     fn encode_eth69_status_message() {
-        let expected = hex!("f8544501a0d4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3c684b715077d8083ed14f2840112a880a0feb27336ca7923f8fab3bd617fcb6e75841538f71c1bcfc267d7838489d9e13d");
+        let expected = hex!(
+            "f8544501a0d4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3c684b715077d8083ed14f2840112a880a0feb27336ca7923f8fab3bd617fcb6e75841538f71c1bcfc267d7838489d9e13d"
+        );
         let status = StatusEth69 {
             version: EthVersion::Eth69,
             chain: Chain::from_named(NamedChain::Mainnet),
@@ -603,7 +621,9 @@ mod tests {
 
     #[test]
     fn decode_eth69_status_message() {
-        let data =  hex!("f8544501a0d4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3c684b715077d8083ed14f2840112a880a0feb27336ca7923f8fab3bd617fcb6e75841538f71c1bcfc267d7838489d9e13d");
+        let data = hex!(
+            "f8544501a0d4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3c684b715077d8083ed14f2840112a880a0feb27336ca7923f8fab3bd617fcb6e75841538f71c1bcfc267d7838489d9e13d"
+        );
         let expected = StatusEth69 {
             version: EthVersion::Eth69,
             chain: Chain::from_named(NamedChain::Mainnet),

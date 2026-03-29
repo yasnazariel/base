@@ -168,8 +168,9 @@ pub fn block_id_to_str(id: BlockId) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use reth_errors::{RethError, RethResult};
+
+    use super::*;
 
     const fn assert_rpc_result<T, E, TRR: ToRpcResult<T, E>>() {}
 

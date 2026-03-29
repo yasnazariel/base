@@ -1,20 +1,16 @@
-use super::{DatabaseProviderRO, ProviderFactory, ProviderNodeTypes};
-use crate::{
-    providers::{StaticFileProvider, StaticFileProviderRWRefMut},
-    to_range, AccountReader, BlockHashReader, BlockIdReader, BlockNumReader, BlockReader,
-    BlockReaderIdExt, BlockSource, ChainSpecProvider, ChangeSetReader, HeaderProvider,
-    ProviderError, PruneCheckpointReader, ReceiptProvider, ReceiptProviderIdExt,
-    StageCheckpointReader, StateReader, StaticFileProviderFactory, TransactionVariant,
-    TransactionsProvider,
+use std::{
+    ops::{Add, Bound, RangeBounds, RangeInclusive, Sub},
+    sync::Arc,
 };
-use alloy_consensus::{transaction::TransactionMeta, BlockHeader};
+
+use alloy_consensus::{BlockHeader, transaction::TransactionMeta};
 use alloy_eips::{
-    eip2718::Encodable2718, BlockHashOrNumber, BlockId, BlockNumHash, BlockNumberOrTag,
-    HashOrNumber,
+    BlockHashOrNumber, BlockId, BlockNumHash, BlockNumberOrTag, HashOrNumber,
+    eip2718::Encodable2718,
 };
 use alloy_primitives::{
-    map::{hash_map, HashMap},
-    Address, BlockHash, BlockNumber, TxHash, TxNumber, B256,
+    Address, B256, BlockHash, BlockNumber, TxHash, TxNumber,
+    map::{HashMap, hash_map},
 };
 use reth_chain_state::{BlockState, CanonicalInMemoryState, MemoryOverlayStateProviderRef};
 use reth_chainspec::ChainInfo;
@@ -34,11 +30,17 @@ use reth_storage_api::{
 };
 use reth_storage_errors::provider::ProviderResult;
 use revm_database::states::PlainStorageRevert;
-use std::{
-    ops::{Add, Bound, RangeBounds, RangeInclusive, Sub},
-    sync::Arc,
-};
 use tracing::trace;
+
+use super::{DatabaseProviderRO, ProviderFactory, ProviderNodeTypes};
+use crate::{
+    AccountReader, BlockHashReader, BlockIdReader, BlockNumReader, BlockReader, BlockReaderIdExt,
+    BlockSource, ChainSpecProvider, ChangeSetReader, HeaderProvider, ProviderError,
+    PruneCheckpointReader, ReceiptProvider, ReceiptProviderIdExt, StageCheckpointReader,
+    StateReader, StaticFileProviderFactory, TransactionVariant, TransactionsProvider,
+    providers::{StaticFileProvider, StaticFileProviderRWRefMut},
+    to_range,
+};
 
 /// Type that interacts with a snapshot view of the blockchain (storage and in-memory) at time of
 /// instantiation, EXCEPT for pending, safe and finalized block which might change while holding
@@ -151,7 +153,7 @@ impl<N: ProviderNodeTypes> ConsistentProvider<N> {
         range: RangeInclusive<BlockNumber>,
     ) -> ProviderResult<Option<ExecutionOutcome<ReceiptTy<N>>>> {
         if range.is_empty() {
-            return Ok(None)
+            return Ok(None);
         }
         let start_block_number = *range.start();
         let end_block_number = *range.end();
@@ -168,10 +170,10 @@ impl<N: ProviderNodeTypes> ConsistentProvider<N> {
         // get transaction receipts
         let Some(from_transaction_num) = block_bodies.first().map(|body| body.1.first_tx_num())
         else {
-            return Ok(None)
+            return Ok(None);
         };
         let Some(to_transaction_num) = block_bodies.last().map(|body| body.1.last_tx_num()) else {
-            return Ok(None)
+            return Ok(None);
         };
 
         let mut account_changeset = Vec::new();
@@ -339,7 +341,7 @@ impl<N: ProviderNodeTypes> ConsistentProvider<N> {
         });
 
         if start > end {
-            return Ok(vec![])
+            return Ok(vec![]);
         }
 
         // Split range into storage_range and in-memory range. If the in-memory range is not
@@ -387,7 +389,7 @@ impl<N: ProviderNodeTypes> ConsistentProvider<N> {
             // The predicate was not met, if the number of items differs from the expected. So, we
             // return what we have.
             if items.len() as u64 != storage_range.end() - storage_range.start() + 1 {
-                return Ok(items)
+                return Ok(items);
             }
         }
 
@@ -397,7 +399,7 @@ impl<N: ProviderNodeTypes> ConsistentProvider<N> {
                 if let Some(item) = map_block_state_item(block, &mut predicate) {
                     items.push(item);
                 } else {
-                    break
+                    break;
                 }
             }
         }
@@ -455,12 +457,12 @@ impl<N: ProviderNodeTypes> ConsistentProvider<N> {
             in_mem_chain
                 .iter()
                 .map(|b| b.block_ref().recovered_block().body().transactions().len() as u64)
-                .sum::<u64>() +
-                last_block_body_index.last_tx_num()
+                .sum::<u64>()
+                + last_block_body_index.last_tx_num()
         });
 
         if start > end {
-            return Ok(vec![])
+            return Ok(vec![]);
         }
 
         let mut tx_range = start..=end;
@@ -494,7 +496,7 @@ impl<N: ProviderNodeTypes> ConsistentProvider<N> {
             // transaction, advance
             if *tx_range.start() >= in_memory_tx_num + block_tx_count as u64 {
                 in_memory_tx_num += block_tx_count as u64;
-                continue
+                continue;
             }
 
             // This should only be more than 0 once, in case of a partial range inside a block.
@@ -509,7 +511,7 @@ impl<N: ProviderNodeTypes> ConsistentProvider<N> {
 
             // Break if the range has been fully processed
             if in_memory_tx_num > *tx_range.end() {
-                break
+                break;
             }
 
             // Set updated range
@@ -550,10 +552,10 @@ impl<N: ProviderNodeTypes> ConsistentProvider<N> {
 
         // If the transaction number is less than the first in-memory transaction number, make a
         // database lookup
-        if let HashOrNumber::Number(id) = id &&
-            id < in_memory_tx_num
+        if let HashOrNumber::Number(id) = id
+            && id < in_memory_tx_num
         {
-            return fetch_from_db(provider)
+            return fetch_from_db(provider);
         }
 
         // Iterate from the lowest block to the highest
@@ -565,12 +567,12 @@ impl<N: ProviderNodeTypes> ConsistentProvider<N> {
                 match id {
                     HashOrNumber::Hash(tx_hash) => {
                         if tx_hash == block.body().transactions()[tx_index].trie_hash() {
-                            return fetch_from_block_state(tx_index, in_memory_tx_num, block_state)
+                            return fetch_from_block_state(tx_index, in_memory_tx_num, block_state);
                         }
                     }
                     HashOrNumber::Number(id) => {
                         if id == in_memory_tx_num {
-                            return fetch_from_block_state(tx_index, in_memory_tx_num, block_state)
+                            return fetch_from_block_state(tx_index, in_memory_tx_num, block_state);
                         }
                     }
                 }
@@ -581,7 +583,7 @@ impl<N: ProviderNodeTypes> ConsistentProvider<N> {
 
         // Not found in-memory, so check database.
         if let HashOrNumber::Hash(_) = id {
-            return fetch_from_db(provider)
+            return fetch_from_db(provider);
         }
 
         Ok(None)
@@ -599,7 +601,7 @@ impl<N: ProviderNodeTypes> ConsistentProvider<N> {
         M: Fn(&BlockState<N::Primitives>) -> ProviderResult<R>,
     {
         if let Some(Some(block_state)) = self.head_block.as_ref().map(|b| b.block_on_chain(id)) {
-            return fetch_from_block_state(block_state)
+            return fetch_from_block_state(block_state);
         }
         fetch_from_db(&self.storage_provider)
     }
@@ -807,14 +809,14 @@ impl<N: ProviderNodeTypes> BlockReader for ConsistentProvider<N> {
         hash: B256,
         source: BlockSource,
     ) -> ProviderResult<Option<Self::Block>> {
-        if matches!(source, BlockSource::Canonical | BlockSource::Any) &&
-            let Some(block) = self.get_in_memory_or_storage_by_block(
+        if matches!(source, BlockSource::Canonical | BlockSource::Any)
+            && let Some(block) = self.get_in_memory_or_storage_by_block(
                 hash.into(),
                 |db_provider| db_provider.find_block_by_hash(hash, BlockSource::Canonical),
                 |block_state| Ok(Some(block_state.block_ref().recovered_block().clone_block())),
             )?
         {
-            return Ok(Some(block))
+            return Ok(Some(block));
         }
 
         if matches!(source, BlockSource::Pending | BlockSource::Any) {
@@ -822,7 +824,7 @@ impl<N: ProviderNodeTypes> BlockReader for ConsistentProvider<N> {
                 .canonical_in_memory_state
                 .pending_block()
                 .filter(|b| b.hash() == hash)
-                .map(|b| b.into_block()))
+                .map(|b| b.into_block()));
         }
 
         Ok(None)
@@ -966,7 +968,7 @@ impl<N: ProviderNodeTypes> TransactionsProvider for ConsistentProvider<N> {
 
     fn transaction_by_hash(&self, hash: TxHash) -> ProviderResult<Option<Self::Transaction>> {
         if let Some(tx) = self.head_block.as_ref().and_then(|b| b.transaction_on_chain(hash)) {
-            return Ok(Some(tx))
+            return Ok(Some(tx));
         }
 
         self.storage_provider.transaction_by_hash(hash)
@@ -979,7 +981,7 @@ impl<N: ProviderNodeTypes> TransactionsProvider for ConsistentProvider<N> {
         if let Some((tx, meta)) =
             self.head_block.as_ref().and_then(|b| b.transaction_meta_on_chain(tx_hash))
         {
-            return Ok(Some((tx, meta)))
+            return Ok(Some((tx, meta)));
         }
 
         self.storage_provider.transaction_by_hash_with_meta(tx_hash)
@@ -1124,9 +1126,9 @@ impl<N: ProviderNodeTypes> ReceiptProviderIdExt for ConsistentProvider<N> {
         match block {
             BlockId::Hash(rpc_block_hash) => {
                 let mut receipts = self.receipts_by_block(rpc_block_hash.block_hash.into())?;
-                if receipts.is_none() &&
-                    !rpc_block_hash.require_canonical.unwrap_or(false) &&
-                    let Some(state) = self
+                if receipts.is_none()
+                    && !rpc_block_hash.require_canonical.unwrap_or(false)
+                    && let Some(state) = self
                         .head_block
                         .as_ref()
                         .and_then(|b| b.block_on_chain(rpc_block_hash.block_hash.into()))
@@ -1355,7 +1357,7 @@ impl<N: ProviderNodeTypes> StorageChangeSetReader for ConsistentProvider<N> {
                 .unwrap_or(true);
 
             if !storage_history_exists {
-                return Err(ProviderError::StateAtBlockPruned(block_number))
+                return Err(ProviderError::StateAtBlockPruned(block_number));
             }
 
             self.storage_provider.storage_changeset(block_number)
@@ -1384,7 +1386,7 @@ impl<N: ProviderNodeTypes> StorageChangeSetReader for ConsistentProvider<N> {
                 .flatten()
                 .find_map(|revert: PlainStorageRevert| {
                     if revert.address != address {
-                        return None
+                        return None;
                     }
                     revert.storage_revert.into_iter().find_map(|(key, value)| {
                         let tagged_key = StorageSlotKey::from_u256(key).to_changeset(use_hashed);
@@ -1405,7 +1407,7 @@ impl<N: ProviderNodeTypes> StorageChangeSetReader for ConsistentProvider<N> {
                 .unwrap_or(true);
 
             if !storage_history_exists {
-                return Err(ProviderError::StateAtBlockPruned(block_number))
+                return Err(ProviderError::StateAtBlockPruned(block_number));
             }
 
             self.storage_provider.get_storage_before_block(block_number, address, storage_key)
@@ -1466,7 +1468,7 @@ impl<N: ProviderNodeTypes> StorageChangeSetReader for ConsistentProvider<N> {
                 .unwrap_or(true);
 
             if !storage_history_exists {
-                return Err(ProviderError::StateAtBlockPruned(database_start))
+                return Err(ProviderError::StateAtBlockPruned(database_start));
             }
 
             let db_changesets = self
@@ -1543,7 +1545,7 @@ impl<N: ProviderNodeTypes> ChangeSetReader for ConsistentProvider<N> {
                 .unwrap_or(true);
 
             if !account_history_exists {
-                return Err(ProviderError::StateAtBlockPruned(block_number))
+                return Err(ProviderError::StateAtBlockPruned(block_number));
             }
 
             self.storage_provider.account_block_changeset(block_number)
@@ -1588,7 +1590,7 @@ impl<N: ProviderNodeTypes> ChangeSetReader for ConsistentProvider<N> {
                 .unwrap_or(true);
 
             if !account_history_exists {
-                return Err(ProviderError::StateAtBlockPruned(block_number))
+                return Err(ProviderError::StateAtBlockPruned(block_number));
             }
 
             // Delegate to the storage provider for database lookups
@@ -1643,7 +1645,7 @@ impl<N: ProviderNodeTypes> ChangeSetReader for ConsistentProvider<N> {
                 .unwrap_or(true);
 
             if !account_history_exists {
-                return Err(ProviderError::StateAtBlockPruned(database_start))
+                return Err(ProviderError::StateAtBlockPruned(database_start));
             }
 
             let db_changesets =
@@ -1716,10 +1718,11 @@ impl<N: ProviderNodeTypes> StateReader for ConsistentProvider<N> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        providers::blockchain_provider::BlockchainProvider,
-        test_utils::create_test_provider_factory, BlockWriter,
+    use std::{
+        ops::{Bound, Range, RangeBounds},
+        sync::Arc,
     };
+
     use alloy_eips::BlockHashOrNumber;
     use alloy_primitives::B256;
     use itertools::Itertools;
@@ -1731,12 +1734,13 @@ mod tests {
     use reth_primitives_traits::{RecoveredBlock, SealedBlock};
     use reth_storage_api::{BlockReader, BlockSource, ChangeSetReader};
     use reth_testing_utils::generators::{
-        self, random_block_range, random_changeset_range, random_eoa_accounts, BlockRangeParams,
+        self, BlockRangeParams, random_block_range, random_changeset_range, random_eoa_accounts,
     };
     use revm_database::BundleState;
-    use std::{
-        ops::{Bound, Range, RangeBounds},
-        sync::Arc,
+
+    use crate::{
+        BlockWriter, providers::blockchain_provider::BlockchainProvider,
+        test_utils::create_test_provider_factory,
     };
 
     const TEST_BLOCKS_COUNT: usize = 5;
@@ -2027,36 +2031,38 @@ mod tests {
 
         let in_memory_changesets = in_memory_changesets.into_iter().next().unwrap();
         let chain = NewCanonicalChain::Commit {
-            new: vec![in_memory_blocks
-                .first()
-                .map(|block| {
-                    let senders = block.senders().expect("failed to recover senders");
-                    ExecutedBlock {
-                        recovered_block: Arc::new(RecoveredBlock::new_sealed(
-                            block.clone(),
-                            senders,
-                        )),
-                        execution_output: Arc::new(BlockExecutionOutput {
-                            state: BundleState::new(
-                                in_memory_state.into_iter().map(|(address, (account, _))| {
-                                    (address, None, Some(account.into()), Default::default())
-                                }),
-                                [in_memory_changesets.iter().map(|(address, account, _)| {
-                                    (*address, Some(Some((*account).into())), Vec::new())
-                                })],
-                                [],
-                            ),
-                            result: BlockExecutionResult {
-                                receipts: Default::default(),
-                                requests: Default::default(),
-                                gas_used: 0,
-                                blob_gas_used: 0,
-                            },
-                        }),
-                        ..Default::default()
-                    }
-                })
-                .unwrap()],
+            new: vec![
+                in_memory_blocks
+                    .first()
+                    .map(|block| {
+                        let senders = block.senders().expect("failed to recover senders");
+                        ExecutedBlock {
+                            recovered_block: Arc::new(RecoveredBlock::new_sealed(
+                                block.clone(),
+                                senders,
+                            )),
+                            execution_output: Arc::new(BlockExecutionOutput {
+                                state: BundleState::new(
+                                    in_memory_state.into_iter().map(|(address, (account, _))| {
+                                        (address, None, Some(account.into()), Default::default())
+                                    }),
+                                    [in_memory_changesets.iter().map(|(address, account, _)| {
+                                        (*address, Some(Some((*account).into())), Vec::new())
+                                    })],
+                                    [],
+                                ),
+                                result: BlockExecutionResult {
+                                    receipts: Default::default(),
+                                    requests: Default::default(),
+                                    gas_used: 0,
+                                    blob_gas_used: 0,
+                                },
+                            }),
+                            ..Default::default()
+                        }
+                    })
+                    .unwrap(),
+            ],
         };
         provider.canonical_in_memory_state.update_chain(chain);
 
@@ -2087,11 +2093,12 @@ mod tests {
 
     #[test]
     fn test_get_state_storage_value_hashed_state() -> eyre::Result<()> {
-        use alloy_primitives::{keccak256, U256};
+        use std::collections::HashMap;
+
+        use alloy_primitives::{U256, keccak256};
         use reth_db_api::{models::StorageSettings, tables, transaction::DbTxMut};
         use reth_primitives_traits::StorageEntry;
         use reth_storage_api::StorageSettingsCache;
-        use std::collections::HashMap;
 
         let address = alloy_primitives::Address::with_last_byte(1);
         let account = reth_primitives_traits::Account {
@@ -2172,11 +2179,12 @@ mod tests {
     #[test]
     #[cfg(all(unix, feature = "rocksdb"))]
     fn test_get_state_storage_value_hashed_state_historical() -> eyre::Result<()> {
-        use alloy_primitives::{keccak256, U256};
+        use std::collections::HashMap;
+
+        use alloy_primitives::{U256, keccak256};
         use reth_db_api::{models::StorageSettings, tables, transaction::DbTxMut};
         use reth_primitives_traits::StorageEntry;
         use reth_storage_api::StorageSettingsCache;
-        use std::collections::HashMap;
 
         let address = alloy_primitives::Address::with_last_byte(1);
         let account = reth_primitives_traits::Account {
@@ -2258,11 +2266,12 @@ mod tests {
 
     #[test]
     fn test_get_state_storage_value_plain_state() -> eyre::Result<()> {
+        use std::collections::HashMap;
+
         use alloy_primitives::U256;
         use reth_db_api::{models::StorageSettings, tables, transaction::DbTxMut};
         use reth_primitives_traits::StorageEntry;
         use reth_storage_api::StorageSettingsCache;
-        use std::collections::HashMap;
 
         let address = alloy_primitives::Address::with_last_byte(1);
         let account = reth_primitives_traits::Account {
@@ -2339,10 +2348,11 @@ mod tests {
 
     #[test]
     fn test_storage_changeset_consistent_keys_hashed_state() -> eyre::Result<()> {
-        use alloy_primitives::{keccak256, U256};
+        use std::collections::HashMap;
+
+        use alloy_primitives::{U256, keccak256};
         use reth_db_api::models::StorageSettings;
         use reth_storage_api::{StorageChangeSetReader, StorageSettingsCache};
-        use std::collections::HashMap;
 
         let mut rng = generators::rng();
         let factory = create_test_provider_factory();
@@ -2437,10 +2447,11 @@ mod tests {
 
     #[test]
     fn test_storage_changeset_consistent_keys_plain_state() -> eyre::Result<()> {
+        use std::collections::HashMap;
+
         use alloy_primitives::U256;
         use reth_db_api::models::StorageSettings;
         use reth_storage_api::{StorageChangeSetReader, StorageSettingsCache};
-        use std::collections::HashMap;
 
         let mut rng = generators::rng();
         let factory = create_test_provider_factory();
@@ -2536,10 +2547,11 @@ mod tests {
 
     #[test]
     fn test_storage_changesets_range_consistent_keys_hashed_state() -> eyre::Result<()> {
+        use std::collections::HashMap;
+
         use alloy_primitives::U256;
         use reth_db_api::models::StorageSettings;
         use reth_storage_api::{StorageChangeSetReader, StorageSettingsCache};
-        use std::collections::HashMap;
 
         let mut rng = generators::rng();
         let factory = create_test_provider_factory();
@@ -2631,10 +2643,11 @@ mod tests {
 
     #[test]
     fn test_storage_changesets_range_consistent_keys_plain_state() -> eyre::Result<()> {
+        use std::collections::HashMap;
+
         use alloy_primitives::U256;
         use reth_db_api::models::StorageSettings;
         use reth_storage_api::{StorageChangeSetReader, StorageSettingsCache};
-        use std::collections::HashMap;
 
         let mut rng = generators::rng();
         let factory = create_test_provider_factory();

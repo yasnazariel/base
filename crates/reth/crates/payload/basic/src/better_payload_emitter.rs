@@ -1,7 +1,9 @@
-use crate::{BuildArguments, BuildOutcome, HeaderForPayload, PayloadBuilder, PayloadConfig};
-use reth_payload_builder::PayloadBuilderError;
 use std::sync::Arc;
+
+use reth_payload_builder::PayloadBuilderError;
 use tokio::sync::broadcast;
+
+use crate::{BuildArguments, BuildOutcome, HeaderForPayload, PayloadBuilder, PayloadConfig};
 
 /// Emits events when a payload is built (both `Better` and `Freeze` outcomes).
 /// Delegates the actual payload building to an inner [`PayloadBuilder`].

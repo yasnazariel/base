@@ -29,8 +29,9 @@ pub struct StorageArgs {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use clap::Parser;
+
+    use super::*;
 
     /// A helper type to parse Args more easily
     #[derive(Parser)]

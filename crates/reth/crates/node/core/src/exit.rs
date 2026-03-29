@@ -1,12 +1,13 @@
 //! Helper types for waiting for the node to exit.
 
-use futures::{future::BoxFuture, FutureExt};
 use std::{
     fmt,
     future::Future,
     pin::Pin,
-    task::{ready, Context, Poll},
+    task::{Context, Poll, ready},
 };
+
+use futures::{FutureExt, future::BoxFuture};
 
 /// A Future which resolves when the node exits
 pub struct NodeExitFuture {
@@ -46,11 +47,7 @@ impl Future for NodeExitFuture {
             match ready!(rx.poll_unpin(cx)) {
                 Ok(_) => {
                     this.consensus_engine_fut.take();
-                    if this.terminate {
-                        Poll::Ready(Ok(()))
-                    } else {
-                        Poll::Pending
-                    }
+                    if this.terminate { Poll::Ready(Ok(())) } else { Poll::Pending }
                 }
                 Err(err) => Poll::Ready(Err(err)),
             }
@@ -62,8 +59,9 @@ impl Future for NodeExitFuture {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::future::poll_fn;
+
+    use super::*;
 
     #[tokio::test]
     async fn test_node_exit_future_terminate_true() {

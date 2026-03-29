@@ -1,6 +1,8 @@
-use crate::{cursor::DbCursorRO, table::Table, transaction::DbTxMut};
-use reth_storage_errors::db::DatabaseError;
 use std::ops::RangeBounds;
+
+use reth_storage_errors::db::DatabaseError;
+
+use crate::{cursor::DbCursorRO, table::Table, transaction::DbTxMut};
 
 /// Extension trait for [`DbTxMut`] that provides unwind functionality.
 pub trait DbTxUnwindExt: DbTxMut {
@@ -31,7 +33,7 @@ pub trait DbTxUnwindExt: DbTxMut {
 
         while let Some(Ok((entry_key, _))) = reverse_walker.next() {
             if selector(entry_key) <= key {
-                break
+                break;
             }
             reverse_walker.delete_current()?;
             deleted += 1;

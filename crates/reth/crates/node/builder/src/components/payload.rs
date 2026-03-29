@@ -1,14 +1,16 @@
 //! Payload service component for the node builder.
 
-use crate::{BuilderContext, FullNodeTypes};
+use std::future::Future;
+
 use reth_basic_payload_builder::{BasicPayloadJobGenerator, BasicPayloadJobGeneratorConfig};
 use reth_chain_state::CanonStateSubscriptions;
 use reth_node_api::{NodeTypes, PayloadBuilderFor};
 use reth_payload_builder::{PayloadBuilderHandle, PayloadBuilderService, PayloadServiceCommand};
 use reth_transaction_pool::TransactionPool;
-use std::future::Future;
 use tokio::sync::{broadcast, mpsc};
 use tracing::warn;
+
+use crate::{BuilderContext, FullNodeTypes};
 
 /// A type that knows how to spawn the payload service.
 pub trait PayloadServiceBuilder<Node: FullNodeTypes, Pool: TransactionPool, EvmConfig>:
@@ -23,8 +25,9 @@ pub trait PayloadServiceBuilder<Node: FullNodeTypes, Pool: TransactionPool, EvmC
         ctx: &BuilderContext<Node>,
         pool: Pool,
         evm_config: EvmConfig,
-    ) -> impl Future<Output = eyre::Result<PayloadBuilderHandle<<Node::Types as NodeTypes>::Payload>>>
-           + Send;
+    ) -> impl Future<
+        Output = eyre::Result<PayloadBuilderHandle<<Node::Types as NodeTypes>::Payload>>,
+    > + Send;
 }
 
 impl<Node, F, Fut, Pool, EvmConfig> PayloadServiceBuilder<Node, Pool, EvmConfig> for F

@@ -1,5 +1,6 @@
 use alloc::{boxed::Box, string::ToString};
 use core::fmt::Display;
+
 use reth_consensus::ConsensusError;
 use reth_execution_errors::BlockExecutionError;
 use reth_storage_errors::{db::DatabaseError, provider::ProviderError};

@@ -1,6 +1,6 @@
 //! Loads chain metadata.
 
-use alloy_primitives::{U256, U64};
+use alloy_primitives::{U64, U256};
 use alloy_rpc_types_eth::{Stage, SyncInfo, SyncStatus};
 use futures::Future;
 use reth_chainspec::ChainInfo;
@@ -9,7 +9,7 @@ use reth_network_api::NetworkInfo;
 use reth_rpc_convert::RpcTxReq;
 use reth_storage_api::{BlockNumReader, StageCheckpointReader, TransactionsProvider};
 
-use crate::{helpers::EthSigner, EthApiTypes, RpcNodeCore};
+use crate::{EthApiTypes, RpcNodeCore, helpers::EthSigner};
 
 /// `Eth` API trait.
 ///

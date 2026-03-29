@@ -1,19 +1,21 @@
-use crate::{
-    chain::ChainSpecInfo,
-    hooks::{Hook, Hooks},
-    recorder::install_prometheus_recorder,
-    version::VersionInfo,
-};
+use std::{convert::Infallible, net::SocketAddr, path::PathBuf, sync::Arc, time::Duration};
+
 use bytes::Bytes;
 use eyre::WrapErr;
-use http::{header::CONTENT_TYPE, HeaderValue, Request, Response, StatusCode};
+use http::{HeaderValue, Request, Response, StatusCode, header::CONTENT_TYPE};
 use http_body_util::Full;
 use metrics::describe_gauge;
 use metrics_process::Collector;
 use reqwest::Client;
 use reth_metrics::metrics::Unit;
 use reth_tasks::TaskExecutor;
-use std::{convert::Infallible, net::SocketAddr, path::PathBuf, sync::Arc, time::Duration};
+
+use crate::{
+    chain::ChainSpecInfo,
+    hooks::{Hook, Hooks},
+    recorder::install_prometheus_recorder,
+    version::VersionInfo,
+};
 
 /// Configuration for the [`MetricServer`]
 #[derive(Debug)]
@@ -417,11 +419,13 @@ fn handle_pprof_heap(_pprof_dump_dir: &PathBuf) -> Response<Full<Bytes>> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::net::{SocketAddr, TcpListener};
+
     use reqwest::Client;
     use reth_tasks::Runtime;
     use socket2::{Domain, Socket, Type};
-    use std::net::{SocketAddr, TcpListener};
+
+    use super::*;
 
     fn get_random_available_addr() -> SocketAddr {
         let addr = &"127.0.0.1:0".parse::<SocketAddr>().unwrap().into();

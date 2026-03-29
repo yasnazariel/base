@@ -4,12 +4,13 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::wal::{WalError, WalResult};
 use reth_ethereum_primitives::EthPrimitives;
 use reth_exex_types::ExExNotification;
 use reth_node_api::NodePrimitives;
 use reth_tracing::tracing::debug;
 use tracing::instrument;
+
+use crate::wal::{WalError, WalResult};
 
 static FILE_EXTENSION: &str = "wal";
 
@@ -177,21 +178,23 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::Storage;
+    use std::{collections::BTreeMap, fs::File, sync::Arc};
+
     use alloy_consensus::BlockHeader;
     use alloy_primitives::{
-        map::{HashMap, HashSet},
         B256, U256,
+        map::{HashMap, HashSet},
     };
     use reth_exex_types::ExExNotification;
     use reth_primitives_traits::Account;
     use reth_provider::Chain;
     use reth_testing_utils::generators::{self, random_block};
     use reth_trie_common::{
-        updates::{StorageTrieUpdates, TrieUpdates},
         BranchNodeCompact, HashedPostState, HashedStorage, LazyTrieData, Nibbles,
+        updates::{StorageTrieUpdates, TrieUpdates},
     };
-    use std::{collections::BTreeMap, fs::File, sync::Arc};
+
+    use super::Storage;
 
     // wal with 1 block and tx (old 3-field format)
     // <https://github.com/paradigmxyz/reth/issues/15012>
@@ -291,8 +294,8 @@ mod tests {
     }
 
     /// Helper function to generate deterministic test data for WAL tests
-    fn get_test_notification_data(
-    ) -> eyre::Result<ExExNotification<reth_ethereum_primitives::EthPrimitives>> {
+    fn get_test_notification_data()
+    -> eyre::Result<ExExNotification<reth_ethereum_primitives::EthPrimitives>> {
         use reth_ethereum_primitives::Block;
         use reth_primitives_traits::Block as _;
 

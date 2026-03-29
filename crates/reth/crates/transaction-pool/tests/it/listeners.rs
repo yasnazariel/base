@@ -1,11 +1,12 @@
+use std::{future::poll_fn, task::Poll};
+
 use assert_matches::assert_matches;
 use reth_transaction_pool::{
-    noop::MockTransactionValidator,
-    test_utils::{MockTransactionFactory, TestPoolBuilder},
     FullTransactionEvent, PoolTransaction, TransactionEvent, TransactionListenerKind,
     TransactionOrigin, TransactionPool,
+    noop::MockTransactionValidator,
+    test_utils::{MockTransactionFactory, TestPoolBuilder},
 };
-use std::{future::poll_fn, task::Poll};
 use tokio_stream::StreamExt;
 
 #[tokio::test(flavor = "multi_thread")]

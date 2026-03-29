@@ -1,26 +1,27 @@
 //! Example tests using the test suite framework.
 
+use std::sync::Arc;
+
 use alloy_primitives::{Address, B256};
 use alloy_rpc_types_engine::PayloadAttributes;
 use eyre::Result;
 use reth_chainspec::{ChainSpecBuilder, MAINNET};
 use reth_e2e_test_utils::{
+    E2ETestSetupBuilder,
     test_rlp_utils::{generate_test_blocks, write_blocks_to_rlp},
     testsuite::{
+        Environment, TestBuilder,
         actions::{
             Action, AssertChainTip, AssertMineBlock, CaptureBlock, CaptureBlockOnNode,
             CompareNodeChainTips, CreateFork, MakeCanonical, ProduceBlocks, ReorgTo,
             SelectActiveNode, UpdateBlockInfo,
         },
         setup::{NetworkSetup, Setup},
-        Environment, TestBuilder,
     },
-    E2ETestSetupBuilder,
 };
 use reth_node_api::TreeConfig;
 use reth_node_ethereum::{EthEngineTypes, EthereumNode};
 use reth_payload_builder::EthPayloadBuilderAttributes;
-use std::sync::Arc;
 use tempfile::TempDir;
 use tracing::debug;
 
@@ -92,8 +93,8 @@ async fn test_apply_with_import() -> Result<()> {
         )
         .await;
 
-        if let Ok(Some(block)) = block_result &&
-            block.header.number == 10
+        if let Ok(Some(block)) = block_result
+            && block.header.number == 10
         {
             debug!("Pipeline finished, block 10 is fully available");
             break;

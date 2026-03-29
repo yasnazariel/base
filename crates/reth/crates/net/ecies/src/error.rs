@@ -1,6 +1,8 @@
-use crate::IngressECIESValue;
 use std::fmt;
+
 use thiserror::Error;
+
+use crate::IngressECIESValue;
 
 /// An error that occurs while reading or writing to an ECIES stream.
 #[derive(Debug, Error)]

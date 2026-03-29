@@ -1,10 +1,11 @@
 //! Test setup utilities for configuring the initial state.
 
-use crate::{testsuite::Environment, E2ETestSetupBuilder, NodeBuilderHelper};
+use std::{marker::PhantomData, path::Path, sync::Arc};
+
 use alloy_eips::BlockNumberOrTag;
 use alloy_primitives::B256;
 use alloy_rpc_types_engine::{ForkchoiceState, PayloadAttributes};
-use eyre::{eyre, Result};
+use eyre::{Result, eyre};
 use reth_chainspec::ChainSpec;
 use reth_ethereum_primitives::Block;
 use reth_network_p2p::sync::{NetworkSyncUpdater, SyncState};
@@ -12,12 +13,13 @@ use reth_node_api::{EngineTypes, NodeTypes, PayloadTypes, TreeConfig};
 use reth_node_core::primitives::RecoveredBlock;
 use reth_payload_builder::EthPayloadBuilderAttributes;
 use revm::state::EvmState;
-use std::{marker::PhantomData, path::Path, sync::Arc};
 use tokio::{
     sync::mpsc,
-    time::{sleep, Duration},
+    time::{Duration, sleep},
 };
 use tracing::debug;
+
+use crate::{E2ETestSetupBuilder, NodeBuilderHelper, testsuite::Environment};
 
 /// Configuration for setting up test environment
 #[derive(Debug)]
@@ -287,10 +289,10 @@ where
     }
 
     /// Create a static attributes generator that doesn't capture any instance data
-    fn create_static_attributes_generator<N>(
-    ) -> impl Fn(u64) -> <<N as NodeTypes>::Payload as PayloadTypes>::PayloadBuilderAttributes
-           + Copy
-           + use<N, I>
+    fn create_static_attributes_generator<N>()
+    -> impl Fn(u64) -> <<N as NodeTypes>::Payload as PayloadTypes>::PayloadBuilderAttributes
+    + Copy
+    + use<N, I>
     where
         N: NodeBuilderHelper<Payload = I>,
     {

@@ -4,11 +4,13 @@
 //! lazily on first access. This allows execution to start before the trie overlay
 //! is fully computed.
 
-use crate::DeferredTrieData;
-use alloy_primitives::B256;
-use reth_trie::{updates::TrieUpdatesSorted, HashedPostStateSorted, TrieInputSorted};
 use std::sync::{Arc, OnceLock};
+
+use alloy_primitives::B256;
+use reth_trie::{HashedPostStateSorted, TrieInputSorted, updates::TrieUpdatesSorted};
 use tracing::{debug, trace};
+
+use crate::DeferredTrieData;
 
 /// Inputs captured for lazy overlay computation.
 #[derive(Clone)]
@@ -140,8 +142,9 @@ impl LazyOverlay {
 
 #[cfg(test)]
 mod tests {
+    use reth_trie::{HashedPostState, updates::TrieUpdates};
+
     use super::*;
-    use reth_trie::{updates::TrieUpdates, HashedPostState};
 
     fn empty_deferred(anchor: B256) -> DeferredTrieData {
         DeferredTrieData::pending(

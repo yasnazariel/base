@@ -1,13 +1,15 @@
 //! reth data directories.
 
-use crate::{args::DatadirArgs, utils::parse_path};
-use reth_chainspec::Chain;
 use std::{
     env::VarError,
     fmt::{Debug, Display, Formatter},
     path::{Path, PathBuf},
     str::FromStr,
 };
+
+use reth_chainspec::Chain;
+
+use crate::{args::DatadirArgs, utils::parse_path};
 
 /// Constructs a string to be used as a path for configuration and db paths.
 pub fn config_path_prefix(chain: Chain) -> String {

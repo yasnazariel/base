@@ -1,27 +1,29 @@
 //! Loads a pending block from database. Helper trait for `eth_` call and trace RPC methods.
 
-use super::{Call, LoadBlock, LoadState, LoadTransaction};
-use crate::FromEvmError;
-use alloy_consensus::{transaction::TxHashRef, BlockHeader};
+use std::sync::Arc;
+
+use alloy_consensus::{BlockHeader, transaction::TxHashRef};
 use alloy_primitives::B256;
 use alloy_rpc_types_eth::{BlockId, TransactionInfo};
 use futures::Future;
 use reth_chainspec::ChainSpecProvider;
 use reth_errors::ProviderError;
 use reth_evm::{
-    evm::EvmFactoryExt, system_calls::SystemCaller, tracing::TracingCtx, ConfigureEvm, Database,
-    Evm, EvmEnvFor, EvmFor, HaltReasonFor, InspectorFor, TxEnvFor,
+    ConfigureEvm, Database, Evm, EvmEnvFor, EvmFor, HaltReasonFor, InspectorFor, TxEnvFor,
+    evm::EvmFactoryExt, system_calls::SystemCaller, tracing::TracingCtx,
 };
 use reth_primitives_traits::{BlockBody, Recovered, RecoveredBlock};
 use reth_revm::{
     database::StateProviderDatabase,
-    db::{bal::EvmDatabaseError, State},
+    db::{State, bal::EvmDatabaseError},
 };
-use reth_rpc_eth_types::{cache::db::StateCacheDb, EthApiError};
+use reth_rpc_eth_types::{EthApiError, cache::db::StateCacheDb};
 use reth_storage_api::{ProviderBlock, ProviderTx};
-use revm::{context::Block, context_interface::result::ResultAndState, DatabaseCommit};
+use revm::{DatabaseCommit, context::Block, context_interface::result::ResultAndState};
 use revm_inspectors::tracing::{TracingInspector, TracingInspectorConfig};
-use std::sync::Arc;
+
+use super::{Call, LoadBlock, LoadState, LoadTransaction};
+use crate::FromEvmError;
 
 /// Executes CPU heavy tasks.
 pub trait Trace: LoadState<Error: FromEvmError<Self::Evm>> + Call {
@@ -268,7 +270,7 @@ pub trait Trace: LoadState<Error: FromEvmError<Self::Evm>> + Call {
         async move {
             let block = async {
                 if block.is_some() {
-                    return Ok(block)
+                    return Ok(block);
                 }
                 self.recovered_block(block_id).await
             };
@@ -279,7 +281,7 @@ pub trait Trace: LoadState<Error: FromEvmError<Self::Evm>> + Call {
 
             if block.body().transactions().is_empty() {
                 // nothing to trace
-                return Ok(Some(Vec::new()))
+                return Ok(Some(Vec::new()));
             }
 
             // replay all transactions of the block

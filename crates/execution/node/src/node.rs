@@ -542,7 +542,9 @@ impl<N, EthB, PVB, EB, EVB, Attrs, RpcMiddleware> NodeAddOns<N>
 where
     N: FullNodeComponents<
             Types: OpNodeTypes + NodeTypes<Payload: PayloadTypes<PayloadBuilderAttributes = Attrs>>,
-            Evm: ConfigureEvm<NextBlockEnvCtx: BuildNextEnv<Attrs, HeaderTy<N::Types>, OpChainSpec>>,
+            Evm: ConfigureEvm<
+                NextBlockEnvCtx: BuildNextEnv<Attrs, HeaderTy<N::Types>, OpChainSpec>,
+            >,
             Pool: TransactionPool<Transaction: OpPooledTx>,
         >,
     EthB: EthApiBuilder<N>,
@@ -615,7 +617,9 @@ impl<N, EthB, PVB, EB, EVB, Attrs, RpcMiddleware> RethRpcAddOns<N>
 where
     N: FullNodeComponents<
             Types: OpNodeTypes + NodeTypes<Payload: PayloadTypes<PayloadBuilderAttributes = Attrs>>,
-            Evm: ConfigureEvm<NextBlockEnvCtx: BuildNextEnv<Attrs, HeaderTy<N::Types>, OpChainSpec>>,
+            Evm: ConfigureEvm<
+                NextBlockEnvCtx: BuildNextEnv<Attrs, HeaderTy<N::Types>, OpChainSpec>,
+            >,
         >,
     <<N as FullNodeComponents>::Pool as TransactionPool>::Transaction: OpPooledTx,
     EthB: EthApiBuilder<N>,

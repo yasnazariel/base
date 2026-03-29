@@ -1,21 +1,22 @@
+use std::{collections::HashMap, io, ops::RangeInclusive, path::Path, sync::Arc};
+
 use alloy_consensus::BlockHeader;
 use alloy_eips::BlockHashOrNumber;
-use alloy_primitives::{BlockHash, BlockNumber, Sealable, B256};
+use alloy_primitives::{B256, BlockHash, BlockNumber, Sealable};
 use async_compression::tokio::bufread::GzipDecoder;
 use futures::Future;
 use itertools::Either;
 use reth_consensus::{Consensus, ConsensusError};
 use reth_network_p2p::{
+    BlockClient,
     bodies::client::{BodiesClient, BodiesFut},
     download::DownloadClient,
     error::RequestError,
     headers::client::{HeadersClient, HeadersDirection, HeadersFut, HeadersRequest},
     priority::Priority,
-    BlockClient,
 };
 use reth_network_peers::PeerId;
 use reth_primitives_traits::{Block, BlockBody, FullBlock, SealedBlock, SealedHeader};
-use std::{collections::HashMap, io, ops::RangeInclusive, path::Path, sync::Arc};
 use thiserror::Error;
 use tokio::{
     fs::File,
@@ -161,7 +162,7 @@ impl<B: FullBlock> FileClient<B> {
     /// Returns true if all blocks are canonical (no gaps)
     pub fn has_canonical_blocks(&self) -> bool {
         if self.headers.is_empty() {
-            return true
+            return true;
         }
         let mut nums = self.headers.keys().copied().collect::<Vec<_>>();
         nums.sort_unstable();
@@ -169,7 +170,7 @@ impl<B: FullBlock> FileClient<B> {
         let mut lowest = iter.next().expect("not empty");
         for next in iter {
             if next != lowest + 1 {
-                return false
+                return false;
             }
             lowest = next;
         }
@@ -273,7 +274,7 @@ impl<B: FullBlock<Header: reth_primitives_traits::BlockHeader>> FromReader
                             "partial block returned from decoding chunk"
                         );
                         remaining_bytes = bytes;
-                        break
+                        break;
                     }
                     Err(err) => return Err(err),
                 };
@@ -343,7 +344,7 @@ impl<B: FullBlock> HeadersClient for FileClient<B> {
                 Some(num) => *num,
                 None => {
                     warn!(%hash, "Could not find starting block number for requested header hash");
-                    return Box::pin(async move { Err(RequestError::BadResponse) })
+                    return Box::pin(async move { Err(RequestError::BadResponse) });
                 }
             },
             BlockHashOrNumber::Number(num) => num,
@@ -367,7 +368,7 @@ impl<B: FullBlock> HeadersClient for FileClient<B> {
                 Some(header) => headers.push(header),
                 None => {
                     warn!(number=%block_number, "Could not find header");
-                    return Box::pin(async move { Err(RequestError::BadResponse) })
+                    return Box::pin(async move { Err(RequestError::BadResponse) });
                 }
             }
         }
@@ -463,7 +464,7 @@ impl FileReader {
 
         if *remaining_bytes == 0 && chunk.is_empty() {
             // eof
-            return Ok(None)
+            return Ok(None);
         }
 
         let chunk_target_len = chunk_byte_len.min(*remaining_bytes + chunk.len() as u64);
@@ -506,7 +507,7 @@ impl FileReader {
         let mut buffer = vec![0u8; 64 * 1024];
         loop {
             if chunk.len() >= chunk_byte_len as usize {
-                return Ok(true)
+                return Ok(true);
             }
 
             match self.read(&mut buffer).await {
@@ -613,7 +614,7 @@ impl ChunkedFileReader {
             })
         })?
         else {
-            return Ok(None)
+            return Ok(None);
         };
 
         // make new file client from chunk
@@ -663,15 +664,8 @@ pub struct DecodedFileChunk<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{
-        bodies::{
-            bodies::BodiesDownloaderBuilder,
-            test_utils::{insert_headers, zip_blocks},
-        },
-        headers::{reverse_headers::ReverseHeadersDownloaderBuilder, test_utils::child_header},
-        test_utils::{generate_bodies, generate_bodies_file},
-    };
+    use std::sync::Arc;
+
     use assert_matches::assert_matches;
     use async_compression::tokio::write::GzipEncoder;
     use futures_util::stream::StreamExt;
@@ -683,10 +677,19 @@ mod tests {
         headers::downloader::{HeaderDownloader, SyncTarget},
     };
     use reth_provider::test_utils::create_test_provider_factory;
-    use std::sync::Arc;
     use tokio::{
         fs::File,
         io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, SeekFrom},
+    };
+
+    use super::*;
+    use crate::{
+        bodies::{
+            bodies::BodiesDownloaderBuilder,
+            test_utils::{insert_headers, zip_blocks},
+        },
+        headers::{reverse_headers::ReverseHeadersDownloaderBuilder, test_utils::child_header},
+        test_utils::{generate_bodies, generate_bodies_file},
     };
 
     #[tokio::test]

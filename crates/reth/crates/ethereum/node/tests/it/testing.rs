@@ -1,5 +1,7 @@
 //! E2E tests for the testing RPC namespace.
 
+use std::str::FromStr;
+
 use alloy_primitives::{Address, B256};
 use alloy_rpc_types_engine::ExecutionPayloadEnvelopeV4;
 use jsonrpsee_core::client::ClientT;
@@ -10,11 +12,10 @@ use reth_node_core::{
     args::DatadirArgs,
     dirs::{DataDirPath, MaybePlatformPath},
 };
-use reth_node_ethereum::{node::EthereumAddOns, EthereumNode};
+use reth_node_ethereum::{EthereumNode, node::EthereumAddOns};
 use reth_rpc_api::TestingBuildBlockRequestV1;
 use reth_rpc_server_types::{RethRpcModule, RpcModuleSelection};
 use reth_tasks::Runtime;
-use std::str::FromStr;
 use tempfile::tempdir;
 use tokio::sync::oneshot;
 

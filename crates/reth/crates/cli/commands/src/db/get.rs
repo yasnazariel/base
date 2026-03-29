@@ -1,25 +1,25 @@
-use alloy_primitives::{hex, BlockHash};
+use alloy_primitives::{BlockHash, hex};
 use clap::Parser;
 use reth_db::{
+    RawDupSort,
     static_file::{
         AccountChangesetMask, ColumnSelectorOne, ColumnSelectorTwo, HeaderWithHashMask,
         ReceiptMask, TransactionMask, TransactionSenderMask,
     },
-    RawDupSort,
 };
 use reth_db_api::{
+    RawKey, RawTable, Receipts, TableViewer, Transactions,
     cursor::{DbCursorRO, DbDupCursorRO},
     database::Database,
     table::{Compress, Decompress, DupSort, Table},
     tables,
     transaction::DbTx,
-    RawKey, RawTable, Receipts, TableViewer, Transactions,
 };
 use reth_db_common::DbTool;
 use reth_node_api::{HeaderTy, ReceiptTy, TxTy};
 use reth_node_builder::NodeTypesWithDB;
 use reth_primitives_traits::ValueWithSubKey;
-use reth_provider::{providers::ProviderNodeTypes, ChangeSetReader, StaticFileProviderFactory};
+use reth_provider::{ChangeSetReader, StaticFileProviderFactory, providers::ProviderNodeTypes};
 use reth_static_file_types::StaticFileSegment;
 use reth_storage_api::StorageChangeSetReader;
 use tracing::error;
@@ -163,7 +163,7 @@ impl Command {
                             .account_block_changeset(key)?;
 
                         println!("{}", serde_json::to_string_pretty(&changesets)?);
-                        return Ok(())
+                        return Ok(());
                     };
 
                     let account = tool
@@ -177,7 +177,7 @@ impl Command {
                         error!(target: "reth::cli", "No content for the given table key.");
                     }
 
-                    return Ok(())
+                    return Ok(());
                 }
 
                 let content = tool.provider_factory.static_file_provider().find_static_file(
@@ -227,10 +227,14 @@ impl Command {
                                     println!("{}", serde_json::to_string_pretty(&sender)?);
                                 }
                                 StaticFileSegment::AccountChangeSets => {
-                                    unreachable!("account changeset static files are special cased before this match")
+                                    unreachable!(
+                                        "account changeset static files are special cased before this match"
+                                    )
                                 }
                                 StaticFileSegment::StorageChangeSets => {
-                                    unreachable!("storage changeset static files are special cased before this match")
+                                    unreachable!(
+                                        "storage changeset static files are special cased before this match"
+                                    )
                                 }
                             }
                         }
@@ -356,8 +360,8 @@ impl<N: ProviderNodeTypes> TableViewer<()> for GetValueViewer<'_, N> {
 
                 // Seek to the starting key. If there is actually a key at the starting key then
                 // seek to the subkey within it.
-                if let Some((decoded_key, _)) = cursor.seek(key.clone())? &&
-                    decoded_key == key
+                if let Some((decoded_key, _)) = cursor.seek(key.clone())?
+                    && decoded_key == key
                 {
                     cursor.seek_by_key_subkey(key.clone(), start_subkey.clone())?;
                 }
@@ -370,8 +374,8 @@ impl<N: ProviderNodeTypes> TableViewer<()> for GetValueViewer<'_, N> {
                     let decoded_subkey = decoded_value.get_subkey();
 
                     // Check if we've reached the end (exclusive)
-                    if (&decoded_key, Some(&decoded_subkey)) >=
-                        (&end_key, end_subkey_parsed.as_ref())
+                    if (&decoded_key, Some(&decoded_subkey))
+                        >= (&end_key, end_subkey_parsed.as_ref())
                     {
                         break;
                     }
@@ -438,14 +442,16 @@ pub(crate) fn maybe_json_value_parser(value: &str) -> Result<String, eyre::Error
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use alloy_primitives::{address, B256};
+    use std::str::FromStr;
+
+    use alloy_primitives::{B256, address};
     use clap::{Args, Parser};
     use reth_db_api::{
-        models::{storage_sharded_key::StorageShardedKey, ShardedKey},
         AccountsHistory, HashedAccounts, Headers, StageCheckpoints, StoragesHistory,
+        models::{ShardedKey, storage_sharded_key::StorageShardedKey},
     };
-    use std::str::FromStr;
+
+    use super::*;
 
     /// A helper type to parse Args more easily
     #[derive(Parser)]

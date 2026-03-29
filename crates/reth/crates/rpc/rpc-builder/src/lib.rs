@@ -19,22 +19,37 @@
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-use crate::{auth::AuthRpcModule, error::WsHttpSamePortError, metrics::RpcRequestMetrics};
-use alloy_network::{Ethereum, IntoWallet};
-use alloy_provider::{fillers::RecommendedFillers, Provider, ProviderBuilder};
 use core::marker::PhantomData;
+use std::{
+    collections::HashMap,
+    fmt::Debug,
+    net::{Ipv4Addr, SocketAddr, SocketAddrV4},
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
+
+use alloy_network::{Ethereum, IntoWallet};
+use alloy_provider::{Provider, ProviderBuilder, fillers::RecommendedFillers};
+pub use cors::CorsDomainError;
 use error::{ConflictingModules, RpcError, ServerKind};
-use http::{header::AUTHORIZATION, HeaderMap};
+use http::{HeaderMap, header::AUTHORIZATION};
+// re-export for convenience
+pub use jsonrpsee::server::ServerBuilder;
 use jsonrpsee::{
-    core::RegisterMethodError,
-    server::{middleware::rpc::RpcServiceBuilder, AlreadyStoppedError, IdProvider, ServerHandle},
     Methods, RpcModule,
+    core::RegisterMethodError,
+    server::{
+        AlreadyStoppedError, IdProvider, ServerConfigBuilder, ServerHandle,
+        middleware::rpc::RpcServiceBuilder,
+    },
 };
 use reth_chainspec::{ChainSpecProvider, EthereumHardforks};
 use reth_consensus::FullConsensus;
 use reth_engine_primitives::ConsensusEngineEvent;
 use reth_evm::ConfigureEvm;
-use reth_network_api::{noop::NoopNetwork, NetworkInfo, Peers};
+pub use reth_ipc::server::{
+    Builder as IpcServerBuilder, RpcServiceBuilder as IpcRpcServiceBuilder,
+};
+use reth_network_api::{NetworkInfo, Peers, noop::NoopNetwork};
 use reth_primitives_traits::{NodePrimitives, TxTy};
 use reth_rpc::{
     AdminApi, DebugApi, EngineEthApi, EthApi, EthApiBuilder, EthBundle, MinerApi, NetApi,
@@ -42,43 +57,29 @@ use reth_rpc::{
 };
 use reth_rpc_api::servers::*;
 use reth_rpc_eth_api::{
-    helpers::{
-        pending_block::PendingEnvBuilder, Call, EthApiSpec, EthTransactions, LoadPendingBlock,
-        TraceExt,
-    },
-    node::RpcNodeCoreAdapter,
     EthApiServer, EthApiTypes, FullEthApiServer, FullEthApiTypes, RpcBlock, RpcConvert,
     RpcConverter, RpcHeader, RpcNodeCore, RpcReceipt, RpcTransaction, RpcTxReq,
+    helpers::{
+        Call, EthApiSpec, EthTransactions, LoadPendingBlock, TraceExt,
+        pending_block::PendingEnvBuilder,
+    },
+    node::RpcNodeCoreAdapter,
 };
-use reth_rpc_eth_types::{receipt::EthReceiptConverter, EthConfig, EthSubscriptionIdProvider};
+use reth_rpc_eth_types::{EthConfig, EthSubscriptionIdProvider, receipt::EthReceiptConverter};
 use reth_rpc_layer::{AuthLayer, Claims, CompressionLayer, JwtAuthValidator, JwtSecret};
-pub use reth_rpc_server_types::RethRpcModule;
+pub use reth_rpc_server_types::{RethRpcModule, RpcModuleSelection, constants};
 use reth_storage_api::{
     AccountReader, BlockReader, ChangeSetReader, FullRpcProvider, NodePrimitivesProvider,
     StateProviderFactory,
 };
-use reth_tasks::{pool::BlockingTaskGuard, TaskSpawner, TokioTaskExecutor};
+use reth_tasks::{TaskSpawner, TokioTaskExecutor, pool::BlockingTaskGuard};
 use reth_tokio_util::EventSender;
-use reth_transaction_pool::{noop::NoopTransactionPool, TransactionPool};
+use reth_transaction_pool::{TransactionPool, noop::NoopTransactionPool};
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::HashMap,
-    fmt::Debug,
-    net::{Ipv4Addr, SocketAddr, SocketAddrV4},
-    time::{Duration, SystemTime, UNIX_EPOCH},
-};
+pub use tower::layer::util::{Identity, Stack};
 use tower_http::cors::CorsLayer;
 
-pub use cors::CorsDomainError;
-
-// re-export for convenience
-pub use jsonrpsee::server::ServerBuilder;
-use jsonrpsee::server::ServerConfigBuilder;
-pub use reth_ipc::server::{
-    Builder as IpcServerBuilder, RpcServiceBuilder as IpcRpcServiceBuilder,
-};
-pub use reth_rpc_server_types::{constants, RpcModuleSelection};
-pub use tower::layer::util::{Identity, Stack};
+use crate::{auth::AuthRpcModule, error::WsHttpSamePortError, metrics::RpcRequestMetrics};
 
 /// Auth server utilities.
 pub mod auth;
@@ -101,12 +102,13 @@ pub use eth::EthHandlers;
 
 // Rpc server metrics
 mod metrics;
-use crate::middleware::RethRpcMiddleware;
 pub use metrics::{MeteredBatchRequestsFuture, MeteredRequestFuture, RpcRequestMetricsService};
 use reth_chain_state::{
     CanonStateSubscriptions, ForkChoiceSubscriptions, PersistedBlockSubscriptions,
 };
 use reth_rpc::eth::sim_bundle::EthSimBundle;
+
+use crate::middleware::RethRpcMiddleware;
 
 // Rpc rate limiter
 pub mod rate_limiter;
@@ -1006,9 +1008,9 @@ where
                         // these are implementation specific and need to be handled during
                         // initialization and should be registered via extend_rpc_modules in the
                         // nodebuilder rpc addon stack
-                        RethRpcModule::Flashbots |
-                        RethRpcModule::Testing |
-                        RethRpcModule::Other(_) => Default::default(),
+                        RethRpcModule::Flashbots
+                        | RethRpcModule::Testing
+                        | RethRpcModule::Other(_) => Default::default(),
                     })
                     .clone()
             })
@@ -1260,9 +1262,9 @@ impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
     ///
     /// If no server is configured, no server will be launched on [`RpcServerConfig::start`].
     pub const fn has_server(&self) -> bool {
-        self.http_server_config.is_some() ||
-            self.ws_server_config.is_some() ||
-            self.ipc_server_config.is_some()
+        self.http_server_config.is_some()
+            || self.ws_server_config.is_some()
+            || self.ipc_server_config.is_some()
     }
 
     /// Returns the [`SocketAddr`] of the http server
@@ -1293,11 +1295,7 @@ impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
     /// Returns a [`CompressionLayer`] that adds compression support (gzip, deflate, brotli, zstd)
     /// based on the client's `Accept-Encoding` header
     fn maybe_compression_layer(disable_compression: bool) -> Option<CompressionLayer> {
-        if disable_compression {
-            None
-        } else {
-            Some(CompressionLayer::new())
-        }
+        if disable_compression { None } else { Some(CompressionLayer::new()) }
     }
 
     /// Builds and starts the configured server(s): http, ws, ipc.
@@ -1335,9 +1333,9 @@ impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
         }
 
         // If both are configured on the same port, we combine them into one server.
-        if self.http_addr == self.ws_addr &&
-            self.http_server_config.is_some() &&
-            self.ws_server_config.is_some()
+        if self.http_addr == self.ws_addr
+            && self.http_server_config.is_some()
+            && self.ws_server_config.is_some()
         {
             let cors = match (self.ws_cors_domains.as_ref(), self.http_cors_domains.as_ref()) {
                 (Some(ws_cors), Some(http_cors)) => {
@@ -1731,7 +1729,7 @@ impl TransportRpcModules {
     /// Returns [Ok(false)] if no http transport is configured.
     pub fn merge_http(&mut self, other: impl Into<Methods>) -> Result<bool, RegisterMethodError> {
         if let Some(ref mut http) = self.http {
-            return http.merge(other.into()).map(|_| true)
+            return http.merge(other.into()).map(|_| true);
         }
         Ok(false)
     }
@@ -1743,7 +1741,7 @@ impl TransportRpcModules {
     /// Returns [Ok(false)] if no ws transport is configured.
     pub fn merge_ws(&mut self, other: impl Into<Methods>) -> Result<bool, RegisterMethodError> {
         if let Some(ref mut ws) = self.ws {
-            return ws.merge(other.into()).map(|_| true)
+            return ws.merge(other.into()).map(|_| true);
         }
         Ok(false)
     }
@@ -1755,7 +1753,7 @@ impl TransportRpcModules {
     /// Returns [Ok(false)] if no ipc transport is configured.
     pub fn merge_ipc(&mut self, other: impl Into<Methods>) -> Result<bool, RegisterMethodError> {
         if let Some(ref mut ipc) = self.ipc {
-            return ipc.merge(other.into()).map(|_| true)
+            return ipc.merge(other.into()).map(|_| true);
         }
         Ok(false)
     }
@@ -2090,8 +2088,8 @@ impl RpcServerHandle {
                 "Bearer {}",
                 secret
                     .encode(&Claims {
-                        iat: (SystemTime::now().duration_since(UNIX_EPOCH).unwrap() +
-                            Duration::from_secs(60))
+                        iat: (SystemTime::now().duration_since(UNIX_EPOCH).unwrap()
+                            + Duration::from_secs(60))
                         .as_secs(),
                         exp: None,
                     })

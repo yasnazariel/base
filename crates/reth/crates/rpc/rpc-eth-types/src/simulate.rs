@@ -1,32 +1,33 @@
 //! Utilities for serving `eth_simulateV1`
 
-use crate::{
-    error::{api::FromEthApiError, FromEvmError, ToRpcError},
-    EthApiError,
-};
-use alloy_consensus::{transaction::TxHashRef, BlockHeader, Transaction as _};
+use alloy_consensus::{BlockHeader, Transaction as _, transaction::TxHashRef};
 use alloy_eips::eip2718::WithEncoded;
 use alloy_evm::precompiles::PrecompilesMap;
 use alloy_network::TransactionBuilder;
 use alloy_rpc_types_eth::{
+    BlockTransactionsKind,
     simulate::{SimCallResult, SimulateError, SimulatedBlock},
     state::StateOverride,
-    BlockTransactionsKind,
 };
 use jsonrpsee_types::ErrorObject;
 use reth_evm::{
-    execute::{BlockBuilder, BlockBuilderOutcome, BlockExecutor},
     Evm, HaltReasonFor,
+    execute::{BlockBuilder, BlockBuilderOutcome, BlockExecutor},
 };
 use reth_primitives_traits::{BlockBody as _, BlockTy, NodePrimitives, Recovered, RecoveredBlock};
 use reth_rpc_convert::{RpcBlock, RpcConvert, RpcTxReq};
 use reth_rpc_server_types::result::rpc_err;
 use reth_storage_api::noop::NoopProvider;
 use revm::{
+    Database,
     context::Block,
     context_interface::result::ExecutionResult,
     primitives::{Address, Bytes, TxKind, U256},
-    Database,
+};
+
+use crate::{
+    EthApiError,
+    error::{FromEvmError, ToRpcError, api::FromEthApiError},
 };
 
 /// Error code for execution reverted in `eth_simulateV1`.

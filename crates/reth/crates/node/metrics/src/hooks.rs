@@ -1,5 +1,6 @@
-use metrics_process::Collector;
 use std::{fmt, sync::Arc};
+
+use metrics_process::Collector;
 
 /// The simple alias for function types that are `'static`, `Send`, and `Sync`.
 pub trait Hook: Fn() + Send + Sync + 'static {}
@@ -93,7 +94,7 @@ fn collect_memory_stats() {
 
     if epoch::advance().map_err(|error| error!(%error, "Failed to advance jemalloc epoch")).is_err()
     {
-        return
+        return;
     }
 
     if let Ok(value) = stats::active::read()
@@ -144,13 +145,13 @@ fn collect_io_stats() {
     let Ok(process) = procfs::process::Process::myself()
         .map_err(|error| error!(%error, "Failed to get currently running process"))
     else {
-        return
+        return;
     };
 
     let Ok(io) = process.io().map_err(
         |error| error!(%error, "Failed to get IO stats for the currently running process"),
     ) else {
-        return
+        return;
     };
 
     counter!("io.rchar").absolute(io.rchar);

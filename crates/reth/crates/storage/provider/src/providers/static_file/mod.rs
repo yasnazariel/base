@@ -15,10 +15,11 @@ mod metrics;
 #[cfg(test)]
 mod writer_tests;
 
+use std::{ops::Deref, sync::Arc};
+
 use reth_nippy_jar::NippyJar;
 use reth_static_file_types::{SegmentHeader, StaticFileSegment};
 use reth_storage_errors::provider::{ProviderError, ProviderResult};
-use std::{ops::Deref, sync::Arc};
 
 /// Alias type for each specific `NippyJar`.
 type LoadedJarRef<'a> =
@@ -66,29 +67,32 @@ impl Deref for LoadedJar {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{
-        providers::static_file::manager::StaticFileProviderBuilder,
-        test_utils::create_test_provider_factory, HeaderProvider, StaticFileProviderFactory,
-    };
+    use std::{collections::BTreeMap, fmt::Debug, fs, ops::Range, path::Path};
+
     use alloy_consensus::{Header, SignableTransaction, Transaction, TxLegacy};
-    use alloy_primitives::{Address, BlockHash, Signature, TxNumber, B256, U160, U256};
+    use alloy_primitives::{Address, B256, BlockHash, Signature, TxNumber, U160, U256};
     use rand::seq::SliceRandom;
     use reth_db::{
         models::{AccountBeforeTx, StorageBeforeTx},
         test_utils::create_test_static_files_dir,
     };
-    use reth_db_api::{transaction::DbTxMut, CanonicalHeaders, HeaderNumbers, Headers};
+    use reth_db_api::{CanonicalHeaders, HeaderNumbers, Headers, transaction::DbTxMut};
     use reth_ethereum_primitives::{EthPrimitives, Receipt, TransactionSigned};
     use reth_primitives_traits::Account;
     use reth_static_file_types::{
-        find_fixed_range, SegmentRangeInclusive, DEFAULT_BLOCKS_PER_STATIC_FILE,
+        DEFAULT_BLOCKS_PER_STATIC_FILE, SegmentRangeInclusive, find_fixed_range,
     };
     use reth_storage_api::{
         ChangeSetReader, ReceiptProvider, StorageChangeSetReader, TransactionsProvider,
     };
     use reth_testing_utils::generators::{self, random_header_range};
-    use std::{collections::BTreeMap, fmt::Debug, fs, ops::Range, path::Path};
+
+    use super::*;
+    use crate::{
+        HeaderProvider, StaticFileProviderFactory,
+        providers::static_file::manager::StaticFileProviderBuilder,
+        test_utils::create_test_provider_factory,
+    };
 
     fn assert_eyre<T: PartialEq + Debug>(got: T, expected: T, msg: &str) -> eyre::Result<()> {
         if got != expected {
@@ -331,9 +335,9 @@ mod tests {
                 // Append transaction/receipt if there's still a transaction count to append
                 if tx_count > 0 {
                     match segment {
-                        StaticFileSegment::Headers |
-                        StaticFileSegment::AccountChangeSets |
-                        StaticFileSegment::StorageChangeSets => {
+                        StaticFileSegment::Headers
+                        | StaticFileSegment::AccountChangeSets
+                        | StaticFileSegment::StorageChangeSets => {
                             panic!("non tx based segment")
                         }
                         StaticFileSegment::Transactions => {
@@ -450,9 +454,9 @@ mod tests {
 
             // Prune transactions or receipts based on the segment type
             match segment {
-                StaticFileSegment::Headers |
-                StaticFileSegment::AccountChangeSets |
-                StaticFileSegment::StorageChangeSets => {
+                StaticFileSegment::Headers
+                | StaticFileSegment::AccountChangeSets
+                | StaticFileSegment::StorageChangeSets => {
                     panic!("non tx based segment")
                 }
                 StaticFileSegment::Transactions => {
@@ -477,9 +481,9 @@ mod tests {
             // cumulative_gas_used & nonce as ids.
             if let Some(id) = expected_tx_tip {
                 match segment {
-                    StaticFileSegment::Headers |
-                    StaticFileSegment::AccountChangeSets |
-                    StaticFileSegment::StorageChangeSets => {
+                    StaticFileSegment::Headers
+                    | StaticFileSegment::AccountChangeSets
+                    | StaticFileSegment::StorageChangeSets => {
                         panic!("non tx based segment")
                     }
                     StaticFileSegment::Transactions => assert_eyre(

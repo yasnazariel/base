@@ -1,6 +1,8 @@
-use crate::parallel::SparseSubtrie;
 use alloc::boxed::Box;
+
 use reth_trie_common::Nibbles;
+
+use crate::parallel::SparseSubtrie;
 
 /// Tracks the state of the lower subtries.
 ///

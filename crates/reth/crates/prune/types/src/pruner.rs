@@ -1,9 +1,11 @@
-use crate::{PruneCheckpoint, PruneMode, PruneSegment};
 use alloc::{format, string::ToString, vec::Vec};
-use alloy_primitives::{BlockNumber, TxNumber};
 use core::time::Duration;
+
+use alloy_primitives::{BlockNumber, TxNumber};
 use derive_more::Display;
 use tracing::debug;
+
+use crate::{PruneCheckpoint, PruneMode, PruneSegment};
 
 /// Pruner run output.
 #[derive(Debug)]

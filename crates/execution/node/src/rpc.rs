@@ -111,12 +111,8 @@ where
     EV: PayloadValidatorBuilder<N>,
     EV::Validator: EngineApiValidator<<N::Types as NodeTypes>::Payload>,
 {
-    type EngineApi = OpEngineApi<
-        N::Provider,
-        <N::Types as NodeTypes>::Payload,
-        N::Pool,
-        EV::Validator,
-    >;
+    type EngineApi =
+        OpEngineApi<N::Provider, <N::Types as NodeTypes>::Payload, N::Pool, EV::Validator>;
 
     async fn build_engine_api(self, ctx: &AddOnsContext<'_, N>) -> eyre::Result<Self::EngineApi> {
         let Self { engine_validator_builder } = self;

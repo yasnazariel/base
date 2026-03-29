@@ -1,5 +1,7 @@
 //! Validates execution payload wrt Ethereum Execution Engine API version.
 
+use std::sync::Arc;
+
 use alloy_rpc_types_engine::ExecutionData;
 pub use alloy_rpc_types_engine::{
     ExecutionPayloadEnvelopeV2, ExecutionPayloadEnvelopeV3, ExecutionPayloadEnvelopeV4,
@@ -11,11 +13,10 @@ use reth_ethereum_payload_builder::EthereumExecutionPayloadValidator;
 use reth_ethereum_primitives::Block;
 use reth_node_api::PayloadTypes;
 use reth_payload_primitives::{
-    validate_execution_requests, validate_version_specific_fields, EngineApiMessageVersion,
-    EngineObjectValidationError, NewPayloadError, PayloadOrAttributes,
+    EngineApiMessageVersion, EngineObjectValidationError, NewPayloadError, PayloadOrAttributes,
+    validate_execution_requests, validate_version_specific_fields,
 };
 use reth_primitives_traits::SealedBlock;
-use std::sync::Arc;
 
 /// Validator for the ethereum engine API.
 #[derive(Debug, Clone)]

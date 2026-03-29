@@ -1,7 +1,8 @@
-use crate::{network::NetworkTestContext, payload::PayloadTestContext, rpc::RpcTestContext};
-use alloy_consensus::{transaction::TxHashRef, BlockHeader};
+use std::pin::Pin;
+
+use alloy_consensus::{BlockHeader, transaction::TxHashRef};
 use alloy_eips::BlockId;
-use alloy_primitives::{BlockHash, BlockNumber, Bytes, Sealable, B256};
+use alloy_primitives::{B256, BlockHash, BlockNumber, Bytes, Sealable};
 use alloy_rpc_types_engine::{ExecutionPayloadEnvelopeV5, ForkchoiceState};
 use alloy_rpc_types_eth::BlockNumberOrTag;
 use eyre::Ok;
@@ -13,8 +14,7 @@ use reth_node_api::{
     Block, BlockBody, BlockTy, EngineApiMessageVersion, FullNodeComponents, PayloadTypes,
     PrimitivesTy,
 };
-use reth_node_builder::{rpc::RethRpcAddOns, FullNode, NodeTypes};
-
+use reth_node_builder::{FullNode, NodeTypes, rpc::RethRpcAddOns};
 use reth_payload_primitives::{BuiltPayload, PayloadBuilderAttributes};
 use reth_provider::{
     BlockReader, BlockReaderIdExt, CanonStateNotificationStream, CanonStateSubscriptions,
@@ -24,9 +24,10 @@ use reth_rpc_api::TestingBuildBlockRequestV1;
 use reth_rpc_builder::auth::AuthServerHandle;
 use reth_rpc_eth_api::helpers::{EthApiSpec, EthTransactions, TraceExt};
 use reth_stages_types::StageId;
-use std::pin::Pin;
 use tokio_stream::StreamExt;
 use url::Url;
+
+use crate::{network::NetworkTestContext, payload::PayloadTestContext, rpc::RpcTestContext};
 
 /// A helper struct to handle node actions
 #[expect(missing_debug_implementations)]
@@ -151,11 +152,11 @@ where
         loop {
             tokio::time::sleep(std::time::Duration::from_millis(20)).await;
 
-            if !check &&
-                wait_finish_checkpoint &&
-                let Some(checkpoint) =
-                    self.inner.provider.get_stage_checkpoint(StageId::Finish)? &&
-                checkpoint.block_number >= number
+            if !check
+                && wait_finish_checkpoint
+                && let Some(checkpoint) =
+                    self.inner.provider.get_stage_checkpoint(StageId::Finish)?
+                && checkpoint.block_number >= number
             {
                 check = true
             }
@@ -163,7 +164,7 @@ where
             if check {
                 if let Some(latest_header) = self.inner.provider.header_by_number(number)? {
                     assert_eq!(latest_header.hash_slow(), expected_block_hash);
-                    break
+                    break;
                 }
                 assert!(
                     !wait_finish_checkpoint,
@@ -178,10 +179,10 @@ where
     pub async fn wait_unwind(&self, number: BlockNumber) -> eyre::Result<()> {
         loop {
             tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-            if let Some(checkpoint) = self.inner.provider.get_stage_checkpoint(StageId::Headers)? &&
-                checkpoint.block_number == number
+            if let Some(checkpoint) = self.inner.provider.get_stage_checkpoint(StageId::Headers)?
+                && checkpoint.block_number == number
             {
-                break
+                break;
             }
         }
         Ok(())
@@ -207,13 +208,13 @@ where
             // wait for the block to commit
             tokio::time::sleep(std::time::Duration::from_millis(20)).await;
             if let Some(latest_block) =
-                self.inner.provider.block_by_number_or_tag(BlockNumberOrTag::Latest)? &&
-                latest_block.header().number() == block_number
+                self.inner.provider.block_by_number_or_tag(BlockNumberOrTag::Latest)?
+                && latest_block.header().number() == block_number
             {
                 // make sure the block hash we submitted via FCU engine api is the new latest
                 // block using an RPC call
                 assert_eq!(latest_block.header().hash_slow(), block_hash);
-                break
+                break;
             }
         }
         Ok(())

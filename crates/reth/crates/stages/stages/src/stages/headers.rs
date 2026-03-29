@@ -1,13 +1,15 @@
+use std::task::{Context, Poll, ready};
+
 use alloy_consensus::BlockHeader;
-use alloy_primitives::{BlockHash, BlockNumber, Bytes, B256};
+use alloy_primitives::{B256, BlockHash, BlockNumber, Bytes};
 use futures_util::StreamExt;
 use reth_config::config::EtlConfig;
 use reth_db_api::{
+    DbTxUnwindExt, RawKey, RawTable, RawValue,
     cursor::{DbCursorRO, DbCursorRW},
     table::Value,
     tables,
     transaction::{DbTx, DbTxMut},
-    DbTxUnwindExt, RawKey, RawTable, RawValue,
 };
 use reth_etl::Collector;
 use reth_network_p2p::headers::{
@@ -15,19 +17,17 @@ use reth_network_p2p::headers::{
     error::HeadersDownloaderError,
 };
 use reth_primitives_traits::{
-    serde_bincode_compat, FullBlockHeader, HeaderTy, NodePrimitives, SealedHeader,
+    FullBlockHeader, HeaderTy, NodePrimitives, SealedHeader, serde_bincode_compat,
 };
 use reth_provider::{
-    providers::StaticFileWriter, BlockHashReader, DBProvider, HeaderSyncGapProvider,
-    StaticFileProviderFactory,
+    BlockHashReader, DBProvider, HeaderSyncGapProvider, StaticFileProviderFactory,
+    providers::StaticFileWriter,
 };
 use reth_stages_api::{
     CheckpointBlockRange, EntitiesCheckpoint, ExecInput, ExecOutput, HeadersCheckpoint, Stage,
     StageCheckpoint, StageError, StageId, UnwindInput, UnwindOutput,
 };
 use reth_static_file_types::StaticFileSegment;
-use std::task::{ready, Context, Poll};
-
 use tokio::sync::watch;
 use tracing::*;
 
@@ -134,11 +134,11 @@ where
                 )
                 .map(|(header, _)| header)
                 .map_err(|err| StageError::Fatal(Box::new(err)))?
-                    .into();
+                .into();
 
             let (header, header_hash) = sealed_header.split_ref();
             if header.number() == 0 {
-                continue
+                continue;
             }
             last_header_number = header.number();
 
@@ -152,9 +152,9 @@ where
             provider.tx_ref().cursor_write::<RawTable<tables::HeaderNumbers>>()?;
         // If we only have the genesis block hash, then we are at first sync, and we can remove it,
         // add it to the collector and use tx.append on all hashes.
-        let first_sync = if provider.tx_ref().entries::<RawTable<tables::HeaderNumbers>>()? == 1 &&
-            let Some((hash, block_number)) = cursor_header_numbers.last()? &&
-            block_number.value()? == 0
+        let first_sync = if provider.tx_ref().entries::<RawTable<tables::HeaderNumbers>>()? == 1
+            && let Some((hash, block_number)) = cursor_header_numbers.last()?
+            && block_number.value()? == 0
         {
             self.hash_collector.insert(hash.key()?, 0)?;
             cursor_header_numbers.delete_current()?;
@@ -210,7 +210,7 @@ where
 
         // Return if stage has already completed the gap on the ETL files
         if self.is_etl_ready {
-            return Poll::Ready(Ok(()))
+            return Poll::Ready(Ok(()));
         }
 
         // Lookup the head and tip of the sync range
@@ -229,7 +229,7 @@ where
             );
             self.is_etl_ready = true;
             self.sync_gap = Some(gap);
-            return Poll::Ready(Ok(()))
+            return Poll::Ready(Ok(()));
         }
 
         debug!(target: "sync::stages::headers", ?tip, head = ?gap.local_head.hash(), "Commencing sync");
@@ -265,7 +265,7 @@ where
                         // filled the gap.
                         if header_number == local_head_number + 1 {
                             self.is_etl_ready = true;
-                            return Poll::Ready(Ok(()))
+                            return Poll::Ready(Ok(()));
                         }
                     }
                 }
@@ -276,11 +276,11 @@ where
                         local_head: Box::new(local_head.block_with_parent()),
                         header: Box::new(header.block_with_parent()),
                         error,
-                    }))
+                    }));
                 }
                 None => {
                     self.clear_etl_state();
-                    return Poll::Ready(Err(StageError::ChannelClosed))
+                    return Poll::Ready(Err(StageError::ChannelClosed));
                 }
             }
         }
@@ -293,12 +293,12 @@ where
 
         if self.sync_gap.take().ok_or(StageError::MissingSyncGap)?.is_closed() {
             self.is_etl_ready = false;
-            return Ok(ExecOutput::done(current_checkpoint))
+            return Ok(ExecOutput::done(current_checkpoint));
         }
 
         // We should be here only after we have downloaded all headers into the disk buffer (ETL).
         if !self.is_etl_ready {
-            return Err(StageError::MissingDownloadBuffer)
+            return Err(StageError::MissingDownloadBuffer);
         }
 
         // Reset flag
@@ -399,28 +399,31 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::test_utils::{
-        stage_test_suite, ExecuteStageTestRunner, StageTestRunner, UnwindStageTestRunner,
-    };
+    use std::sync::Arc;
+
     use alloy_primitives::B256;
     use assert_matches::assert_matches;
     use reth_provider::{DatabaseProviderFactory, ProviderFactory, StaticFileProviderFactory};
     use reth_stages_api::StageUnitCheckpoint;
     use reth_testing_utils::generators::{self, random_header, random_header_range};
-    use std::sync::Arc;
     use test_runner::HeadersTestRunner;
 
+    use super::*;
+    use crate::test_utils::{
+        ExecuteStageTestRunner, StageTestRunner, UnwindStageTestRunner, stage_test_suite,
+    };
+
     mod test_runner {
-        use super::*;
-        use crate::test_utils::{TestRunnerError, TestStageDB};
         use reth_consensus::test_utils::TestConsensus;
         use reth_downloaders::headers::reverse_headers::{
             ReverseHeadersDownloader, ReverseHeadersDownloaderBuilder,
         };
         use reth_network_p2p::test_utils::{TestHeaderDownloader, TestHeadersClient};
-        use reth_provider::{test_utils::MockNodeTypesWithDB, BlockNumReader, HeaderProvider};
+        use reth_provider::{BlockNumReader, HeaderProvider, test_utils::MockNodeTypesWithDB};
         use tokio::sync::watch;
+
+        use super::*;
+        use crate::test_utils::{TestRunnerError, TestStageDB};
 
         pub(crate) struct HeadersTestRunner<D: HeaderDownloader> {
             pub(crate) client: TestHeadersClient,
@@ -479,7 +482,7 @@ mod tests {
                 let end = input.target.unwrap_or_default() + 1;
 
                 if start + 1 >= end {
-                    return Ok(Vec::default())
+                    return Ok(Vec::default());
                 }
 
                 let mut headers = random_header_range(&mut rng, start + 1..end, head.hash());

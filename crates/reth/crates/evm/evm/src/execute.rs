@@ -1,13 +1,13 @@
 //! Traits for execution.
 
-use crate::{ConfigureEvm, Database, OnStateHook, TxEnvFor};
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
+
 use alloy_consensus::{BlockHeader, Header};
 use alloy_eips::eip2718::WithEncoded;
 pub use alloy_evm::block::{BlockExecutor, BlockExecutorFactory};
 use alloy_evm::{
-    block::{CommitChanges, ExecutableTxParts},
     Evm, EvmEnv, EvmFactory, RecoveredTx, ToTxEnv,
+    block::{CommitChanges, ExecutableTxParts},
 };
 use alloy_primitives::{Address, B256};
 pub use reth_execution_errors::{
@@ -20,11 +20,13 @@ use reth_primitives_traits::{
 };
 use reth_storage_api::StateProvider;
 pub use reth_storage_errors::provider::ProviderError;
-use reth_trie_common::{updates::TrieUpdates, HashedPostState};
+use reth_trie_common::{HashedPostState, updates::TrieUpdates};
 use revm::{
     context::result::ExecutionResult,
-    database::{states::bundle_state::BundleRetention, BundleState, State},
+    database::{BundleState, State, states::bundle_state::BundleRetention},
 };
+
+use crate::{ConfigureEvm, Database, OnStateHook, TxEnvFor};
 
 /// A type that knows how to execute a block. It is assumed to operate on a
 /// [`crate::Evm`] internally and use [`State`] as database.
@@ -316,10 +318,7 @@ pub trait BlockBuilder {
     /// The primitive types used by the inner [`BlockExecutor`].
     type Primitives: NodePrimitives;
     /// Inner [`BlockExecutor`].
-    type Executor: BlockExecutor<
-        Transaction = TxTy<Self::Primitives>,
-        Receipt = ReceiptTy<Self::Primitives>,
-    >;
+    type Executor: BlockExecutor<Transaction = TxTy<Self::Primitives>, Receipt = ReceiptTy<Self::Primitives>>;
 
     /// Invokes [`BlockExecutor::apply_pre_execution_changes`].
     fn apply_pre_execution_changes(&mut self) -> Result<(), BlockExecutionError>;
@@ -436,15 +435,15 @@ impl<'a, F, DB, Executor, Builder, N> BlockBuilder
 where
     F: BlockExecutorFactory<Transaction = N::SignedTx, Receipt = N::Receipt>,
     Executor: BlockExecutor<
-        Evm: Evm<
-            Spec = <F::EvmFactory as EvmFactory>::Spec,
-            HaltReason = <F::EvmFactory as EvmFactory>::HaltReason,
-            BlockEnv = <F::EvmFactory as EvmFactory>::BlockEnv,
-            DB = &'a mut State<DB>,
+            Evm: Evm<
+                Spec = <F::EvmFactory as EvmFactory>::Spec,
+                HaltReason = <F::EvmFactory as EvmFactory>::HaltReason,
+                BlockEnv = <F::EvmFactory as EvmFactory>::BlockEnv,
+                DB = &'a mut State<DB>,
+            >,
+            Transaction = N::SignedTx,
+            Receipt = N::Receipt,
         >,
-        Transaction = N::SignedTx,
-        Receipt = N::Receipt,
-    >,
     DB: Database + 'a,
     Builder: BlockAssembler<F, Block = N::Block>,
     N: NodePrimitives,
@@ -641,17 +640,19 @@ impl<TxEnv, T: RecoveredTx<Tx>, Tx> ExecutableTxParts<TxEnv, Tx> for WithTxEnv<T
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::Address;
+    use core::marker::PhantomData;
+
     use alloy_consensus::constants::KECCAK_EMPTY;
     use alloy_evm::block::state_changes::balance_increment_state;
-    use alloy_primitives::{address, map::HashMap, U256};
-    use core::marker::PhantomData;
+    use alloy_primitives::{U256, address, map::HashMap};
     use reth_ethereum_primitives::EthPrimitives;
     use revm::{
         database::{CacheDB, EmptyDB},
         state::AccountInfo,
     };
+
+    use super::*;
+    use crate::Address;
 
     #[derive(Clone, Debug, Default)]
     struct TestExecutorProvider;

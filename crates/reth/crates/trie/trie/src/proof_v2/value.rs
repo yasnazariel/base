@@ -1,13 +1,15 @@
 //! Generic value encoder types for proof calculation with lazy evaluation.
 
-use crate::{
-    hashed_cursor::HashedCursorFactory, proof_v2::ProofCalculator, trie_cursor::TrieCursorFactory,
-};
+use std::rc::Rc;
+
 use alloy_primitives::{B256, U256};
 use alloy_rlp::Encodable;
 use reth_execution_errors::trie::StateProofError;
 use reth_primitives_traits::Account;
-use std::rc::Rc;
+
+use crate::{
+    hashed_cursor::HashedCursorFactory, proof_v2::ProofCalculator, trie_cursor::TrieCursorFactory,
+};
 
 /// A trait for deferred RLP-encoding of leaf values.
 pub trait DeferredValueEncoder {

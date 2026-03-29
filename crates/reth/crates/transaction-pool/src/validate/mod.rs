@@ -1,27 +1,27 @@
 //! Transaction validation abstractions.
 
+use std::{fmt, fmt::Debug, future::Future, time::Instant};
+
+use alloy_eips::{eip7594::BlobTransactionSidecarVariant, eip7702::SignedAuthorization};
+use alloy_primitives::{Address, B256, TxHash, U256};
+use futures_util::future::Either;
+use reth_primitives_traits::{Block, Recovered, SealedBlock};
+
 use crate::{
+    PriceBumpConfig,
     error::InvalidPoolTransactionError,
     identifier::{SenderId, TransactionId},
     traits::{PoolTransaction, TransactionOrigin},
-    PriceBumpConfig,
 };
-use alloy_eips::{eip7594::BlobTransactionSidecarVariant, eip7702::SignedAuthorization};
-use alloy_primitives::{Address, TxHash, B256, U256};
-use futures_util::future::Either;
-use reth_primitives_traits::{Block, Recovered, SealedBlock};
-use std::{fmt, fmt::Debug, future::Future, time::Instant};
 
 mod constants;
 mod eth;
 mod task;
 
-pub use eth::*;
-
-pub use task::{TransactionValidationTaskExecutor, ValidationTask};
-
 /// Validation constants.
 pub use constants::{DEFAULT_MAX_TX_INPUT_BYTES, TX_SLOT_BYTE_SIZE};
+pub use eth::*;
+pub use task::{TransactionValidationTaskExecutor, ValidationTask};
 
 /// A Result type returned after checking a transaction's validity.
 #[derive(Debug)]
@@ -213,7 +213,7 @@ pub trait TransactionValidator: Debug + Send + Sync {
     fn validate_transactions(
         &self,
         transactions: impl IntoIterator<Item = (TransactionOrigin, Self::Transaction), IntoIter: Send>
-            + Send,
+        + Send,
     ) -> impl Future<Output = Vec<TransactionValidationOutcome<Self::Transaction>>> + Send {
         futures_util::future::join_all(
             transactions.into_iter().map(|(origin, tx)| self.validate_transaction(origin, tx)),
@@ -261,7 +261,7 @@ where
     async fn validate_transactions(
         &self,
         transactions: impl IntoIterator<Item = (TransactionOrigin, Self::Transaction), IntoIter: Send>
-            + Send,
+        + Send,
     ) -> Vec<TransactionValidationOutcome<Self::Transaction>> {
         match self {
             Self::Left(v) => v.validate_transactions(transactions).await,
@@ -452,7 +452,7 @@ impl<T: PoolTransaction> ValidPoolTransaction<T> {
 
         // Check if the max fee per gas is underpriced.
         if maybe_replacement.max_fee_per_gas() < self.max_fee_per_gas() * (100 + price_bump) / 100 {
-            return true
+            return true;
         }
 
         let existing_max_priority_fee_per_gas =
@@ -461,12 +461,12 @@ impl<T: PoolTransaction> ValidPoolTransaction<T> {
             maybe_replacement.transaction.max_priority_fee_per_gas().unwrap_or_default();
 
         // Check max priority fee per gas (relevant for EIP-1559 transactions only)
-        if existing_max_priority_fee_per_gas != 0 &&
-            replacement_max_priority_fee_per_gas != 0 &&
-            replacement_max_priority_fee_per_gas <
-                existing_max_priority_fee_per_gas * (100 + price_bump) / 100
+        if existing_max_priority_fee_per_gas != 0
+            && replacement_max_priority_fee_per_gas != 0
+            && replacement_max_priority_fee_per_gas
+                < existing_max_priority_fee_per_gas * (100 + price_bump) / 100
         {
-            return true
+            return true;
         }
 
         // Check max blob fee per gas
@@ -474,10 +474,10 @@ impl<T: PoolTransaction> ValidPoolTransaction<T> {
             // This enforces that blob txs can only be replaced by blob txs
             let replacement_max_blob_fee_per_gas =
                 maybe_replacement.transaction.max_fee_per_blob_gas().unwrap_or_default();
-            if replacement_max_blob_fee_per_gas <
-                existing_max_blob_fee_per_gas * (100 + price_bump) / 100
+            if replacement_max_blob_fee_per_gas
+                < existing_max_blob_fee_per_gas * (100 + price_bump) / 100
             {
-                return true
+                return true;
             }
         }
 

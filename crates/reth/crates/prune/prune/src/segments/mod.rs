@@ -2,10 +2,11 @@ mod receipts;
 mod set;
 mod user;
 
-use crate::{PruneLimiter, PrunerError};
+use std::{fmt::Debug, ops::RangeInclusive};
+
 use alloy_primitives::{BlockNumber, TxNumber};
 use reth_provider::{
-    errors::provider::ProviderResult, BlockReader, PruneCheckpointWriter, StaticFileProviderFactory,
+    BlockReader, PruneCheckpointWriter, StaticFileProviderFactory, errors::provider::ProviderResult,
 };
 use reth_prune_types::{
     PruneCheckpoint, PruneMode, PruneProgress, PrunePurpose, PruneSegment, SegmentOutput,
@@ -14,12 +15,13 @@ use reth_prune_types::{
 use reth_stages_types::StageId;
 use reth_static_file_types::StaticFileSegment;
 pub use set::SegmentSet;
-use std::{fmt::Debug, ops::RangeInclusive};
 use tracing::error;
 pub use user::{
     AccountHistory, Bodies, Receipts as UserReceipts, ReceiptsByLogs, SenderRecovery,
     StorageHistory, TransactionLookup,
 };
+
+use crate::{PruneLimiter, PrunerError};
 
 /// Prunes data from static files for a given segment.
 ///
@@ -47,7 +49,7 @@ where
             checkpoint: input
                 .previous_checkpoint
                 .map(SegmentOutputCheckpoint::from_prune_checkpoint),
-        })
+        });
     }
 
     let tx_ranges = deleted_headers.iter().filter_map(|header| header.tx_range());
@@ -86,7 +88,7 @@ where
     let deleted_headers = provider.static_file_provider().delete_segment(segment)?;
 
     if deleted_headers.is_empty() {
-        return Ok(SegmentOutput::done())
+        return Ok(SegmentOutput::done());
     }
 
     let tx_ranges = deleted_headers.iter().filter_map(|header| header.tx_range());
@@ -187,7 +189,7 @@ impl PruneInput {
                     // Prevents a scenario where the pruner correctly starts at a finalized block,
                     // but the first transaction (tx_num = 0) only appears on a non-finalized one.
                     // Should only happen on a test/hive scenario.
-                    return Ok(None)
+                    return Ok(None);
                 }
                 last_tx
             }
@@ -196,7 +198,7 @@ impl PruneInput {
 
         let range = from_tx_number..=to_tx_number;
         if range.is_empty() {
-            return Ok(None)
+            return Ok(None);
         }
 
         Ok(Some(range))
@@ -214,7 +216,7 @@ impl PruneInput {
         let from_block = self.get_start_next_block_range();
         let range = from_block..=self.to_block;
         if range.is_empty() {
-            return None
+            return None;
         }
 
         Some(range)
@@ -236,14 +238,15 @@ impl PruneInput {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_primitives::B256;
     use reth_provider::{
-        providers::BlockchainProvider,
-        test_utils::{create_test_provider_factory, MockEthProvider},
         BlockWriter,
+        providers::BlockchainProvider,
+        test_utils::{MockEthProvider, create_test_provider_factory},
     };
-    use reth_testing_utils::generators::{self, random_block_range, BlockRangeParams};
+    use reth_testing_utils::generators::{self, BlockRangeParams, random_block_range};
+
+    use super::*;
 
     #[test]
     fn test_prune_input_get_next_tx_num_range_no_to_block() {

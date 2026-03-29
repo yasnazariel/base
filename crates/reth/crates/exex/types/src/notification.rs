@@ -73,11 +73,12 @@ impl<P: NodePrimitives> From<CanonStateNotification<P>> for ExExNotification<P> 
 /// Bincode-compatible [`ExExNotification`] serde implementation.
 #[cfg(all(feature = "serde", feature = "serde-bincode-compat"))]
 pub(super) mod serde_bincode_compat {
+    use std::sync::Arc;
+
     use reth_execution_types::serde_bincode_compat::Chain;
     use reth_primitives_traits::NodePrimitives;
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use serde_with::{DeserializeAs, SerializeAs};
-    use std::sync::Arc;
 
     /// Bincode-compatible [`super::ExExNotification`] serde implementation.
     ///
@@ -194,14 +195,16 @@ pub(super) mod serde_bincode_compat {
 
     #[cfg(test)]
     mod tests {
-        use super::super::{serde_bincode_compat, ExExNotification};
+        use std::{collections::BTreeMap, sync::Arc};
+
         use arbitrary::Arbitrary;
         use rand::Rng;
         use reth_execution_types::Chain;
         use reth_primitives_traits::RecoveredBlock;
         use serde::{Deserialize, Serialize};
         use serde_with::serde_as;
-        use std::{collections::BTreeMap, sync::Arc};
+
+        use super::super::{ExExNotification, serde_bincode_compat};
 
         #[test]
         fn test_exex_notification_bincode_roundtrip() {
@@ -219,14 +222,18 @@ pub(super) mod serde_bincode_compat {
             let data = Data {
                 notification: ExExNotification::ChainReorged {
                     old: Arc::new(Chain::new(
-                        vec![RecoveredBlock::arbitrary(&mut arbitrary::Unstructured::new(&bytes))
-                            .unwrap()],
+                        vec![
+                            RecoveredBlock::arbitrary(&mut arbitrary::Unstructured::new(&bytes))
+                                .unwrap(),
+                        ],
                         Default::default(),
                         BTreeMap::new(),
                     )),
                     new: Arc::new(Chain::new(
-                        vec![RecoveredBlock::arbitrary(&mut arbitrary::Unstructured::new(&bytes))
-                            .unwrap()],
+                        vec![
+                            RecoveredBlock::arbitrary(&mut arbitrary::Unstructured::new(&bytes))
+                                .unwrap(),
+                        ],
                         Default::default(),
                         BTreeMap::new(),
                     )),

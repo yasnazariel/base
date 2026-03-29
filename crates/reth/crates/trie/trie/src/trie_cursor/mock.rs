@@ -1,15 +1,16 @@
-use parking_lot::{Mutex, MutexGuard};
 use std::{collections::BTreeMap, sync::Arc};
+
+use alloy_primitives::{B256, map::B256Map};
+use parking_lot::{Mutex, MutexGuard};
+use reth_storage_errors::db::DatabaseError;
+use reth_trie_common::updates::TrieUpdates;
 use tracing::instrument;
 
 use super::{TrieCursor, TrieCursorFactory, TrieStorageCursor};
 use crate::{
-    mock::{KeyVisit, KeyVisitType},
     BranchNodeCompact, Nibbles,
+    mock::{KeyVisit, KeyVisitType},
 };
-use alloy_primitives::{map::B256Map, B256};
-use reth_storage_errors::db::DatabaseError;
-use reth_trie_common::updates::TrieUpdates;
 
 /// Mock trie cursor factory.
 #[derive(Clone, Default, Debug)]

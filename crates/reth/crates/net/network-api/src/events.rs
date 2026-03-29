@@ -1,16 +1,5 @@
 //! API related to listening for network events.
 
-use reth_eth_wire_types::{
-    message::RequestPair, BlockBodies, BlockHeaders, Capabilities, DisconnectReason, EthMessage,
-    EthNetworkPrimitives, EthVersion, GetBlockBodies, GetBlockHeaders, GetNodeData,
-    GetPooledTransactions, GetReceipts, GetReceipts70, NetworkPrimitives, NodeData,
-    PooledTransactions, Receipts, Receipts69, Receipts70, UnifiedStatus,
-};
-use reth_ethereum_forks::ForkId;
-use reth_network_p2p::error::{RequestError, RequestResult};
-use reth_network_peers::{NodeRecord, PeerId};
-use reth_network_types::{PeerAddr, PeerKind};
-use reth_tokio_util::EventStream;
 use std::{
     fmt,
     net::SocketAddr,
@@ -18,8 +7,20 @@ use std::{
     sync::Arc,
     task::{Context, Poll},
 };
+
+use reth_eth_wire_types::{
+    BlockBodies, BlockHeaders, Capabilities, DisconnectReason, EthMessage, EthNetworkPrimitives,
+    EthVersion, GetBlockBodies, GetBlockHeaders, GetNodeData, GetPooledTransactions, GetReceipts,
+    GetReceipts70, NetworkPrimitives, NodeData, PooledTransactions, Receipts, Receipts69,
+    Receipts70, UnifiedStatus, message::RequestPair,
+};
+use reth_ethereum_forks::ForkId;
+use reth_network_p2p::error::{RequestError, RequestResult};
+use reth_network_peers::{NodeRecord, PeerId};
+use reth_network_types::{PeerAddr, PeerKind};
+use reth_tokio_util::EventStream;
 use tokio::sync::{mpsc, oneshot};
-use tokio_stream::{wrappers::UnboundedReceiverStream, Stream, StreamExt};
+use tokio_stream::{Stream, StreamExt, wrappers::UnboundedReceiverStream};
 
 /// A boxed stream of network peer events that provides a type-erased interface.
 pub struct PeerEventStream(Pin<Box<dyn Stream<Item = PeerEvent> + Send + Sync>>);

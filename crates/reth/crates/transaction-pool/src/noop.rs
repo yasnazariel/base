@@ -3,27 +3,29 @@
 //! This is useful for wiring components together that don't require an actual pool but still need
 //! to be generic over it.
 
-use crate::{
-    blobstore::BlobStoreError,
-    error::{InvalidPoolTransactionError, PoolError},
-    pool::TransactionListenerKind,
-    traits::{BestTransactionsAttributes, GetPooledTransactionLimit, NewBlobSidecar},
-    validate::ValidTransaction,
-    AddedTransactionOutcome, AllPoolTransactions, AllTransactionsEvents, BestTransactions,
-    BlockInfo, EthPoolTransaction, EthPooledTransaction, NewTransactionEvent, PoolResult, PoolSize,
-    PoolTransaction, PropagatedTransactions, TransactionEvents, TransactionOrigin, TransactionPool,
-    TransactionValidationOutcome, TransactionValidator, ValidPoolTransaction,
-};
+use std::{marker::PhantomData, sync::Arc};
+
 use alloy_eips::{
     eip1559::ETHEREUM_BLOCK_GAS_LIMIT_30M,
     eip4844::{BlobAndProofV1, BlobAndProofV2},
     eip7594::BlobTransactionSidecarVariant,
 };
-use alloy_primitives::{map::AddressSet, Address, TxHash, B256, U256};
+use alloy_primitives::{Address, B256, TxHash, U256, map::AddressSet};
 use reth_eth_wire_types::HandleMempoolData;
 use reth_primitives_traits::Recovered;
-use std::{marker::PhantomData, sync::Arc};
 use tokio::sync::{mpsc, mpsc::Receiver};
+
+use crate::{
+    AddedTransactionOutcome, AllPoolTransactions, AllTransactionsEvents, BestTransactions,
+    BlockInfo, EthPoolTransaction, EthPooledTransaction, NewTransactionEvent, PoolResult, PoolSize,
+    PoolTransaction, PropagatedTransactions, TransactionEvents, TransactionOrigin, TransactionPool,
+    TransactionValidationOutcome, TransactionValidator, ValidPoolTransaction,
+    blobstore::BlobStoreError,
+    error::{InvalidPoolTransactionError, PoolError},
+    pool::TransactionListenerKind,
+    traits::{BestTransactionsAttributes, GetPooledTransactionLimit, NewBlobSidecar},
+    validate::ValidTransaction,
+};
 
 /// A [`TransactionPool`] implementation that does nothing.
 ///
@@ -341,7 +343,7 @@ impl<T: EthPoolTransaction> TransactionPool for NoopTransactionPool<T> {
         tx_hashes: Vec<TxHash>,
     ) -> Result<Vec<Arc<BlobTransactionSidecarVariant>>, BlobStoreError> {
         if tx_hashes.is_empty() {
-            return Ok(vec![])
+            return Ok(vec![]);
         }
         Err(BlobStoreError::MissingSidecar(tx_hashes[0]))
     }

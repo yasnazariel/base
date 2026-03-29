@@ -117,15 +117,14 @@ pub mod noop;
 pub mod test_utils;
 
 pub use alloy_rpc_types::engine::PayloadId;
+// re-export the Ethereum engine primitives for convenience
+#[doc(inline)]
+pub use reth_ethereum_engine_primitives::{
+    BlobSidecars, EthBuiltPayload, EthPayloadBuilderAttributes,
+};
 pub use reth_payload_builder_primitives::PayloadBuilderError;
 pub use reth_payload_primitives::PayloadKind;
 pub use service::{
     PayloadBuilderHandle, PayloadBuilderService, PayloadServiceCommand, PayloadStore,
 };
 pub use traits::{KeepPayloadJobAlive, PayloadJob, PayloadJobGenerator};
-
-// re-export the Ethereum engine primitives for convenience
-#[doc(inline)]
-pub use reth_ethereum_engine_primitives::{
-    BlobSidecars, EthBuiltPayload, EthPayloadBuilderAttributes,
-};

@@ -1,6 +1,7 @@
-use enr::{k256::ecdsa::SigningKey, Enr, EnrPublicKey};
-use reth_network_peers::PeerId;
 use std::net::SocketAddr;
+
+use enr::{Enr, EnrPublicKey, k256::ecdsa::SigningKey};
+use reth_network_peers::PeerId;
 
 /// Obtains a `PeerId` from an ENR. In this case, the `PeerId` represents the public key contained
 /// in the ENR.
@@ -42,7 +43,7 @@ pub fn unused_tcp_and_udp_port() -> u16 {
     loop {
         let port = unused_port();
         if std::net::UdpSocket::bind(format!("127.0.0.1:{port}")).is_ok() {
-            return port
+            return port;
         }
     }
 }

@@ -1,5 +1,6 @@
 //! Command that runs pruning.
-use crate::common::{AccessRights, CliNodeTypes, EnvironmentArgs};
+use std::sync::Arc;
+
 use clap::Parser;
 use reth_chainspec::{ChainSpecProvider, EthChainSpec, EthereumHardforks};
 use reth_cli::chainspec::ChainSpecParser;
@@ -16,8 +17,9 @@ use reth_node_metrics::{
 use reth_provider::RocksDBProviderFactory;
 use reth_prune::PrunerBuilder;
 use reth_static_file::StaticFileProducer;
-use std::sync::Arc;
 use tracing::info;
+
+use crate::common::{AccessRights, CliNodeTypes, EnvironmentArgs};
 
 /// Prunes according to the configuration
 #[derive(Debug, Parser)]

@@ -7,10 +7,10 @@ pub mod invalid_block_hook;
 pub(crate) mod debug;
 pub(crate) mod engine;
 
+use std::future::IntoFuture;
+
 pub use common::LaunchContext;
 pub use exex::ExExLauncher;
-
-use std::future::IntoFuture;
 
 /// A general purpose trait that launches a new node of any kind.
 ///

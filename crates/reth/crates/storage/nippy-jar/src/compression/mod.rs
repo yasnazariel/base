@@ -1,5 +1,6 @@
-use crate::NippyJarError;
 use serde::{Deserialize, Serialize};
+
+use crate::NippyJarError;
 
 mod zstd;
 pub use self::zstd::{DecoderDictionary, Decompressor, Zstd, ZstdState};

@@ -1,4 +1,3 @@
-use crate::proof_v2::DeferredValueEncoder;
 use alloy_rlp::Encodable;
 use alloy_trie::nodes::ExtensionNodeRef;
 use reth_execution_errors::trie::StateProofError;
@@ -6,6 +5,8 @@ use reth_trie_common::{
     BranchNode, BranchNodeMasks, ExtensionNode, LeafNode, LeafNodeRef, Nibbles, ProofTrieNode,
     RlpNode, TrieMask, TrieNode,
 };
+
+use crate::proof_v2::DeferredValueEncoder;
 
 /// A trie node which is the child of a branch in the trie.
 #[derive(Debug)]

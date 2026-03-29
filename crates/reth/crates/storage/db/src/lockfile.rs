@@ -2,12 +2,13 @@
 
 #![cfg_attr(feature = "disable-lock", allow(dead_code))]
 
-use reth_storage_errors::lockfile::StorageLockError;
 use std::{
     path::{Path, PathBuf},
     process,
     sync::{Arc, OnceLock},
 };
+
+use reth_storage_errors::lockfile::StorageLockError;
 use sysinfo::{ProcessRefreshKind, RefreshKind, System};
 
 /// File lock name.
@@ -44,9 +45,9 @@ impl StorageLock {
     #[cfg(any(test, not(feature = "disable-lock")))]
     fn try_acquire_file_lock(path: &Path) -> Result<Self, StorageLockError> {
         let file_path = path.join(LOCKFILE_NAME);
-        if let Some(process_lock) = ProcessUID::parse(&file_path)? &&
-            process_lock.pid != (process::id() as usize) &&
-            process_lock.is_active()
+        if let Some(process_lock) = ProcessUID::parse(&file_path)?
+            && process_lock.pid != (process::id() as usize)
+            && process_lock.is_active()
         {
             reth_tracing::tracing::error!(
                 target: "reth::db::lockfile",
@@ -55,7 +56,7 @@ impl StorageLock {
                 start_time = process_lock.start_time,
                 "Storage lock already taken."
             );
-            return Err(StorageLockError::Taken(process_lock.pid))
+            return Err(StorageLockError::Taken(process_lock.pid));
         }
 
         Ok(Self(Arc::new(StorageLockInner::new(file_path)?)))
@@ -142,8 +143,8 @@ impl ProcessUID {
 
     /// Parses [`Self`] from a file.
     fn parse(path: &Path) -> Result<Option<Self>, StorageLockError> {
-        if path.exists() &&
-            let Ok(contents) = reth_fs_util::read_to_string(path)
+        if path.exists()
+            && let Ok(contents) = reth_fs_util::read_to_string(path)
         {
             let mut lines = contents.lines();
             if let (Some(Ok(pid)), Some(Ok(start_time))) = (
@@ -174,8 +175,9 @@ impl ProcessUID {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::sync::{Mutex, MutexGuard, OnceLock};
+
+    use super::*;
 
     // helper to ensure some tests are run serially
     static SERIAL: OnceLock<Mutex<()>> = OnceLock::new();

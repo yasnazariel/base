@@ -1,7 +1,8 @@
+use core::fmt;
+
 use crate::{
     FullBlock, FullBlockBody, FullBlockHeader, FullReceipt, FullSignedTx, MaybeSerdeBincodeCompat,
 };
-use core::fmt;
 
 /// Configures all the primitive types of the node.
 ///

@@ -1,7 +1,8 @@
 //! Conversion traits for receipt responses to primitive receipt types.
 
-use alloy_network::Network;
 use std::convert::Infallible;
+
+use alloy_network::Network;
 
 /// Trait for converting network receipt responses to primitive receipt types.
 pub trait TryFromReceiptResponse<N: Network> {
@@ -41,10 +42,11 @@ impl TryFromReceiptResponse<op_alloy_network::Optimism> for op_alloy_consensus::
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_consensus::ReceiptEnvelope;
     use alloy_network::Ethereum;
     use reth_ethereum_primitives::Receipt;
+
+    use super::*;
 
     #[test]
     fn test_try_from_receipt_response() {

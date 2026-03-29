@@ -4,13 +4,14 @@
 //! available (either on non-Unix platforms or when the `rocksdb` feature is not enabled).
 //! All method calls are cfg-guarded in the calling code, so only type definitions are needed here.
 
+use std::{path::Path, sync::Arc};
+
 use alloy_primitives::BlockNumber;
 use metrics::Label;
 use parking_lot::Mutex;
 use reth_db_api::{database_metrics::DatabaseMetrics, models::StorageSettings};
 use reth_prune_types::PruneMode;
 use reth_storage_errors::{db::LogLevel, provider::ProviderResult};
-use std::{path::Path, sync::Arc};
 
 /// Pending `RocksDB` batches type alias (stub - uses unit type).
 pub(crate) type PendingRocksDBBatches = Arc<Mutex<Vec<()>>>;

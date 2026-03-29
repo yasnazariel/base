@@ -1,11 +1,13 @@
-use crate::{BlockNumReader, BlockReader};
 use alloc::vec::Vec;
+use core::ops::{Range, RangeBounds, RangeInclusive};
+
 use alloy_consensus::transaction::TransactionMeta;
 use alloy_eips::BlockHashOrNumber;
 use alloy_primitives::{Address, BlockNumber, TxHash, TxNumber};
-use core::ops::{Range, RangeBounds, RangeInclusive};
 use reth_primitives_traits::SignedTransaction;
 use reth_storage_errors::provider::{ProviderError, ProviderResult};
+
+use crate::{BlockNumReader, BlockReader};
 
 /// Enum to control transaction hash inclusion.
 ///
@@ -37,7 +39,7 @@ pub trait TransactionsProvider: BlockNumReader + Send {
 
     /// Get transaction by id without computing the hash.
     fn transaction_by_id_unhashed(&self, id: TxNumber)
-        -> ProviderResult<Option<Self::Transaction>>;
+    -> ProviderResult<Option<Self::Transaction>>;
 
     /// Get transaction by transaction hash.
     fn transaction_by_hash(&self, hash: TxHash) -> ProviderResult<Option<Self::Transaction>>;

@@ -1,19 +1,20 @@
 //! Database debugging tool
-use crate::common::{AccessRights, CliNodeTypes, Environment, EnvironmentArgs};
+use std::sync::Arc;
+
 use clap::Parser;
 use reth_chainspec::EthChainSpec;
 use reth_cli::chainspec::ChainSpecParser;
-use reth_db::{mdbx::tx::Tx, DatabaseError};
+use reth_db::{DatabaseError, mdbx::tx::Tx};
 use reth_db_api::{
     tables,
     transaction::{DbTx, DbTxMut},
 };
 use reth_db_common::{
+    DbTool,
     init::{
         insert_genesis_account_history, insert_genesis_header, insert_genesis_state,
         insert_genesis_storage_history,
     },
-    DbTool,
 };
 use reth_node_api::{HeaderTy, ReceiptTy, TxTy};
 use reth_node_core::args::StageEnum;
@@ -24,7 +25,8 @@ use reth_provider::{
 use reth_prune::PruneSegment;
 use reth_stages::StageId;
 use reth_static_file_types::StaticFileSegment;
-use std::sync::Arc;
+
+use crate::common::{AccessRights, CliNodeTypes, Environment, EnvironmentArgs};
 
 /// `reth drop-stage` command
 #[derive(Debug, Parser)]

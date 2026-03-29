@@ -1,4 +1,3 @@
-use crate::PipelineEvent;
 use alloy_eips::eip1898::BlockWithParent;
 use reth_consensus::ConsensusError;
 use reth_errors::{BlockExecutionError, DatabaseError, RethError};
@@ -8,6 +7,8 @@ use reth_prune::{PruneSegment, PruneSegmentError, PrunerError, UnwindTargetPrune
 use reth_static_file_types::StaticFileSegment;
 use thiserror::Error;
 use tokio::sync::broadcast::error::SendError;
+
+use crate::PipelineEvent;
 
 /// Represents the specific error type within a block error.
 #[derive(Error, Debug)]
@@ -123,15 +124,15 @@ impl StageError {
     pub const fn is_fatal(&self) -> bool {
         matches!(
             self,
-            Self::Database(_) |
-                Self::Download(_) |
-                Self::DatabaseIntegrity(_) |
-                Self::StageCheckpoint(_) |
-                Self::MissingDownloadBuffer |
-                Self::MissingSyncGap |
-                Self::ChannelClosed |
-                Self::Internal(_) |
-                Self::Fatal(_)
+            Self::Database(_)
+                | Self::Download(_)
+                | Self::DatabaseIntegrity(_)
+                | Self::StageCheckpoint(_)
+                | Self::MissingDownloadBuffer
+                | Self::MissingSyncGap
+                | Self::ChannelClosed
+                | Self::Internal(_)
+                | Self::Fatal(_)
         )
     }
 }

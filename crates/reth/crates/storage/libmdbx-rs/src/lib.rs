@@ -11,6 +11,8 @@
 
 pub extern crate reth_mdbx_sys as ffi;
 
+#[cfg(feature = "read-tx-timeouts")]
+pub use crate::environment::read_transactions::MaxReadTransactionDuration;
 pub use crate::{
     codec::*,
     cursor::{Cursor, Iter, IterDup},
@@ -21,11 +23,8 @@ pub use crate::{
     },
     error::{Error, Result},
     flags::*,
-    transaction::{CommitLatency, Transaction, TransactionKind, RO, RW},
+    transaction::{CommitLatency, RO, RW, Transaction, TransactionKind},
 };
-
-#[cfg(feature = "read-tx-timeouts")]
-pub use crate::environment::read_transactions::MaxReadTransactionDuration;
 
 mod codec;
 mod cursor;
@@ -38,9 +37,10 @@ mod txn_manager;
 
 #[cfg(test)]
 mod test_utils {
-    use super::*;
     use byteorder::{ByteOrder, LittleEndian};
     use tempfile::tempdir;
+
+    use super::*;
 
     /// Regression test for <https://github.com/danburkert/lmdb-rs/issues/21>.
     /// This test reliably segfaults when run against lmdb compiled with opt level -O3 and newer

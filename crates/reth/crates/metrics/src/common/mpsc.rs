@@ -1,18 +1,20 @@
 //! Support for metering senders. Facilitates debugging by exposing metrics for number of messages
 //! sent, number of errors, etc.
 
-use crate::Metrics;
-use futures::Stream;
-use metrics::Counter;
 use std::{
     pin::Pin,
-    task::{ready, Context, Poll},
+    task::{Context, Poll, ready},
 };
+
+use futures::Stream;
+use metrics::Counter;
 use tokio::sync::mpsc::{
     self,
     error::{SendError, TryRecvError, TrySendError},
 };
 use tokio_util::sync::{PollSendError, PollSender};
+
+use crate::Metrics;
 
 /// Wrapper around [`mpsc::unbounded_channel`] that returns a new unbounded metered channel.
 pub fn metered_unbounded_channel<T>(

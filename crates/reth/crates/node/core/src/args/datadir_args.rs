@@ -1,9 +1,11 @@
 //! clap [Args](clap::Args) for datadir config
 
-use crate::dirs::{ChainPath, DataDirPath, MaybePlatformPath};
+use std::path::PathBuf;
+
 use clap::Args;
 use reth_chainspec::Chain;
-use std::path::PathBuf;
+
+use crate::dirs::{ChainPath, DataDirPath, MaybePlatformPath};
 
 /// Parameters for datadir configuration
 #[derive(Debug, Args, PartialEq, Eq, Default, Clone)]
@@ -47,8 +49,9 @@ impl DatadirArgs {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use clap::Parser;
+
+    use super::*;
 
     /// A helper type to parse Args more easily
     #[derive(Parser)]

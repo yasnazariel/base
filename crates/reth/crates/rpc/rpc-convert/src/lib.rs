@@ -15,6 +15,7 @@ pub mod receipt;
 mod rpc;
 pub mod transaction;
 
+pub use alloy_evm::rpc::{CallFees, CallFeesError, EthTxEnvError, TryIntoTxEnv};
 pub use block::TryFromBlockResponse;
 pub use receipt::TryFromReceiptResponse;
 pub use rpc::*;
@@ -22,5 +23,3 @@ pub use transaction::{
     RpcConvert, RpcConverter, TransactionConversionError, TryFromTransactionResponse, TryIntoSimTx,
     TxInfoMapper,
 };
-
-pub use alloy_evm::rpc::{CallFees, CallFeesError, EthTxEnvError, TryIntoTxEnv};

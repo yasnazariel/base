@@ -6,23 +6,25 @@
 //!
 //! Reference: [Ethereum Wire Protocol](https://github.com/ethereum/devp2p/blob/master/caps/eth.md).
 
+use alloc::{boxed::Box, string::String, sync::Arc};
+use core::fmt::Debug;
+
+use alloy_primitives::{
+    Bytes,
+    bytes::{Buf, BufMut},
+};
+use alloy_rlp::{Decodable, Encodable, Header, length_of_length};
+
 use super::{
-    broadcast::NewBlockHashes, BlockBodies, BlockHeaders, GetBlockBodies, GetBlockHeaders,
-    GetNodeData, GetPooledTransactions, GetReceipts, GetReceipts70, NewPooledTransactionHashes66,
-    NewPooledTransactionHashes68, NodeData, PooledTransactions, Receipts, Status, StatusEth69,
-    Transactions,
+    BlockBodies, BlockHeaders, GetBlockBodies, GetBlockHeaders, GetNodeData, GetPooledTransactions,
+    GetReceipts, GetReceipts70, NewPooledTransactionHashes66, NewPooledTransactionHashes68,
+    NodeData, PooledTransactions, Receipts, Status, StatusEth69, Transactions,
+    broadcast::NewBlockHashes,
 };
 use crate::{
-    status::StatusMessage, BlockRangeUpdate, EthNetworkPrimitives, EthVersion, NetworkPrimitives,
-    RawCapabilityMessage, Receipts69, Receipts70, SharedTransactions,
+    BlockRangeUpdate, EthNetworkPrimitives, EthVersion, NetworkPrimitives, RawCapabilityMessage,
+    Receipts69, Receipts70, SharedTransactions, status::StatusMessage,
 };
-use alloc::{boxed::Box, string::String, sync::Arc};
-use alloy_primitives::{
-    bytes::{Buf, BufMut},
-    Bytes,
-};
-use alloy_rlp::{length_of_length, Decodable, Encodable, Header};
-use core::fmt::Debug;
 
 /// [`MAX_MESSAGE_SIZE`] is the maximum cap on the size of a protocol message.
 // https://github.com/ethereum/go-ethereum/blob/30602163d5d8321fbc68afdcbbaf2362b2641bde/eth/protocols/eth/protocol.go#L50
@@ -71,7 +73,7 @@ impl<N: NetworkPrimitives> ProtocolMessage<N> {
         let message_type = EthMessageID::decode(buf)?;
 
         if message_type != EthMessageID::Status {
-            return Err(MessageError::ExpectedStatusMessage(message_type))
+            return Err(MessageError::ExpectedStatusMessage(message_type));
         }
 
         let status = if version < EthVersion::Eth69 {
@@ -127,13 +129,13 @@ impl<N: NetworkPrimitives> ProtocolMessage<N> {
             }
             EthMessageID::GetNodeData => {
                 if version >= EthVersion::Eth67 {
-                    return Err(MessageError::Invalid(version, EthMessageID::GetNodeData))
+                    return Err(MessageError::Invalid(version, EthMessageID::GetNodeData));
                 }
                 EthMessage::GetNodeData(RequestPair::decode(buf)?)
             }
             EthMessageID::NodeData => {
                 if version >= EthVersion::Eth67 {
-                    return Err(MessageError::Invalid(version, EthMessageID::GetNodeData))
+                    return Err(MessageError::Invalid(version, EthMessageID::GetNodeData));
                 }
                 EthMessage::NodeData(RequestPair::decode(buf)?)
             }
@@ -164,7 +166,7 @@ impl<N: NetworkPrimitives> ProtocolMessage<N> {
             }
             EthMessageID::BlockRangeUpdate => {
                 if version < EthVersion::Eth69 {
-                    return Err(MessageError::Invalid(version, EthMessageID::BlockRangeUpdate))
+                    return Err(MessageError::Invalid(version, EthMessageID::BlockRangeUpdate));
                 }
                 EthMessage::BlockRangeUpdate(BlockRangeUpdate::decode(buf)?)
             }
@@ -372,12 +374,12 @@ impl<N: NetworkPrimitives> EthMessage<N> {
     pub const fn is_request(&self) -> bool {
         matches!(
             self,
-            Self::GetBlockBodies(_) |
-                Self::GetBlockHeaders(_) |
-                Self::GetReceipts(_) |
-                Self::GetReceipts70(_) |
-                Self::GetPooledTransactions(_) |
-                Self::GetNodeData(_)
+            Self::GetBlockBodies(_)
+                | Self::GetBlockHeaders(_)
+                | Self::GetReceipts(_)
+                | Self::GetReceipts70(_)
+                | Self::GetPooledTransactions(_)
+                | Self::GetNodeData(_)
         )
     }
 
@@ -385,13 +387,13 @@ impl<N: NetworkPrimitives> EthMessage<N> {
     pub const fn is_response(&self) -> bool {
         matches!(
             self,
-            Self::PooledTransactions(_) |
-                Self::Receipts(_) |
-                Self::Receipts69(_) |
-                Self::Receipts70(_) |
-                Self::BlockHeaders(_) |
-                Self::BlockBodies(_) |
-                Self::NodeData(_)
+            Self::PooledTransactions(_)
+                | Self::Receipts(_)
+                | Self::Receipts69(_)
+                | Self::Receipts70(_)
+                | Self::BlockHeaders(_)
+                | Self::BlockBodies(_)
+                | Self::NodeData(_)
         )
     }
 
@@ -417,7 +419,7 @@ impl<N: NetworkPrimitives> EthMessage<N> {
                     Self::GetReceipts70(req)
                 }
                 other => other,
-            }
+            };
         }
 
         self
@@ -731,7 +733,7 @@ where
         // RequestPair
         let consumed_len = initial_length - buf.len();
         if consumed_len != header.payload_length {
-            return Err(alloy_rlp::Error::UnexpectedLength)
+            return Err(alloy_rlp::Error::UnexpectedLength);
         }
 
         Ok(Self { request_id, message })
@@ -740,14 +742,15 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::MessageError;
-    use crate::{
-        message::RequestPair, EthMessage, EthMessageID, EthNetworkPrimitives, EthVersion,
-        GetNodeData, NodeData, ProtocolMessage, RawCapabilityMessage,
-    };
     use alloy_primitives::hex;
     use alloy_rlp::{Decodable, Encodable, Error};
     use reth_ethereum_primitives::BlockBody;
+
+    use super::MessageError;
+    use crate::{
+        EthMessage, EthMessageID, EthNetworkPrimitives, EthVersion, GetNodeData, NodeData,
+        ProtocolMessage, RawCapabilityMessage, message::RequestPair,
+    };
 
     fn encode<T: Encodable>(value: T) -> Vec<u8> {
         let mut buf = vec![];
@@ -910,9 +913,10 @@ mod tests {
 
     #[test]
     fn decode_status_success() {
-        use crate::{Status, StatusMessage};
         use alloy_hardforks::{ForkHash, ForkId};
         use alloy_primitives::{B256, U256};
+
+        use crate::{Status, StatusMessage};
 
         let status = Status {
             version: EthVersion::Eth68,

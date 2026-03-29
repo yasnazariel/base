@@ -1,12 +1,13 @@
 //! BAL (Block Access List, EIP-7928) related functionality.
 
+use std::ops::Range;
+
 use alloy_consensus::constants::KECCAK_EMPTY;
 use alloy_eip7928::BlockAccessList;
-use alloy_primitives::{keccak256, Address, StorageKey, U256};
+use alloy_primitives::{Address, StorageKey, U256, keccak256};
 use reth_primitives_traits::Account;
 use reth_provider::{AccountReader, ProviderError};
 use reth_trie::{HashedPostState, HashedStorage};
-use std::ops::Range;
 
 /// Returns the total number of storage slots (both changed and read-only) across all accounts in
 /// the BAL.
@@ -149,12 +150,12 @@ where
         };
 
         // If the account was only read then don't add it to the HashedPostState
-        if balance.is_none() &&
-            nonce.is_none() &&
-            code_hash.is_none() &&
-            account_changes.storage_changes.is_empty()
+        if balance.is_none()
+            && nonce.is_none()
+            && code_hash.is_none()
+            && account_changes.storage_changes.is_empty()
         {
-            continue
+            continue;
         }
 
         // Build the final account state
@@ -194,12 +195,13 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_eip7928::{
         AccountChanges, BalanceChange, CodeChange, NonceChange, SlotChanges, StorageChange,
     };
-    use alloy_primitives::{Address, Bytes, StorageKey, B256};
+    use alloy_primitives::{Address, B256, Bytes, StorageKey};
     use reth_revm::test_utils::StateProviderTest;
+
+    use super::*;
 
     #[test]
     fn test_bal_to_hashed_post_state_basic() {

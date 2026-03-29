@@ -2,13 +2,13 @@
 
 use std::sync::Arc;
 
-use alloy_consensus::{transaction::TxHashRef, TxReceipt};
+use alloy_consensus::{TxReceipt, transaction::TxHashRef};
 use alloy_primitives::TxHash;
 use reth_primitives_traits::{
     Block, BlockBody, BlockTy, IndexedTx, NodePrimitives, ReceiptTy, Recovered, RecoveredBlock,
     SealedBlock,
 };
-use reth_rpc_convert::{transaction::ConvertReceiptInput, RpcConvert, RpcTypes};
+use reth_rpc_convert::{RpcConvert, RpcTypes, transaction::ConvertReceiptInput};
 
 use crate::utils::calculate_gas_used_and_next_log_index;
 

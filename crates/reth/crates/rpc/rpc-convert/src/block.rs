@@ -1,7 +1,8 @@
 //! Conversion traits for block responses to primitive block types.
 
-use alloy_network::Network;
 use std::convert::Infallible;
+
+use alloy_network::Network;
 
 /// Trait for converting network block responses to primitive block types.
 pub trait TryFromBlockResponse<N: Network> {
@@ -31,10 +32,11 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_consensus::{Block, TxEnvelope};
     use alloy_network::Ethereum;
     use alloy_rpc_types_eth::BlockTransactions;
+
+    use super::*;
 
     #[test]
     fn test_try_from_block_response() {

@@ -17,12 +17,12 @@ mod metrics;
 mod pruner;
 pub mod segments;
 
-use crate::metrics::Metrics;
 pub use builder::PrunerBuilder;
 pub use error::PrunerError;
 pub use limiter::PruneLimiter;
 pub use pruner::{Pruner, PrunerResult, PrunerWithFactory, PrunerWithResult};
-
 // Re-export prune types
 #[doc(inline)]
 pub use reth_prune_types::*;
+
+use crate::metrics::Metrics;

@@ -1,14 +1,16 @@
-use crate::{cli::config::PayloadBuilderConfig, version::default_extra_data};
+use std::{borrow::Cow, ffi::OsStr, sync::OnceLock, time::Duration};
+
 use alloy_consensus::constants::MAXIMUM_EXTRA_DATA_SIZE;
 use clap::{
-    builder::{RangedU64ValueParser, TypedValueParser},
     Arg, Args, Command,
+    builder::{RangedU64ValueParser, TypedValueParser},
 };
 use reth_cli_util::{
     parse_duration_from_secs, parse_duration_from_secs_or_ms,
     parsers::format_duration_as_secs_or_ms,
 };
-use std::{borrow::Cow, ffi::OsStr, sync::OnceLock, time::Duration};
+
+use crate::{cli::config::PayloadBuilderConfig, version::default_extra_data};
 
 /// Global static payload builder defaults
 static PAYLOAD_BUILDER_DEFAULTS: OnceLock<DefaultPayloadBuilderValues> = OnceLock::new();
@@ -187,7 +189,7 @@ impl TypedValueParser for ExtraDataValueParser {
                 format!(
                     "Payload builder extradata size exceeds {MAXIMUM_EXTRA_DATA_SIZE}-byte limit"
                 ),
-            ))
+            ));
         }
         Ok(val.to_string())
     }
@@ -195,8 +197,9 @@ impl TypedValueParser for ExtraDataValueParser {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use clap::Parser;
+
+    use super::*;
 
     /// A helper type to parse Args more easily
     #[derive(Parser)]
@@ -215,12 +218,14 @@ mod tests {
 
     #[test]
     fn test_args_with_invalid_max_tasks() {
-        assert!(CommandParser::<PayloadBuilderArgs>::try_parse_from([
-            "reth",
-            "--builder.max-tasks",
-            "0"
-        ])
-        .is_err());
+        assert!(
+            CommandParser::<PayloadBuilderArgs>::try_parse_from([
+                "reth",
+                "--builder.max-tasks",
+                "0"
+            ])
+            .is_err()
+        );
     }
 
     #[test]

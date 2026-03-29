@@ -1,27 +1,29 @@
-use crate::{
-    provider::{TrieNodeProvider, TrieNodeProviderFactory},
-    traits::SparseTrie as SparseTrieTrait,
-    ParallelSparseTrie, RevealableSparseTrie,
-};
 use alloc::{collections::VecDeque, vec::Vec};
+
 use alloy_primitives::{
+    B256, Bytes,
     map::{B256Map, B256Set, HashSet},
-    Bytes, B256,
 };
 use alloy_rlp::{Decodable, Encodable};
 use alloy_trie::proof::DecodedProofNodes;
 use reth_execution_errors::{SparseStateTrieErrorKind, SparseStateTrieResult, SparseTrieErrorKind};
 use reth_primitives_traits::Account;
 use reth_trie_common::{
+    BranchNodeMasks, BranchNodeMasksMap, DecodedMultiProof, DecodedStorageMultiProof,
+    EMPTY_ROOT_HASH, MultiProof, Nibbles, ProofTrieNode, RlpNode, StorageMultiProof,
+    TRIE_ACCOUNT_RLP_MAX_SIZE, TrieAccount, TrieNode,
     proof::ProofNodes,
     updates::{StorageTrieUpdates, TrieUpdates},
-    BranchNodeMasks, BranchNodeMasksMap, DecodedMultiProof, DecodedStorageMultiProof, MultiProof,
-    Nibbles, ProofTrieNode, RlpNode, StorageMultiProof, TrieAccount, TrieNode, EMPTY_ROOT_HASH,
-    TRIE_ACCOUNT_RLP_MAX_SIZE,
 };
 #[cfg(feature = "std")]
 use tracing::debug;
 use tracing::{instrument, trace};
+
+use crate::{
+    ParallelSparseTrie, RevealableSparseTrie,
+    provider::{TrieNodeProvider, TrieNodeProviderFactory},
+    traits::SparseTrie as SparseTrieTrait,
+};
 
 /// Holds data that should be dropped after any locks are released.
 ///
@@ -536,7 +538,7 @@ where
             trie.reveal_nodes(&mut nodes)?;
 
             self.deferred_drops.proof_nodes_bufs.push(nodes);
-            return Ok(())
+            return Ok(());
         }
 
         let FilteredV2ProofNodes { root_node, mut nodes, new_nodes, metric_values: _metric_values } =
@@ -623,7 +625,7 @@ where
             trie.reveal_nodes(&mut nodes)?;
 
             bufs.push(nodes);
-            return Ok(metric_values)
+            return Ok(metric_values);
         }
 
         let FilteredV2ProofNodes { root_node, mut nodes, new_nodes, metric_values } =
@@ -1001,7 +1003,7 @@ where
                 EMPTY_ROOT_HASH
             }
         } else {
-            return Err(SparseTrieErrorKind::Blind.into())
+            return Err(SparseTrieErrorKind::Blind.into());
         };
 
         if account.is_empty() && storage_root == EMPTY_ROOT_HASH {
@@ -1030,7 +1032,7 @@ where
         provider_factory: impl TrieNodeProviderFactory,
     ) -> SparseStateTrieResult<bool> {
         if !self.is_account_revealed(address) {
-            return Err(SparseTrieErrorKind::Blind.into())
+            return Err(SparseTrieErrorKind::Blind.into());
         }
 
         // Nothing to update if the account doesn't exist in the trie.
@@ -1040,7 +1042,7 @@ where
             .transpose()?
         else {
             trace!(target: "trie::sparse", ?address, "Account not found in trie, skipping storage root update");
-            return Ok(true)
+            return Ok(true);
         };
 
         // Calculate the new storage root. If the storage trie doesn't exist, the storage root will
@@ -1057,7 +1059,7 @@ where
 
         // If the account is empty, indicate that it should be removed.
         if trie_account == TrieAccount::default() {
-            return Ok(false)
+            return Ok(false);
         }
 
         // Otherwise, update the account leaf.
@@ -1540,7 +1542,7 @@ fn filter_map_revealed_nodes(
         // it to `revealed_nodes`.
         if !is_root && !revealed_nodes.insert(path) {
             result.metric_values.skipped_nodes += 1;
-            continue
+            continue;
         }
 
         result.new_nodes += 1;
@@ -1571,12 +1573,12 @@ fn filter_map_revealed_nodes(
                     path,
                     node: alloy_rlp::encode(&node.node).into(),
                 }
-                .into())
+                .into());
             }
 
             result.root_node = Some(node);
 
-            continue
+            continue;
         }
 
         result.nodes.push(node);
@@ -1653,7 +1655,7 @@ fn filter_revealed_v2_proof_nodes(
         // it to `revealed_nodes`.
         if !is_root && !revealed_nodes.insert(node.path) {
             result.metric_values.skipped_nodes += 1;
-            continue
+            continue;
         }
 
         result.new_nodes += 1;
@@ -1676,11 +1678,11 @@ fn filter_revealed_v2_proof_nodes(
                     path: node.path,
                     node: alloy_rlp::encode(&node.node).into(),
                 }
-                .into())
+                .into());
             }
 
             result.root_node = Some(node);
-            continue
+            continue;
         }
 
         result.nodes.push(node);
@@ -1691,21 +1693,21 @@ fn filter_revealed_v2_proof_nodes(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{provider::DefaultTrieNodeProviderFactory, LeafLookup, ParallelSparseTrie};
     use alloy_primitives::{
-        b256,
+        U256, b256,
         map::{HashMap, HashSet},
-        U256,
     };
     use arbitrary::Arbitrary;
-    use rand::{rngs::StdRng, Rng, SeedableRng};
+    use rand::{Rng, SeedableRng, rngs::StdRng};
     use reth_primitives_traits::Account;
-    use reth_trie::{updates::StorageTrieUpdates, HashBuilder, MultiProof, EMPTY_ROOT_HASH};
+    use reth_trie::{EMPTY_ROOT_HASH, HashBuilder, MultiProof, updates::StorageTrieUpdates};
     use reth_trie_common::{
-        proof::{ProofNodes, ProofRetainer},
         BranchNode, BranchNodeMasks, BranchNodeMasksMap, LeafNode, StorageMultiProof, TrieMask,
+        proof::{ProofNodes, ProofRetainer},
     };
+
+    use super::*;
+    use crate::{LeafLookup, ParallelSparseTrie, provider::DefaultTrieNodeProviderFactory};
 
     #[test]
     fn reveal_account_path_twice() {
@@ -1756,11 +1758,13 @@ mod tests {
             sparse.state_trie_ref().unwrap().find_leaf(&Nibbles::from_nibbles([0x0]), None),
             Ok(LeafLookup::NonExistent)
         ));
-        assert!(sparse
-            .state_trie_ref()
-            .unwrap()
-            .get_leaf_value(&Nibbles::from_nibbles([0x0]))
-            .is_none());
+        assert!(
+            sparse
+                .state_trie_ref()
+                .unwrap()
+                .get_leaf_value(&Nibbles::from_nibbles([0x0]))
+                .is_none()
+        );
 
         // Reveal multiproof again and check that the state trie still does not contain the leaf
         // node and value, because they were already revealed before
@@ -1769,11 +1773,13 @@ mod tests {
             sparse.state_trie_ref().unwrap().find_leaf(&Nibbles::from_nibbles([0x0]), None),
             Ok(LeafLookup::NonExistent)
         ));
-        assert!(sparse
-            .state_trie_ref()
-            .unwrap()
-            .get_leaf_value(&Nibbles::from_nibbles([0x0]))
-            .is_none());
+        assert!(
+            sparse
+                .state_trie_ref()
+                .unwrap()
+                .get_leaf_value(&Nibbles::from_nibbles([0x0]))
+                .is_none()
+        );
     }
 
     #[test]
@@ -1843,11 +1849,13 @@ mod tests {
                 .find_leaf(&Nibbles::from_nibbles([0x0]), None),
             Ok(LeafLookup::NonExistent)
         ));
-        assert!(sparse
-            .storage_trie_ref(&B256::ZERO)
-            .unwrap()
-            .get_leaf_value(&Nibbles::from_nibbles([0x0]))
-            .is_none());
+        assert!(
+            sparse
+                .storage_trie_ref(&B256::ZERO)
+                .unwrap()
+                .get_leaf_value(&Nibbles::from_nibbles([0x0]))
+                .is_none()
+        );
 
         // Reveal multiproof again and check that the storage trie still does not contain the leaf
         // node and value, because they were already revealed before
@@ -1859,11 +1867,13 @@ mod tests {
                 .find_leaf(&Nibbles::from_nibbles([0x0]), None),
             Ok(LeafLookup::NonExistent)
         ));
-        assert!(sparse
-            .storage_trie_ref(&B256::ZERO)
-            .unwrap()
-            .get_leaf_value(&Nibbles::from_nibbles([0x0]))
-            .is_none());
+        assert!(
+            sparse
+                .storage_trie_ref(&B256::ZERO)
+                .unwrap()
+                .get_leaf_value(&Nibbles::from_nibbles([0x0]))
+                .is_none()
+        );
     }
 
     #[test]
@@ -1912,19 +1922,23 @@ mod tests {
 
         // Remove the leaf node
         sparse.remove_account_leaf(&Nibbles::from_nibbles([0x0]), &provider_factory).unwrap();
-        assert!(sparse
-            .state_trie_ref()
-            .unwrap()
-            .get_leaf_value(&Nibbles::from_nibbles([0x0]))
-            .is_none());
+        assert!(
+            sparse
+                .state_trie_ref()
+                .unwrap()
+                .get_leaf_value(&Nibbles::from_nibbles([0x0]))
+                .is_none()
+        );
 
         // Reveal again - should skip already revealed paths
         sparse.reveal_account_v2_proof_nodes(v2_proof_nodes).unwrap();
-        assert!(sparse
-            .state_trie_ref()
-            .unwrap()
-            .get_leaf_value(&Nibbles::from_nibbles([0x0]))
-            .is_none());
+        assert!(
+            sparse
+                .state_trie_ref()
+                .unwrap()
+                .get_leaf_value(&Nibbles::from_nibbles([0x0]))
+                .is_none()
+        );
     }
 
     #[test]
@@ -1973,19 +1987,23 @@ mod tests {
         sparse
             .remove_storage_leaf(B256::ZERO, &Nibbles::from_nibbles([0x0]), &provider_factory)
             .unwrap();
-        assert!(sparse
-            .storage_trie_ref(&B256::ZERO)
-            .unwrap()
-            .get_leaf_value(&Nibbles::from_nibbles([0x0]))
-            .is_none());
+        assert!(
+            sparse
+                .storage_trie_ref(&B256::ZERO)
+                .unwrap()
+                .get_leaf_value(&Nibbles::from_nibbles([0x0]))
+                .is_none()
+        );
 
         // Reveal again - should skip already revealed paths
         sparse.reveal_storage_v2_proof_nodes(B256::ZERO, v2_proof_nodes).unwrap();
-        assert!(sparse
-            .storage_trie_ref(&B256::ZERO)
-            .unwrap()
-            .get_leaf_value(&Nibbles::from_nibbles([0x0]))
-            .is_none());
+        assert!(
+            sparse
+                .storage_trie_ref(&B256::ZERO)
+                .unwrap()
+                .get_leaf_value(&Nibbles::from_nibbles([0x0]))
+                .is_none()
+        );
     }
 
     #[test]

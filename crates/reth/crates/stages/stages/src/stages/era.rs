@@ -1,11 +1,17 @@
-use crate::{StageCheckpoint, StageId};
+use std::{
+    fmt::{Debug, Formatter},
+    iter,
+    path::Path,
+    task::{Context, Poll, ready},
+};
+
 use alloy_primitives::{BlockHash, BlockNumber};
 use futures_util::{Stream, StreamExt};
 use reqwest::{Client, Url};
 use reth_config::config::EtlConfig;
 use reth_db_api::{table::Value, transaction::DbTxMut};
 use reth_era::{common::file_ops::StreamReader, era1::file::Era1Reader};
-use reth_era_downloader::{read_dir, EraClient, EraMeta, EraStream, EraStreamConfig};
+use reth_era_downloader::{EraClient, EraMeta, EraStream, EraStreamConfig, read_dir};
 use reth_era_utils as era;
 use reth_etl::Collector;
 use reth_primitives_traits::{FullBlockBody, FullBlockHeader, NodePrimitives};
@@ -15,12 +21,8 @@ use reth_provider::{
 };
 use reth_stages_api::{ExecInput, ExecOutput, Stage, StageError, UnwindInput, UnwindOutput};
 use reth_static_file_types::StaticFileSegment;
-use std::{
-    fmt::{Debug, Formatter},
-    iter,
-    path::Path,
-    task::{ready, Context, Poll},
-};
+
+use crate::{StageCheckpoint, StageId};
 
 type Item<Header, Body> =
     Box<dyn Iterator<Item = eyre::Result<(Header, Body)>> + Send + Sync + Unpin>;
@@ -74,10 +76,10 @@ where
 impl EraImportSource {
     fn convert<Header, Body>(
         stream: impl Stream<Item = eyre::Result<impl EraMeta + Send + Sync + 'static + Unpin>>
-            + Send
-            + Sync
-            + 'static
-            + Unpin,
+        + Send
+        + Sync
+        + 'static
+        + Unpin,
     ) -> Result<ThreadSafeEraStream<Header, Body>, StageError>
     where
         Header: FullBlockHeader + Value,
@@ -149,13 +151,13 @@ where
             return Poll::Ready(Ok(()));
         }
 
-        if self.stream.is_none() &&
-            let Some(source) = self.source.clone()
+        if self.stream.is_none()
+            && let Some(source) = self.source.clone()
         {
             self.stream.replace(source.create(input)?);
         }
-        if let Some(stream) = &mut self.stream &&
-            let Some(next) = ready!(stream.poll_next_unpin(cx))
+        if let Some(stream) = &mut self.stream
+            && let Some(next) = ready!(stream.poll_next_unpin(cx))
                 .transpose()
                 .map_err(|e| StageError::Fatal(e.into()))?
         {
@@ -269,16 +271,17 @@ impl EraImportSource {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::test_utils::{
-        stage_test_suite, ExecuteStageTestRunner, StageTestRunner, UnwindStageTestRunner,
-    };
     use alloy_primitives::B256;
     use assert_matches::assert_matches;
     use reth_db_api::tables;
     use reth_provider::BlockHashReader;
     use reth_testing_utils::generators::{self, random_header};
     use test_runner::EraTestRunner;
+
+    use super::*;
+    use crate::test_utils::{
+        ExecuteStageTestRunner, StageTestRunner, UnwindStageTestRunner, stage_test_suite,
+    };
 
     #[tokio::test]
     async fn test_era_range_ends_below_target() {
@@ -329,8 +332,6 @@ mod tests {
     }
 
     mod test_runner {
-        use super::*;
-        use crate::test_utils::{TestRunnerError, TestStageDB};
         use alloy_consensus::{BlockBody, Header};
         use futures_util::stream;
         use reth_db_api::{
@@ -342,9 +343,12 @@ mod tests {
         use reth_primitives_traits::{SealedBlock, SealedHeader};
         use reth_provider::{BlockNumReader, HeaderProvider, TransactionsProvider};
         use reth_testing_utils::generators::{
-            random_block_range, random_signed_tx, BlockRangeParams,
+            BlockRangeParams, random_block_range, random_signed_tx,
         };
         use tokio::sync::watch;
+
+        use super::*;
+        use crate::test_utils::{TestRunnerError, TestStageDB};
 
         pub(crate) struct EraTestRunner {
             channel: (watch::Sender<B256>, watch::Receiver<B256>),
@@ -452,8 +456,8 @@ mod tests {
                     Some(output) if output.checkpoint.block_number > initial_checkpoint => {
                         let provider = self.db.factory.provider()?;
 
-                        for block_num in initial_checkpoint..
-                            output
+                        for block_num in initial_checkpoint
+                            ..output
                                 .checkpoint
                                 .block_number
                                 .min(self.responses.as_ref().map(|v| v.len()).unwrap_or_default()

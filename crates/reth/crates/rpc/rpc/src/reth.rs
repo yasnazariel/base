@@ -2,10 +2,10 @@ use std::{future::Future, sync::Arc};
 
 use alloy_consensus::BlockHeader;
 use alloy_eips::BlockId;
-use alloy_primitives::{map::AddressMap, U256};
+use alloy_primitives::{U256, map::AddressMap};
 use async_trait::async_trait;
 use futures::{Stream, StreamExt};
-use jsonrpsee::{core::RpcResult, PendingSubscriptionSink, SubscriptionMessage, SubscriptionSink};
+use jsonrpsee::{PendingSubscriptionSink, SubscriptionMessage, SubscriptionSink, core::RpcResult};
 use reth_chain_state::{
     CanonStateNotification, CanonStateSubscriptions, ForkChoiceSubscriptions,
     PersistedBlockSubscriptions,
@@ -70,7 +70,7 @@ where
 
     fn try_balance_changes_in_block(&self, block_id: BlockId) -> EthResult<AddressMap<U256>> {
         let Some(block_number) = self.provider().block_number_for_id(block_id)? else {
-            return Err(EthApiError::HeaderNotFound(block_id))
+            return Err(EthApiError::HeaderNotFound(block_id));
         };
 
         let state = self.provider().state_by_block_id(block_id)?;

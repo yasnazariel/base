@@ -1,14 +1,16 @@
-use crate::{
-    utils::{extend_sorted_vec, kway_merge_sorted},
-    BranchNodeCompact, HashBuilder, Nibbles,
-};
 use alloc::{
     collections::{btree_map::BTreeMap, btree_set::BTreeSet},
     vec::Vec,
 };
+
 use alloy_primitives::{
+    B256, FixedBytes,
     map::{B256Map, B256Set, HashMap, HashSet},
-    FixedBytes, B256,
+};
+
+use crate::{
+    BranchNodeCompact, HashBuilder, Nibbles,
+    utils::{extend_sorted_vec, kway_merge_sorted},
 };
 
 /// The aggregation of trie updates.
@@ -37,9 +39,9 @@ impl TrieUpdates {
 
     /// Returns `true` if the updates are empty.
     pub fn is_empty(&self) -> bool {
-        self.account_nodes.is_empty() &&
-            self.removed_nodes.is_empty() &&
-            self.storage_tries.is_empty()
+        self.account_nodes.is_empty()
+            && self.removed_nodes.is_empty()
+            && self.storage_tries.is_empty()
     }
 
     /// Returns reference to updated account nodes.
@@ -415,13 +417,15 @@ impl StorageTrieUpdates {
 /// This also sorts the set before serializing.
 #[cfg(any(test, feature = "serde"))]
 mod serde_nibbles_set {
-    use crate::Nibbles;
     use alloc::{
         string::{String, ToString},
         vec::Vec,
     };
+
     use alloy_primitives::map::HashSet;
-    use serde::{de::Error, Deserialize, Deserializer, Serialize, Serializer};
+    use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error};
+
+    use crate::Nibbles;
 
     pub(super) fn serialize<S>(map: &HashSet<Nibbles>, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -455,18 +459,20 @@ mod serde_nibbles_set {
 /// This also sorts the map's keys before encoding and serializing.
 #[cfg(any(test, feature = "serde"))]
 mod serde_nibbles_map {
-    use crate::Nibbles;
     use alloc::{
         string::{String, ToString},
         vec::Vec,
     };
-    use alloy_primitives::{hex, map::HashMap};
     use core::marker::PhantomData;
+
+    use alloy_primitives::{hex, map::HashMap};
     use serde::{
+        Deserialize, Deserializer, Serialize, Serializer,
         de::{Error, MapAccess, Visitor},
         ser::SerializeMap,
-        Deserialize, Deserializer, Serialize, Serializer,
     };
+
+    use crate::Nibbles;
 
     pub(super) fn serialize<S, T>(
         map: &HashMap<Nibbles, T>,
@@ -596,8 +602,8 @@ impl TrieUpdatesSorted {
 
     /// Returns the total number of updates including account nodes and all storage updates.
     pub fn total_len(&self) -> usize {
-        self.account_nodes.len() +
-            self.storage_tries.values().map(|storage| storage.len()).sum::<usize>()
+        self.account_nodes.len()
+            + self.storage_tries.values().map(|storage| storage.len()).sum::<usize>()
     }
 
     /// Extends the trie updates with another set of sorted updates.
@@ -837,8 +843,9 @@ impl From<StorageTrieUpdatesSorted> for StorageTrieUpdates {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_primitives::B256;
+
+    use super::*;
 
     #[test]
     fn test_trie_updates_sorted_extend_ref() {
@@ -1113,11 +1120,13 @@ mod tests {
 /// Bincode-compatible trie updates type serde implementations.
 #[cfg(feature = "serde-bincode-compat")]
 pub mod serde_bincode_compat {
-    use crate::{BranchNodeCompact, Nibbles};
     use alloc::borrow::Cow;
+
     use alloy_primitives::map::{B256Map, HashMap, HashSet};
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use serde_with::{DeserializeAs, SerializeAs};
+
+    use crate::{BranchNodeCompact, Nibbles};
 
     /// Bincode-compatible [`super::TrieUpdates`] serde implementation.
     ///
@@ -1369,17 +1378,16 @@ pub mod serde_bincode_compat {
 
     #[cfg(test)]
     mod tests {
+        use alloy_primitives::B256;
+        use serde::{Deserialize, Serialize, de::DeserializeOwned};
+        use serde_with::serde_as;
+
         use crate::{
-            serde_bincode_compat,
+            BranchNodeCompact, Nibbles, serde_bincode_compat,
             updates::{
                 StorageTrieUpdates, StorageTrieUpdatesSorted, TrieUpdates, TrieUpdatesSorted,
             },
-            BranchNodeCompact, Nibbles,
         };
-        use alloy_primitives::B256;
-        use serde::{Deserialize, Serialize};
-        use serde::de::DeserializeOwned;
-        use serde_with::serde_as;
 
         fn roundtrip<T>(value: &T) -> T
         where

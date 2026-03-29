@@ -1,20 +1,21 @@
 //! Support for customizing the node
 
-use crate::{
-    args::{
-        DatabaseArgs, DatadirArgs, DebugArgs, DevArgs, EngineArgs, NetworkArgs, PayloadBuilderArgs,
-        PruningArgs, RpcServerArgs, StaticFilesArgs, StorageArgs, TxPoolArgs,
-    },
-    dirs::{ChainPath, DataDirPath},
-    utils::get_single_header,
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    sync::Arc,
 };
+
 use alloy_consensus::BlockHeader;
 use alloy_eips::BlockHashOrNumber;
-use alloy_primitives::{BlockNumber, B256, U256};
+use alloy_primitives::{B256, BlockNumber, U256};
 use eyre::eyre;
 use reth_chainspec::{ChainSpec, EthChainSpec, MAINNET};
 use reth_config::config::PruneConfig;
 use reth_engine_local::MiningMode;
+pub use reth_engine_primitives::{
+    DEFAULT_MEMORY_BLOCK_BUFFER_TARGET, DEFAULT_PERSISTENCE_THRESHOLD, DEFAULT_RESERVED_CPU_CORES,
+};
 use reth_ethereum_forks::{EthereumHardforks, Head};
 use reth_network_p2p::headers::client::HeadersClient;
 use reth_primitives_traits::SealedHeader;
@@ -25,17 +26,17 @@ use reth_storage_api::{
 };
 use reth_storage_errors::provider::ProviderResult;
 use reth_transaction_pool::TransactionPool;
-use serde::{de::DeserializeOwned, Serialize};
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+use serde::{Serialize, de::DeserializeOwned};
 use tracing::*;
 
-use crate::args::{EraArgs, MetricArgs};
-pub use reth_engine_primitives::{
-    DEFAULT_MEMORY_BLOCK_BUFFER_TARGET, DEFAULT_PERSISTENCE_THRESHOLD, DEFAULT_RESERVED_CPU_CORES,
+use crate::{
+    args::{
+        DatabaseArgs, DatadirArgs, DebugArgs, DevArgs, EngineArgs, EraArgs, MetricArgs,
+        NetworkArgs, PayloadBuilderArgs, PruningArgs, RpcServerArgs, StaticFilesArgs, StorageArgs,
+        TxPoolArgs,
+    },
+    dirs::{ChainPath, DataDirPath},
+    utils::get_single_header,
 };
 
 /// Default size of cross-block cache in megabytes.
@@ -217,11 +218,7 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
 
     /// Sets --dev mode for the node [`NodeConfig::dev`], if `dev` is true.
     pub const fn set_dev(self, dev: bool) -> Self {
-        if dev {
-            self.dev()
-        } else {
-            self
-        }
+        if dev { self.dev() } else { self }
     }
 
     /// Set the data directory args for the node
@@ -369,11 +366,7 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
     /// - When `--storage.v2` is set: uses [`StorageSettings::v2()`] defaults
     /// - Otherwise: uses [`StorageSettings::base()`] defaults
     pub const fn storage_settings(&self) -> StorageSettings {
-        if self.storage.v2 {
-            StorageSettings::v2()
-        } else {
-            StorageSettings::base()
-        }
+        if self.storage.v2 { StorageSettings::v2() } else { StorageSettings::base() }
     }
 
     /// Returns the max block that the node should run to, looking it up from the network if
@@ -447,7 +440,7 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
         // try to look up the header in the database
         if let Some(header) = header {
             info!(target: "reth::cli", ?tip, "Successfully looked up tip block in the database");
-            return Ok(header.number())
+            return Ok(header.number());
         }
 
         Ok(self.fetch_tip_from_network(client, tip.into()).await.number())
@@ -470,7 +463,7 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
             match get_single_header(&client, tip).await {
                 Ok(tip_header) => {
                     info!(target: "reth::cli", ?tip, "Successfully fetched tip");
-                    return tip_header
+                    return tip_header;
                 }
                 Err(error) => {
                     fetch_failures += 1;

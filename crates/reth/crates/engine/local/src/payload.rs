@@ -1,13 +1,14 @@
 //! The implementation of the [`PayloadAttributesBuilder`] for the
 //! [`LocalMiner`](super::LocalMiner).
 
+use std::sync::Arc;
+
 use alloy_consensus::BlockHeader;
 use alloy_primitives::{Address, B256};
 use reth_chainspec::{EthChainSpec, EthereumHardforks};
 use reth_ethereum_engine_primitives::EthPayloadAttributes;
 use reth_payload_primitives::PayloadAttributesBuilder;
 use reth_primitives_traits::SealedHeader;
-use std::sync::Arc;
 
 /// The attributes builder for local Ethereum payload.
 #[derive(Debug)]
@@ -72,9 +73,10 @@ where
         &self,
         parent: &SealedHeader<ChainSpec::Header>,
     ) -> op_alloy_rpc_types_engine::OpPayloadAttributes {
+        use std::env;
+
         use alloy_primitives::B64;
         use reth_chainspec::BaseFeeParams;
-        use std::env;
         /// Dummy system transaction for dev mode.
         /// OP Mainnet transaction at index 0 in block 124665056.
         ///

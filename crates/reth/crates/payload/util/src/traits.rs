@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use alloy_primitives::{map::AddressSet, Address};
+use alloy_primitives::{Address, map::AddressSet};
 use reth_transaction_pool::{PoolTransaction, ValidPoolTransaction};
 
 /// Iterator that returns transactions for the block building process in the order they should be
@@ -84,9 +84,9 @@ where
         loop {
             let tx = self.best.next()?;
             if self.invalid.contains(tx.sender_ref()) {
-                continue
+                continue;
             }
-            return Some(tx.transaction.clone())
+            return Some(tx.transaction.clone());
         }
     }
 
@@ -99,15 +99,16 @@ where
 mod tests {
     use std::sync::Arc;
 
+    use alloy_primitives::{Address, map::AddressSet};
+    use reth_transaction_pool::{
+        PoolTransaction,
+        pool::{BestTransactionsWithPrioritizedSenders, PendingPool},
+        test_utils::{MockOrdering, MockTransaction, MockTransactionFactory},
+    };
+
     use crate::{
         BestPayloadTransactions, PayloadTransactions, PayloadTransactionsChain,
         PayloadTransactionsFixed,
-    };
-    use alloy_primitives::{map::AddressSet, Address};
-    use reth_transaction_pool::{
-        pool::{BestTransactionsWithPrioritizedSenders, PendingPool},
-        test_utils::{MockOrdering, MockTransaction, MockTransactionFactory},
-        PoolTransaction,
     };
 
     #[test]

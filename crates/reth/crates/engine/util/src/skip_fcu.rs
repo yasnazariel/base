@@ -1,12 +1,13 @@
 //! Stream wrapper that skips specified number of FCUs.
 
+use std::{
+    pin::Pin,
+    task::{Context, Poll, ready},
+};
+
 use futures::{Stream, StreamExt};
 use reth_engine_primitives::{BeaconEngineMessage, OnForkChoiceUpdated};
 use reth_payload_primitives::PayloadTypes;
-use std::{
-    pin::Pin,
-    task::{ready, Context, Poll},
-};
 
 /// Engine API stream wrapper that skips the specified number of forkchoice updated messages.
 #[derive(Debug)]
@@ -55,7 +56,7 @@ where
                         *this.skipped += 1;
                         tracing::warn!(target: "engine::stream::skip_fcu", ?state, ?payload_attrs, threshold=this.threshold, skipped=this.skipped, "Skipping FCU");
                         let _ = tx.send(Ok(OnForkChoiceUpdated::syncing()));
-                        continue
+                        continue;
                     }
                     *this.skipped = 0;
                     Some(BeaconEngineMessage::ForkchoiceUpdated {
@@ -67,7 +68,7 @@ where
                 }
                 next => next,
             };
-            return Poll::Ready(item)
+            return Poll::Ready(item);
         }
     }
 }

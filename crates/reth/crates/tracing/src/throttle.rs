@@ -2,8 +2,8 @@
 
 use std::{
     sync::{
-        atomic::{AtomicU64, Ordering},
         LazyLock,
+        atomic::{AtomicU64, Ordering},
     },
     time::Instant,
 };

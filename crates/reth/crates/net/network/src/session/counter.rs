@@ -1,6 +1,7 @@
-use super::ExceedsSessionLimit;
 use reth_network_api::Direction;
 use reth_network_types::SessionLimits;
+
+use super::ExceedsSessionLimit;
 
 /// Keeps track of all sessions.
 #[derive(Debug)]
@@ -80,10 +81,10 @@ impl SessionCounter {
     }
 
     const fn ensure(current: u32, limit: Option<u32>) -> Result<(), ExceedsSessionLimit> {
-        if let Some(limit) = limit &&
-            current >= limit
+        if let Some(limit) = limit
+            && current >= limit
         {
-            return Err(ExceedsSessionLimit(limit))
+            return Err(ExceedsSessionLimit(limit));
         }
         Ok(())
     }

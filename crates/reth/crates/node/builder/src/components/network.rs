@@ -1,11 +1,13 @@
 //! Network component for the node builder.
 
-use crate::{BuilderContext, FullNodeTypes};
+use std::future::Future;
+
 use reth_network::types::NetPrimitivesFor;
 use reth_network_api::FullNetwork;
 use reth_node_api::PrimitivesTy;
 use reth_transaction_pool::TransactionPool;
-use std::future::Future;
+
+use crate::{BuilderContext, FullNodeTypes};
 
 /// A type that knows how to build the network implementation.
 pub trait NetworkBuilder<Node: FullNodeTypes, Pool: TransactionPool>: Send {

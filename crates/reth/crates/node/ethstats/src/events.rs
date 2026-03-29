@@ -318,8 +318,9 @@ impl PayloadMsg {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_primitives::{B256, U256};
+
+    use super::*;
 
     #[test]
     fn test_payload_msg_generation() {

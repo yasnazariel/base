@@ -1,12 +1,14 @@
 //! All capability related types
 
-use crate::{EthMessageID, EthVersion};
 use alloc::{borrow::Cow, string::String, vec::Vec};
+use core::fmt;
+
 use alloy_primitives::bytes::Bytes;
 use alloy_rlp::{Decodable, Encodable, RlpDecodable, RlpEncodable};
 use bytes::BufMut;
-use core::fmt;
 use reth_codecs_derive::add_arbitrary_tests;
+
+use crate::{EthMessageID, EthVersion};
 
 /// A Capability message consisting of the message-id and the payload.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -143,11 +145,11 @@ impl Capability {
     /// Whether this is any eth version.
     #[inline]
     pub fn is_eth(&self) -> bool {
-        self.is_eth_v66() ||
-            self.is_eth_v67() ||
-            self.is_eth_v68() ||
-            self.is_eth_v69() ||
-            self.is_eth_v70()
+        self.is_eth_v66()
+            || self.is_eth_v67()
+            || self.is_eth_v68()
+            || self.is_eth_v69()
+            || self.is_eth_v70()
     }
 }
 
@@ -168,7 +170,7 @@ impl From<EthVersion> for Capability {
 impl<'a> arbitrary::Arbitrary<'a> for Capability {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
         let version = u.int_in_range(66..=70)?; // Valid eth protocol versions are 66-70
-                                                // Only generate valid eth protocol name for now since it's the only supported protocol
+        // Only generate valid eth protocol name for now since it's the only supported protocol
         Ok(Self::new_static("eth", version))
     }
 }

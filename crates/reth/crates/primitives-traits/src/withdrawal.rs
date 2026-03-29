@@ -7,7 +7,7 @@ mod tests {
     use alloy_rlp::{RlpDecodable, RlpEncodable};
     use proptest::proptest;
     use proptest_arbitrary_interop::arb;
-    use reth_codecs::{add_arbitrary_tests, Compact};
+    use reth_codecs::{Compact, add_arbitrary_tests};
     use serde::{Deserialize, Serialize};
 
     /// This type is kept for compatibility tests after the codec support was added to alloy-eips
@@ -40,10 +40,10 @@ mod tests {
 
     impl PartialEq<Withdrawal> for RethWithdrawal {
         fn eq(&self, other: &Withdrawal) -> bool {
-            self.index == other.index &&
-                self.validator_index == other.validator_index &&
-                self.address == other.address &&
-                self.amount == other.amount
+            self.index == other.index
+                && self.validator_index == other.validator_index
+                && self.address == other.address
+                && self.amount == other.amount
         }
     }
 

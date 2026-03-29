@@ -1,12 +1,13 @@
 //! Helpers for recovering signers from a set of transactions
 
-use crate::{transaction::signed::RecoveryError, Recovered, SignedTransaction};
 use alloc::vec::Vec;
+
 use alloy_consensus::transaction::SignerRecoverable;
 use alloy_primitives::Address;
-
 #[cfg(feature = "rayon")]
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
+
+use crate::{Recovered, SignedTransaction, transaction::signed::RecoveryError};
 
 /// Recovers a list of signers from a transaction list iterator.
 ///

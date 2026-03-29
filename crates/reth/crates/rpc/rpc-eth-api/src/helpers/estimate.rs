@@ -1,34 +1,35 @@
 //! Estimate gas needed implementation
 
-use super::{Call, LoadPendingBlock};
-use crate::{AsEthApiError, FromEthApiError, IntoEthApiError};
 use alloy_evm::overrides::apply_state_overrides;
 use alloy_network::TransactionBuilder;
 use alloy_primitives::{TxKind, U256};
-use alloy_rpc_types_eth::{state::StateOverride, BlockId};
+use alloy_rpc_types_eth::{BlockId, state::StateOverride};
 use futures::Future;
 use reth_chainspec::MIN_TRANSACTION_GAS;
 use reth_errors::ProviderError;
 use reth_evm::{ConfigureEvm, Database, Evm, EvmEnvFor, EvmFor, TransactionEnv, TxEnvFor};
 use reth_revm::{
     database::{EvmStateProvider, StateProviderDatabase},
-    db::{bal::EvmDatabaseError, State},
+    db::{State, bal::EvmDatabaseError},
 };
 use reth_rpc_convert::{RpcConvert, RpcTxReq};
 use reth_rpc_eth_types::{
-    error::{
-        api::{FromEvmHalt, FromRevert},
-        FromEvmError,
-    },
     EthApiError, RpcInvalidTransactionError,
+    error::{
+        FromEvmError,
+        api::{FromEvmHalt, FromRevert},
+    },
 };
 use reth_rpc_server_types::constants::gas_oracle::{CALL_STIPEND_GAS, ESTIMATE_GAS_ERROR_RATIO};
 use revm::{
     context::Block,
-    context_interface::{result::ExecutionResult, Transaction},
+    context_interface::{Transaction, result::ExecutionResult},
     primitives::KECCAK_EMPTY,
 };
 use tracing::trace;
+
+use super::{Call, LoadPendingBlock};
+use crate::{AsEthApiError, FromEthApiError, IntoEthApiError};
 
 /// Gas execution estimates
 pub trait EstimateCall: Call {
@@ -97,8 +98,8 @@ pub trait EstimateCall: Call {
         let mut tx_env = self.create_txn_env(&evm_env, request, &mut db)?;
 
         // Check if this is a basic transfer (no input data to account with no code)
-        let is_basic_transfer = if tx_env.input().is_empty() &&
-            let TxKind::Call(to) = tx_env.kind()
+        let is_basic_transfer = if tx_env.input().is_empty()
+            && let TxKind::Call(to) = tx_env.kind()
         {
             match db.database.basic_account(&to) {
                 Ok(Some(account)) => {
@@ -136,10 +137,10 @@ pub trait EstimateCall: Call {
             min_tx_env.set_gas_limit(MIN_TRANSACTION_GAS);
 
             // Reuse the same EVM instance
-            if let Ok(res) = evm.transact(min_tx_env).map_err(Self::Error::from_evm_err) &&
-                res.result.is_success()
+            if let Ok(res) = evm.transact(min_tx_env).map_err(Self::Error::from_evm_err)
+                && res.result.is_success()
             {
-                return Ok(U256::from(MIN_TRANSACTION_GAS))
+                return Ok(U256::from(MIN_TRANSACTION_GAS));
             }
         }
 
@@ -152,8 +153,8 @@ pub trait EstimateCall: Call {
             // retry the transaction with the block's gas limit to determine if
             // the failure was due to insufficient gas.
             Err(err)
-                if err.is_gas_too_high() &&
-                    (tx_request_gas_limit.is_some() || tx_request_gas_price.is_some()) =>
+                if err.is_gas_too_high()
+                    && (tx_request_gas_limit.is_some() || tx_request_gas_price.is_some()) =>
             {
                 return Self::map_out_of_gas_err(&mut evm, tx_env, max_gas_limit);
             }
@@ -176,7 +177,7 @@ pub trait EstimateCall: Call {
             ExecutionResult::Halt { reason, .. } => {
                 // here we don't check for invalid opcode because already executed with highest gas
                 // limit
-                return Err(Self::Error::from_evm_halt(reason, tx_env.gas_limit()))
+                return Err(Self::Error::from_evm_halt(reason, tx_env.gas_limit()));
             }
             ExecutionResult::Revert { output, .. } => {
                 // if price or limit was included in the request then we can execute the request
@@ -246,7 +247,7 @@ pub trait EstimateCall: Call {
             // <https://github.com/ethereum/go-ethereum/blob/a5a4fa7032bb248f5a7c40f4e8df2b131c4186a4/eth/gasestimator/gasestimator.go#L152
             let ratio = (highest_gas_limit - lowest_gas_limit) as f64 / (highest_gas_limit as f64);
             if ratio < ESTIMATE_GAS_ERROR_RATIO {
-                break
+                break;
             };
 
             let mut mid_tx_env = tx_env.clone();

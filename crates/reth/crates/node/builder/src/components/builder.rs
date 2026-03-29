@@ -1,23 +1,25 @@
 //! A generic [`NodeComponentsBuilder`]
 
+use std::{future::Future, marker::PhantomData};
+
+use reth_chainspec::EthChainSpec;
+use reth_consensus::{FullConsensus, noop::NoopConsensus};
+use reth_network::{EthNetworkPrimitives, NetworkPrimitives, types::NetPrimitivesFor};
+use reth_network_api::{FullNetwork, noop::NoopNetwork};
+use reth_node_api::{BlockTy, BodyTy, HeaderTy, NodeTypes, PrimitivesTy, ReceiptTy, TxTy};
+use reth_payload_builder::PayloadBuilderHandle;
+use reth_transaction_pool::{
+    EthPoolTransaction, EthPooledTransaction, PoolPooledTx, PoolTransaction, TransactionPool,
+    noop::NoopTransactionPool,
+};
+
 use crate::{
+    BuilderContext, ConfigureEvm, FullNodeTypes,
     components::{
         Components, ConsensusBuilder, ExecutorBuilder, NetworkBuilder, NodeComponents,
         PayloadServiceBuilder, PoolBuilder,
     },
-    BuilderContext, ConfigureEvm, FullNodeTypes,
 };
-use reth_chainspec::EthChainSpec;
-use reth_consensus::{noop::NoopConsensus, FullConsensus};
-use reth_network::{types::NetPrimitivesFor, EthNetworkPrimitives, NetworkPrimitives};
-use reth_network_api::{noop::NoopNetwork, FullNetwork};
-use reth_node_api::{BlockTy, BodyTy, HeaderTy, NodeTypes, PrimitivesTy, ReceiptTy, TxTy};
-use reth_payload_builder::PayloadBuilderHandle;
-use reth_transaction_pool::{
-    noop::NoopTransactionPool, EthPoolTransaction, EthPooledTransaction, PoolPooledTx,
-    PoolTransaction, TransactionPool,
-};
-use std::{future::Future, marker::PhantomData};
 
 /// A generic, general purpose and customizable [`NodeComponentsBuilder`] implementation.
 ///
@@ -356,15 +358,15 @@ where
     Node: FullNodeTypes,
     PoolB: PoolBuilder<Node, ExecB::EVM, Pool: TransactionPool>,
     NetworkB: NetworkBuilder<
-        Node,
-        PoolB::Pool,
-        Network: FullNetwork<
-            Primitives: NetPrimitivesFor<
-                PrimitivesTy<Node::Types>,
-                PooledTransaction = PoolPooledTx<PoolB::Pool>,
+            Node,
+            PoolB::Pool,
+            Network: FullNetwork<
+                Primitives: NetPrimitivesFor<
+                    PrimitivesTy<Node::Types>,
+                    PooledTransaction = PoolPooledTx<PoolB::Pool>,
+                >,
             >,
         >,
-    >,
     PayloadB: PayloadServiceBuilder<Node, PoolB::Pool, ExecB::EVM>,
     ExecB: ExecutorBuilder<Node>,
     ConsB: ConsensusBuilder<Node>,
@@ -506,11 +508,11 @@ where
     N: FullNodeTypes,
     Pool: TransactionPool,
     Net: NetworkPrimitives<
-        BlockHeader = HeaderTy<N::Types>,
-        BlockBody = BodyTy<N::Types>,
-        Block = BlockTy<N::Types>,
-        Receipt = ReceiptTy<N::Types>,
-    >,
+            BlockHeader = HeaderTy<N::Types>,
+            BlockBody = BodyTy<N::Types>,
+            Block = BlockTy<N::Types>,
+            Receipt = ReceiptTy<N::Types>,
+        >,
 {
     type Network = NoopNetwork<Net>;
 

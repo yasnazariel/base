@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 use criterion::{
-    criterion_group, criterion_main, measurement::WallTime, BenchmarkGroup, Criterion,
+    BenchmarkGroup, Criterion, criterion_group, criterion_main, measurement::WallTime,
 };
 use proptest::{prelude::*, strategy::ValueTree, test_runner::TestRunner};
 use reth_transaction_pool::test_utils::MockTransaction;
@@ -112,9 +112,11 @@ fn generate_test_data(
 }
 
 mod implementations {
-    use super::*;
-    use alloy_consensus::Transaction;
     use std::collections::BinaryHeap;
+
+    use alloy_consensus::Transaction;
+
+    use super::*;
 
     /// This implementation appends the transactions and uses [`Vec::sort_by`] function for sorting.
     #[derive(Default)]

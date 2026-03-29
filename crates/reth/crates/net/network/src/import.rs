@@ -1,13 +1,15 @@
 //! This module provides an abstraction over block import in the form of the `BlockImport` trait.
 
-use crate::message::NewBlockMessage;
-use reth_eth_wire::NewBlock;
-use reth_eth_wire_types::broadcast::NewBlockHashes;
-use reth_network_peers::PeerId;
 use std::{
     error::Error,
     task::{Context, Poll},
 };
+
+use reth_eth_wire::NewBlock;
+use reth_eth_wire_types::broadcast::NewBlockHashes;
+use reth_network_peers::PeerId;
+
+use crate::message::NewBlockMessage;
 
 /// Abstraction over block import.
 pub trait BlockImport<B = NewBlock>: std::fmt::Debug + Send + Sync {

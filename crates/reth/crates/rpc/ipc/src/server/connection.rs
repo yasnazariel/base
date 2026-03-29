@@ -1,7 +1,5 @@
 //! An IPC connection.
 
-use crate::stream_codec::StreamCodec;
-use futures::{stream::FuturesUnordered, FutureExt, Sink, Stream};
 use std::{
     collections::VecDeque,
     future::Future,
@@ -9,9 +7,13 @@ use std::{
     pin::Pin,
     task::{Context, Poll},
 };
+
+use futures::{FutureExt, Sink, Stream, stream::FuturesUnordered};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_util::codec::Framed;
 use tower::Service;
+
+use crate::stream_codec::StreamCodec;
 
 pub(crate) type JsonRpcStream<T> = Framed<T, StreamCodec>;
 
@@ -102,7 +104,7 @@ where
             if budget == 0 {
                 // make sure we're woken up again
                 cx.waker().wake_by_ref();
-                return Poll::Pending
+                return Poll::Pending;
             }
 
             // write all responses to the sink
@@ -110,10 +112,10 @@ where
                 if let Some(item) = this.items.pop_front() {
                     if let Err(err) = this.conn.as_mut().start_send(item) {
                         tracing::warn!("IPC response failed: {:?}", err);
-                        return Poll::Ready(())
+                        return Poll::Ready(());
                     }
                 } else {
-                    break
+                    break;
                 }
             }
 
@@ -147,7 +149,7 @@ where
                                         Err(err) => err.into().to_string(),
                                     };
                                     this.items.push_back(item);
-                                    continue 'outer
+                                    continue 'outer;
                                 }
                                 Poll::Pending => {
                                     this.pending_calls.push(call);
@@ -157,14 +159,14 @@ where
                         Some(Err(err)) => {
                             // this can happen if the client closes the connection
                             tracing::debug!("IPC request failed: {:?}", err);
-                            return Poll::Ready(())
+                            return Poll::Ready(());
                         }
                         None => return Poll::Ready(()),
                     },
                     Poll::Pending => {
                         if drained || this.pending_calls.is_empty() {
                             // at this point all things are pending
-                            return Poll::Pending
+                            return Poll::Pending;
                         }
                     }
                 }

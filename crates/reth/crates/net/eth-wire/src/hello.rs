@@ -1,17 +1,19 @@
-use crate::{Capability, EthVersion, ProtocolVersion};
 use alloy_rlp::{RlpDecodable, RlpEncodable};
 use reth_codecs::add_arbitrary_tests;
 use reth_network_peers::PeerId;
 use reth_primitives_traits::constants::RETH_CLIENT_VERSION;
+
+use crate::{Capability, EthVersion, ProtocolVersion};
 
 /// The default tcp port for p2p.
 ///
 /// Note: this is the same as discovery port: `DEFAULT_DISCOVERY_PORT`
 pub(crate) const DEFAULT_TCP_PORT: u16 = 30303;
 
-use crate::protocol::Protocol;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+
+use crate::protocol::Protocol;
 
 /// This is a superset of [`HelloMessage`] that provides additional protocol [Protocol] information
 /// about the number of messages used by each capability in order to do proper message ID
@@ -215,13 +217,14 @@ impl HelloMessageBuilder {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        p2pstream::P2PMessage, Capability, EthVersion, HelloMessage, HelloMessageWithProtocols,
-        ProtocolVersion,
-    };
-    use alloy_rlp::{Decodable, Encodable, EMPTY_STRING_CODE};
+    use alloy_rlp::{Decodable, EMPTY_STRING_CODE, Encodable};
     use reth_network_peers::pk2id;
-    use secp256k1::{SecretKey, SECP256K1};
+    use secp256k1::{SECP256K1, SecretKey};
+
+    use crate::{
+        Capability, EthVersion, HelloMessage, HelloMessageWithProtocols, ProtocolVersion,
+        p2pstream::P2PMessage,
+    };
 
     #[test]
     fn test_hello_encoding_round_trip() {

@@ -1,15 +1,17 @@
-use crate::{
-    segments::{PruneInput, Segment},
-    PrunerError,
-};
 use reth_db_api::{table::Value, transaction::DbTxMut};
 use reth_primitives_traits::NodePrimitives;
 use reth_provider::{
-    errors::provider::ProviderResult, BlockReader, DBProvider, NodePrimitivesProvider,
-    PruneCheckpointWriter, StaticFileProviderFactory, StorageSettingsCache, TransactionsProvider,
+    BlockReader, DBProvider, NodePrimitivesProvider, PruneCheckpointWriter,
+    StaticFileProviderFactory, StorageSettingsCache, TransactionsProvider,
+    errors::provider::ProviderResult,
 };
 use reth_prune_types::{PruneCheckpoint, PruneMode, PrunePurpose, PruneSegment, SegmentOutput};
 use tracing::instrument;
+
+use crate::{
+    PrunerError,
+    segments::{PruneInput, Segment},
+};
 
 #[derive(Debug)]
 pub struct Receipts {

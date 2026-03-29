@@ -50,33 +50,6 @@
 //! - Never enter the mempool (system transactions)
 //! - Conversion from consensus to pooled always fails
 
-use crate::{
-    blobstore::BlobStoreError,
-    error::{InvalidPoolTransactionError, PoolError, PoolResult},
-    pool::{
-        state::SubPool, BestTransactionFilter, NewTransactionEvent, TransactionEvents,
-        TransactionListenerKind,
-    },
-    validate::ValidPoolTransaction,
-    AddedTransactionOutcome, AllTransactionsEvents,
-};
-use alloy_consensus::{error::ValueError, transaction::TxHashRef, BlockHeader, Signed, Typed2718};
-use alloy_eips::{
-    eip2718::{Encodable2718, WithEncoded},
-    eip2930::AccessList,
-    eip4844::{
-        env_settings::KzgSettings, BlobAndProofV1, BlobAndProofV2, BlobTransactionValidationError,
-    },
-    eip7594::BlobTransactionSidecarVariant,
-    eip7702::SignedAuthorization,
-};
-use alloy_primitives::{map::AddressSet, Address, Bytes, TxHash, TxKind, B256, U256};
-use futures_util::{ready, Stream};
-use reth_eth_wire_types::HandleMempoolData;
-use reth_ethereum_primitives::{PooledTransactionVariant, TransactionSigned};
-use reth_execution_types::ChangedAccount;
-use reth_primitives_traits::{Block, InMemorySize, Recovered, SealedBlock, SignedTransaction};
-use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     fmt,
@@ -86,7 +59,36 @@ use std::{
     sync::Arc,
     task::{Context, Poll},
 };
+
+use alloy_consensus::{BlockHeader, Signed, Typed2718, error::ValueError, transaction::TxHashRef};
+use alloy_eips::{
+    eip2718::{Encodable2718, WithEncoded},
+    eip2930::AccessList,
+    eip4844::{
+        BlobAndProofV1, BlobAndProofV2, BlobTransactionValidationError, env_settings::KzgSettings,
+    },
+    eip7594::BlobTransactionSidecarVariant,
+    eip7702::SignedAuthorization,
+};
+use alloy_primitives::{Address, B256, Bytes, TxHash, TxKind, U256, map::AddressSet};
+use futures_util::{Stream, ready};
+use reth_eth_wire_types::HandleMempoolData;
+use reth_ethereum_primitives::{PooledTransactionVariant, TransactionSigned};
+use reth_execution_types::ChangedAccount;
+use reth_primitives_traits::{Block, InMemorySize, Recovered, SealedBlock, SignedTransaction};
+use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::Receiver;
+
+use crate::{
+    AddedTransactionOutcome, AllTransactionsEvents,
+    blobstore::BlobStoreError,
+    error::{InvalidPoolTransactionError, PoolError, PoolResult},
+    pool::{
+        BestTransactionFilter, NewTransactionEvent, TransactionEvents, TransactionListenerKind,
+        state::SubPool,
+    },
+    validate::ValidPoolTransaction,
+};
 
 /// The `PeerId` type.
 pub type PeerId = alloy_primitives::B512;
@@ -1771,7 +1773,7 @@ impl<Tx: PoolTransaction> NewSubpoolTransactionStream<Tx> {
             match self.st.try_recv() {
                 Ok(event) => {
                     if event.subpool == self.subpool {
-                        return Ok(event)
+                        return Ok(event);
                     }
                 }
                 Err(e) => return Err(e),
@@ -1788,7 +1790,7 @@ impl<Tx: PoolTransaction> Stream for NewSubpoolTransactionStream<Tx> {
             match ready!(self.st.poll_recv(cx)) {
                 Some(event) => {
                     if event.subpool == self.subpool {
-                        return Poll::Ready(Some(event))
+                        return Poll::Ready(Some(event));
                     }
                 }
                 None => return Poll::Ready(None),
@@ -1799,13 +1801,14 @@ impl<Tx: PoolTransaction> Stream for NewSubpoolTransactionStream<Tx> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_consensus::{
         EthereumTxEnvelope, SignableTransaction, TxEip1559, TxEip2930, TxEip4844, TxEip7702,
         TxEnvelope, TxLegacy,
     };
     use alloy_eips::eip4844::DATA_GAS_PER_BLOB;
     use alloy_primitives::Signature;
+
+    use super::*;
 
     #[test]
     fn test_pool_size_invariants() {

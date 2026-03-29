@@ -13,41 +13,43 @@
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+use std::{
+    collections::{HashMap, HashSet, VecDeque, hash_map::Entry},
+    net::IpAddr,
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll, ready},
+    time::{Duration, Instant},
+};
+
+pub use config::DnsDiscoveryConfig;
+use enr::Enr;
+pub use error::ParseDnsEntryError;
+use reth_ethereum_forks::{EnrForkIdEntry, ForkId};
+use reth_network_peers::{NodeRecord, pk2id};
+use schnellru::{ByLength, LruMap};
+use secp256k1::SecretKey;
+use sync::SyncTree;
+use tokio::{
+    sync::{
+        mpsc,
+        mpsc::{UnboundedSender, error::TrySendError},
+        oneshot,
+    },
+    task::JoinHandle,
+};
+use tokio_stream::{
+    Stream, StreamExt,
+    wrappers::{ReceiverStream, UnboundedReceiverStream},
+};
+use tracing::{debug, trace};
+
 pub use crate::resolver::{DnsResolver, MapResolver, Resolver};
 use crate::{
     query::{QueryOutcome, QueryPool, ResolveEntryResult, ResolveRootResult},
     sync::{ResolveKind, SyncAction},
     tree::{DnsEntry, LinkEntry},
 };
-pub use config::DnsDiscoveryConfig;
-use enr::Enr;
-pub use error::ParseDnsEntryError;
-use reth_ethereum_forks::{EnrForkIdEntry, ForkId};
-use reth_network_peers::{pk2id, NodeRecord};
-use schnellru::{ByLength, LruMap};
-use secp256k1::SecretKey;
-use std::{
-    collections::{hash_map::Entry, HashMap, HashSet, VecDeque},
-    net::IpAddr,
-    pin::Pin,
-    sync::Arc,
-    task::{ready, Context, Poll},
-    time::{Duration, Instant},
-};
-use sync::SyncTree;
-use tokio::{
-    sync::{
-        mpsc,
-        mpsc::{error::TrySendError, UnboundedSender},
-        oneshot,
-    },
-    task::JoinHandle,
-};
-use tokio_stream::{
-    wrappers::{ReceiverStream, UnboundedReceiverStream},
-    Stream, StreamExt,
-};
-use tracing::{debug, trace};
 
 mod config;
 mod error;
@@ -220,7 +222,7 @@ impl<R: Resolver> DnsDiscoveryService<R> {
             // already resolved
             let cached = ResolveEntryResult { entry: Some(Ok(entry)), link, hash, kind };
             self.on_resolved_entry(cached);
-            return
+            return;
         }
         self.queries.resolve_entry(link, hash, kind)
     }
@@ -295,7 +297,7 @@ impl<R: Resolver> DnsDiscoveryService<R> {
         loop {
             // drain buffered events first
             if let Some(event) = self.queued_events.pop_front() {
-                return Poll::Ready(event)
+                return Poll::Ready(event);
             }
 
             // process all incoming commands
@@ -348,7 +350,7 @@ impl<R: Resolver> DnsDiscoveryService<R> {
             }
 
             if !progress && self.queued_events.is_empty() {
-                return Poll::Pending
+                return Poll::Pending;
             }
         }
     }
@@ -406,15 +408,17 @@ fn convert_enr_node_record(enr: &Enr<SecretKey>) -> Option<DnsNodeRecordUpdate> 
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::tree::TreeRootEntry;
+    use std::{future::poll_fn, net::Ipv4Addr};
+
     use alloy_chains::Chain;
     use alloy_rlp::{Decodable, Encodable};
     use enr::EnrKey;
     use reth_chainspec::MAINNET;
     use reth_ethereum_forks::{EthereumHardfork, ForkHash};
     use secp256k1::rand::thread_rng;
-    use std::{future::poll_fn, net::Ipv4Addr};
+
+    use super::*;
+    use crate::tree::TreeRootEntry;
 
     #[test]
     fn test_convert_enr_node_record() {

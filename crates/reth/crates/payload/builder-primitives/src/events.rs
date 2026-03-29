@@ -1,12 +1,13 @@
-use reth_payload_primitives::PayloadTypes;
 use std::{
     pin::Pin,
-    task::{ready, Context, Poll},
+    task::{Context, Poll, ready},
 };
+
+use reth_payload_primitives::PayloadTypes;
 use tokio::sync::broadcast;
 use tokio_stream::{
-    wrappers::{errors::BroadcastStreamRecvError, BroadcastStream},
     Stream, StreamExt,
+    wrappers::{BroadcastStream, errors::BroadcastStreamRecvError},
 };
 use tracing::debug;
 
@@ -69,14 +70,14 @@ impl<T: PayloadTypes> Stream for BuiltPayloadStream<T> {
                 Some(Ok(Events::BuiltPayload(payload))) => Poll::Ready(Some(payload)),
                 Some(Ok(Events::Attributes(_))) => {
                     // ignoring attributes
-                    continue
+                    continue;
                 }
                 Some(Err(err)) => {
                     debug!(%err, "payload event stream lagging behind");
-                    continue
+                    continue;
                 }
                 None => Poll::Ready(None),
-            }
+            };
         }
     }
 }
@@ -99,14 +100,14 @@ impl<T: PayloadTypes> Stream for PayloadAttributeStream<T> {
                 Some(Ok(Events::Attributes(attr))) => Poll::Ready(Some(attr)),
                 Some(Ok(Events::BuiltPayload(_))) => {
                     // ignoring payloads
-                    continue
+                    continue;
                 }
                 Some(Err(err)) => {
                     debug!(%err, "payload event stream lagging behind");
-                    continue
+                    continue;
                 }
                 None => Poll::Ready(None),
-            }
+            };
         }
     }
 }

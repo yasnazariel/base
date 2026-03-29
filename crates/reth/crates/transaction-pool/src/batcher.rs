@@ -3,16 +3,18 @@
 //! This module provides transaction batching logic to reduce lock contention when processing
 //! many concurrent transaction pool insertions.
 
-use crate::{
-    error::PoolError, AddedTransactionOutcome, PoolTransaction, TransactionOrigin, TransactionPool,
-};
-use pin_project::pin_project;
 use std::{
     future::Future,
     pin::Pin,
-    task::{ready, Context, Poll},
+    task::{Context, Poll, ready},
 };
+
+use pin_project::pin_project;
 use tokio::sync::{mpsc, oneshot};
+
+use crate::{
+    AddedTransactionOutcome, PoolTransaction, TransactionOrigin, TransactionPool, error::PoolError,
+};
 
 /// A single batch transaction request
 #[derive(Debug)]
@@ -77,7 +79,7 @@ where
         if batch.len() == 1 {
             Self::process_request(pool, batch.into_iter().next().expect("batch is not empty"))
                 .await;
-            return
+            return;
         }
 
         let (transactions, response_txs): (Vec<_>, Vec<_>) =
@@ -122,11 +124,13 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::test_utils::{testing_pool, MockTransaction};
-    use futures::stream::{FuturesUnordered, StreamExt};
     use std::time::Duration;
+
+    use futures::stream::{FuturesUnordered, StreamExt};
     use tokio::time::timeout;
+
+    use super::*;
+    use crate::test_utils::{MockTransaction, testing_pool};
 
     #[tokio::test]
     async fn test_process_batch() {

@@ -5,24 +5,25 @@
 //!
 //! See also <https://github.com/eth-clients/e2store-format-specs/blob/main/formats/era.md>.
 
+use std::{
+    fs::File,
+    io::{Read, Seek, Write},
+};
+
 use crate::{
     common::file_ops::{EraFileFormat, FileReader, StreamReader, StreamWriter},
     e2s::{
         error::E2sError,
         file::{E2StoreReader, E2StoreWriter},
-        types::{Entry, IndexEntry, Version, SLOT_INDEX},
+        types::{Entry, IndexEntry, SLOT_INDEX, Version},
     },
     era::types::{
         consensus::{
-            CompressedBeaconState, CompressedSignedBeaconBlock, COMPRESSED_BEACON_STATE,
-            COMPRESSED_SIGNED_BEACON_BLOCK,
+            COMPRESSED_BEACON_STATE, COMPRESSED_SIGNED_BEACON_BLOCK, CompressedBeaconState,
+            CompressedSignedBeaconBlock,
         },
         group::{EraGroup, EraId, SlotIndex},
     },
-};
-use std::{
-    fs::File,
-    io::{Read, Seek, Write},
 };
 
 /// Era file interface
@@ -276,9 +277,9 @@ impl<W: Write> EraWriter<W> {
         self.ensure_version_written()?;
 
         // Ensure blocks are written before state/indices
-        if self.has_written_state ||
-            self.has_written_block_slot_index ||
-            self.has_written_state_slot_index
+        if self.has_written_state
+            || self.has_written_block_slot_index
+            || self.has_written_state_slot_index
         {
             return Err(E2sError::Ssz("Cannot write blocks after state or indices".to_string()));
         }

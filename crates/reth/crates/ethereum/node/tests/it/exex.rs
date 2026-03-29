@@ -1,14 +1,15 @@
-use futures::future;
-use reth_db::test_utils::create_test_rw_db;
-use reth_exex::ExExContext;
-use reth_node_api::FullNodeComponents;
-use reth_node_builder::{NodeBuilder, NodeConfig};
-use reth_node_ethereum::{node::EthereumAddOns, EthereumNode};
 use std::{
     future::Future,
     pin::Pin,
     task::{Context, Poll},
 };
+
+use futures::future;
+use reth_db::test_utils::create_test_rw_db;
+use reth_exex::ExExContext;
+use reth_node_api::FullNodeComponents;
+use reth_node_builder::{NodeBuilder, NodeConfig};
+use reth_node_ethereum::{EthereumNode, node::EthereumAddOns};
 
 struct DummyExEx<Node: FullNodeComponents> {
     _ctx: ExExContext<Node>,

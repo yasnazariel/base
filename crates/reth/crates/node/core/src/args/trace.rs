@@ -2,7 +2,7 @@
 
 use clap::Parser;
 use eyre::WrapErr;
-use reth_tracing::{tracing_subscriber::EnvFilter, Layers};
+use reth_tracing::{Layers, tracing_subscriber::EnvFilter};
 use reth_tracing_otlp::OtlpProtocol;
 use url::Url;
 

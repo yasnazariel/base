@@ -1,7 +1,8 @@
 //! Main node command for launching a node
 
-use crate::launcher::Launcher;
-use clap::{value_parser, Args, Parser};
+use std::{ffi::OsString, fmt, path::PathBuf, sync::Arc};
+
+use clap::{Args, Parser, value_parser};
 use reth_chainspec::{EthChainSpec, EthereumHardforks};
 use reth_cli::chainspec::ChainSpecParser;
 use reth_cli_runner::CliContext;
@@ -16,7 +17,8 @@ use reth_node_core::{
     node_config::NodeConfig,
     version,
 };
-use std::{ffi::OsString, fmt, path::PathBuf, sync::Arc};
+
+use crate::launcher::Launcher;
 
 /// Start the node
 #[derive(Debug, Parser)]
@@ -231,13 +233,15 @@ pub struct NoArgs;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use reth_discv4::DEFAULT_DISCOVERY_PORT;
-    use reth_ethereum_cli::chainspec::{EthereumChainSpecParser, SUPPORTED_CHAINS};
     use std::{
         net::{IpAddr, Ipv4Addr, SocketAddr},
         path::Path,
     };
+
+    use reth_discv4::DEFAULT_DISCOVERY_PORT;
+    use reth_ethereum_cli::chainspec::{EthereumChainSpecParser, SUPPORTED_CHAINS};
+
+    use super::*;
 
     #[test]
     fn parse_help_node_command() {

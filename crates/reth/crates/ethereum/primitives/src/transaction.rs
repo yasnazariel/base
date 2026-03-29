@@ -2,10 +2,12 @@
 //! alloy's TxEnvelope To test for consistency this is kept
 
 use alloc::vec::Vec;
+use core::hash::{Hash, Hasher};
+
 use alloy_consensus::{
-    transaction::{RlpEcdsaDecodableTx, RlpEcdsaEncodableTx, SignerRecoverable, TxHashRef},
     EthereumTxEnvelope, SignableTransaction, Signed, TxEip1559, TxEip2930, TxEip4844, TxEip7702,
     TxLegacy, TxType, Typed2718,
+    transaction::{RlpEcdsaDecodableTx, RlpEcdsaEncodableTx, SignerRecoverable, TxHashRef},
 };
 use alloy_eips::{
     eip2718::{Decodable2718, Eip2718Error, Eip2718Result, Encodable2718, IsTyped2718},
@@ -13,15 +15,14 @@ use alloy_eips::{
     eip7702::SignedAuthorization,
 };
 use alloy_primitives::{
-    bytes::BufMut, keccak256, Address, Bytes, ChainId, Signature, TxHash, TxKind, B256, U256,
+    Address, B256, Bytes, ChainId, Signature, TxHash, TxKind, U256, bytes::BufMut, keccak256,
 };
 use alloy_rlp::{Decodable, Encodable};
-use core::hash::{Hash, Hasher};
 use reth_primitives_traits::{
+    InMemorySize, SignedTransaction,
     crypto::secp256k1::{recover_signer, recover_signer_unchecked},
     sync::OnceLock,
     transaction::signed::RecoveryError,
-    InMemorySize, SignedTransaction,
 };
 
 macro_rules! delegate {
@@ -333,9 +334,9 @@ impl Hash for TransactionSigned {
 
 impl PartialEq for TransactionSigned {
     fn eq(&self, other: &Self) -> bool {
-        self.signature == other.signature &&
-            self.transaction == other.transaction &&
-            self.tx_hash() == other.tx_hash()
+        self.signature == other.signature
+            && self.transaction == other.transaction
+            && self.tx_hash() == other.tx_hash()
     }
 }
 
@@ -653,11 +654,12 @@ impl SignedTransaction for TransactionSigned {}
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_consensus::EthereumTxEnvelope;
     use proptest::proptest;
     use proptest_arbitrary_interop::arb;
     use reth_codecs::Compact;
+
+    use super::*;
 
     proptest! {
         #[test]

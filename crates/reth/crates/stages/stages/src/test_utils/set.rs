@@ -1,7 +1,9 @@
+use std::collections::VecDeque;
+
+use reth_stages_api::{ExecOutput, StageError, UnwindOutput, test_utils::TestStage};
+
 use super::TEST_STAGE_ID;
 use crate::{StageSet, StageSetBuilder};
-use reth_stages_api::{test_utils::TestStage, ExecOutput, StageError, UnwindOutput};
-use std::collections::VecDeque;
 
 #[derive(Default, Debug)]
 pub struct TestStages {

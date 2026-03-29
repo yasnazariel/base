@@ -8,13 +8,12 @@ pub mod helpers;
 pub mod pubsub;
 pub mod sim_bundle;
 
+pub use core::{EthApi, EthApiFor};
+
 /// Implementation of `eth` namespace API.
 pub use builder::EthApiBuilder;
 pub use bundle::EthBundle;
-pub use core::{EthApi, EthApiFor};
 pub use filter::EthFilter;
-pub use pubsub::EthPubSub;
-
 pub use helpers::{signer::DevSigner, sync_listener::SyncListener};
-
+pub use pubsub::EthPubSub;
 pub use reth_rpc_eth_api::{EthApiServer, EthApiTypes, FullEthApiServer, RpcNodeCore};

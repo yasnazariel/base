@@ -1,14 +1,15 @@
+use std::collections::BTreeSet;
+
 use alloy_primitives::{
-    map::{B256Map, HashMap},
     B256,
+    map::{B256Map, HashMap},
 };
 use reth_db::DatabaseError;
 use reth_trie::{
+    BranchNodeCompact, Nibbles,
     trie_cursor::{TrieCursor, TrieCursorFactory},
     updates::{StorageTrieUpdates, TrieUpdates},
-    BranchNodeCompact, Nibbles,
 };
-use std::collections::BTreeSet;
 use tracing::warn;
 
 #[derive(Debug)]
@@ -27,9 +28,9 @@ struct TrieUpdatesDiff {
 
 impl TrieUpdatesDiff {
     fn has_differences(&self) -> bool {
-        !self.account_nodes.is_empty() ||
-            !self.removed_nodes.is_empty() ||
-            !self.storage_tries.is_empty()
+        !self.account_nodes.is_empty()
+            || !self.removed_nodes.is_empty()
+            || !self.storage_tries.is_empty()
     }
 
     pub(super) fn log_differences(mut self) {
@@ -66,9 +67,9 @@ struct StorageTrieUpdatesDiff {
 
 impl StorageTrieUpdatesDiff {
     fn has_differences(&self) -> bool {
-        self.is_deleted.is_some() ||
-            !self.storage_nodes.is_empty() ||
-            !self.removed_nodes.is_empty()
+        self.is_deleted.is_some()
+            || !self.storage_nodes.is_empty()
+            || !self.removed_nodes.is_empty()
     }
 
     fn log_differences(&self, address: B256) {
@@ -291,11 +292,11 @@ fn branch_nodes_equal(
 ) -> Result<bool, DatabaseError> {
     Ok(match (task, regular) {
         (Some(task), Some(regular)) => {
-            task.state_mask == regular.state_mask &&
-                task.tree_mask == regular.tree_mask &&
-                task.hash_mask == regular.hash_mask &&
-                task.hashes == regular.hashes &&
-                task.root_hash == regular.root_hash
+            task.state_mask == regular.state_mask
+                && task.tree_mask == regular.tree_mask
+                && task.hash_mask == regular.hash_mask
+                && task.hashes == regular.hashes
+                && task.root_hash == regular.root_hash
         }
         (None, None) => true,
         _ => {

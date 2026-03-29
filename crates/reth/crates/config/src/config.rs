@@ -1,12 +1,13 @@
 //! Configuration files.
-use reth_network_types::{PeersConfig, SessionsConfig};
-use reth_prune_types::PruneModes;
-use reth_stages_types::ExecutionStageThresholds;
-use reth_static_file_types::{StaticFileMap, StaticFileSegment};
 use std::{
     path::{Path, PathBuf},
     time::Duration,
 };
+
+use reth_network_types::{PeersConfig, SessionsConfig};
+use reth_prune_types::PruneModes;
+use reth_stages_types::ExecutionStageThresholds;
+use reth_static_file_types::{StaticFileMap, StaticFileSegment};
 use url::Url;
 
 #[cfg(feature = "serde")]
@@ -615,12 +616,14 @@ where
 
 #[cfg(all(test, feature = "serde"))]
 mod tests {
-    use super::{Config, EXTENSION};
-    use crate::PruneConfig;
+    use std::{collections::BTreeMap, path::Path, str::FromStr, time::Duration};
+
     use alloy_primitives::Address;
     use reth_network_peers::TrustedPeer;
     use reth_prune_types::{PruneMode, PruneModes, ReceiptsLogPruneConfig};
-    use std::{collections::BTreeMap, path::Path, str::FromStr, time::Duration};
+
+    use super::{Config, EXTENSION};
+    use crate::PruneConfig;
 
     fn with_tempdir(filename: &str, proc: fn(&std::path::Path)) {
         let temp_dir = tempfile::tempdir().unwrap();

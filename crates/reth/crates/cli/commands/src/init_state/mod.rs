@@ -1,20 +1,22 @@
 //! Command that initializes the node from a genesis file.
 
-use crate::common::{AccessRights, CliNodeTypes, Environment, EnvironmentArgs};
+use std::{io::BufReader, path::PathBuf, sync::Arc};
+
 use alloy_consensus::BlockHeader as AlloyBlockHeader;
-use alloy_primitives::{Sealable, B256};
+use alloy_primitives::{B256, Sealable};
 use clap::Parser;
 use reth_chainspec::{EthChainSpec, EthereumHardforks};
 use reth_cli::chainspec::ChainSpecParser;
 use reth_db_common::init::init_from_state_dump;
 use reth_node_api::NodePrimitives;
-use reth_primitives_traits::{header::HeaderMut, SealedHeader};
+use reth_primitives_traits::{SealedHeader, header::HeaderMut};
 use reth_provider::{
     BlockNumReader, DBProvider, DatabaseProviderFactory, StaticFileProviderFactory,
     StaticFileWriter,
 };
-use std::{io::BufReader, path::PathBuf, sync::Arc};
 use tracing::info;
+
+use crate::common::{AccessRights, CliNodeTypes, Environment, EnvironmentArgs};
 
 pub mod without_evm;
 
@@ -68,9 +70,9 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + EthereumHardforks>> InitStateC
     pub async fn execute<N>(self) -> eyre::Result<()>
     where
         N: CliNodeTypes<
-            ChainSpec = C::ChainSpec,
-            Primitives: NodePrimitives<BlockHeader: HeaderMut>,
-        >,
+                ChainSpec = C::ChainSpec,
+                Primitives: NodePrimitives<BlockHeader: HeaderMut>,
+            >,
     {
         info!(target: "reth::cli", "Reth init-state starting");
 
@@ -137,9 +139,10 @@ impl<C: ChainSpecParser> InitStateCommand<C> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_primitives::b256;
     use reth_ethereum_cli::chainspec::EthereumChainSpecParser;
+
+    use super::*;
 
     #[test]
     fn parse_init_state_command_with_without_evm() {

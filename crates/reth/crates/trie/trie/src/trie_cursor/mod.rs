@@ -1,6 +1,7 @@
-use crate::{BranchNodeCompact, Nibbles};
 use alloy_primitives::B256;
 use reth_storage_errors::db::DatabaseError;
+
+use crate::{BranchNodeCompact, Nibbles};
 
 /// In-memory implementations of trie cursors.
 mod in_memory;
@@ -61,7 +62,7 @@ pub trait TrieCursor {
 
     /// Move the cursor to the key and return a value matching of greater than the key.
     fn seek(&mut self, key: Nibbles)
-        -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError>;
+    -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError>;
 
     /// Move the cursor to the next key.
     fn next(&mut self) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError>;

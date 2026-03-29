@@ -1,5 +1,6 @@
-use super::{BranchNodeCompact, StoredNibblesSubKey};
 use reth_primitives_traits::ValueWithSubKey;
+
+use super::{BranchNodeCompact, StoredNibblesSubKey};
 
 /// Account storage trie node.
 ///

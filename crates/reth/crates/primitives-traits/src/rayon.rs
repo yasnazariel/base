@@ -1,6 +1,7 @@
 //! Rayon parallel iterator utilities.
 
 use alloc::vec::Vec;
+
 use rayon::iter::IntoParallelIterator;
 
 /// Extension trait for iterators to convert them to parallel iterators via collection.

@@ -1,8 +1,9 @@
-use reth_prune_types::{PruneInterruptReason, PruneProgress};
 use std::{
     num::NonZeroUsize,
     time::{Duration, Instant},
 };
+
+use reth_prune_types::{PruneInterruptReason, PruneProgress};
 
 /// Limits a pruner run by either the number of entries (rows in the database) that can be deleted
 /// or the time it can run.
@@ -148,8 +149,9 @@ impl PruneLimiter {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::thread::sleep;
+
+    use super::*;
 
     #[test]
     fn test_prune_deleted_entries_limit_initial_state() {

@@ -1,12 +1,13 @@
 //! Enode identifier command
 
-use clap::Parser;
-use reth_cli_util::get_secret_key;
-use reth_network_peers::NodeRecord;
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     path::PathBuf,
 };
+
+use clap::Parser;
+use reth_cli_util::get_secret_key;
+use reth_network_peers::NodeRecord;
 
 /// Print the enode identifier for a given secret key.
 #[derive(Parser, Debug)]

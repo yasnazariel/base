@@ -1,9 +1,10 @@
+use alloc::sync::Arc;
+
 use crate::{
+    HashedPostState, HashedPostStateSorted,
     prefix_set::TriePrefixSetsMut,
     updates::{TrieUpdates, TrieUpdatesSorted},
-    HashedPostState, HashedPostStateSorted,
 };
-use alloc::sync::Arc;
 
 /// Inputs for trie-related computations.
 #[derive(Default, Debug, Clone)]

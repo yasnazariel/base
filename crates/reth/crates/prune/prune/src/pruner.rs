@@ -1,9 +1,7 @@
 //! Support for pruning.
 
-use crate::{
-    segments::{PruneInput, Segment},
-    Metrics, PruneLimiter, PrunerError, PrunerEvent,
-};
+use std::time::{Duration, Instant};
+
 use alloy_primitives::BlockNumber;
 use reth_exex_types::FinishedExExHeight;
 use reth_provider::{
@@ -13,9 +11,13 @@ use reth_provider::{
 use reth_prune_types::{PruneProgress, PrunedSegmentInfo, PrunerOutput};
 use reth_stages_types::StageId;
 use reth_tokio_util::{EventSender, EventStream};
-use std::time::{Duration, Instant};
 use tokio::sync::watch;
 use tracing::{debug, instrument};
+
+use crate::{
+    Metrics, PruneLimiter, PrunerError, PrunerEvent,
+    segments::{PruneInput, Segment},
+};
 
 /// Result of [`Pruner::run`] execution.
 pub type PrunerResult = Result<PrunerOutput, PrunerError>;
@@ -128,13 +130,13 @@ where
         let Some(tip_block_number) =
             self.adjust_tip_block_number_to_finished_exex_height(tip_block_number)
         else {
-            return Ok(PruneProgress::Finished.into())
+            return Ok(PruneProgress::Finished.into());
         };
         if tip_block_number == 0 {
             self.previous_tip_block_number = Some(tip_block_number);
 
             debug!(target: "pruner", %tip_block_number, "Nothing to prune yet");
-            return Ok(PruneProgress::Finished.into())
+            return Ok(PruneProgress::Finished.into());
         }
 
         self.event_sender.notify(PrunerEvent::Started { tip_block_number });
@@ -186,7 +188,7 @@ where
             if limiter.is_limit_reached() {
                 output.progress =
                     output.progress.combine(PruneProgress::HasMoreData(limiter.interrupt_reason()));
-                break
+                break;
             }
 
             if let Some((to_block, prune_mode)) = segment
@@ -198,8 +200,8 @@ where
                 .flatten()
             {
                 // Check if segment has a required stage that must be finished first
-                if let Some(required_stage) = segment.required_stage() &&
-                    !is_stage_finished(provider, required_stage)?
+                if let Some(required_stage) = segment.required_stage()
+                    && !is_stage_finished(provider, required_stage)?
                 {
                     debug!(
                         target: "pruner",
@@ -207,7 +209,7 @@ where
                         ?required_stage,
                         "Segment's required stage not finished, skipping"
                     );
-                    continue
+                    continue;
                 }
 
                 debug!(
@@ -280,14 +282,14 @@ where
         let Some(tip_block_number) =
             self.adjust_tip_block_number_to_finished_exex_height(tip_block_number)
         else {
-            return false
+            return false;
         };
 
         // Saturating subtraction is needed for the case when the chain was reverted, meaning
         // current block number might be less than the previous tip block number.
         // If that's the case, no pruning is needed as outdated data is also reverted.
-        if tip_block_number.saturating_sub(self.previous_tip_block_number.unwrap_or_default()) >=
-            self.min_block_interval as u64
+        if tip_block_number.saturating_sub(self.previous_tip_block_number.unwrap_or_default())
+            >= self.min_block_interval as u64
         {
             debug!(
                 target: "pruner",
@@ -361,9 +363,10 @@ fn is_stage_finished<Provider: StageCheckpointReader>(
 
 #[cfg(test)]
 mod tests {
-    use crate::Pruner;
     use reth_exex_types::FinishedExExHeight;
     use reth_provider::test_utils::create_test_provider_factory;
+
+    use crate::Pruner;
 
     #[test]
     fn is_pruning_needed() {

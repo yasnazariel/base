@@ -1,11 +1,13 @@
-use crate::BlockProvider;
+use std::sync::Arc;
+
 use alloy_provider::{ConnectionConfig, Network, Provider, ProviderBuilder, WebSocketConfig};
 use alloy_transport::TransportResult;
 use futures::{Stream, StreamExt};
 use reth_node_api::Block;
 use reth_tracing::tracing::{debug, warn};
-use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
+
+use crate::BlockProvider;
 
 /// Block provider that fetches new blocks from an RPC endpoint using a connection that supports
 /// RPC subscriptions.
@@ -82,7 +84,7 @@ where
                     "Failed to subscribe to blocks",
                 );
             }) else {
-                return
+                return;
             };
 
             while let Some(res) = stream.next().await {

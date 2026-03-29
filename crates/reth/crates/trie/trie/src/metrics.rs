@@ -1,6 +1,7 @@
-use crate::{stats::TrieStats, trie::TrieType};
 use metrics::{Counter, Histogram};
 use reth_metrics::Metrics;
+
+use crate::{stats::TrieStats, trie::TrieType};
 
 /// Wrapper for state root metrics.
 #[derive(Debug)]

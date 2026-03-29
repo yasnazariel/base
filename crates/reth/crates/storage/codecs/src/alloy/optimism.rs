@@ -1,11 +1,13 @@
 //! Compact implementations for Optimism types.
 
-use crate::Compact;
 use alloc::{borrow::Cow, vec::Vec};
+
 use alloy_consensus::{Receipt, TxReceipt};
 use alloy_primitives::Log;
 use op_alloy_consensus::{OpDepositReceipt, OpReceipt, OpTxType};
 use reth_codecs_derive::CompactZstd;
+
+use crate::Compact;
 
 #[derive(CompactZstd)]
 #[reth_codecs(crate = "crate")]

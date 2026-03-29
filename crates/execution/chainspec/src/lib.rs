@@ -18,6 +18,6 @@ pub use builder::OpChainSpecBuilder;
 
 mod spec;
 pub use spec::{
-    BASE_DEV, BASE_DEVNET_0_SEPOLIA_DEV_0, BASE_MAINNET, BASE_SEPOLIA, BASE_ZERONET,
-    OpChainSpec, OpGenesisInfo, SUPPORTED_CHAINS,
+    BASE_DEV, BASE_DEVNET_0_SEPOLIA_DEV_0, BASE_MAINNET, BASE_SEPOLIA, BASE_ZERONET, OpChainSpec,
+    OpGenesisInfo, SUPPORTED_CHAINS,
 };

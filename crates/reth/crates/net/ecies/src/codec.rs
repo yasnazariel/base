@@ -1,11 +1,13 @@
 //! This contains the main codec for `RLPx` ECIES messages
 
-use crate::{algorithm::ECIES, ECIESError, ECIESErrorImpl, EgressECIESValue, IngressECIESValue};
-use alloy_primitives::{bytes::BytesMut, B512 as PeerId};
-use secp256k1::SecretKey;
 use std::{fmt::Debug, io};
+
+use alloy_primitives::{B512 as PeerId, bytes::BytesMut};
+use secp256k1::SecretKey;
 use tokio_util::codec::{Decoder, Encoder};
 use tracing::{instrument, trace};
+
+use crate::{ECIESError, ECIESErrorImpl, EgressECIESValue, IngressECIESValue, algorithm::ECIES};
 
 /// The max size that the initial handshake packet can be. Currently 2KiB.
 const MAX_INITIAL_HANDSHAKE_SIZE: usize = 2048;
@@ -65,7 +67,7 @@ impl Decoder for ECIESCodec {
                 ECIESState::Auth => {
                     trace!("parsing auth");
                     if buf.len() < 2 {
-                        return Ok(None)
+                        return Ok(None);
                     }
 
                     let payload_size = u16::from_be_bytes([buf[0], buf[1]]) as usize;
@@ -73,18 +75,18 @@ impl Decoder for ECIESCodec {
 
                     if buf.len() < total_size {
                         trace!("current len {}, need {}", buf.len(), total_size);
-                        return Ok(None)
+                        return Ok(None);
                     }
 
                     self.ecies.read_auth(&mut buf.split_to(total_size))?;
 
                     self.state = ECIESState::InitialHeader;
-                    return Ok(Some(IngressECIESValue::AuthReceive(self.ecies.remote_id())))
+                    return Ok(Some(IngressECIESValue::AuthReceive(self.ecies.remote_id())));
                 }
                 ECIESState::Ack => {
                     trace!("parsing ack with len {}", buf.len());
                     if buf.len() < 2 {
-                        return Ok(None)
+                        return Ok(None);
                     }
 
                     let payload_size = u16::from_be_bytes([buf[0], buf[1]]) as usize;
@@ -92,18 +94,18 @@ impl Decoder for ECIESCodec {
 
                     if buf.len() < total_size {
                         trace!("current len {}, need {}", buf.len(), total_size);
-                        return Ok(None)
+                        return Ok(None);
                     }
 
                     self.ecies.read_ack(&mut buf.split_to(total_size))?;
 
                     self.state = ECIESState::InitialHeader;
-                    return Ok(Some(IngressECIESValue::Ack))
+                    return Ok(Some(IngressECIESValue::Ack));
                 }
                 ECIESState::InitialHeader => {
                     if buf.len() < ECIES::header_len() {
                         trace!("current len {}, need {}", buf.len(), ECIES::header_len());
-                        return Ok(None)
+                        return Ok(None);
                     }
 
                     let body_size =
@@ -115,7 +117,7 @@ impl Decoder for ECIESCodec {
                             body_size,
                             max_body_size: MAX_INITIAL_HANDSHAKE_SIZE,
                         }
-                        .into())
+                        .into());
                     }
 
                     self.state = ECIESState::Body;
@@ -123,7 +125,7 @@ impl Decoder for ECIESCodec {
                 ECIESState::Header => {
                     if buf.len() < ECIES::header_len() {
                         trace!("current len {}, need {}", buf.len(), ECIES::header_len());
-                        return Ok(None)
+                        return Ok(None);
                     }
 
                     self.ecies.read_header(&mut buf.split_to(ECIES::header_len()))?;
@@ -132,7 +134,7 @@ impl Decoder for ECIESCodec {
                 }
                 ECIESState::Body => {
                     if buf.len() < self.ecies.body_len() {
-                        return Ok(None)
+                        return Ok(None);
                     }
 
                     let mut data = buf.split_to(self.ecies.body_len());
@@ -140,7 +142,7 @@ impl Decoder for ECIESCodec {
                     ret.extend_from_slice(self.ecies.read_body(&mut data)?);
 
                     self.state = ECIESState::Header;
-                    return Ok(Some(IngressECIESValue::Message(ret)))
+                    return Ok(Some(IngressECIESValue::Message(ret)));
                 }
             }
         }

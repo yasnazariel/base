@@ -1,13 +1,14 @@
 //! Account related models and types.
 
-use crate::{
-    impl_fixed_arbitrary,
-    table::{Decode, Encode},
-    DatabaseError,
-};
+use std::ops::{Bound, Range, RangeBounds, RangeInclusive};
+
 use alloy_primitives::{Address, BlockNumber, StorageKey};
 use serde::{Deserialize, Serialize};
-use std::ops::{Bound, Range, RangeBounds, RangeInclusive};
+
+use crate::{
+    DatabaseError, impl_fixed_arbitrary,
+    table::{Decode, Encode},
+};
 
 /// [`BlockNumber`] concatenated with [`Address`].
 ///
@@ -27,17 +28,17 @@ impl BlockNumberAddress {
 
     /// Return the block number
     pub const fn block_number(&self) -> BlockNumber {
-        self.0 .0
+        self.0.0
     }
 
     /// Return the address
     pub const fn address(&self) -> Address {
-        self.0 .1
+        self.0.1
     }
 
     /// Consumes `Self` and returns [`BlockNumber`], [`Address`]
     pub const fn take(self) -> (BlockNumber, Address) {
-        (self.0 .0, self.0 .1)
+        (self.0.0, self.0.1)
     }
 }
 
@@ -51,8 +52,8 @@ impl Encode for BlockNumberAddress {
     type Encoded = [u8; 28];
 
     fn encode(self) -> Self::Encoded {
-        let block_number = self.0 .0;
-        let address = self.0 .1;
+        let block_number = self.0.0;
+        let address = self.0.1;
 
         let mut buf = [0u8; 28];
 
@@ -120,8 +121,8 @@ impl Encode for AddressStorageKey {
     type Encoded = [u8; 52];
 
     fn encode(self) -> Self::Encoded {
-        let address = self.0 .0;
-        let storage_key = self.0 .1;
+        let address = self.0.0;
+        let storage_key = self.0.1;
 
         let mut buf = [0u8; 52];
 
@@ -143,9 +144,10 @@ impl_fixed_arbitrary!((BlockNumberAddress, 28), (AddressStorageKey, 52));
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_primitives::address;
-    use rand::{rng, Rng};
+    use rand::{Rng, rng};
+
+    use super::*;
 
     #[test]
     fn test_block_number_address() {

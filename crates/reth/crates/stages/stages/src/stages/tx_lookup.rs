@@ -91,8 +91,8 @@ where
                 )
             })
             .transpose()?
-            .flatten() &&
-            target_prunable_block > input.checkpoint().block_number
+            .flatten()
+            && target_prunable_block > input.checkpoint().block_number
         {
             input.checkpoint = Some(StageCheckpoint::new(target_prunable_block));
 
@@ -267,8 +267,8 @@ where
         // If `TransactionHashNumbers` table was pruned, we will have a number of entries in it not
         // matching the actual number of processed transactions. To fix that, we add the
         // number of pruned `TransactionHashNumbers` entries.
-        processed: provider.count_entries::<tables::TransactionHashNumbers>()? as u64 +
-            pruned_entries,
+        processed: provider.count_entries::<tables::TransactionHashNumbers>()? as u64
+            + pruned_entries,
         // Count only static files entries. If we count the database entries too, we may have
         // duplicates. We're sure that the static files have all entries that database has,
         // because we run the `StaticFileProducer` before starting the pipeline.
@@ -278,24 +278,26 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::test_utils::{
-        stage_test_suite_ext, ExecuteStageTestRunner, StageTestRunner, StorageKind,
-        TestRunnerError, TestStageDB, UnwindStageTestRunner,
-    };
-    use alloy_primitives::{BlockNumber, B256};
+    use std::ops::Sub;
+
+    use alloy_primitives::{B256, BlockNumber};
     use assert_matches::assert_matches;
     use reth_db_api::{cursor::DbCursorRO, transaction::DbTx};
     use reth_ethereum_primitives::Block;
     use reth_primitives_traits::SealedBlock;
     use reth_provider::{
-        providers::StaticFileWriter, BlockBodyIndicesProvider, DatabaseProviderFactory,
+        BlockBodyIndicesProvider, DatabaseProviderFactory, providers::StaticFileWriter,
     };
     use reth_stages_api::StageUnitCheckpoint;
     use reth_testing_utils::generators::{
-        self, random_block, random_block_range, BlockParams, BlockRangeParams,
+        self, BlockParams, BlockRangeParams, random_block, random_block_range,
     };
-    use std::ops::Sub;
+
+    use super::*;
+    use crate::test_utils::{
+        ExecuteStageTestRunner, StageTestRunner, StorageKind, TestRunnerError, TestStageDB,
+        UnwindStageTestRunner, stage_test_suite_ext,
+    };
 
     // Implement stage test suite.
     stage_test_suite_ext!(TransactionLookupTestRunner, transaction_lookup);
@@ -562,8 +564,8 @@ mod tests {
                         })
                         .transpose()
                         .expect("prune target block for transaction lookup")
-                        .flatten() &&
-                        target_prunable_block > input.checkpoint().block_number
+                        .flatten()
+                        && target_prunable_block > input.checkpoint().block_number
                     {
                         input.checkpoint = Some(StageCheckpoint::new(target_prunable_block));
                     }
@@ -571,7 +573,7 @@ mod tests {
                     let end_block = output.checkpoint.block_number;
 
                     if start_block > end_block {
-                        return Ok(())
+                        return Ok(());
                     }
 
                     let mut body_cursor =
@@ -603,9 +605,10 @@ mod tests {
 
     #[cfg(all(unix, feature = "rocksdb"))]
     mod rocksdb_tests {
-        use super::*;
         use reth_provider::RocksDBProviderFactory;
         use reth_storage_api::StorageSettings;
+
+        use super::*;
 
         /// Test that when `transaction_hash_numbers_in_rocksdb` is enabled, the stage
         /// writes transaction hash mappings to `RocksDB` instead of MDBX.

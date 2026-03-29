@@ -1,22 +1,24 @@
 //! Core traits for working with execution payloads.
 
-use crate::PayloadBuilderError;
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
+use core::fmt;
+
 use alloy_eips::{
     eip4895::{Withdrawal, Withdrawals},
     eip7685::Requests,
 };
 use alloy_primitives::{Address, B256, U256};
 use alloy_rpc_types_engine::{PayloadAttributes as EthPayloadAttributes, PayloadId};
-use core::fmt;
 use either::Either;
 use reth_chain_state::ComputedTrieData;
 use reth_execution_types::BlockExecutionOutput;
 use reth_primitives_traits::{NodePrimitives, RecoveredBlock, SealedBlock, SealedHeader};
 use reth_trie_common::{
-    updates::{TrieUpdates, TrieUpdatesSorted},
     HashedPostState, HashedPostStateSorted,
+    updates::{TrieUpdates, TrieUpdatesSorted},
 };
+
+use crate::PayloadBuilderError;
 
 /// Represents an executed block for payload building purposes.
 ///

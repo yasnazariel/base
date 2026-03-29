@@ -1,13 +1,15 @@
-use crate::{any::AnyError, db::DatabaseError};
 use alloc::{boxed::Box, string::String};
+
 use alloy_eips::{BlockHashOrNumber, HashOrNumber};
-use alloy_primitives::{Address, BlockHash, BlockNumber, TxNumber, B256};
+use alloy_primitives::{Address, B256, BlockHash, BlockNumber, TxNumber};
 use derive_more::Display;
-use reth_primitives_traits::{transaction::signed::RecoveryError, GotExpected};
+use reth_primitives_traits::{GotExpected, transaction::signed::RecoveryError};
 use reth_prune_types::PruneSegmentError;
 use reth_static_file_types::StaticFileSegment;
-use revm_database_interface::{bal::EvmDatabaseError, DBErrorMarker};
+use revm_database_interface::{DBErrorMarker, bal::EvmDatabaseError};
 use revm_state::bal::BalError;
+
+use crate::{any::AnyError, db::DatabaseError};
 
 /// Provider result type.
 pub type ProviderResult<Ok> = Result<Ok, ProviderError>;
@@ -105,7 +107,9 @@ pub enum ProviderError {
     #[error("state at block #{_0} is pruned")]
     StateAtBlockPruned(BlockNumber),
     /// State is not available because the block has not been executed yet.
-    #[error("state at block #{requested} is not available, block has not been executed yet (latest executed: #{executed})")]
+    #[error(
+        "state at block #{requested} is not available, block has not been executed yet (latest executed: #{executed})"
+    )]
     BlockNotExecuted {
         /// The block number that was requested.
         requested: BlockNumber,
@@ -115,7 +119,9 @@ pub enum ProviderError {
     /// Block data is not available because history has expired.
     ///
     /// The requested block number is below the earliest available block.
-    #[error("block #{requested} is not available, history has expired (earliest available: #{earliest_available})")]
+    #[error(
+        "block #{requested} is not available, history has expired (earliest available: #{earliest_available})"
+    )]
     BlockExpired {
         /// The block number that was requested.
         requested: BlockNumber,
@@ -170,7 +176,9 @@ pub enum ProviderError {
     #[error("missing trie updates for block {0}")]
     MissingTrieUpdates(B256),
     /// Insufficient changesets to revert to the requested block.
-    #[error("insufficient changesets to revert to block #{requested}. Available changeset range: {available:?}")]
+    #[error(
+        "insufficient changesets to revert to block #{requested}. Available changeset range: {available:?}"
+    )]
     InsufficientChangesets {
         /// The block number requested for reversion
         requested: BlockNumber,

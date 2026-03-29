@@ -20,10 +20,11 @@
 //! The [`PersistenceState`] tracks ongoing persistence operations and coordinates
 //! between the main execution thread and background persistence workers.
 
+use std::time::Instant;
+
 use alloy_eips::BlockNumHash;
 use alloy_primitives::B256;
 use crossbeam_channel::Receiver as CrossbeamReceiver;
-use std::time::Instant;
 use tracing::trace;
 
 /// The state of the persistence task.

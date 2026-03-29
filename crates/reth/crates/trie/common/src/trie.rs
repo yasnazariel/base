@@ -1,8 +1,9 @@
 //! Types related to sparse trie nodes and masks.
 
-use crate::Nibbles;
 use alloy_primitives::map::HashMap;
-use alloy_trie::{nodes::TrieNode, TrieMask};
+use alloy_trie::{TrieMask, nodes::TrieNode};
+
+use crate::Nibbles;
 
 /// Branch node masks containing `hash_mask` and `tree_mask`.
 ///

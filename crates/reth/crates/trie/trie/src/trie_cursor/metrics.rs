@@ -1,14 +1,15 @@
-use super::{TrieCursor, TrieStorageCursor};
-use crate::{BranchNodeCompact, Nibbles};
-use alloy_primitives::B256;
-use reth_storage_errors::db::DatabaseError;
 use std::time::{Duration, Instant};
-use tracing::trace_span;
 
-#[cfg(feature = "metrics")]
-use crate::TrieType;
+use alloy_primitives::B256;
 #[cfg(feature = "metrics")]
 use reth_metrics::metrics::{self, Histogram};
+use reth_storage_errors::db::DatabaseError;
+use tracing::trace_span;
+
+use super::{TrieCursor, TrieStorageCursor};
+#[cfg(feature = "metrics")]
+use crate::TrieType;
+use crate::{BranchNodeCompact, Nibbles};
 
 /// Prometheus metrics for trie cursor operations.
 ///

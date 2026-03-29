@@ -1,14 +1,18 @@
-use super::job::BackfillJobResult;
-use crate::{BackfillJob, SingleBlockBackfillJob};
+use std::{
+    ops::RangeInclusive,
+    pin::Pin,
+    task::{Context, Poll, ready},
+};
+
 use alloy_primitives::BlockNumber;
 use futures::{
-    stream::{FuturesOrdered, Stream},
     StreamExt,
+    stream::{FuturesOrdered, Stream},
 };
 use reth_ethereum_primitives::EthPrimitives;
 use reth_evm::{
-    execute::{BlockExecutionError, BlockExecutionOutput},
     ConfigureEvm,
+    execute::{BlockExecutionError, BlockExecutionOutput},
 };
 use reth_node_api::NodePrimitives;
 use reth_primitives_traits::RecoveredBlock;
@@ -16,12 +20,10 @@ use reth_provider::{BlockReader, Chain, StateProviderFactory};
 use reth_prune_types::PruneModes;
 use reth_stages_api::ExecutionStageThresholds;
 use reth_tracing::tracing::debug;
-use std::{
-    ops::RangeInclusive,
-    pin::Pin,
-    task::{ready, Context, Poll},
-};
 use tokio::task::JoinHandle;
+
+use super::job::BackfillJobResult;
+use crate::{BackfillJob, SingleBlockBackfillJob};
 
 /// The default parallelism for active tasks in [`StreamBackfillJob`].
 pub(crate) const DEFAULT_PARALLELISM: usize = 4;
@@ -108,7 +110,7 @@ where
                 // next.
                 self.push_front(job);
 
-                return Poll::Ready(Some(job_result))
+                return Poll::Ready(Some(job_result));
             };
         }
 
@@ -239,16 +241,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{
-        backfill::test_utils::{
-            blocks_and_execution_outcome, blocks_and_execution_outputs, chain_spec,
-            execute_block_and_commit_to_database,
-        },
-        BackfillJobFactory,
-    };
-    use alloy_consensus::{constants::ETH_TO_WEI, Header, TxEip2930};
-    use alloy_primitives::{b256, Address, TxKind, U256};
+    use std::sync::Arc;
+
+    use alloy_consensus::{Header, TxEip2930, constants::ETH_TO_WEI};
+    use alloy_primitives::{Address, TxKind, U256, b256};
     use eyre::Result;
     use futures::StreamExt;
     use reth_chainspec::{ChainSpec, EthereumHardfork, MIN_TRANSACTION_GAS};
@@ -256,17 +252,25 @@ mod tests {
     use reth_ethereum_primitives::{Block, BlockBody, Transaction};
     use reth_evm_ethereum::EthEvmConfig;
     use reth_primitives_traits::{
-        crypto::secp256k1::public_key_to_address, Block as _, NodePrimitives,
+        Block as _, NodePrimitives, crypto::secp256k1::public_key_to_address,
     };
     use reth_provider::{
+        ProviderFactory,
         providers::{BlockchainProvider, ProviderNodeTypes},
         test_utils::create_test_provider_factory_with_chain_spec,
-        ProviderFactory,
     };
     use reth_stages_api::ExecutionStageThresholds;
     use reth_testing_utils::{generators, generators::sign_tx_with_key_pair};
     use secp256k1::Keypair;
-    use std::sync::Arc;
+
+    use super::*;
+    use crate::{
+        BackfillJobFactory,
+        backfill::test_utils::{
+            blocks_and_execution_outcome, blocks_and_execution_outputs, chain_spec,
+            execute_block_and_commit_to_database,
+        },
+    };
 
     #[tokio::test]
     async fn test_single_blocks() -> eyre::Result<()> {

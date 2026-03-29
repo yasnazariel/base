@@ -1,15 +1,16 @@
 //! Additional testing support for `NoopProvider`.
 
-use crate::{
-    providers::{RocksDBProvider, StaticFileProvider, StaticFileProviderRWRefMut},
-    RocksDBProviderFactory, StaticFileProviderFactory,
-};
-use reth_errors::{ProviderError, ProviderResult};
-use reth_primitives_traits::NodePrimitives;
 use std::path::PathBuf;
 
+use reth_errors::{ProviderError, ProviderResult};
+use reth_primitives_traits::NodePrimitives;
 /// Re-exported for convenience
 pub use reth_storage_api::noop::NoopProvider;
+
+use crate::{
+    RocksDBProviderFactory, StaticFileProviderFactory,
+    providers::{RocksDBProvider, StaticFileProvider, StaticFileProviderRWRefMut},
+};
 
 impl<C: Send + Sync, N: NodePrimitives> StaticFileProviderFactory for NoopProvider<C, N> {
     fn static_file_provider(&self) -> StaticFileProvider<Self::Primitives> {

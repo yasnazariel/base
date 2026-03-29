@@ -158,10 +158,11 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_eips::BlockNumHash;
-    use alloy_primitives::{b256, B256};
+    use alloy_primitives::{B256, b256};
     use reth_network_api::noop::NoopNetwork;
+
+    use super::*;
 
     #[test]
     fn test_required_block_filter_creation() {

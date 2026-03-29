@@ -1,9 +1,10 @@
-use super::{HashedCursor, HashedCursorFactory, HashedStorageCursor};
-use crate::forward_cursor::ForwardInMemoryCursor;
 use alloy_primitives::{B256, U256};
 use reth_primitives_traits::Account;
 use reth_storage_errors::db::DatabaseError;
 use reth_trie_common::HashedPostStateSorted;
+
+use super::{HashedCursor, HashedCursorFactory, HashedStorageCursor};
+use crate::forward_cursor::ForwardInMemoryCursor;
 
 /// The hashed cursor factory for the post state.
 #[derive(Clone, Debug)]
@@ -247,7 +248,7 @@ where
                 {
                     // If overlay returns a value prior to the DB's value, or the DB is exhausted,
                     // then we return the overlay's value.
-                    return Ok(Some((mem_key, value)))
+                    return Ok(Some((mem_key, value)));
                 }
                 // All other cases:
                 // - mem_key > db_key
@@ -301,14 +302,14 @@ where
 
         // If either cursor is currently pointing to the last entry which was returned then consume
         // that entry so that `choose_next_entry` is looking at the subsequent one.
-        if let Some((key, _)) = self.post_state_cursor.current() &&
-            key == &last_key
+        if let Some((key, _)) = self.post_state_cursor.current()
+            && key == &last_key
         {
             self.post_state_cursor.first_after(&last_key);
         }
 
-        if let Some((key, _)) = &self.cursor_entry &&
-            key == &last_key
+        if let Some((key, _)) = &self.cursor_entry
+            && key == &last_key
         {
             self.cursor_next()?;
         }
@@ -370,15 +371,18 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::hashed_cursor::mock::MockHashedCursor;
-    use parking_lot::Mutex;
     use std::{collections::BTreeMap, sync::Arc};
 
+    use parking_lot::Mutex;
+
+    use super::*;
+    use crate::hashed_cursor::mock::MockHashedCursor;
+
     mod proptest_tests {
-        use super::*;
         use itertools::Itertools;
         use proptest::prelude::*;
+
+        use super::*;
 
         /// Merge `db_nodes` with `post_state_nodes`, applying the post state overlay.
         /// This properly handles deletions (ZERO values for U256, None for Account).

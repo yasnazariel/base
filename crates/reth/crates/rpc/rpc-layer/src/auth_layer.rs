@@ -1,12 +1,14 @@
-use super::AuthValidator;
-use jsonrpsee_http_client::{HttpRequest, HttpResponse};
-use pin_project::pin_project;
 use std::{
     future::Future,
     pin::Pin,
     task::{Context, Poll},
 };
+
+use jsonrpsee_http_client::{HttpRequest, HttpResponse};
+use pin_project::pin_project;
 use tower::{Layer, Service};
+
+use super::AuthValidator;
 
 /// This is an Http middleware layer that acts as an
 /// interceptor for `Authorization` headers. Incoming requests are dispatched to
@@ -151,18 +153,20 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::JwtAuthValidator;
-    use alloy_rpc_types_engine::{Claims, JwtError, JwtSecret};
-    use jsonrpsee::{
-        server::{RandomStringIdProvider, ServerBuilder, ServerConfig, ServerHandle},
-        RpcModule,
-    };
-    use reqwest::{header, StatusCode};
     use std::{
         net::SocketAddr,
         time::{SystemTime, UNIX_EPOCH},
     };
+
+    use alloy_rpc_types_engine::{Claims, JwtError, JwtSecret};
+    use jsonrpsee::{
+        RpcModule,
+        server::{RandomStringIdProvider, ServerBuilder, ServerConfig, ServerHandle},
+    };
+    use reqwest::{StatusCode, header};
+
+    use super::*;
+    use crate::JwtAuthValidator;
 
     const AUTH_PORT: u32 = 8551;
     const AUTH_ADDR: &str = "0.0.0.0";

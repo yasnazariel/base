@@ -1,13 +1,15 @@
-use crate::{find_fixed_range, BlockNumber, Compression};
 use alloc::{format, string::String};
-use alloy_primitives::TxNumber;
 use core::{
     ops::{Range, RangeInclusive},
     str::FromStr,
 };
+
+use alloy_primitives::TxNumber;
 use reth_stages_types::StageId;
-use serde::{de::Visitor, ser::SerializeStruct, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor, ser::SerializeStruct};
 use strum::{EnumIs, EnumString};
+
+use crate::{BlockNumber, Compression, find_fixed_range};
 
 #[derive(
     Debug,
@@ -118,11 +120,11 @@ impl StaticFileSegment {
     pub const fn columns(&self) -> usize {
         match self {
             Self::Headers => 3,
-            Self::Transactions |
-            Self::Receipts |
-            Self::TransactionSenders |
-            Self::AccountChangeSets |
-            Self::StorageChangeSets => 1,
+            Self::Transactions
+            | Self::Receipts
+            | Self::TransactionSenders
+            | Self::AccountChangeSets
+            | Self::StorageChangeSets => 1,
         }
     }
 
@@ -167,14 +169,14 @@ impl StaticFileSegment {
     pub fn parse_filename(name: &str) -> Option<(Self, SegmentRangeInclusive)> {
         let mut parts = name.split('_');
         if !(parts.next() == Some("static") && parts.next() == Some("file")) {
-            return None
+            return None;
         }
 
         let segment = Self::from_str(parts.next()?).ok()?;
         let (block_start, block_end) = (parts.next()?.parse().ok()?, parts.next()?.parse().ok()?);
 
         if block_start > block_end {
-            return None
+            return None;
         }
 
         Some((segment, SegmentRangeInclusive::new(block_start, block_end)))
@@ -200,11 +202,11 @@ impl StaticFileSegment {
     pub const fn is_block_based(&self) -> bool {
         match self {
             Self::Headers => true,
-            Self::Receipts |
-            Self::Transactions |
-            Self::TransactionSenders |
-            Self::AccountChangeSets |
-            Self::StorageChangeSets => false,
+            Self::Receipts
+            | Self::Transactions
+            | Self::TransactionSenders
+            | Self::AccountChangeSets
+            | Self::StorageChangeSets => false,
         }
     }
 
@@ -315,7 +317,7 @@ impl<'de> Visitor<'de> for SegmentHeaderVisitor {
                 None => {
                     return Err(serde::de::Error::custom(
                         "changeset_offsets_len should exist for changeset static files",
-                    ))
+                    ));
                 }
             }
         } else {
@@ -583,11 +585,11 @@ impl SegmentHeader {
     /// Returns the row offset which depends on whether the segment is block or transaction based.
     pub fn start(&self) -> Option<u64> {
         if self.segment.is_change_based() {
-            return Some(0)
+            return Some(0);
         }
 
         if self.segment.is_block_based() {
-            return self.block_start()
+            return self.block_start();
         }
         self.tx_start()
     }
@@ -686,10 +688,12 @@ impl From<SegmentRangeInclusive> for RangeInclusive<u64> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::env::temp_dir;
+
     use alloy_primitives::Bytes;
     use reth_nippy_jar::NippyJar;
-    use std::env::temp_dir;
+
+    use super::*;
 
     #[test]
     fn test_filename() {

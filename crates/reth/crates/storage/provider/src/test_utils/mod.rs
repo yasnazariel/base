@@ -1,17 +1,19 @@
-use crate::{
-    providers::{NodeTypesForProvider, ProviderNodeTypes, RocksDBBuilder, StaticFileProvider},
-    HashingWriter, ProviderFactory, TrieWriter,
-};
+use std::sync::Arc;
+
 use alloy_primitives::B256;
 use reth_chainspec::{ChainSpec, MAINNET};
-use reth_db::{test_utils::TempDatabase, DatabaseEnv};
+use reth_db::{DatabaseEnv, test_utils::TempDatabase};
 use reth_errors::ProviderResult;
 use reth_ethereum_engine_primitives::EthEngineTypes;
 use reth_node_types::NodeTypesWithDBAdapter;
 use reth_primitives_traits::{Account, StorageEntry};
 use reth_trie::StateRoot;
 use reth_trie_db::DatabaseStateRoot;
-use std::sync::Arc;
+
+use crate::{
+    HashingWriter, ProviderFactory, TrieWriter,
+    providers::{NodeTypesForProvider, ProviderNodeTypes, RocksDBBuilder, StaticFileProvider},
+};
 
 pub mod blocks;
 mod mock;

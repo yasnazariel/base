@@ -1,5 +1,5 @@
 //! Identifier types for transactions and senders.
-use alloy_primitives::{map::AddressMap, Address};
+use alloy_primitives::{Address, map::AddressMap};
 use rustc_hash::FxHashMap;
 
 /// An internal mapping of addresses.
@@ -131,8 +131,9 @@ impl TransactionId {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::collections::BTreeSet;
+
+    use super::*;
 
     #[test]
     fn test_transaction_id_new() {

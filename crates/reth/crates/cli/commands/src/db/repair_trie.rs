@@ -1,3 +1,8 @@
+use std::{
+    net::SocketAddr,
+    time::{Duration, Instant},
+};
+
 use clap::Parser;
 use metrics::{self, Counter};
 use reth_chainspec::EthChainSpec;
@@ -19,19 +24,15 @@ use reth_node_metrics::{
     server::{MetricServer, MetricServerConfig},
     version::VersionInfo,
 };
-use reth_provider::{providers::ProviderNodeTypes, ChainSpecProvider, StageCheckpointReader};
+use reth_provider::{ChainSpecProvider, StageCheckpointReader, providers::ProviderNodeTypes};
 use reth_stages::StageId;
 use reth_tasks::TaskExecutor;
 use reth_trie::{
-    verify::{Output, Verifier},
     Nibbles,
+    verify::{Output, Verifier},
 };
 use reth_trie_common::{StorageTrieEntry, StoredNibbles, StoredNibblesSubKey};
 use reth_trie_db::{DatabaseHashedCursorFactory, DatabaseTrieCursorFactory};
-use std::{
-    net::SocketAddr,
-    time::{Duration, Instant},
-};
 use tracing::{info, warn};
 
 const PROGRESS_PERIOD: Duration = Duration::from_secs(5);
@@ -142,14 +143,14 @@ fn verify_only<N: ProviderNodeTypes>(tool: &DbTool<N>) -> eyre::Result<()> {
 
             // Record metrics based on output type
             match output {
-                Output::AccountExtra(_, _) |
-                Output::AccountWrong { .. } |
-                Output::AccountMissing(_, _) => {
+                Output::AccountExtra(_, _)
+                | Output::AccountWrong { .. }
+                | Output::AccountMissing(_, _) => {
                     metrics.account_inconsistencies.increment(1);
                 }
-                Output::StorageExtra(_, _, _) |
-                Output::StorageWrong { .. } |
-                Output::StorageMissing(_, _, _) => {
+                Output::StorageExtra(_, _, _)
+                | Output::StorageWrong { .. }
+                | Output::StorageMissing(_, _, _) => {
                     metrics.storage_inconsistencies.increment(1);
                 }
                 Output::Progress(_) => unreachable!(),
@@ -176,7 +177,7 @@ fn verify_checkpoints(provider: impl StageCheckpointReader) -> eyre::Result<()> 
             "MerkleExecute stage checkpoint ({}) != AccountHashing stage checkpoint ({}), you must first complete the pipeline sync by running `reth node`",
             merkle_checkpoint.block_number,
             account_hashing_checkpoint.block_number,
-        ))
+        ));
     }
 
     if storage_hashing_checkpoint.block_number != merkle_checkpoint.block_number {
@@ -184,7 +185,7 @@ fn verify_checkpoints(provider: impl StageCheckpointReader) -> eyre::Result<()> 
             "MerkleExecute stage checkpoint ({}) != StorageHashing stage checkpoint ({}), you must first complete the pipeline sync by running `reth node`",
             merkle_checkpoint.block_number,
             storage_hashing_checkpoint.block_number,
-        ))
+        ));
     }
 
     let merkle_checkpoint_progress =
@@ -192,7 +193,7 @@ fn verify_checkpoints(provider: impl StageCheckpointReader) -> eyre::Result<()> 
     if merkle_checkpoint_progress.is_some_and(|progress| !progress.is_empty()) {
         return Err(eyre::eyre!(
             "MerkleExecute sync stage in-progress, you must first complete the pipeline sync by running `reth node`",
-        ))
+        ));
     }
 
     Ok(())
@@ -240,14 +241,14 @@ fn verify_and_repair<N: ProviderNodeTypes>(tool: &DbTool<N>) -> eyre::Result<()>
 
             // Record metrics based on output type
             match &output {
-                Output::AccountExtra(_, _) |
-                Output::AccountWrong { .. } |
-                Output::AccountMissing(_, _) => {
+                Output::AccountExtra(_, _)
+                | Output::AccountWrong { .. }
+                | Output::AccountMissing(_, _) => {
                     metrics.account_inconsistencies.increment(1);
                 }
-                Output::StorageExtra(_, _, _) |
-                Output::StorageWrong { .. } |
-                Output::StorageMissing(_, _, _) => {
+                Output::StorageExtra(_, _, _)
+                | Output::StorageWrong { .. }
+                | Output::StorageMissing(_, _, _) => {
                     metrics.storage_inconsistencies.increment(1);
                 }
                 Output::Progress(_) => {}
@@ -273,14 +274,14 @@ fn verify_and_repair<N: ProviderNodeTypes>(tool: &DbTool<N>) -> eyre::Result<()>
                     storage_trie_cursor.delete_current()?;
                 }
             }
-            Output::AccountWrong { path, expected: node, .. } |
-            Output::AccountMissing(path, node) => {
+            Output::AccountWrong { path, expected: node, .. }
+            | Output::AccountMissing(path, node) => {
                 // Wrong/missing account node value, upsert it
                 let nibbles = StoredNibbles(path);
                 account_trie_cursor.upsert(nibbles, &node)?;
             }
-            Output::StorageWrong { account, path, expected: node, .. } |
-            Output::StorageMissing(account, path, node) => {
+            Output::StorageWrong { account, path, expected: node, .. }
+            | Output::StorageMissing(account, path, node) => {
                 // Wrong/missing storage node value, upsert it
                 // (We can't just use `upsert` method with a dup cursor, it's not properly
                 // supported)

@@ -1,13 +1,15 @@
 #![allow(unreachable_pub)]
 //! Tests for eth related requests
 
+use std::sync::Arc;
+
 use alloy_consensus::Header;
 use rand::Rng;
 use reth_eth_wire::{EthVersion, HeadersDirection};
 use reth_ethereum_primitives::Block;
 use reth_network::{
-    test_utils::{NetworkEventStream, PeerConfig, Testnet},
     BlockDownloaderProvider, NetworkEventListenerProvider,
+    test_utils::{NetworkEventStream, PeerConfig, Testnet},
 };
 use reth_network_api::{NetworkInfo, Peers};
 use reth_network_p2p::{
@@ -16,7 +18,6 @@ use reth_network_p2p::{
 };
 use reth_provider::test_utils::MockEthProvider;
 use reth_transaction_pool::test_utils::{TestPool, TransactionGenerator};
-use std::sync::Arc;
 use tokio::sync::oneshot;
 
 #[tokio::test(flavor = "multi_thread")]

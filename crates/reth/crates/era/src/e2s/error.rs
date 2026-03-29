@@ -1,6 +1,7 @@
 //! Error handling for e2s files operations
 
 use std::io;
+
 use thiserror::Error;
 
 /// Error types for e2s file operations

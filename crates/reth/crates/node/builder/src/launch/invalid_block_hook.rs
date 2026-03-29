@@ -1,6 +1,5 @@
 //! Invalid block hook helpers for the node builder.
 
-use crate::AddOnsContext;
 use alloy_consensus::TxEnvelope;
 use alloy_rpc_types::{Block, Header, Receipt, Transaction, TransactionRequest};
 use eyre::OptionExt;
@@ -16,6 +15,8 @@ use reth_primitives_traits::NodePrimitives;
 use reth_provider::ChainSpecProvider;
 use reth_rpc_api::EthApiClient;
 
+use crate::AddOnsContext;
+
 /// Extension trait for [`AddOnsContext`] to create invalid block hooks.
 pub trait InvalidBlockHookExt {
     /// Node primitives type.
@@ -26,7 +27,7 @@ pub trait InvalidBlockHookExt {
         &self,
         data_dir: &ChainPath<DataDirPath>,
     ) -> impl std::future::Future<Output = eyre::Result<Box<dyn InvalidBlockHook<Self::Primitives>>>>
-           + Send;
+    + Send;
 }
 
 impl<N> InvalidBlockHookExt for AddOnsContext<'_, N>
@@ -84,7 +85,7 @@ where
     use reth_invalid_block_hooks::InvalidBlockWitnessHook;
 
     let Some(ref hook) = config.debug.invalid_block_hook else {
-        return Ok(Box::new(NoopInvalidBlockHook::default()))
+        return Ok(Box::new(NoopInvalidBlockHook::default()));
     };
 
     let healthy_node_rpc_client = get_healthy_node_client(config, chain_id).await?;

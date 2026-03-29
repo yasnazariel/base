@@ -1,13 +1,16 @@
-use alloy_primitives::{keccak256, Address, BlockNumber, TxHash, TxNumber, B256};
+use std::{collections::BTreeMap, fmt::Debug, path::Path};
+
+use alloy_primitives::{Address, B256, BlockNumber, TxHash, TxNumber, keccak256};
 use reth_chainspec::MAINNET;
 use reth_db::{
+    DatabaseEnv,
     test_utils::{
         create_test_rocksdb_dir, create_test_rw_db, create_test_rw_db_with_path,
         create_test_static_files_dir,
     },
-    DatabaseEnv,
 };
 use reth_db_api::{
+    DatabaseError as DbError,
     common::KeyValue,
     cursor::{DbCursorRO, DbCursorRW, DbDupCursorRO},
     database::Database,
@@ -15,22 +18,20 @@ use reth_db_api::{
     table::Table,
     tables,
     transaction::{DbTx, DbTxMut},
-    DatabaseError as DbError,
 };
 use reth_ethereum_primitives::{Block, EthPrimitives, Receipt};
 use reth_primitives_traits::{Account, SealedBlock, SealedHeader, StorageEntry};
 use reth_provider::{
+    DatabaseProviderFactory, EitherWriter, HistoryWriter, ProviderError, ProviderFactory,
+    RocksBatchArg, StaticFileProviderFactory, StatsReader,
     providers::{
         RocksDBProvider, StaticFileProvider, StaticFileProviderRWRefMut, StaticFileWriter,
     },
     test_utils::MockNodeTypesWithDB,
-    DatabaseProviderFactory, EitherWriter, HistoryWriter, ProviderError, ProviderFactory,
-    RocksBatchArg, StaticFileProviderFactory, StatsReader,
 };
 use reth_static_file_types::StaticFileSegment;
 use reth_storage_errors::provider::ProviderResult;
 use reth_testing_utils::generators::ChangeSet;
-use std::{collections::BTreeMap, fmt::Debug, path::Path};
 use tempfile::TempDir;
 
 /// Test database that is used for testing stage implementations.
@@ -307,8 +308,8 @@ impl TestStageDB {
                     // Backfill: some tests start at a forward block number, but static files
                     // require no gaps.
                     let segment_header = txs_writer.user_header();
-                    if segment_header.block_end().is_none() &&
-                        segment_header.expected_block_start() == 0
+                    if segment_header.block_end().is_none()
+                        && segment_header.expected_block_start() == 0
                     {
                         for block in 0..block.number {
                             txs_writer.increment_block(block)?;

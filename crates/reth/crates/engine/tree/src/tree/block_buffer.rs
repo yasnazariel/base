@@ -1,8 +1,10 @@
-use crate::tree::metrics::BlockBufferMetrics;
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+
 use alloy_consensus::BlockHeader;
 use alloy_primitives::{BlockHash, BlockNumber};
 use reth_primitives_traits::{Block, SealedBlock};
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+
+use crate::tree::metrics::BlockBufferMetrics;
 
 /// Contains the tree of pending blocks that cannot be executed due to missing parent.
 /// It allows to store unconnected blocks for potential future inclusion.
@@ -109,7 +111,7 @@ impl<B: Block> BlockBuffer<B> {
         // discard all blocks that are before the finalized number.
         while let Some(entry) = self.earliest_blocks.first_entry() {
             if *entry.key() > block_number {
-                break
+                break;
             }
             let block_hashes = entry.remove();
             block_hashes_to_remove.extend(block_hashes);
@@ -183,11 +185,13 @@ impl<B: Block> BlockBuffer<B> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::collections::HashMap;
+
     use alloy_eips::BlockNumHash;
     use alloy_primitives::BlockHash;
-    use reth_testing_utils::generators::{self, random_block, BlockParams, Rng};
-    use std::collections::HashMap;
+    use reth_testing_utils::generators::{self, BlockParams, Rng, random_block};
+
+    use super::*;
 
     /// Create random block with specified number and parent hash.
     fn create_block<R: Rng>(
@@ -218,16 +222,20 @@ mod tests {
         block: &SealedBlock<reth_ethereum_primitives::Block>,
     ) {
         assert!(!buffer.blocks.contains_key(&block.hash()));
-        assert!(buffer
-            .parent_to_child
-            .get(&block.parent_hash)
-            .and_then(|p| p.get(&block.hash()))
-            .is_none());
-        assert!(buffer
-            .earliest_blocks
-            .get(&block.number)
-            .and_then(|hashes| hashes.get(&block.hash()))
-            .is_none());
+        assert!(
+            buffer
+                .parent_to_child
+                .get(&block.parent_hash)
+                .and_then(|p| p.get(&block.hash()))
+                .is_none()
+        );
+        assert!(
+            buffer
+                .earliest_blocks
+                .get(&block.number)
+                .and_then(|hashes| hashes.get(&block.hash()))
+                .is_none()
+        );
     }
 
     #[test]
@@ -511,16 +519,20 @@ mod tests {
         buffer.insert_block(block2.clone());
 
         // Pre-eviction: parent_to_child contains main_parent -> {block1}, block1 -> {block2}
-        assert!(buffer
-            .parent_to_child
-            .get(&main_parent.hash)
-            .and_then(|s| s.get(&block1.hash()))
-            .is_some());
-        assert!(buffer
-            .parent_to_child
-            .get(&block1.hash())
-            .and_then(|s| s.get(&block2.hash()))
-            .is_some());
+        assert!(
+            buffer
+                .parent_to_child
+                .get(&main_parent.hash)
+                .and_then(|s| s.get(&block1.hash()))
+                .is_some()
+        );
+        assert!(
+            buffer
+                .parent_to_child
+                .get(&block1.hash())
+                .and_then(|s| s.get(&block2.hash()))
+                .is_some()
+        );
 
         // Insert unrelated block to evict block1
         buffer.insert_block(unrelated_block);
@@ -529,18 +541,22 @@ mod tests {
         assert_block_removal(&buffer, &block1);
 
         // Cleanup: parent_to_child must no longer have (main_parent -> block1)
-        assert!(buffer
-            .parent_to_child
-            .get(&main_parent.hash)
-            .and_then(|s| s.get(&block1.hash()))
-            .is_none());
+        assert!(
+            buffer
+                .parent_to_child
+                .get(&main_parent.hash)
+                .and_then(|s| s.get(&block1.hash()))
+                .is_none()
+        );
 
         // But the mapping (block1 -> block2) must remain so descendants can still be tracked
-        assert!(buffer
-            .parent_to_child
-            .get(&block1.hash())
-            .and_then(|s| s.get(&block2.hash()))
-            .is_some());
+        assert!(
+            buffer
+                .parent_to_child
+                .get(&block1.hash())
+                .and_then(|s| s.get(&block2.hash()))
+                .is_some()
+        );
 
         // And lowest ancestor for block2 becomes itself after its parent is evicted
         assert_eq!(buffer.lowest_ancestor(&block2.hash()), Some(&block2));

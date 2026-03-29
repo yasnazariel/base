@@ -20,7 +20,9 @@ pub const MINIMUM_DISTANCE: u64 = 64;
 #[derive(Debug, Error, PartialEq, Eq, Clone)]
 pub enum UnwindTargetPrunedError {
     /// The target block is beyond the history limit
-    #[error("Cannot unwind to block {target_block} as it is beyond the {history_type} limit. Latest block: {latest_block}, History limit: {limit}")]
+    #[error(
+        "Cannot unwind to block {target_block} as it is beyond the {history_type} limit. Latest block: {latest_block}, History limit: {limit}"
+    )]
     TargetBeyondHistoryLimit {
         /// The latest block number
         latest_block: BlockNumber,
@@ -161,7 +163,7 @@ impl PruneModes {
                             target_block,
                             history_type: history_type.clone(),
                             limit: *limit,
-                        })
+                        });
                     }
                 }
             }
@@ -222,9 +224,10 @@ fn serde_deserialize_validate<'a, 'de, const MIN_BLOCKS: u64, D: serde::Deserial
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use assert_matches::assert_matches;
     use serde::Deserialize;
+
+    use super::*;
 
     #[test]
     fn test_deserialize_opt_prune_mode_with_min_blocks() {

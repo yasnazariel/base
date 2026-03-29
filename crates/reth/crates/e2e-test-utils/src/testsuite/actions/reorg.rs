@@ -1,16 +1,18 @@
 //! Reorg actions for the e2e testing framework.
 
-use crate::testsuite::{
-    actions::{produce_blocks::BroadcastLatestForkchoice, Action, Sequence},
-    BlockInfo, Environment,
-};
+use std::marker::PhantomData;
+
 use alloy_primitives::B256;
 use alloy_rpc_types_engine::{ForkchoiceState, PayloadAttributes};
 use eyre::Result;
 use futures_util::future::BoxFuture;
 use reth_node_api::{EngineTypes, PayloadTypes};
-use std::marker::PhantomData;
 use tracing::debug;
+
+use crate::testsuite::{
+    BlockInfo, Environment,
+    actions::{Action, Sequence, produce_blocks::BroadcastLatestForkchoice},
+};
 
 /// Target for reorg operation
 #[derive(Debug, Clone)]

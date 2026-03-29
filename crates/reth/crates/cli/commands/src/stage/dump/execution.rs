@@ -1,5 +1,6 @@
-use super::setup;
-use reth_consensus::{noop::NoopConsensus, FullConsensus};
+use std::sync::Arc;
+
+use reth_consensus::{FullConsensus, noop::NoopConsensus};
 use reth_db::DatabaseEnv;
 use reth_db_api::{
     cursor::DbCursorRO, database::Database, table::TableImporter, tables, transaction::DbTx,
@@ -9,12 +10,13 @@ use reth_evm::ConfigureEvm;
 use reth_node_builder::NodeTypesWithDB;
 use reth_node_core::dirs::{ChainPath, DataDirPath};
 use reth_provider::{
-    providers::{ProviderNodeTypes, RocksDBProvider, StaticFileProvider},
     DatabaseProviderFactory, ProviderFactory,
+    providers::{ProviderNodeTypes, RocksDBProvider, StaticFileProvider},
 };
-use reth_stages::{stages::ExecutionStage, Stage, StageCheckpoint, UnwindInput};
-use std::sync::Arc;
+use reth_stages::{Stage, StageCheckpoint, UnwindInput, stages::ExecutionStage};
 use tracing::info;
+
+use super::setup;
 
 pub(crate) async fn dump_execution_stage<N, E, C>(
     db_tool: &DbTool<N>,

@@ -1,19 +1,21 @@
 //! Types for broadcasting new data.
 
-use crate::{EthMessage, EthVersion, NetworkPrimitives};
 use alloc::{sync::Arc, vec::Vec};
+use core::{fmt::Debug, mem};
+
 use alloy_primitives::{
+    B256, Bytes, TxHash, U128,
     map::{HashMap, HashSet},
-    Bytes, TxHash, B256, U128,
 };
 use alloy_rlp::{
     Decodable, Encodable, RlpDecodable, RlpDecodableWrapper, RlpEncodable, RlpEncodableWrapper,
 };
-use core::{fmt::Debug, mem};
 use derive_more::{Constructor, Deref, DerefMut, From, IntoIterator};
 use reth_codecs_derive::{add_arbitrary_tests, generate_tests};
 use reth_ethereum_primitives::TransactionSigned;
 use reth_primitives_traits::{Block, SignedTransaction};
+
+use crate::{EthMessage, EthVersion, NetworkPrimitives};
 
 /// This informs peers of new blocks that have appeared on the network.
 #[derive(Clone, Debug, PartialEq, Eq, RlpEncodableWrapper, RlpDecodableWrapper, Default)]
@@ -33,7 +35,7 @@ impl NewBlockHashes {
     pub fn latest(&self) -> Option<&BlockHashNumber> {
         self.0.iter().fold(None, |latest, block| {
             if let Some(latest) = latest {
-                return if latest.number > block.number { Some(latest) } else { Some(block) }
+                return if latest.number > block.number { Some(latest) } else { Some(block) };
             }
             Some(block)
         })
@@ -487,13 +489,13 @@ impl Decodable for NewPooledTransactionHashes68 {
             return Err(alloy_rlp::Error::ListLengthMismatch {
                 expected: msg.hashes.len(),
                 got: msg.types.len(),
-            })
+            });
         }
         if msg.hashes.len() != msg.sizes.len() {
             return Err(alloy_rlp::Error::ListLengthMismatch {
                 expected: msg.hashes.len(),
                 got: msg.sizes.len(),
-            })
+            });
         }
 
         Ok(msg)
@@ -766,7 +768,7 @@ impl RequestTxHashes {
     pub fn retain_count(&mut self, count: usize) -> Self {
         let rest_capacity = self.hashes.len().saturating_sub(count);
         if rest_capacity == 0 {
-            return Self::empty()
+            return Self::empty();
         }
         let mut rest = Self::with_capacity(rest_capacity);
 
@@ -774,7 +776,7 @@ impl RequestTxHashes {
         self.hashes.retain(|hash| {
             if i >= count {
                 rest.insert(*hash);
-                return false
+                return false;
             }
             i += 1;
 
@@ -807,12 +809,14 @@ pub struct BlockRangeUpdate {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use alloy_consensus::{transaction::TxHashRef, Typed2718};
-    use alloy_eips::eip2718::Encodable2718;
-    use alloy_primitives::{b256, hex, Signature, U256};
-    use reth_ethereum_primitives::{Transaction, TransactionSigned};
     use std::str::FromStr;
+
+    use alloy_consensus::{Typed2718, transaction::TxHashRef};
+    use alloy_eips::eip2718::Encodable2718;
+    use alloy_primitives::{Signature, U256, b256, hex};
+    use reth_ethereum_primitives::{Transaction, TransactionSigned};
+
+    use super::*;
 
     /// Takes as input a struct / encoded hex message pair, ensuring that we encode to the exact hex
     /// message, and decode to the exact struct.

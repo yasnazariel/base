@@ -1,8 +1,9 @@
-use crate::BlockHashReader;
 use alloy_eips::{BlockHashOrNumber, BlockId, BlockNumberOrTag};
-use alloy_primitives::{BlockNumber, B256};
+use alloy_primitives::{B256, BlockNumber};
 use reth_chainspec::ChainInfo;
 use reth_storage_errors::provider::{ProviderError, ProviderResult};
+
+use crate::BlockHashReader;
 
 /// Client trait for getting important block numbers (such as the latest block number), converting
 /// block hashes to numbers, and fetching a block hash from its block number.
@@ -65,7 +66,7 @@ pub trait BlockIdReader: BlockNumReader + Send + Sync {
             BlockNumberOrTag::Pending => {
                 return self
                     .pending_block_num_hash()
-                    .map(|res_opt| res_opt.map(|num_hash| num_hash.number))
+                    .map(|res_opt| res_opt.map(|num_hash| num_hash.number));
             }
             BlockNumberOrTag::Number(num) => num,
             BlockNumberOrTag::Finalized => {

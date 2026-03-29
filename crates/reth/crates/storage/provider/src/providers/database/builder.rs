@@ -1,18 +1,21 @@
 //! Helper builder entrypoint to instantiate a [`ProviderFactory`].
 
-use crate::{
-    providers::{NodeTypesForProvider, RocksDBProvider, StaticFileProvider},
-    ProviderFactory,
-};
-use reth_db::{
-    mdbx::{DatabaseArguments, MaxReadTransactionDuration},
-    open_db_read_only, DatabaseEnv,
-};
-use reth_node_types::NodeTypesWithDBAdapter;
 use std::{
     marker::PhantomData,
     path::{Path, PathBuf},
     sync::Arc,
+};
+
+use reth_db::{
+    DatabaseEnv,
+    mdbx::{DatabaseArguments, MaxReadTransactionDuration},
+    open_db_read_only,
+};
+use reth_node_types::NodeTypesWithDBAdapter;
+
+use crate::{
+    ProviderFactory,
+    providers::{NodeTypesForProvider, RocksDBProvider, StaticFileProvider},
 };
 
 /// Helper type to create a [`ProviderFactory`].

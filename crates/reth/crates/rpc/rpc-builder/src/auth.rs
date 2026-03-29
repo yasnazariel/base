@@ -1,27 +1,27 @@
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+
+use http::header::AUTHORIZATION;
+pub use jsonrpsee::server::ServerBuilder;
+use jsonrpsee::{
+    Methods,
+    core::{RegisterMethodError, client::SubscriptionClientT},
+    http_client::HeaderMap,
+    server::{AlreadyStoppedError, RpcModule, ServerConfig, ServerConfigBuilder},
+    ws_client::RpcServiceBuilder,
+};
+pub use reth_ipc::server::Builder as IpcServerBuilder;
+use reth_rpc_api::servers::*;
+use reth_rpc_eth_types::EthSubscriptionIdProvider;
+use reth_rpc_layer::{
+    AuthClientLayer, AuthLayer, JwtAuthValidator, JwtSecret, secret_to_bearer_header,
+};
+use reth_rpc_server_types::constants;
+use tower::layer::util::Identity;
+
 use crate::{
     error::{RpcError, ServerKind},
     middleware::RethRpcMiddleware,
 };
-use http::header::AUTHORIZATION;
-use jsonrpsee::{
-    core::{client::SubscriptionClientT, RegisterMethodError},
-    http_client::HeaderMap,
-    server::{AlreadyStoppedError, RpcModule},
-    ws_client::RpcServiceBuilder,
-    Methods,
-};
-use reth_rpc_api::servers::*;
-use reth_rpc_eth_types::EthSubscriptionIdProvider;
-use reth_rpc_layer::{
-    secret_to_bearer_header, AuthClientLayer, AuthLayer, JwtAuthValidator, JwtSecret,
-};
-use reth_rpc_server_types::constants;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use tower::layer::util::Identity;
-
-pub use jsonrpsee::server::ServerBuilder;
-use jsonrpsee::server::{ServerConfig, ServerConfigBuilder};
-pub use reth_ipc::server::Builder as IpcServerBuilder;
 
 /// Server configuration for the auth server.
 #[derive(Debug)]
@@ -390,7 +390,7 @@ impl AuthServerHandle {
                     .build(ipc_endpoint)
                     .await
                     .expect("Failed to create ipc client"),
-            )
+            );
         }
         None
     }

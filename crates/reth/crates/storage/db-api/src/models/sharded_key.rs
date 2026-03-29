@@ -1,11 +1,13 @@
 //! Sharded key
-use crate::{
-    table::{Decode, Encode},
-    DatabaseError,
-};
+use std::hash::Hash;
+
 use alloy_primitives::{Address, BlockNumber};
 use serde::{Deserialize, Serialize};
-use std::hash::Hash;
+
+use crate::{
+    DatabaseError,
+    table::{Decode, Encode},
+};
 
 /// Number of indices in one shard.
 pub const NUM_OF_INDICES_IN_SHARD: usize = 2_000;
@@ -79,8 +81,9 @@ impl Decode for ShardedKey<Address> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_primitives::address;
+
+    use super::*;
 
     #[test]
     fn sharded_key_address_encode_decode_roundtrip() {

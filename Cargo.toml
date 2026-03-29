@@ -466,7 +466,7 @@ tokio-tungstenite = "0.28.0"
 
 # async
 futures = "0.3.31"
-reqwest = { version = "0.13.1", features = ["query", "stream"] }
+reqwest = { version = "0.13.1", features = ["blocking", "query", "stream"] }
 async-trait = "0.1.83"
 
 # grpc
@@ -492,7 +492,7 @@ tracing = { version = "0.1.43", default-features = false }
 # Metrics
 metrics-derive = "0.1.0"
 metrics = { version = "0.24.3", default-features = false }
-metrics-process = { version = "2.4.3", default-features = false }
+metrics-process = { version = "2.4.3", default-features = false, features = ["metrics-rs"] }
 metrics-exporter-prometheus = { version = "0.18.1", default-features = false }
 metrics-util = { version = "0.20.1", default-features = false }
 ordered-float = "5"

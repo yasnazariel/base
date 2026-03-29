@@ -1,23 +1,16 @@
-use crate::{
-    providers::{
-        state::latest::LatestStateProvider, NodeTypesForProvider, RocksDBProvider,
-        StaticFileProvider, StaticFileProviderRWRefMut,
-    },
-    to_range,
-    traits::{BlockSource, ReceiptProvider},
-    BlockHashReader, BlockNumReader, BlockReader, ChainSpecProvider, DatabaseProviderFactory,
-    EitherWriterDestination, HashedPostStateProvider, HeaderProvider, HeaderSyncGapProvider,
-    MetadataProvider, ProviderError, PruneCheckpointReader, RocksDBProviderFactory,
-    StageCheckpointReader, StateProviderBox, StaticFileProviderFactory, StaticFileWriter,
-    TransactionVariant, TransactionsProvider,
+use core::fmt;
+use std::{
+    ops::{RangeBounds, RangeInclusive},
+    path::Path,
+    sync::Arc,
 };
+
 use alloy_consensus::transaction::TransactionMeta;
 use alloy_eips::BlockHashOrNumber;
-use alloy_primitives::{Address, BlockHash, BlockNumber, TxHash, TxNumber, B256};
-use core::fmt;
+use alloy_primitives::{Address, B256, BlockHash, BlockNumber, TxHash, TxNumber};
 use parking_lot::RwLock;
 use reth_chainspec::ChainInfo;
-use reth_db::{init_db, mdbx::DatabaseArguments, DatabaseEnv};
+use reth_db::{DatabaseEnv, init_db, mdbx::DatabaseArguments};
 use reth_db_api::{database::Database, models::StoredBlockBodyIndices};
 use reth_errors::{RethError, RethResult};
 use reth_node_types::{
@@ -35,20 +28,29 @@ use reth_storage_errors::provider::ProviderResult;
 use reth_trie::HashedPostState;
 use reth_trie_db::ChangesetCache;
 use revm_database::BundleState;
-use std::{
-    ops::{RangeBounds, RangeInclusive},
-    path::Path,
-    sync::Arc,
-};
 use tracing::{instrument, trace};
+
+use crate::{
+    BlockHashReader, BlockNumReader, BlockReader, ChainSpecProvider, DatabaseProviderFactory,
+    EitherWriterDestination, HashedPostStateProvider, HeaderProvider, HeaderSyncGapProvider,
+    MetadataProvider, ProviderError, PruneCheckpointReader, RocksDBProviderFactory,
+    StageCheckpointReader, StateProviderBox, StaticFileProviderFactory, StaticFileWriter,
+    TransactionVariant, TransactionsProvider,
+    providers::{
+        NodeTypesForProvider, RocksDBProvider, StaticFileProvider, StaticFileProviderRWRefMut,
+        state::latest::LatestStateProvider,
+    },
+    to_range,
+    traits::{BlockSource, ReceiptProvider},
+};
 
 mod provider;
 pub use provider::{
     CommitOrder, DatabaseProvider, DatabaseProviderRO, DatabaseProviderRW, SaveBlocksMode,
 };
+use reth_trie::KeccakKeyHasher;
 
 use super::ProviderNodeTypes;
-use reth_trie::KeccakKeyHasher;
 
 mod builder;
 pub use builder::{ProviderFactoryBuilder, ReadOnlyConfig};
@@ -196,12 +198,16 @@ impl<N: NodeTypesWithDB> RocksDBProviderFactory for ProviderFactory<N> {
 
     #[cfg(all(unix, feature = "rocksdb"))]
     fn set_pending_rocksdb_batch(&self, _batch: rocksdb::WriteBatchWithTransaction<true>) {
-        unimplemented!("ProviderFactory is a factory, not a provider - use DatabaseProvider::set_pending_rocksdb_batch instead")
+        unimplemented!(
+            "ProviderFactory is a factory, not a provider - use DatabaseProvider::set_pending_rocksdb_batch instead"
+        )
     }
 
     #[cfg(all(unix, feature = "rocksdb"))]
     fn commit_pending_rocksdb_batches(&self) -> ProviderResult<()> {
-        unimplemented!("ProviderFactory is a factory, not a provider - use DatabaseProvider::commit_pending_rocksdb_batches instead")
+        unimplemented!(
+            "ProviderFactory is a factory, not a provider - use DatabaseProvider::commit_pending_rocksdb_batches instead"
+        )
     }
 }
 
@@ -777,26 +783,28 @@ impl<N: NodeTypesWithDB> Clone for ProviderFactory<N> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{
-        providers::{StaticFileProvider, StaticFileWriter},
-        test_utils::{blocks::TEST_BLOCK, create_test_provider_factory, MockNodeTypesWithDB},
-        BlockHashReader, BlockNumReader, BlockWriter, DBProvider, HeaderSyncGapProvider,
-        TransactionsProvider,
-    };
-    use alloy_primitives::{TxNumber, B256};
+    use std::{ops::RangeInclusive, sync::Arc};
+
+    use alloy_primitives::{B256, TxNumber};
     use assert_matches::assert_matches;
     use reth_chainspec::ChainSpecBuilder;
     use reth_db::{
         mdbx::DatabaseArguments,
-        test_utils::{create_test_rocksdb_dir, create_test_static_files_dir, ERROR_TEMPDIR},
+        test_utils::{ERROR_TEMPDIR, create_test_rocksdb_dir, create_test_static_files_dir},
     };
     use reth_db_api::tables;
     use reth_primitives_traits::SignerRecoverable;
     use reth_prune_types::{PruneMode, PruneModes};
     use reth_storage_errors::provider::ProviderError;
-    use reth_testing_utils::generators::{self, random_block, random_header, BlockParams};
-    use std::{ops::RangeInclusive, sync::Arc};
+    use reth_testing_utils::generators::{self, BlockParams, random_block, random_header};
+
+    use super::*;
+    use crate::{
+        BlockHashReader, BlockNumReader, BlockWriter, DBProvider, HeaderSyncGapProvider,
+        TransactionsProvider,
+        providers::{StaticFileProvider, StaticFileWriter},
+        test_utils::{MockNodeTypesWithDB, blocks::TEST_BLOCK, create_test_provider_factory},
+    };
 
     #[test]
     fn common_history_provider() {

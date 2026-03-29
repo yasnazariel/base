@@ -1,5 +1,7 @@
-use alloy_consensus::{constants::KECCAK_EMPTY, BlockHeader};
-use alloy_primitives::{BlockNumber, Sealable, B256};
+use std::fmt::Debug;
+
+use alloy_consensus::{BlockHeader, constants::KECCAK_EMPTY};
+use alloy_primitives::{B256, BlockNumber, Sealable};
 use reth_codecs::Compact;
 use reth_consensus::ConsensusError;
 use reth_db_api::{
@@ -17,7 +19,6 @@ use reth_stages_api::{
 };
 use reth_trie::{IntermediateStateRootState, StateRoot, StateRootProgress, StoredSubNode};
 use reth_trie_db::DatabaseStateRoot;
-use std::fmt::Debug;
 use tracing::*;
 
 // TODO: automate the process outlined below so the user can just send in a debugging package
@@ -126,7 +127,7 @@ impl MerkleStage {
             provider.get_stage_checkpoint_progress(StageId::MerkleExecute)?.unwrap_or_default();
 
         if buf.is_empty() {
-            return Ok(None)
+            return Ok(None);
         }
 
         let (checkpoint, _) = MerkleCheckpoint::from_compact(&buf, buf.len());
@@ -179,7 +180,7 @@ where
         let (threshold, incremental_threshold) = match self {
             Self::Unwind => {
                 info!(target: "sync::stages::merkle::unwind", "Stage is always skipped");
-                return Ok(ExecOutput::done(StageCheckpoint::new(input.target())))
+                return Ok(ExecOutput::done(StageCheckpoint::new(input.target())));
             }
             Self::Execution { rebuild_threshold, incremental_threshold } => {
                 (*rebuild_threshold, *incremental_threshold)
@@ -235,8 +236,8 @@ where
             }
             .unwrap_or(EntitiesCheckpoint {
                 processed: 0,
-                total: (provider.count_entries::<tables::HashedAccounts>()? +
-                    provider.count_entries::<tables::HashedStorages>()?)
+                total: (provider.count_entries::<tables::HashedAccounts>()?
+                    + provider.count_entries::<tables::HashedStorages>()?)
                     as u64,
             });
 
@@ -290,7 +291,7 @@ where
                             .checkpoint()
                             .with_entities_stage_checkpoint(entities_checkpoint),
                         done: false,
-                    })
+                    });
                 }
                 StateRootProgress::Complete(root, hashed_entries_walked, updates) => {
                     provider.write_trie_updates(updates)?;
@@ -329,8 +330,8 @@ where
                 "Incremental merkle hashing did not produce a final root".into(),
             ))?;
 
-            let total_hashed_entries = (provider.count_entries::<tables::HashedAccounts>()? +
-                provider.count_entries::<tables::HashedStorages>()?)
+            let total_hashed_entries = (provider.count_entries::<tables::HashedAccounts>()?
+                + provider.count_entries::<tables::HashedStorages>()?)
                 as u64;
 
             let entities_checkpoint = EntitiesCheckpoint {
@@ -366,14 +367,14 @@ where
         let range = input.unwind_block_range();
         if matches!(self, Self::Execution { .. }) {
             info!(target: "sync::stages::merkle::unwind", "Stage is always skipped");
-            return Ok(UnwindOutput { checkpoint: StageCheckpoint::new(input.unwind_to) })
+            return Ok(UnwindOutput { checkpoint: StageCheckpoint::new(input.unwind_to) });
         }
 
         let mut entities_checkpoint =
             input.checkpoint.entities_stage_checkpoint().unwrap_or(EntitiesCheckpoint {
                 processed: 0,
-                total: (tx.entries::<tables::HashedAccounts>()? +
-                    tx.entries::<tables::HashedStorages>()?) as u64,
+                total: (tx.entries::<tables::HashedAccounts>()?
+                    + tx.entries::<tables::HashedStorages>()?) as u64,
             });
 
         if input.unwind_to == 0 {
@@ -385,7 +386,7 @@ where
             return Ok(UnwindOutput {
                 checkpoint: StageCheckpoint::new(input.unwind_to)
                     .with_entities_stage_checkpoint(entities_checkpoint),
-            })
+            });
         }
 
         // Unwind trie only if there are transitions
@@ -443,24 +444,26 @@ fn validate_state_root<H: BlockHeader + Sealable + Debug>(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::test_utils::{
-        stage_test_suite_ext, ExecuteStageTestRunner, StageTestRunner, StorageKind,
-        TestRunnerError, TestStageDB, UnwindStageTestRunner,
-    };
-    use alloy_primitives::{keccak256, U256};
+    use std::collections::BTreeMap;
+
+    use alloy_primitives::{U256, keccak256};
     use assert_matches::assert_matches;
     use reth_db_api::cursor::{DbCursorRO, DbCursorRW, DbDupCursorRO};
     use reth_primitives_traits::{SealedBlock, StorageEntry};
-    use reth_provider::{providers::StaticFileWriter, StaticFileProviderFactory};
+    use reth_provider::{StaticFileProviderFactory, providers::StaticFileWriter};
     use reth_stages_api::StageUnitCheckpoint;
     use reth_static_file_types::StaticFileSegment;
     use reth_testing_utils::generators::{
-        self, random_block, random_block_range, random_changeset_range,
-        random_contract_account_range, BlockParams, BlockRangeParams,
+        self, BlockParams, BlockRangeParams, random_block, random_block_range,
+        random_changeset_range, random_contract_account_range,
     };
     use reth_trie::test_utils::{state_root, state_root_prehashed};
-    use std::collections::BTreeMap;
+
+    use super::*;
+    use crate::test_utils::{
+        ExecuteStageTestRunner, StageTestRunner, StorageKind, TestRunnerError, TestStageDB,
+        UnwindStageTestRunner, stage_test_suite_ext,
+    };
 
     stage_test_suite_ext!(MerkleTestRunner, merkle);
 
@@ -781,7 +784,7 @@ mod tests {
                         rev_changeset_walker.next().transpose().unwrap()
                     {
                         if bn_address.block_number() < target_block {
-                            break
+                            break;
                         }
 
                         tree.entry(keccak256(bn_address.address()))
@@ -812,7 +815,7 @@ mod tests {
                         rev_changeset_walker.next().transpose().unwrap()
                     {
                         if block_number < target_block {
-                            break
+                            break;
                         }
 
                         if let Some(acc) = account_before_tx.info {

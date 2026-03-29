@@ -29,23 +29,21 @@
 //!
 //! This ensures correct initialization order without runtime checks.
 
-use crate::{
-    components::{NodeComponents, NodeComponentsBuilder},
-    hooks::OnComponentInitializedHook,
-    BuilderContext, ExExLauncher, NodeAdapter, PrimitivesTy,
-};
+use std::{sync::Arc, thread::available_parallelism, time::Duration};
+
 use alloy_eips::eip2124::Head;
-use alloy_primitives::{BlockNumber, B256};
+use alloy_primitives::{B256, BlockNumber};
 use eyre::Context;
+use futures::{Stream, StreamExt, future::Either, stream};
 use rayon::ThreadPoolBuilder;
 use reth_chainspec::{Chain, EthChainSpec, EthereumHardforks};
-use reth_config::{config::EtlConfig, PruneConfig};
+use reth_config::{PruneConfig, config::EtlConfig};
 use reth_consensus::noop::NoopConsensus;
 use reth_db_api::{database::Database, database_metrics::DatabaseMetrics};
-use reth_db_common::init::{init_genesis_with_settings, InitStorageError};
+use reth_db_common::init::{InitStorageError, init_genesis_with_settings};
 use reth_downloaders::{bodies::noop::NoopBodiesDownloader, headers::noop::NoopHeaderDownloader};
 use reth_engine_local::MiningMode;
-use reth_evm::{noop::NoopEvmConfig, ConfigureEvm};
+use reth_evm::{ConfigureEvm, noop::NoopEvmConfig};
 use reth_exex::ExExManagerHandle;
 use reth_fs_util as fs;
 use reth_network_p2p::headers::client::HeadersClient;
@@ -57,6 +55,8 @@ use reth_node_core::{
     primitives::BlockHeader,
     version::version_metadata,
 };
+use reth_node_ethstats::EthStatsService;
+use reth_node_events::{cl::ConsensusLayerHealthEvents, node::NodeEvent};
 use reth_node_metrics::{
     chain::ChainSpecInfo,
     hooks::Hooks,
@@ -65,17 +65,17 @@ use reth_node_metrics::{
     version::VersionInfo,
 };
 use reth_provider::{
-    providers::{NodeTypesForProvider, ProviderNodeTypes, RocksDBProvider, StaticFileProvider},
     BlockHashReader, BlockNumReader, ProviderError, ProviderFactory, ProviderResult,
     RocksDBProviderFactory, StageCheckpointReader, StaticFileProviderBuilder,
     StaticFileProviderFactory,
+    providers::{NodeTypesForProvider, ProviderNodeTypes, RocksDBProvider, StaticFileProvider},
 };
 use reth_prune::{PruneModes, PrunerBuilder};
 use reth_rpc_builder::config::RethRpcServerConfig;
 use reth_rpc_layer::JwtSecret;
 use reth_stages::{
-    sets::DefaultStages, stages::EraImportSource, MetricEvent, PipelineBuilder, PipelineTarget,
-    StageId,
+    MetricEvent, PipelineBuilder, PipelineTarget, StageId, sets::DefaultStages,
+    stages::EraImportSource,
 };
 use reth_static_file::StaticFileProducer;
 use reth_tasks::TaskExecutor;
@@ -85,15 +85,16 @@ use reth_tracing::{
 };
 use reth_transaction_pool::TransactionPool;
 use reth_trie_db::ChangesetCache;
-use std::{sync::Arc, thread::available_parallelism, time::Duration};
 use tokio::sync::{
-    mpsc::{unbounded_channel, UnboundedSender},
+    mpsc::{UnboundedSender, unbounded_channel},
     oneshot, watch,
 };
 
-use futures::{future::Either, stream, Stream, StreamExt};
-use reth_node_ethstats::EthStatsService;
-use reth_node_events::{cl::ConsensusLayerHealthEvents, node::NodeEvent};
+use crate::{
+    BuilderContext, ExExLauncher, NodeAdapter, PrimitivesTy,
+    components::{NodeComponents, NodeComponentsBuilder},
+    hooks::OnComponentInitializedHook,
+};
 
 /// Reusable setup for launching a node.
 ///
@@ -912,9 +913,9 @@ where
     /// This checks for OP-Mainnet and ensures we have all the necessary data to progress (past
     /// bedrock height)
     fn ensure_chain_specific_db_checks(&self) -> ProviderResult<()> {
-        if self.chain_spec().is_optimism() &&
-            !self.is_dev() &&
-            self.chain_id() == Chain::optimism_mainnet()
+        if self.chain_spec().is_optimism()
+            && !self.is_dev()
+            && self.chain_id() == Chain::optimism_mainnet()
         {
             let latest = self.blockchain_db().last_block_number()?;
             // bedrock height
@@ -1107,8 +1108,8 @@ where
             while let Some(event) = engine_events.next().await {
                 use reth_engine_primitives::ConsensusEngineEvent;
                 match event {
-                    ConsensusEngineEvent::ForkBlockAdded(executed, duration) |
-                    ConsensusEngineEvent::CanonicalBlockAdded(executed, duration) => {
+                    ConsensusEngineEvent::ForkBlockAdded(executed, duration)
+                    | ConsensusEngineEvent::CanonicalBlockAdded(executed, duration) => {
                         let block_hash = executed.recovered_block.num_hash().hash;
                         let block_number = executed.recovered_block.num_hash().number;
                         if let Err(e) = ethstats_for_events
@@ -1262,9 +1263,10 @@ pub fn metrics_hooks<N: NodeTypesWithDB>(provider_factory: &ProviderFactory<N>) 
 
 #[cfg(test)]
 mod tests {
-    use super::{LaunchContext, NodeConfig};
     use reth_config::Config;
     use reth_node_core::args::PruningArgs;
+
+    use super::{LaunchContext, NodeConfig};
 
     const EXTENSION: &str = "toml";
 

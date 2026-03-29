@@ -1,7 +1,9 @@
 //! EVM component for the node builder.
-use crate::{BuilderContext, ConfigureEvm, FullNodeTypes};
-use reth_node_api::PrimitivesTy;
 use std::future::Future;
+
+use reth_node_api::PrimitivesTy;
+
+use crate::{BuilderContext, ConfigureEvm, FullNodeTypes};
 
 /// A type that knows how to build the executor types.
 pub trait ExecutorBuilder<Node: FullNodeTypes>: Send {

@@ -3,12 +3,13 @@
 //! Provides append-only writing and O(1) random-access reading for changeset offsets.
 //! The file format is fixed-width 16-byte records: `[offset: u64 LE][num_changes: u64 LE]`.
 
-use crate::ChangesetOffset;
 use std::{
     fs::{File, OpenOptions},
     io::{self, Read, Seek, SeekFrom, Write},
     path::Path,
 };
+
+use crate::ChangesetOffset;
 
 /// Writer for appending changeset offsets to a sidecar file.
 #[derive(Debug)]
@@ -231,8 +232,9 @@ impl ChangesetOffsetReader {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use tempfile::tempdir;
+
+    use super::*;
 
     #[test]
     fn test_write_and_read() {

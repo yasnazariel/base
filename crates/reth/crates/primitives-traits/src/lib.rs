@@ -130,22 +130,21 @@ pub use receipt::{FullReceipt, Receipt};
 
 pub mod transaction;
 pub use alloy_consensus::{
-    transaction::{Recovered, TransactionMeta},
     ReceiptWithBloom,
+    transaction::{Recovered, TransactionMeta},
 };
-
 pub use transaction::{
+    FullTransaction, SignerRecoverable, Transaction,
     execute::FillTxEnv,
     signed::{FullSignedTx, SignedTransaction},
-    FullTransaction, SignerRecoverable, Transaction,
 };
 
 pub mod block;
 pub use block::{
+    Block, FullBlock, RecoveredBlock, SealedBlock,
     body::{BlockBody, FullBlockBody},
     header::{AlloyBlockHeader, BlockHeader, FullBlockHeader},
     recovered::IndexedTx,
-    Block, FullBlock, RecoveredBlock, SealedBlock,
 };
 
 #[cfg(test)]
@@ -159,7 +158,7 @@ pub use error::{GotExpected, GotExpectedBoxed};
 
 #[cfg(test)]
 mod log;
-pub use alloy_primitives::{logs_bloom, Log, LogData};
+pub use alloy_primitives::{Log, LogData, logs_bloom};
 
 pub mod proofs;
 
@@ -249,7 +248,7 @@ pub mod test_utils {
 /// Re-exports of `dashmap` types with [`alloy_primitives::map::DefaultHashBuilder`] as the hasher.
 #[cfg(feature = "dashmap")]
 pub mod dashmap {
-    pub use ::dashmap::{mapref, DashSet, Entry};
+    pub use ::dashmap::{DashSet, Entry, mapref};
     /// Re-export of `DashMap` with [`alloy_primitives::map::DefaultHashBuilder`] as the hasher.
     pub type DashMap<K, V, S = alloy_primitives::map::DefaultHashBuilder> =
         ::dashmap::DashMap<K, V, S>;

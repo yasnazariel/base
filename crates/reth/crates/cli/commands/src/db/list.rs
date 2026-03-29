@@ -1,14 +1,16 @@
-use super::tui::DbListTUI;
+use std::cell::RefCell;
+
 use alloy_primitives::hex;
 use clap::Parser;
 use eyre::WrapErr;
 use reth_chainspec::EthereumHardforks;
-use reth_db::{transaction::DbTx, DatabaseEnv};
-use reth_db_api::{database::Database, table::Table, RawValue, TableViewer, Tables};
+use reth_db::{DatabaseEnv, transaction::DbTx};
+use reth_db_api::{RawValue, TableViewer, Tables, database::Database, table::Table};
 use reth_db_common::{DbTool, ListFilter};
 use reth_node_builder::{NodeTypes, NodeTypesWithDBAdapter};
-use std::cell::RefCell;
 use tracing::error;
+
+use super::tui::DbListTUI;
 
 #[derive(Parser, Debug)]
 /// The arguments for the `reth db list` command

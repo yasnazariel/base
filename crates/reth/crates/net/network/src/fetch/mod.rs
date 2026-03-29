@@ -2,10 +2,18 @@
 
 mod client;
 
-pub use client::FetchClient;
+use std::{
+    collections::{HashMap, VecDeque},
+    ops::RangeInclusive,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, AtomicUsize, Ordering},
+    },
+    task::{Context, Poll},
+};
 
-use crate::{message::BlockRequest, session::BlockRangeInfo};
 use alloy_primitives::B256;
+pub use client::FetchClient;
 use futures::StreamExt;
 use reth_eth_wire::{
     Capabilities, EthNetworkPrimitives, GetBlockBodies, GetBlockHeaders, NetworkPrimitives,
@@ -18,17 +26,10 @@ use reth_network_p2p::{
 };
 use reth_network_peers::PeerId;
 use reth_network_types::ReputationChangeKind;
-use std::{
-    collections::{HashMap, VecDeque},
-    ops::RangeInclusive,
-    sync::{
-        atomic::{AtomicU64, AtomicUsize, Ordering},
-        Arc,
-    },
-    task::{Context, Poll},
-};
 use tokio::sync::{mpsc, mpsc::UnboundedSender, oneshot};
 use tokio_stream::wrappers::UnboundedReceiverStream;
+
+use crate::{message::BlockRequest, session::BlockRangeInfo};
 
 type InflightHeadersRequest<H> = Request<HeadersRequest, PeerRequestResult<Vec<H>>>;
 type InflightBodiesRequest<B> = Request<(), PeerRequestResult<Vec<B>>>;
@@ -120,12 +121,12 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
     ///
     /// Returns `true` if this a newer block
     pub(crate) fn update_peer_block(&mut self, peer_id: &PeerId, hash: B256, number: u64) -> bool {
-        if let Some(peer) = self.peers.get_mut(peer_id) &&
-            number > peer.best_number
+        if let Some(peer) = self.peers.get_mut(peer_id)
+            && number > peer.best_number
         {
             peer.best_hash = hash;
             peer.best_number = number;
-            return true
+            return true;
         }
         false
     }
@@ -150,18 +151,18 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
             // replace best peer if our current best peer sent us a bad response last time
             if best_peer.1.last_response_likely_bad && !maybe_better.1.last_response_likely_bad {
                 best_peer = maybe_better;
-                continue
+                continue;
             }
 
             // replace best peer if this peer meets the requirements better
             if maybe_better.1.is_better(best_peer.1, &requirement) {
                 best_peer = maybe_better;
-                continue
+                continue;
             }
 
             // replace best peer if this peer has better rtt and both have same range quality
-            if maybe_better.1.timeout() < best_peer.1.timeout() &&
-                !maybe_better.1.last_response_likely_bad
+            if maybe_better.1.timeout() < best_peer.1.timeout()
+                && !maybe_better.1.last_response_likely_bad
             {
                 best_peer = maybe_better;
             }
@@ -174,14 +175,14 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
     fn poll_action(&mut self) -> PollAction {
         // we only check and not pop here since we don't know yet whether a peer is available.
         if self.queued_requests.is_empty() {
-            return PollAction::NoRequests
+            return PollAction::NoRequests;
         }
 
         let request = self.queued_requests.pop_front().expect("not empty");
         let Some(peer_id) = self.next_best_peer(request.best_peer_requirements()) else {
             // need to put back the request
             self.queued_requests.push_front(request);
-            return PollAction::NoPeersAvailable
+            return PollAction::NoPeersAvailable;
         };
 
         let request = self.prepare_block_request(peer_id, request);
@@ -225,7 +226,7 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
             }
 
             if self.queued_requests.is_empty() || no_peers_available {
-                return Poll::Pending
+                return Poll::Pending;
             }
         }
     }
@@ -298,7 +299,7 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
             // If the peer is still ready to accept new requests, we try to send a followup
             // request immediately.
             if peer.state.on_request_finished() && !is_error && !is_likely_bad_response {
-                return self.followup_request(peer_id)
+                return self.followup_request(peer_id);
             }
         }
 
@@ -324,7 +325,7 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
             peer.last_response_likely_bad = is_likely_bad_response;
 
             if peer.state.on_request_finished() && !is_likely_bad_response {
-                return self.followup_request(peer_id)
+                return self.followup_request(peer_id);
             }
         }
         None
@@ -473,7 +474,7 @@ impl PeerState {
     const fn on_request_finished(&mut self) -> bool {
         if !matches!(self, Self::Closing) {
             *self = Self::Idle;
-            return true
+            return true;
         }
         false
     }
@@ -581,11 +582,13 @@ enum BestPeerRequirements {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{peers::PeersManager, PeersConfig};
+    use std::future::poll_fn;
+
     use alloy_consensus::Header;
     use alloy_primitives::B512;
-    use std::future::poll_fn;
+
+    use super::*;
+    use crate::{PeersConfig, peers::PeersManager};
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_poll_fetcher() {
@@ -767,10 +770,12 @@ mod tests {
         let outcome =
             fetcher.on_block_headers_response(peer_id, Err(RequestError::Timeout)).unwrap();
 
-        assert!(EthResponseValidator::reputation_change_err(&Err::<Vec<Header>, _>(
-            RequestError::Timeout
-        ))
-        .is_some());
+        assert!(
+            EthResponseValidator::reputation_change_err(&Err::<Vec<Header>, _>(
+                RequestError::Timeout
+            ))
+            .is_some()
+        );
 
         match outcome {
             BlockResponseOutcome::BadResponse(peer, _) => {
@@ -886,8 +891,10 @@ mod tests {
         };
 
         // Peer that covers the requested range is better than one that doesn't
-        assert!(peer_covers
-            .is_better(&peer_no_cover, &BestPeerRequirements::FullBlockRange(range.clone())));
+        assert!(
+            peer_covers
+                .is_better(&peer_no_cover, &BestPeerRequirements::FullBlockRange(range.clone()))
+        );
         assert!(
             !peer_no_cover.is_better(&peer_covers, &BestPeerRequirements::FullBlockRange(range))
         );
@@ -920,8 +927,10 @@ mod tests {
         };
 
         // When both cover the range, prefer none
-        assert!(!peer_full
-            .is_better(&peer_partial, &BestPeerRequirements::FullBlockRange(range.clone())));
+        assert!(
+            !peer_full
+                .is_better(&peer_partial, &BestPeerRequirements::FullBlockRange(range.clone()))
+        );
         assert!(!peer_partial.is_better(&peer_full, &BestPeerRequirements::FullBlockRange(range)));
     }
 
@@ -952,8 +961,10 @@ mod tests {
         };
 
         // When both cover the range, prefer lower start value
-        assert!(peer_full
-            .is_better(&peer_partial, &BestPeerRequirements::FullBlockRange(range.clone())));
+        assert!(
+            peer_full
+                .is_better(&peer_partial, &BestPeerRequirements::FullBlockRange(range.clone()))
+        );
         assert!(!peer_partial.is_better(&peer_full, &BestPeerRequirements::FullBlockRange(range)));
     }
 
@@ -984,8 +995,10 @@ mod tests {
         };
 
         // When neither covers the range, prefer full history
-        assert!(peer_full
-            .is_better(&peer_partial, &BestPeerRequirements::FullBlockRange(range.clone())));
+        assert!(
+            peer_full
+                .is_better(&peer_partial, &BestPeerRequirements::FullBlockRange(range.clone()))
+        );
         assert!(!peer_partial.is_better(&peer_full, &BestPeerRequirements::FullBlockRange(range)));
     }
 
@@ -1016,8 +1029,10 @@ mod tests {
         };
 
         // Peer without range info is not better (we prefer peers with known ranges)
-        assert!(!peer_no_range
-            .is_better(&peer_with_range, &BestPeerRequirements::FullBlockRange(range.clone())));
+        assert!(
+            !peer_no_range
+                .is_better(&peer_with_range, &BestPeerRequirements::FullBlockRange(range.clone()))
+        );
 
         // Peer with range info is better than peer without
         assert!(
@@ -1052,12 +1067,16 @@ mod tests {
         };
 
         // Peer with range that covers is better than peer without range info
-        assert!(peer_with_range_covers
-            .is_better(&peer_no_range, &BestPeerRequirements::FullBlockRange(range.clone())));
+        assert!(
+            peer_with_range_covers
+                .is_better(&peer_no_range, &BestPeerRequirements::FullBlockRange(range.clone()))
+        );
 
         // Peer without range info is not better when other covers
-        assert!(!peer_no_range
-            .is_better(&peer_with_range_covers, &BestPeerRequirements::FullBlockRange(range)));
+        assert!(
+            !peer_no_range
+                .is_better(&peer_with_range_covers, &BestPeerRequirements::FullBlockRange(range))
+        );
     }
 
     #[test]
@@ -1087,12 +1106,16 @@ mod tests {
         };
 
         // Peer with range that doesn't cover is not better
-        assert!(!peer_with_range_no_cover
-            .is_better(&peer_no_range, &BestPeerRequirements::FullBlockRange(range.clone())));
+        assert!(
+            !peer_with_range_no_cover
+                .is_better(&peer_no_range, &BestPeerRequirements::FullBlockRange(range.clone()))
+        );
 
         // Peer without range info (full history) is better when other doesn't cover
-        assert!(peer_no_range
-            .is_better(&peer_with_range_no_cover, &BestPeerRequirements::FullBlockRange(range)));
+        assert!(
+            peer_no_range
+                .is_better(&peer_with_range_no_cover, &BestPeerRequirements::FullBlockRange(range))
+        );
     }
 
     #[test]
@@ -1134,14 +1157,20 @@ mod tests {
         };
 
         // Exact coverage is better than short coverage
-        assert!(peer_exact
-            .is_better(&peer_short_start, &BestPeerRequirements::FullBlockRange(range.clone())));
-        assert!(peer_exact
-            .is_better(&peer_short_end, &BestPeerRequirements::FullBlockRange(range.clone())));
+        assert!(
+            peer_exact
+                .is_better(&peer_short_start, &BestPeerRequirements::FullBlockRange(range.clone()))
+        );
+        assert!(
+            peer_exact
+                .is_better(&peer_short_end, &BestPeerRequirements::FullBlockRange(range.clone()))
+        );
 
         // Short coverage is not better than exact coverage
-        assert!(!peer_short_start
-            .is_better(&peer_exact, &BestPeerRequirements::FullBlockRange(range.clone())));
+        assert!(
+            !peer_short_start
+                .is_better(&peer_exact, &BestPeerRequirements::FullBlockRange(range.clone()))
+        );
         assert!(
             !peer_short_end.is_better(&peer_exact, &BestPeerRequirements::FullBlockRange(range))
         );

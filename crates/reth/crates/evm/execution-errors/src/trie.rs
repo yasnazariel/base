@@ -1,7 +1,8 @@
 //! Errors when computing the state root.
 
 use alloc::{boxed::Box, string::ToString};
-use alloy_primitives::{Bytes, B256};
+
+use alloy_primitives::{B256, Bytes};
 use nybbles::Nibbles;
 use reth_storage_errors::{db::DatabaseError, provider::ProviderError};
 use thiserror::Error;
@@ -23,8 +24,8 @@ pub enum StateRootError {
 impl From<StateRootError> for ProviderError {
     fn from(value: StateRootError) -> Self {
         match value {
-            StateRootError::Database(err) |
-            StateRootError::StorageRootError(StorageRootError::Database(err)) => {
+            StateRootError::Database(err)
+            | StateRootError::StorageRootError(StorageRootError::Database(err)) => {
                 Self::Database(err)
             }
             StateRootError::PrefixSetLoadError(err) => err,

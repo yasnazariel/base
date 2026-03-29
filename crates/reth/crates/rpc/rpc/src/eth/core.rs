@@ -3,7 +3,6 @@
 
 use std::{sync::Arc, time::Duration};
 
-use crate::{eth::helpers::types::EthRpcConverter, EthApiBuilder};
 use alloy_consensus::BlockHeader;
 use alloy_eips::BlockNumberOrTag;
 use alloy_network::Ethereum;
@@ -16,24 +15,26 @@ use reth_network_api::noop::NoopNetwork;
 use reth_node_api::{FullNodeComponents, FullNodeTypes};
 use reth_rpc_convert::{RpcConvert, RpcConverter};
 use reth_rpc_eth_api::{
-    helpers::{pending_block::PendingEnvBuilder, spec::SignersForRpc, SpawnBlocking},
-    node::{RpcNodeCoreAdapter, RpcNodeCoreExt},
     EthApiTypes, RpcNodeCore,
+    helpers::{SpawnBlocking, pending_block::PendingEnvBuilder, spec::SignersForRpc},
+    node::{RpcNodeCoreAdapter, RpcNodeCoreExt},
 };
 use reth_rpc_eth_types::{
-    builder::config::PendingBlockKind, receipt::EthReceiptConverter, tx_forward::ForwardConfig,
     EthApiError, EthStateCache, FeeHistoryCache, GasCap, GasPriceOracle, PendingBlock,
+    builder::config::PendingBlockKind, receipt::EthReceiptConverter, tx_forward::ForwardConfig,
 };
-use reth_storage_api::{noop::NoopProvider, BlockReaderIdExt, ProviderHeader};
+use reth_storage_api::{BlockReaderIdExt, ProviderHeader, noop::NoopProvider};
 use reth_tasks::{
-    pool::{BlockingTaskGuard, BlockingTaskPool},
     TaskSpawner, TokioTaskExecutor,
+    pool::{BlockingTaskGuard, BlockingTaskPool},
 };
 use reth_transaction_pool::{
-    blobstore::BlobSidecarConverter, noop::NoopTransactionPool, AddedTransactionOutcome,
-    BatchTxProcessor, BatchTxRequest, TransactionPool,
+    AddedTransactionOutcome, BatchTxProcessor, BatchTxRequest, TransactionPool,
+    blobstore::BlobSidecarConverter, noop::NoopTransactionPool,
 };
-use tokio::sync::{broadcast, mpsc, Mutex, Semaphore};
+use tokio::sync::{Mutex, Semaphore, broadcast, mpsc};
+
+use crate::{EthApiBuilder, eth::helpers::types::EthRpcConverter};
 
 const DEFAULT_BROADCAST_CAPACITY: usize = 2000;
 
@@ -614,10 +615,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::{eth::helpers::types::EthRpcConverter, EthApi, EthApiBuilder};
     use alloy_consensus::{Block, BlockBody, Header};
     use alloy_eips::BlockNumberOrTag;
-    use alloy_primitives::{Signature, B256, U64};
+    use alloy_primitives::{B256, Signature, U64};
     use alloy_rpc_types::FeeHistory;
     use jsonrpsee_types::error::INVALID_PARAMS_CODE;
     use rand::Rng;
@@ -627,13 +627,15 @@ mod tests {
     use reth_evm_ethereum::EthEvmConfig;
     use reth_network_api::noop::NoopNetwork;
     use reth_provider::{
-        test_utils::{MockEthProvider, NoopProvider},
         StageCheckpointReader,
+        test_utils::{MockEthProvider, NoopProvider},
     };
-    use reth_rpc_eth_api::{node::RpcNodeCoreAdapter, EthApiServer};
+    use reth_rpc_eth_api::{EthApiServer, node::RpcNodeCoreAdapter};
     use reth_storage_api::{BlockReader, BlockReaderIdExt, StateProviderFactory};
     use reth_testing_utils::generators;
-    use reth_transaction_pool::test_utils::{testing_pool, TestPool};
+    use reth_transaction_pool::test_utils::{TestPool, testing_pool};
+
+    use crate::{EthApi, EthApiBuilder, eth::helpers::types::EthRpcConverter};
 
     type FakeEthApi<P = MockEthProvider> = EthApi<
         RpcNodeCoreAdapter<P, TestPool, NoopNetwork, EthEvmConfig>,

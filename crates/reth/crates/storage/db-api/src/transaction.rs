@@ -1,9 +1,10 @@
+use std::fmt::Debug;
+
 use crate::{
+    DatabaseError,
     cursor::{DbCursorRO, DbCursorRW, DbDupCursorRO, DbDupCursorRW},
     table::{DupSort, Encode, Table},
-    DatabaseError,
 };
-use std::fmt::Debug;
 
 /// Helper adapter type for accessing [`DbTx`] cursor.
 pub type CursorTy<TX, T> = <TX as DbTx>::Cursor<T>;
@@ -69,7 +70,7 @@ pub trait DbTxMut: Send {
     }
     /// Delete value from database
     fn delete<T: Table>(&self, key: T::Key, value: Option<T::Value>)
-        -> Result<bool, DatabaseError>;
+    -> Result<bool, DatabaseError>;
     /// Clears database.
     fn clear<T: Table>(&self) -> Result<(), DatabaseError>;
     /// Cursor mut

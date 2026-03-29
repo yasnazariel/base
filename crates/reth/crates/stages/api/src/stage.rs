@@ -1,13 +1,15 @@
-use crate::{error::StageError, StageCheckpoint, StageId};
-use alloy_primitives::{BlockNumber, TxNumber};
-use reth_provider::{BlockReader, ProviderError, StaticFileProviderFactory, StaticFileSegment};
 use std::{
     cmp::{max, min},
-    future::{poll_fn, Future},
+    future::{Future, poll_fn},
     ops::{Range, RangeInclusive},
     task::{Context, Poll},
 };
+
+use alloy_primitives::{BlockNumber, TxNumber};
+use reth_provider::{BlockReader, ProviderError, StaticFileProviderFactory, StaticFileSegment};
 use tracing::instrument;
+
+use crate::{StageCheckpoint, StageId, error::StageError};
 
 /// Stage execution input, see [`Stage::execute`].
 #[derive(Debug, Default, PartialEq, Eq, Clone, Copy)]
@@ -101,7 +103,7 @@ impl ExecInput {
         let Some(lowest_transactions_block) =
             provider.static_file_provider().get_lowest_range_start(StaticFileSegment::Transactions)
         else {
-            return Ok(None)
+            return Ok(None);
         };
 
         // We can only process transactions that have associated static files, so we cap the start
@@ -117,7 +119,7 @@ impl ExecInput {
         // and we return early. It's possible to trigger this scenario when running `reth
         // stage run` manually for a range of transactions that doesn't exist.
         if start_block > target_block {
-            return Ok(None)
+            return Ok(None);
         }
 
         let start_block_body = provider
@@ -134,7 +136,7 @@ impl ExecInput {
 
         if all_tx_cnt == 0 {
             // if there is no more transaction return back.
-            return Ok(None)
+            return Ok(None);
         }
 
         // get block of this tx
@@ -329,8 +331,8 @@ mod tests {
     };
     use reth_db_api::{models::StoredBlockBodyIndices, tables, transaction::DbTxMut};
     use reth_provider::{
-        providers::RocksDBProvider, test_utils::MockNodeTypesWithDB, ProviderFactory,
-        StaticFileProviderBuilder, StaticFileProviderFactory, StaticFileSegment,
+        ProviderFactory, StaticFileProviderBuilder, StaticFileProviderFactory, StaticFileSegment,
+        providers::RocksDBProvider, test_utils::MockNodeTypesWithDB,
     };
     use reth_stages_types::StageCheckpoint;
     use reth_testing_utils::generators::{self, random_signed_tx};

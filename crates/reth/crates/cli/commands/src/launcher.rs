@@ -1,8 +1,9 @@
+use std::fmt;
+
 use futures::Future;
 use reth_cli::chainspec::ChainSpecParser;
 use reth_db::DatabaseEnv;
 use reth_node_builder::{NodeBuilder, WithLaunchContext};
-use std::fmt;
 
 /// A trait for launching a reth node with custom configuration strategies.
 ///

@@ -256,7 +256,7 @@ impl EtlFile {
     /// Can return error if it reaches EOF before filling the internal buffers.
     pub(crate) fn read_next(&mut self) -> std::io::Result<Option<(Vec<u8>, Vec<u8>)>> {
         if self.len == 0 {
-            return Ok(None)
+            return Ok(None);
         }
 
         let mut buffer_key_length = [0; KV_LEN];
@@ -281,8 +281,9 @@ impl EtlFile {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_primitives::{TxHash, TxNumber};
+
+    use super::*;
 
     #[test]
     fn etl_hashes() {

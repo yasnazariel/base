@@ -2,20 +2,21 @@
 //!
 //! This test verifies the behavior when attempting to reorg behind a finalized block.
 
+use std::sync::Arc;
+
 use eyre::Result;
 use reth_chainspec::{ChainSpecBuilder, MAINNET};
 use reth_e2e_test_utils::testsuite::{
+    TestBuilder,
     actions::{
         BlockReference, CaptureBlock, CreateFork, FinalizeBlock, MakeCanonical, ProduceBlocks,
         SendForkchoiceUpdate,
     },
     setup::{NetworkSetup, Setup},
-    TestBuilder,
 };
 use reth_engine_tree::tree::TreeConfig;
 use reth_ethereum_engine_primitives::EthEngineTypes;
 use reth_node_ethereum::EthereumNode;
-use std::sync::Arc;
 
 /// Creates the standard setup for engine tree e2e tests.
 fn default_engine_tree_setup() -> Setup<EthEngineTypes> {

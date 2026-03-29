@@ -1,19 +1,20 @@
 //! Implements data structures specific to the database
 
-use crate::{
-    table::{Compress, Decode, Decompress, Encode},
-    DatabaseError,
-};
 use alloy_consensus::Header;
 use alloy_genesis::GenesisAccount;
-use alloy_primitives::{Address, Bytes, Log, B256, U256};
-use reth_codecs::{add_arbitrary_tests, Compact};
+use alloy_primitives::{Address, B256, Bytes, Log, U256};
+use reth_codecs::{Compact, add_arbitrary_tests};
 use reth_ethereum_primitives::{Receipt, TransactionSigned, TxType};
 use reth_primitives_traits::{Account, Bytecode, StorageEntry};
 use reth_prune_types::{PruneCheckpoint, PruneSegment};
 use reth_stages_types::StageCheckpoint;
 use reth_trie_common::{StorageTrieEntry, StoredNibbles, StoredNibblesSubKey, *};
 use serde::{Deserialize, Serialize};
+
+use crate::{
+    DatabaseError,
+    table::{Compress, Decode, Decompress, Encode},
+};
 
 pub mod accounts;
 pub mod blocks;
@@ -81,7 +82,7 @@ impl Encode for Address {
     type Encoded = [u8; 20];
 
     fn encode(self) -> Self::Encoded {
-        self.0 .0
+        self.0.0
     }
 }
 
@@ -239,8 +240,9 @@ impl_compression_for_compact!(
 
 #[cfg(feature = "op")]
 mod op {
-    use super::*;
     use op_alloy_consensus::{OpReceipt, OpTxEnvelope};
+
+    use super::*;
 
     impl_compression_for_compact!(OpTxEnvelope, OpReceipt);
 }
@@ -321,7 +323,6 @@ mod tests {
     // expand the flags field and break backwards compatibility
     #[test]
     fn test_ensure_backwards_compatibility() {
-        use super::*;
         use reth_codecs::{test_utils::UnusedBits, validate_bitflag_backwards_compat};
         use reth_primitives_traits::Account;
         use reth_prune_types::{PruneCheckpoint, PruneMode, PruneSegment};
@@ -330,6 +331,8 @@ mod tests {
             ExecutionCheckpoint, HeadersCheckpoint, IndexHistoryCheckpoint, StageCheckpoint,
             StageUnitCheckpoint, StorageHashingCheckpoint,
         };
+
+        use super::*;
         assert_eq!(Account::bitflag_encoded_bytes(), 2);
         assert_eq!(AccountHashingCheckpoint::bitflag_encoded_bytes(), 1);
         assert_eq!(CheckpointBlockRange::bitflag_encoded_bytes(), 1);

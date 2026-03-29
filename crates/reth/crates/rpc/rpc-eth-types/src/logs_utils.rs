@@ -2,15 +2,16 @@
 //!
 //! Log parsing for building filter.
 
+use std::sync::Arc;
+
 use alloy_consensus::TxReceipt;
-use alloy_eips::{eip2718::Encodable2718, BlockNumHash};
+use alloy_eips::{BlockNumHash, eip2718::Encodable2718};
 use alloy_primitives::TxHash;
 use alloy_rpc_types_eth::{Filter, Log};
 use reth_chainspec::ChainInfo;
 use reth_errors::ProviderError;
 use reth_primitives_traits::{BlockBody, RecoveredBlock, SignedTransaction};
 use reth_storage_api::{BlockReader, ProviderBlock};
-use std::sync::Arc;
 use thiserror::Error;
 
 /// Returns all matching of a block's receipts when the transaction hashes are known.

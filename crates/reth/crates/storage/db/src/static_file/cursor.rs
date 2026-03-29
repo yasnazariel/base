@@ -1,11 +1,13 @@
-use super::mask::{ColumnSelectorOne, ColumnSelectorThree, ColumnSelectorTwo};
+use std::sync::Arc;
+
 use alloy_primitives::B256;
 use derive_more::{Deref, DerefMut};
 use reth_db_api::table::Decompress;
 use reth_nippy_jar::{DataReader, NippyJar, NippyJarCursor};
 use reth_static_file_types::SegmentHeader;
 use reth_storage_errors::provider::{ProviderError, ProviderResult};
-use std::sync::Arc;
+
+use super::mask::{ColumnSelectorOne, ColumnSelectorThree, ColumnSelectorTwo};
 
 /// Cursor of a static file segment.
 #[derive(Debug, Deref, DerefMut)]
@@ -33,7 +35,7 @@ impl<'a> StaticFileCursor<'a> {
         mask: usize,
     ) -> ProviderResult<Option<Vec<&'_ [u8]>>> {
         if self.jar().rows() == 0 {
-            return Ok(None)
+            return Ok(None);
         }
 
         let row = match key_or_num {
@@ -41,7 +43,7 @@ impl<'a> StaticFileCursor<'a> {
             KeyOrNumber::Number(n) => match self.jar().user_header().start() {
                 Some(offset) => {
                     if offset > n {
-                        return Ok(None)
+                        return Ok(None);
                     }
                     self.row_by_number_with_cols((n - offset) as usize, mask)
                 }

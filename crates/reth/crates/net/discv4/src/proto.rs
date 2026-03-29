@@ -1,9 +1,11 @@
 //! Discovery v4 protocol implementation.
 
-use crate::{error::DecodePacketError, MAX_PACKET_SIZE, MIN_PACKET_SIZE};
+use std::net::{IpAddr, Ipv4Addr};
+
 use alloy_primitives::{
+    B256,
     bytes::{Buf, BufMut, Bytes, BytesMut},
-    keccak256, B256,
+    keccak256,
 };
 use alloy_rlp::{
     Decodable, Encodable, Error as RlpError, Header, RlpDecodable, RlpEncodable,
@@ -11,12 +13,13 @@ use alloy_rlp::{
 };
 use enr::Enr;
 use reth_ethereum_forks::{EnrForkIdEntry, ForkId};
-use reth_network_peers::{pk2id, NodeRecord, PeerId};
+use reth_network_peers::{NodeRecord, PeerId, pk2id};
 use secp256k1::{
+    SECP256K1, SecretKey,
     ecdsa::{RecoverableSignature, RecoveryId},
-    SecretKey, SECP256K1,
 };
-use std::net::{IpAddr, Ipv4Addr};
+
+use crate::{MAX_PACKET_SIZE, MIN_PACKET_SIZE, error::DecodePacketError};
 
 // Note: this is adapted from https://github.com/vorot93/discv4
 
@@ -141,7 +144,7 @@ impl Message {
     /// Returns the decoded message and the public key of the sender.
     pub fn decode(packet: &[u8]) -> Result<Packet, DecodePacketError> {
         if packet.len() < MIN_PACKET_SIZE {
-            return Err(DecodePacketError::PacketTooShort)
+            return Err(DecodePacketError::PacketTooShort);
         }
 
         // parses the wire-protocol, every packet starts with a header:
@@ -152,7 +155,7 @@ impl Message {
         let header_hash = keccak256(&packet[32..]);
         let data_hash = B256::from_slice(&packet[..32]);
         if data_hash != header_hash {
-            return Err(DecodePacketError::HashMismatch)
+            return Err(DecodePacketError::HashMismatch);
         }
 
         let signature = &packet[32..96];
@@ -282,7 +285,7 @@ impl Decodable for FindNode {
         let b = &mut &**buf;
         let rlp_head = Header::decode(b)?;
         if !rlp_head.list {
-            return Err(RlpError::UnexpectedString)
+            return Err(RlpError::UnexpectedString);
         }
         let started_len = b.len();
 
@@ -296,7 +299,7 @@ impl Decodable for FindNode {
             return Err(RlpError::ListLengthMismatch {
                 expected: rlp_head.payload_length,
                 got: consumed,
-            })
+            });
         }
 
         let rem = rlp_head.payload_length - consumed;
@@ -324,7 +327,7 @@ impl Decodable for Neighbours {
         let b = &mut &**buf;
         let rlp_head = Header::decode(b)?;
         if !rlp_head.list {
-            return Err(RlpError::UnexpectedString)
+            return Err(RlpError::UnexpectedString);
         }
         let started_len = b.len();
 
@@ -338,7 +341,7 @@ impl Decodable for Neighbours {
             return Err(RlpError::ListLengthMismatch {
                 expected: rlp_head.payload_length,
                 got: consumed,
-            })
+            });
         }
 
         let rem = rlp_head.payload_length - consumed;
@@ -367,7 +370,7 @@ impl Decodable for EnrRequest {
         let b = &mut &**buf;
         let rlp_head = Header::decode(b)?;
         if !rlp_head.list {
-            return Err(RlpError::UnexpectedString)
+            return Err(RlpError::UnexpectedString);
         }
         let started_len = b.len();
 
@@ -381,7 +384,7 @@ impl Decodable for EnrRequest {
             return Err(RlpError::ListLengthMismatch {
                 expected: rlp_head.payload_length,
                 got: consumed,
-            })
+            });
         }
 
         let rem = rlp_head.payload_length - consumed;
@@ -475,7 +478,7 @@ impl Decodable for Ping {
         let b = &mut &**buf;
         let rlp_head = Header::decode(b)?;
         if !rlp_head.list {
-            return Err(RlpError::UnexpectedString)
+            return Err(RlpError::UnexpectedString);
         }
         let started_len = b.len();
 
@@ -499,7 +502,7 @@ impl Decodable for Ping {
             return Err(RlpError::ListLengthMismatch {
                 expected: rlp_head.payload_length,
                 got: consumed,
-            })
+            });
         }
         let rem = rlp_head.payload_length - consumed;
         b.advance(rem);
@@ -554,7 +557,7 @@ impl Decodable for Pong {
         let b = &mut &**buf;
         let rlp_head = Header::decode(b)?;
         if !rlp_head.list {
-            return Err(RlpError::UnexpectedString)
+            return Err(RlpError::UnexpectedString);
         }
         let started_len = b.len();
         let mut this = Self {
@@ -574,7 +577,7 @@ impl Decodable for Pong {
             return Err(RlpError::ListLengthMismatch {
                 expected: rlp_head.payload_length,
                 got: consumed,
-            })
+            });
         }
         let rem = rlp_head.payload_length - consumed;
         b.advance(rem);
@@ -586,16 +589,17 @@ impl Decodable for Pong {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{
-        test_utils::{rng_endpoint, rng_ipv4_record, rng_ipv6_record, rng_message},
-        DEFAULT_DISCOVERY_PORT, SAFE_MAX_DATAGRAM_NEIGHBOUR_RECORDS,
-    };
     use alloy_primitives::hex;
     use assert_matches::assert_matches;
     use enr::EnrPublicKey;
-    use rand_08::{thread_rng as rng, Rng, RngCore};
+    use rand_08::{Rng, RngCore, thread_rng as rng};
     use reth_ethereum_forks::ForkHash;
+
+    use super::*;
+    use crate::{
+        DEFAULT_DISCOVERY_PORT, SAFE_MAX_DATAGRAM_NEIGHBOUR_RECORDS,
+        test_utils::{rng_endpoint, rng_ipv4_record, rng_ipv6_record, rng_message},
+    };
 
     #[test]
     fn test_endpoint_ipv_v4() {
@@ -794,9 +798,10 @@ mod tests {
 
     #[test]
     fn encode_decode_enr_msg() {
+        use std::net::Ipv4Addr;
+
         use alloy_rlp::Decodable;
         use enr::secp256k1::SecretKey;
-        use std::net::Ipv4Addr;
 
         let mut rng = rand_08::rngs::OsRng;
         let key = SecretKey::new(&mut rng);
@@ -832,9 +837,10 @@ mod tests {
 
     #[test]
     fn encode_known_rlp_enr() {
-        use alloy_rlp::Decodable;
-        use enr::{secp256k1::SecretKey, EnrPublicKey};
         use std::net::Ipv4Addr;
+
+        use alloy_rlp::Decodable;
+        use enr::{EnrPublicKey, secp256k1::SecretKey};
 
         let valid_record = hex!(
             "f884b8407098ad865b00a582051940cb9cf36836572411a47278783077011599ed5cd16b76f2635f4e234738f30813a89eb9137e3e3df5266e3a1f11df72ecf1145ccb9c01826964827634826970847f00000189736563703235366b31a103ca634cae0d49acb401d8a4c6b6fe8c55b70d115bf400769cc1400f3258cd31388375647082765f"
@@ -866,8 +872,9 @@ mod tests {
     // <https://github.com/sigp/enr/blob/e59dcb45ea07e423a7091d2a6ede4ad6d8ef2840/src/lib.rs#L1019>
     #[test]
     fn decode_enr_rlp() {
-        use enr::secp256k1::SecretKey;
         use std::net::Ipv4Addr;
+
+        use enr::secp256k1::SecretKey;
 
         let valid_record = hex!(
             "f884b8407098ad865b00a582051940cb9cf36836572411a47278783077011599ed5cd16b76f2635f4e234738f30813a89eb9137e3e3df5266e3a1f11df72ecf1145ccb9c01826964827634826970847f00000189736563703235366b31a103ca634cae0d49acb401d8a4c6b6fe8c55b70d115bf400769cc1400f3258cd31388375647082765f"
@@ -915,8 +922,9 @@ mod tests {
     // <https://github.com/sigp/enr/blob/e59dcb45ea07e423a7091d2a6ede4ad6d8ef2840/src/lib.rs#LL1206C35-L1206C35>
     #[test]
     fn encode_decode_enr_rlp() {
-        use enr::{secp256k1::SecretKey, EnrPublicKey};
         use std::net::Ipv4Addr;
+
+        use enr::{EnrPublicKey, secp256k1::SecretKey};
 
         let key = SecretKey::new(&mut rand_08::rngs::OsRng);
         let ip = Ipv4Addr::new(127, 0, 0, 1);

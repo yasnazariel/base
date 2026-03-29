@@ -34,14 +34,11 @@ pub mod test_utils;
 
 pub mod either_writer;
 pub use either_writer::*;
-
 pub use reth_chain_state::{
     CanonStateNotification, CanonStateNotificationSender, CanonStateNotificationStream,
     CanonStateNotifications, CanonStateSubscriptions,
 };
 pub use reth_execution_types::*;
-/// Re-export `OriginalValuesKnown`
-pub use revm_database::states::OriginalValuesKnown;
 // reexport traits to avoid breaking changes
 pub use reth_static_file_types as static_file;
 pub use reth_storage_api::{
@@ -50,6 +47,8 @@ pub use reth_storage_api::{
 };
 /// Re-export provider error.
 pub use reth_storage_errors::provider::{ProviderError, ProviderResult};
+/// Re-export `OriginalValuesKnown`
+pub use revm_database::states::OriginalValuesKnown;
 pub use static_file::StaticFileSegment;
 
 /// Converts a [`RangeBounds`](std::ops::RangeBounds) into a concrete [`Range`](std::ops::Range)

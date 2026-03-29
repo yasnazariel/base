@@ -1,6 +1,7 @@
-use crate::spec::DepositContract;
 use alloy_eips::eip6110::MAINNET_DEPOSIT_CONTRACT_ADDRESS;
 use alloy_primitives::b256;
+
+use crate::spec::DepositContract;
 
 /// Gas per transaction not creating a contract.
 pub const MIN_TRANSACTION_GAS: u64 = 21_000u64;

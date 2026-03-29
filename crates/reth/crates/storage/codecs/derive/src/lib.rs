@@ -12,9 +12,9 @@
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::{
-    bracketed,
+    DeriveInput, Result, Token, bracketed,
     parse::{Parse, ParseStream},
-    parse_macro_input, DeriveInput, Result, Token,
+    parse_macro_input,
 };
 
 mod arbitrary;
@@ -69,8 +69,8 @@ pub fn derive_zstd(input: TokenStream) -> TokenStream {
     let mut decompressor = None;
 
     for attr in &input.attrs {
-        if attr.path().is_ident("reth_zstd") &&
-            let Err(err) = attr.parse_nested_meta(|meta| {
+        if attr.path().is_ident("reth_zstd")
+            && let Err(err) = attr.parse_nested_meta(|meta| {
                 if meta.path.is_ident("compressor") {
                     let value = meta.value()?;
                     let path: syn::Path = value.parse()?;
@@ -80,12 +80,12 @@ pub fn derive_zstd(input: TokenStream) -> TokenStream {
                     let path: syn::Path = value.parse()?;
                     decompressor = Some(path);
                 } else {
-                    return Err(meta.error("unsupported attribute"))
+                    return Err(meta.error("unsupported attribute"));
                 }
                 Ok(())
             })
         {
-            return err.to_compile_error().into()
+            return err.to_compile_error().into();
         }
     }
 
@@ -93,7 +93,7 @@ pub fn derive_zstd(input: TokenStream) -> TokenStream {
         return quote! {
             compile_error!("missing compressor or decompressor attribute");
         }
-        .into()
+        .into();
     };
 
     compact::derive(input, Some(ZstdConfig { compressor, decompressor }))

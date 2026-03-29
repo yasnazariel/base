@@ -1,8 +1,9 @@
-use crate::{execute::ExecutableTxFor, ConfigureEvm, EvmEnvFor, ExecutionCtxFor, TxEnvFor};
 use alloy_consensus::transaction::Either;
-use alloy_evm::{block::ExecutableTxParts, RecoveredTx};
+use alloy_evm::{RecoveredTx, block::ExecutableTxParts};
 use rayon::prelude::*;
 use reth_primitives_traits::TxTy;
+
+use crate::{ConfigureEvm, EvmEnvFor, ExecutionCtxFor, TxEnvFor, execute::ExecutableTxFor};
 
 /// [`ConfigureEvm`] extension providing methods for executing payloads.
 pub trait ConfigureEngineEvm<ExecutionData>: ConfigureEvm {

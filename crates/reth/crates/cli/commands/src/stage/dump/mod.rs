@@ -1,9 +1,10 @@
 //! Database debugging tool
-use crate::common::{AccessRights, CliNodeComponents, CliNodeTypes, Environment, EnvironmentArgs};
+use std::{path::PathBuf, sync::Arc};
+
 use clap::Parser;
 use reth_chainspec::{EthChainSpec, EthereumHardforks};
 use reth_cli::chainspec::ChainSpecParser;
-use reth_db::{init_db, mdbx::DatabaseArguments, DatabaseEnv};
+use reth_db::{DatabaseEnv, init_db, mdbx::DatabaseArguments};
 use reth_db_api::{
     cursor::DbCursorRO, database::Database, models::ClientVersion, table::TableImporter, tables,
     transaction::DbTx,
@@ -14,8 +15,9 @@ use reth_node_core::{
     args::DatadirArgs,
     dirs::{DataDirPath, PlatformPath},
 };
-use std::{path::PathBuf, sync::Arc};
 use tracing::info;
+
+use crate::common::{AccessRights, CliNodeComponents, CliNodeTypes, Environment, EnvironmentArgs};
 
 mod hashing_storage;
 use hashing_storage::dump_hashing_storage_stage;

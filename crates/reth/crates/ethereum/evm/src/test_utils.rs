@@ -1,5 +1,5 @@
-use crate::EthEvmConfig;
 use alloc::{boxed::Box, sync::Arc, vec, vec::Vec};
+
 use alloy_consensus::{Header, TxType};
 use alloy_eips::eip7685::Requests;
 use alloy_evm::precompiles::PrecompilesMap;
@@ -8,20 +8,22 @@ use alloy_rpc_types_engine::ExecutionData;
 use parking_lot::Mutex;
 use reth_ethereum_primitives::{Receipt, TransactionSigned};
 use reth_evm::{
+    ConfigureEngineEvm, ConfigureEvm, Database, EthEvm, EthEvmFactory, Evm, EvmEnvFor, EvmFactory,
+    ExecutableTxIterator, ExecutionCtxFor, RecoveredTx,
     block::{
         BlockExecutionError, BlockExecutor, BlockExecutorFactory, BlockExecutorFor, ExecutableTx,
     },
     eth::{EthBlockExecutionCtx, EthEvmContext, EthTxResult},
-    ConfigureEngineEvm, ConfigureEvm, Database, EthEvm, EthEvmFactory, Evm, EvmEnvFor, EvmFactory,
-    ExecutableTxIterator, ExecutionCtxFor, RecoveredTx,
 };
 use reth_execution_types::{BlockExecutionResult, ExecutionOutcome};
 use reth_primitives_traits::{BlockTy, SealedBlock, SealedHeader};
 use revm::{
+    Inspector,
     context::result::{ExecutionResult, HaltReason, Output, ResultAndState, SuccessReason},
     database::State,
-    Inspector,
 };
+
+use crate::EthEvmConfig;
 
 /// A helper type alias for mocked block executor provider.
 pub type MockExecutorProvider = MockEvmConfig;

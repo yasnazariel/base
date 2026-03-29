@@ -1,17 +1,18 @@
 //! Utilities for end-to-end tests.
 
+use std::sync::Arc;
+
 use node::NodeTestContext;
 use reth_chainspec::ChainSpec;
-use reth_db::{test_utils::TempDatabase, DatabaseEnv};
+use reth_db::{DatabaseEnv, test_utils::TempDatabase};
 use reth_network_api::test_utils::PeersHandleProvider;
 use reth_node_builder::{
-    components::NodeComponentsBuilder,
-    rpc::{EngineValidatorAddOn, RethRpcAddOns},
     FullNodeTypesAdapter, Node, NodeAdapter, NodeComponents, NodeTypes, NodeTypesWithDBAdapter,
     PayloadTypes,
+    components::NodeComponentsBuilder,
+    rpc::{EngineValidatorAddOn, RethRpcAddOns},
 };
 use reth_provider::providers::{BlockchainProvider, NodeTypesForProvider};
-use std::sync::Arc;
 use wallet::Wallet;
 
 /// Wrapper type to create test nodes

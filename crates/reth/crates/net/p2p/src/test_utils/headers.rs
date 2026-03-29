@@ -1,5 +1,22 @@
 //! Testing support for headers related interfaces.
 
+use std::{
+    fmt,
+    pin::Pin,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+    task::{Context, Poll, ready},
+};
+
+use alloy_consensus::Header;
+use futures::{Future, FutureExt, Stream, StreamExt};
+use reth_eth_wire_types::HeadersDirection;
+use reth_network_peers::{PeerId, WithPeerId};
+use reth_primitives_traits::SealedHeader;
+use tokio::sync::Mutex;
+
 use crate::{
     download::DownloadClient,
     error::{DownloadError, DownloadResult, PeerRequestResult, RequestError},
@@ -10,21 +27,6 @@ use crate::{
     },
     priority::Priority,
 };
-use alloy_consensus::Header;
-use futures::{Future, FutureExt, Stream, StreamExt};
-use reth_eth_wire_types::HeadersDirection;
-use reth_network_peers::{PeerId, WithPeerId};
-use reth_primitives_traits::SealedHeader;
-use std::{
-    fmt,
-    pin::Pin,
-    sync::{
-        atomic::{AtomicU64, Ordering},
-        Arc,
-    },
-    task::{ready, Context, Poll},
-};
-use tokio::sync::Mutex;
 
 /// A test downloader which just returns the values that have been pushed to it.
 #[derive(Debug)]
@@ -72,7 +74,7 @@ impl Stream for TestHeaderDownloader {
         let this = self.get_mut();
         loop {
             if this.queued_headers.len() == this.batch_size {
-                return Poll::Ready(Some(Ok(std::mem::take(&mut this.queued_headers))))
+                return Poll::Ready(Some(Ok(std::mem::take(&mut this.queued_headers))));
             }
             if this.download.is_none() {
                 this.download = Some(this.create_download());
@@ -130,9 +132,9 @@ impl Stream for TestDownload {
 
         loop {
             if let Some(header) = this.buffer.pop() {
-                return Poll::Ready(Some(Ok(header)))
+                return Poll::Ready(Some(Ok(header)));
             } else if this.done {
-                return Poll::Ready(None)
+                return Poll::Ready(None);
             }
 
             match ready!(this.get_or_init_fut().poll_unpin(cx)) {
@@ -151,7 +153,7 @@ impl Stream for TestDownload {
                     return Poll::Ready(Some(Err(match err {
                         RequestError::Timeout => DownloadError::Timeout,
                         _ => DownloadError::RequestError(err),
-                    })))
+                    })));
                 }
             }
         }
@@ -217,7 +219,7 @@ impl HeadersClient for TestHeadersClient {
 
         Box::pin(async move {
             if let Some(err) = &mut *error.lock().await {
-                return Err(err.clone())
+                return Err(err.clone());
             }
 
             let mut lock = responses.lock().await;

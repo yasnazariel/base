@@ -1,8 +1,5 @@
-use crate::{
-    errors::{EthHandshakeError, EthStreamError, P2PStreamError},
-    ethstream::MAX_MESSAGE_SIZE,
-    CanDisconnect,
-};
+use std::{fmt::Debug, future::Future, pin::Pin, time::Duration};
+
 use bytes::{Bytes, BytesMut};
 use futures::{Sink, SinkExt, Stream};
 use reth_eth_wire_types::{
@@ -11,10 +8,15 @@ use reth_eth_wire_types::{
 };
 use reth_ethereum_forks::ForkFilter;
 use reth_primitives_traits::GotExpected;
-use std::{fmt::Debug, future::Future, pin::Pin, time::Duration};
 use tokio::time::timeout;
 use tokio_stream::StreamExt;
 use tracing::{debug, trace};
+
+use crate::{
+    CanDisconnect,
+    errors::{EthHandshakeError, EthStreamError, P2PStreamError},
+    ethstream::MAX_MESSAGE_SIZE,
+};
 
 /// A trait that knows how to perform the P2P handshake.
 pub trait EthRlpxHandshake: Debug + Send + Sync + 'static {
@@ -173,8 +175,8 @@ where
         }
 
         // Ensure peer's total difficulty is reasonable
-        if let StatusMessage::Legacy(s) = &their_status_message &&
-            s.total_difficulty.bit_len() > 160
+        if let StatusMessage::Legacy(s) = &their_status_message
+            && s.total_difficulty.bit_len() > 160
         {
             unauth
                 .disconnect(DisconnectReason::ProtocolBreach)

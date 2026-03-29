@@ -1,6 +1,5 @@
 //! `NodeRecord` type that uses a domain instead of an IP.
 
-use crate::{NodeRecord, PeerId};
 use alloc::string::{String, ToString};
 use core::{
     fmt::{self, Write},
@@ -8,8 +7,11 @@ use core::{
     num::ParseIntError,
     str::FromStr,
 };
+
 use serde_with::{DeserializeFromStr, SerializeDisplay};
 use url::Host;
+
+use crate::{NodeRecord, PeerId};
 
 /// Represents the node record of a trusted peer. The only difference between this and a
 /// [`NodeRecord`] is that this does not contain the IP address of the peer, but rather a domain
@@ -179,8 +181,9 @@ impl From<NodeRecord> for TrustedPeer {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::net::Ipv6Addr;
+
+    use super::*;
 
     #[test]
     fn test_url_parse() {

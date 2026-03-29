@@ -5,19 +5,20 @@
 //! The node builder process is essentially a state machine that transitions through various states
 //! before the node can be launched.
 
-use crate::{
-    components::{NodeComponents, NodeComponentsBuilder},
-    hooks::NodeHooks,
-    launch::LaunchNode,
-    rpc::{RethRpcAddOns, RethRpcServerHandles, RpcContext},
-    AddOns, ComponentsFor, FullNode,
-};
+use std::{fmt, fmt::Debug, future::Future};
 
 use reth_exex::ExExContext;
 use reth_node_api::{FullNodeComponents, FullNodeTypes, NodeAddOns, NodeTypes};
 use reth_node_core::node_config::NodeConfig;
 use reth_tasks::TaskExecutor;
-use std::{fmt, fmt::Debug, future::Future};
+
+use crate::{
+    AddOns, ComponentsFor, FullNode,
+    components::{NodeComponents, NodeComponentsBuilder},
+    hooks::NodeHooks,
+    launch::LaunchNode,
+    rpc::{RethRpcAddOns, RethRpcServerHandles, RpcContext},
+};
 
 /// A node builder that also has the configured types.
 pub struct NodeBuilderWithTypes<T: FullNodeTypes> {
@@ -311,8 +312,6 @@ where
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::components::Components;
     use reth_consensus::noop::NoopConsensus;
     use reth_db_api::mock::DatabaseMock;
     use reth_ethereum_engine_primitives::EthEngineTypes;
@@ -326,6 +325,9 @@ mod test {
     use reth_provider::noop::NoopProvider;
     use reth_tasks::Runtime;
     use reth_transaction_pool::noop::NoopTransactionPool;
+
+    use super::*;
+    use crate::components::Components;
 
     #[test]
     fn test_noop_components() {

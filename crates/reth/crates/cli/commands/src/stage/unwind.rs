@@ -1,9 +1,7 @@
 //! Unwinding a certain block range
 
-use crate::{
-    common::{AccessRights, CliNodeTypes, Environment, EnvironmentArgs},
-    stage::CliNodeComponents,
-};
+use std::sync::Arc;
+
 use alloy_eips::BlockHashOrNumber;
 use alloy_primitives::B256;
 use clap::{Parser, Subcommand};
@@ -15,16 +13,20 @@ use reth_db::DatabaseEnv;
 use reth_downloaders::{bodies::noop::NoopBodiesDownloader, headers::noop::NoopHeaderDownloader};
 use reth_evm::ConfigureEvm;
 use reth_exex::ExExManagerHandle;
-use reth_provider::{providers::ProviderNodeTypes, BlockNumReader, ProviderFactory};
+use reth_provider::{BlockNumReader, ProviderFactory, providers::ProviderNodeTypes};
 use reth_stages::{
+    ExecutionStageThresholds, Pipeline, StageSet,
     sets::{DefaultStages, OfflineStages},
     stages::ExecutionStage,
-    ExecutionStageThresholds, Pipeline, StageSet,
 };
 use reth_static_file::StaticFileProducer;
-use std::sync::Arc;
 use tokio::sync::watch;
 use tracing::info;
+
+use crate::{
+    common::{AccessRights, CliNodeTypes, Environment, EnvironmentArgs},
+    stage::CliNodeComponents,
+};
 
 /// `reth stage unwind` command
 #[derive(Debug, Parser)]
@@ -184,9 +186,10 @@ impl Subcommands {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use reth_chainspec::SEPOLIA;
     use reth_ethereum_cli::chainspec::EthereumChainSpecParser;
+
+    use super::*;
 
     #[test]
     fn parse_unwind() {

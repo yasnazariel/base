@@ -1,18 +1,19 @@
 #![allow(missing_docs, unreachable_pub)]
+use std::{collections::BTreeSet, hint::black_box};
+
 use criterion::{
-    criterion_group, criterion_main, measurement::WallTime, BenchmarkGroup, Criterion,
+    BenchmarkGroup, Criterion, criterion_group, criterion_main, measurement::WallTime,
 };
 use prop::test_runner::TestRng;
 use proptest::{
     prelude::*,
     strategy::ValueTree,
-    test_runner::{basic_result_cache, TestRunner},
+    test_runner::{TestRunner, basic_result_cache},
 };
 use reth_trie_common::{
-    prefix_set::{PrefixSet, PrefixSetMut},
     Nibbles,
+    prefix_set::{PrefixSet, PrefixSetMut},
 };
-use std::{collections::BTreeSet, hint::black_box};
 
 /// Abstraction for aggregating nibbles and freezing it to a type
 /// that can be later used for benching.
@@ -134,8 +135,9 @@ criterion_group!(prefix_set, prefix_set_lookups);
 criterion_main!(prefix_set);
 
 mod implementations {
-    use super::*;
     use std::ops::Bound;
+
+    use super::*;
 
     #[derive(Default)]
     pub struct BTreeAnyPrefixSet {
@@ -189,12 +191,12 @@ mod implementations {
             for key in self.keys.range::<Nibbles, _>(range) {
                 if key.starts_with(&prefix) {
                     self.last_checked = Some(prefix);
-                    return true
+                    return true;
                 }
 
                 if key > &prefix {
                     self.last_checked = Some(prefix);
-                    return false
+                    return false;
                 }
             }
 
@@ -235,12 +237,12 @@ mod implementations {
             for (idx, key) in self.keys[self.index..].iter().enumerate() {
                 if key.starts_with(&prefix) {
                     self.index += idx;
-                    return true
+                    return true;
                 }
 
                 if key > &prefix {
                     self.index += idx;
-                    return false
+                    return false;
                 }
             }
 

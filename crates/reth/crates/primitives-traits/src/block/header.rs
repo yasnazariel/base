@@ -1,11 +1,12 @@
 //! Block header data primitive.
 
-use crate::{InMemorySize, MaybeCompact, MaybeSerde, MaybeSerdeBincodeCompat};
-use alloy_primitives::Sealable;
 use core::{fmt, hash::Hash};
 
 /// Re-exported alias
 pub use alloy_consensus::BlockHeader as AlloyBlockHeader;
+use alloy_primitives::Sealable;
+
+use crate::{InMemorySize, MaybeCompact, MaybeSerde, MaybeSerdeBincodeCompat};
 
 /// Helper trait that unifies all behaviour required by block header to support full node
 /// operations.

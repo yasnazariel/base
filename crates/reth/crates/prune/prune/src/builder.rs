@@ -1,18 +1,20 @@
-use crate::{segments::SegmentSet, Pruner};
+use std::time::Duration;
+
 use alloy_eips::eip2718::Encodable2718;
 use reth_config::PruneConfig;
 use reth_db_api::{table::Value, transaction::DbTxMut};
 use reth_exex_types::FinishedExExHeight;
 use reth_primitives_traits::NodePrimitives;
 use reth_provider::{
-    providers::StaticFileProvider, BlockReader, ChainStateBlockReader, DBProvider,
-    DatabaseProviderFactory, NodePrimitivesProvider, PruneCheckpointReader, PruneCheckpointWriter,
-    RocksDBProviderFactory, StageCheckpointReader, StaticFileProviderFactory,
+    BlockReader, ChainStateBlockReader, DBProvider, DatabaseProviderFactory,
+    NodePrimitivesProvider, PruneCheckpointReader, PruneCheckpointWriter, RocksDBProviderFactory,
+    StageCheckpointReader, StaticFileProviderFactory, providers::StaticFileProvider,
 };
 use reth_prune_types::PruneModes;
 use reth_storage_api::{ChangeSetReader, StorageChangeSetReader, StorageSettingsCache};
-use std::time::Duration;
 use tokio::sync::watch;
+
+use crate::{Pruner, segments::SegmentSet};
 
 /// Contains the information required to build a pruner
 #[derive(Debug, Clone)]

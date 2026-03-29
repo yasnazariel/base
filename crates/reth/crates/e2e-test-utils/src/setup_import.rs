@@ -1,8 +1,9 @@
 //! Setup utilities for importing RLP chain data before starting nodes.
 
-use crate::{node::NodeTestContext, NodeHelperType, Wallet};
+use std::{path::Path, sync::Arc};
+
 use reth_chainspec::ChainSpec;
-use reth_cli_commands::import_core::{import_blocks_from_file, ImportConfig};
+use reth_cli_commands::import_core::{ImportConfig, import_blocks_from_file};
 use reth_config::Config;
 use reth_db::DatabaseEnv;
 use reth_node_api::{NodeTypesWithDBAdapter, TreeConfig};
@@ -10,15 +11,16 @@ use reth_node_builder::{EngineNodeLauncher, Node, NodeBuilder, NodeConfig, NodeH
 use reth_node_core::args::{DiscoveryArgs, NetworkArgs, RpcServerArgs};
 use reth_node_ethereum::EthereumNode;
 use reth_provider::{
-    providers::BlockchainProvider, DatabaseProviderFactory, ProviderFactory, StageCheckpointReader,
-    StaticFileProviderFactory,
+    DatabaseProviderFactory, ProviderFactory, StageCheckpointReader, StaticFileProviderFactory,
+    providers::BlockchainProvider,
 };
 use reth_rpc_server_types::RpcModuleSelection;
 use reth_stages_types::StageId;
 use reth_tasks::Runtime;
-use std::{path::Path, sync::Arc};
 use tempfile::TempDir;
-use tracing::{debug, info, span, Level};
+use tracing::{Level, debug, info, span};
+
+use crate::{NodeHelperType, Wallet, node::NodeTestContext};
 
 /// Setup result containing nodes and temporary directories that must be kept alive
 pub struct ChainImportResult {
@@ -61,10 +63,10 @@ pub async fn setup_engine_with_chain_import(
     tree_config: TreeConfig,
     rlp_path: &Path,
     attributes_generator: impl Fn(u64) -> reth_payload_builder::EthPayloadBuilderAttributes
-        + Send
-        + Sync
-        + Copy
-        + 'static,
+    + Send
+    + Sync
+    + Copy
+    + 'static,
 ) -> eyre::Result<ChainImportResult> {
     let runtime = Runtime::with_existing_handle(tokio::runtime::Handle::current())?;
 
@@ -271,16 +273,18 @@ pub fn load_forkchoice_state(path: &Path) -> eyre::Result<alloy_rpc_types_engine
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::test_rlp_utils::{create_fcu_json, generate_test_blocks, write_blocks_to_rlp};
+    use std::path::PathBuf;
+
     use reth_chainspec::{ChainSpecBuilder, MAINNET};
     use reth_db::mdbx::DatabaseArguments;
     use reth_payload_builder::EthPayloadBuilderAttributes;
     use reth_primitives::SealedBlock;
     use reth_provider::{
-        test_utils::MockNodeTypesWithDB, BlockHashReader, BlockNumReader, BlockReaderIdExt,
+        BlockHashReader, BlockNumReader, BlockReaderIdExt, test_utils::MockNodeTypesWithDB,
     };
-    use std::path::PathBuf;
+
+    use super::*;
+    use crate::test_rlp_utils::{create_fcu_json, generate_test_blocks, write_blocks_to_rlp};
 
     #[tokio::test]
     async fn test_stage_checkpoints_persistence() {

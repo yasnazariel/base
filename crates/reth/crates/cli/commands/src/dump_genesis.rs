@@ -38,8 +38,9 @@ impl<C: ChainSpecParser> DumpGenesisCommand<C> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use reth_ethereum_cli::chainspec::{EthereumChainSpecParser, SUPPORTED_CHAINS};
+
+    use super::*;
 
     #[test]
     fn parse_dump_genesis_command_chain_args() {

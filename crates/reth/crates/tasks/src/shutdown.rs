@@ -1,14 +1,15 @@
 //! Helper for shutdown signals
 
-use futures_util::{
-    future::{FusedFuture, Shared},
-    FutureExt,
-};
 use std::{
     future::Future,
     pin::Pin,
-    sync::{atomic::AtomicUsize, Arc},
-    task::{ready, Context, Poll},
+    sync::{Arc, atomic::AtomicUsize},
+    task::{Context, Poll, ready},
+};
+
+use futures_util::{
+    FutureExt,
+    future::{FusedFuture, Shared},
 };
 use tokio::sync::oneshot;
 
@@ -105,9 +106,11 @@ pub fn signal() -> (Signal, Shutdown) {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use futures_util::future::join_all;
     use std::time::Duration;
+
+    use futures_util::future::join_all;
+
+    use super::*;
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_shutdown() {

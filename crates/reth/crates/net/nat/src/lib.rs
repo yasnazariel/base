@@ -14,22 +14,22 @@
 
 pub mod net_if;
 
-pub use net_if::{NetInterfaceError, DEFAULT_NET_IF_NAME};
-
 use std::{
     fmt,
-    future::{poll_fn, Future},
+    future::{Future, poll_fn},
     net::{AddrParseError, IpAddr, ToSocketAddrs},
     pin::Pin,
     str::FromStr,
     task::{Context, Poll},
     time::Duration,
 };
+
+pub use net_if::{DEFAULT_NET_IF_NAME, NetInterfaceError};
+#[cfg(feature = "serde")]
+use serde_with::{DeserializeFromStr, SerializeDisplay};
 use tracing::debug;
 
 use crate::net_if::resolve_net_if_ip;
-#[cfg(feature = "serde")]
-use serde_with::{DeserializeFromStr, SerializeDisplay};
 
 /// URLs to `GET` the external IP address.
 ///
@@ -266,8 +266,9 @@ async fn resolve_external_ip_url(url: &str) -> Option<IpAddr> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::net::{Ipv4Addr, Ipv6Addr};
+
+    use super::*;
 
     #[tokio::test]
     #[ignore]

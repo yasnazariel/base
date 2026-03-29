@@ -60,8 +60,9 @@ impl Default for GasPriceOracleArgs {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use clap::Parser;
+
+    use super::*;
     /// A helper type to parse Args more easily
     #[derive(Parser)]
     struct CommandParser<T: Args> {

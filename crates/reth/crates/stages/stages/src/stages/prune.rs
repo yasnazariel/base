@@ -113,8 +113,8 @@ where
 
         for (segment, mut checkpoint) in prune_checkpoints {
             // Only update the checkpoint if unwind_to is lower than the existing checkpoint.
-            if let Some(block) = checkpoint.block_number &&
-                input.unwind_to < block
+            if let Some(block) = checkpoint.block_number
+                && input.unwind_to < block
             {
                 checkpoint.block_number = Some(input.unwind_to);
                 checkpoint.tx_number = unwind_to_last_tx;
@@ -192,19 +192,20 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::test_utils::{
-        stage_test_suite_ext, ExecuteStageTestRunner, StageTestRunner, StorageKind,
-        TestRunnerError, TestStageDB, UnwindStageTestRunner,
-    };
     use alloy_primitives::B256;
     use reth_ethereum_primitives::Block;
     use reth_primitives_traits::{SealedBlock, SignerRecoverable};
     use reth_provider::{
-        providers::StaticFileWriter, TransactionsProvider, TransactionsProviderExt,
+        TransactionsProvider, TransactionsProviderExt, providers::StaticFileWriter,
     };
     use reth_prune::PruneMode;
-    use reth_testing_utils::generators::{self, random_block_range, BlockRangeParams};
+    use reth_testing_utils::generators::{self, BlockRangeParams, random_block_range};
+
+    use super::*;
+    use crate::test_utils::{
+        ExecuteStageTestRunner, StageTestRunner, StorageKind, TestRunnerError, TestStageDB,
+        UnwindStageTestRunner, stage_test_suite_ext,
+    };
 
     stage_test_suite_ext!(PruneTestRunner, prune);
 
@@ -260,7 +261,7 @@ mod tests {
                 let end_block = output.checkpoint.block_number;
 
                 if start_block > end_block {
-                    return Ok(())
+                    return Ok(());
                 }
 
                 let provider = self.db.factory.provider()?;

@@ -34,16 +34,17 @@ impl<Provider> Stage<Provider> for FinishStage {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::test_utils::{
-        stage_test_suite_ext, ExecuteStageTestRunner, StageTestRunner, TestRunnerError,
-        TestStageDB, UnwindStageTestRunner,
-    };
     use reth_primitives_traits::SealedHeader;
     use reth_provider::providers::StaticFileWriter;
     use reth_testing_utils::{
         generators,
         generators::{random_header, random_header_range},
+    };
+
+    use super::*;
+    use crate::test_utils::{
+        ExecuteStageTestRunner, StageTestRunner, TestRunnerError, TestStageDB,
+        UnwindStageTestRunner, stage_test_suite_ext,
     };
 
     stage_test_suite_ext!(FinishTestRunner, finish);
@@ -78,7 +79,7 @@ mod tests {
             let end = input.target.unwrap_or_default() + 1;
 
             if start + 1 >= end {
-                return Ok(Vec::default())
+                return Ok(Vec::default());
             }
 
             let mut headers = random_header_range(&mut rng, start + 1..end, head.hash());

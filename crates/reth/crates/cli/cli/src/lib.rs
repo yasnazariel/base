@@ -8,10 +8,11 @@
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+use std::{borrow::Cow, ffi::OsString};
+
 use clap::{Error, Parser};
 use reth_cli_runner::CliRunner;
 use reth_db::ClientVersion;
-use std::{borrow::Cow, ffi::OsString};
 
 /// The chainspec module defines the different chainspecs that can be used by the node.
 pub mod chainspec;

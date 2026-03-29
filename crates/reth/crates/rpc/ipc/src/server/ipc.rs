@@ -1,17 +1,17 @@
 //! IPC request handling adapted from [`jsonrpsee`] http request handling
 
-use futures::{stream::FuturesOrdered, StreamExt};
+use std::sync::Arc;
+
+use futures::{StreamExt, stream::FuturesOrdered};
 use jsonrpsee::{
-    batch_response_error,
-    core::{server::helpers::prepare_error, JsonRawValue},
+    BatchResponseBuilder, MethodResponse, batch_response_error,
+    core::{JsonRawValue, server::helpers::prepare_error},
     server::middleware::rpc::RpcServiceT,
     types::{
-        error::{reject_too_big_request, ErrorCode},
         ErrorObject, Id, InvalidRequest, Notification, Request,
+        error::{ErrorCode, reject_too_big_request},
     },
-    BatchResponseBuilder, MethodResponse,
 };
-use std::sync::Arc;
 use tokio::sync::OwnedSemaphorePermit;
 use tokio_util::either::Either;
 use tracing::instrument;
@@ -66,7 +66,7 @@ where
 
         while let Some(response) = pending_calls.next().await {
             if let Err(too_large) = batch_response.append(response) {
-                return Some(too_large.to_json().to_string())
+                return Some(too_large.to_json().to_string());
             }
         }
 
@@ -138,7 +138,7 @@ where
         return Some(
             batch_response_error(Id::Null, reject_too_big_request(max_request_body_size as u32))
                 .to_string(),
-        )
+        );
     }
 
     // Single request or notification

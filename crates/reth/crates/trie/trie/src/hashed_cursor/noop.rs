@@ -1,8 +1,10 @@
-use super::{HashedCursor, HashedCursorFactory, HashedStorageCursor};
-use alloy_primitives::{B256, U256};
 use core::marker::PhantomData;
+
+use alloy_primitives::{B256, U256};
 use reth_primitives_traits::Account;
 use reth_storage_errors::db::DatabaseError;
+
+use super::{HashedCursor, HashedCursorFactory, HashedStorageCursor};
 
 /// Noop hashed cursor factory.
 #[derive(Clone, Default, Debug)]

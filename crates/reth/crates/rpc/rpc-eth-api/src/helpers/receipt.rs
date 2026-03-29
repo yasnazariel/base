@@ -1,15 +1,16 @@
 //! Loads a receipt from database. Helper trait for `eth_` block and transaction RPC methods, that
 //! loads receipt data w.r.t. network.
 
-use crate::{EthApiTypes, RpcNodeCoreExt, RpcReceipt};
-use alloy_consensus::{transaction::TransactionMeta, TxReceipt};
+use alloy_consensus::{TxReceipt, transaction::TransactionMeta};
 use futures::Future;
 use reth_primitives_traits::SignerRecoverable;
-use reth_rpc_convert::{transaction::ConvertReceiptInput, RpcConvert};
+use reth_rpc_convert::{RpcConvert, transaction::ConvertReceiptInput};
 use reth_rpc_eth_types::{
-    error::FromEthApiError, utils::calculate_gas_used_and_next_log_index, EthApiError,
+    EthApiError, error::FromEthApiError, utils::calculate_gas_used_and_next_log_index,
 };
 use reth_storage_api::{ProviderReceipt, ProviderTx};
+
+use crate::{EthApiTypes, RpcNodeCoreExt, RpcReceipt};
 
 /// Assembles transaction receipt data w.r.t to network.
 ///

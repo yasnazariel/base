@@ -1,11 +1,13 @@
 //! Tests downloading files and streaming their filenames
-use crate::StubClient;
+use std::str::FromStr;
+
 use futures_util::StreamExt;
 use reqwest::Url;
 use reth_era_downloader::{EraClient, EraStream, EraStreamConfig};
-use std::str::FromStr;
 use tempfile::tempdir;
 use test_case::test_case;
+
+use crate::StubClient;
 
 #[test_case("https://mainnet.era1.nimbus.team/"; "nimbus")]
 #[test_case("https://era1.ethportal.net/"; "ethportal")]

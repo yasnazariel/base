@@ -146,20 +146,6 @@ mod state;
 mod swarm;
 mod trusted_peers_resolver;
 
-pub use reth_eth_wire::{DisconnectReason, HelloMessageWithProtocols};
-pub use reth_eth_wire_types::{primitives, EthNetworkPrimitives, NetworkPrimitives};
-pub use reth_network_api::{
-    events, BlockDownloaderProvider, DiscoveredEvent, DiscoveryEvent, NetworkEvent,
-    NetworkEventListenerProvider, NetworkInfo, PeerRequest, PeerRequestSender, Peers, PeersInfo,
-};
-pub use reth_network_p2p::sync::{NetworkSyncUpdater, SyncState};
-pub use reth_network_types::{PeersConfig, SessionsConfig};
-pub use session::{
-    ActiveSessionHandle, ActiveSessionMessage, Direction, EthRlpxConnection, PeerInfo,
-    PendingSessionEvent, PendingSessionHandle, PendingSessionHandshakeError, SessionCommand,
-    SessionEvent, SessionId, SessionManager,
-};
-
 pub use builder::NetworkBuilder;
 pub use config::{NetworkConfig, NetworkConfigBuilder};
 pub use discovery::Discovery;
@@ -168,10 +154,23 @@ pub use flattened_response::FlattenedResponse;
 pub use manager::NetworkManager;
 pub use metrics::TxTypesCounter;
 pub use network::{NetworkHandle, NetworkProtocols};
-pub use swarm::NetworkConnectionState;
-
+pub use reth_eth_wire::{DisconnectReason, HelloMessageWithProtocols};
+pub use reth_eth_wire_types::{EthNetworkPrimitives, NetworkPrimitives, primitives};
+pub use reth_network_api::{
+    BlockDownloaderProvider, DiscoveredEvent, DiscoveryEvent, NetworkEvent,
+    NetworkEventListenerProvider, NetworkInfo, PeerRequest, PeerRequestSender, Peers, PeersInfo,
+    events,
+};
 /// re-export p2p interfaces
 pub use reth_network_p2p as p2p;
+pub use reth_network_p2p::sync::{NetworkSyncUpdater, SyncState};
+pub use reth_network_types::{PeersConfig, SessionsConfig};
+pub use session::{
+    ActiveSessionHandle, ActiveSessionMessage, Direction, EthRlpxConnection, PeerInfo,
+    PendingSessionEvent, PendingSessionHandle, PendingSessionHandshakeError, SessionCommand,
+    SessionEvent, SessionId, SessionManager,
+};
+pub use swarm::NetworkConnectionState;
 
 /// re-export types crates
 pub mod types {
@@ -181,5 +180,4 @@ pub mod types {
 }
 
 use aquamarine as _;
-
 use smallvec as _;

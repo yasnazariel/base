@@ -1,24 +1,26 @@
 //! A validation service for transactions.
 
-use crate::{
-    blobstore::BlobStore,
-    metrics::TxPoolValidatorMetrics,
-    validate::{EthTransactionValidatorBuilder, TransactionValidatorError},
-    EthTransactionValidator, PoolTransaction, TransactionOrigin, TransactionValidationOutcome,
-    TransactionValidator,
-};
-use futures_util::{lock::Mutex, StreamExt};
+use std::{future::Future, pin::Pin, sync::Arc};
+
+use futures_util::{StreamExt, lock::Mutex};
 use reth_chainspec::{ChainSpecProvider, EthereumHardforks};
 use reth_evm::ConfigureEvm;
 use reth_primitives_traits::{HeaderTy, SealedBlock};
 use reth_storage_api::BlockReaderIdExt;
 use reth_tasks::TaskSpawner;
-use std::{future::Future, pin::Pin, sync::Arc};
 use tokio::{
     sync,
     sync::{mpsc, oneshot},
 };
 use tokio_stream::wrappers::ReceiverStream;
+
+use crate::{
+    EthTransactionValidator, PoolTransaction, TransactionOrigin, TransactionValidationOutcome,
+    TransactionValidator,
+    blobstore::BlobStore,
+    metrics::TxPoolValidatorMetrics,
+    validate::{EthTransactionValidatorBuilder, TransactionValidatorError},
+};
 
 /// Represents a future outputting unit type and is sendable.
 type ValidationFuture = Pin<Box<dyn Future<Output = ()> + Send>>;
@@ -255,7 +257,7 @@ where
     async fn validate_transactions(
         &self,
         transactions: impl IntoIterator<Item = (TransactionOrigin, Self::Transaction), IntoIter: Send>
-            + Send,
+        + Send,
     ) -> Vec<TransactionValidationOutcome<Self::Transaction>> {
         let transactions: Vec<_> = transactions.into_iter().collect();
         let hashes: Vec<_> = transactions.iter().map(|(_, tx)| *tx.hash()).collect();
@@ -304,13 +306,14 @@ where
 
 #[cfg(test)]
 mod tests {
+    use alloy_primitives::{Address, U256};
+
     use super::*;
     use crate::{
+        TransactionOrigin,
         test_utils::MockTransaction,
         validate::{TransactionValidationOutcome, ValidTransaction},
-        TransactionOrigin,
     };
-    use alloy_primitives::{Address, U256};
 
     #[derive(Debug)]
     struct NoopValidator;

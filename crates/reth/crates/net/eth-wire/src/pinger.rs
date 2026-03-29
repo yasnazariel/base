@@ -1,12 +1,14 @@
-use crate::errors::PingerError;
 use std::{
     future::Future,
     pin::Pin,
     task::{Context, Poll},
     time::Duration,
 };
+
 use tokio::time::{Instant, Interval, Sleep};
 use tokio_stream::Stream;
+
+use crate::errors::PingerError;
 
 /// The pinger is a simple state machine that sends a ping, waits for a pong,
 /// and transitions to timeout if the pong is not received within the timeout.
@@ -74,19 +76,19 @@ impl Pinger {
                 if self.ping_interval.poll_tick(cx).is_ready() {
                     self.timeout_timer.as_mut().reset(Instant::now() + self.timeout);
                     self.state = PingState::WaitingForPong;
-                    return Poll::Ready(Ok(PingerEvent::Ping))
+                    return Poll::Ready(Ok(PingerEvent::Ping));
                 }
             }
             PingState::WaitingForPong => {
                 if self.timeout_timer.as_mut().poll(cx).is_ready() {
                     self.state = PingState::TimedOut;
-                    return Poll::Ready(Ok(PingerEvent::Timeout))
+                    return Poll::Ready(Ok(PingerEvent::Timeout));
                 }
             }
             PingState::TimedOut => {
                 // we treat continuous calls while in timeout as pending, since the connection is
                 // not yet terminated
-                return Poll::Pending
+                return Poll::Pending;
             }
         };
         Poll::Pending
@@ -127,8 +129,9 @@ pub(crate) enum PingerEvent {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use futures::StreamExt;
+
+    use super::*;
 
     #[tokio::test]
     async fn test_ping_timeout() {

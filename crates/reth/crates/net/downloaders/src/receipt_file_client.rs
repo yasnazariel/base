@@ -100,7 +100,7 @@ where
 
                         remaining_bytes = bytes;
 
-                        break
+                        break;
                     }
                     Err(err) => return Err(err),
                 };
@@ -109,7 +109,7 @@ where
                     Some(ReceiptWithBlockNumber { receipt, number }) => {
                         if block_number > number {
                             warn!(target: "downloaders::file", previous_block_number = block_number, "skipping receipt from a lower block: {number}");
-                            continue
+                            continue;
                         }
 
                         total_receipts += 1;
@@ -214,9 +214,9 @@ pub struct ReceiptWithBlockNumber<R> {
 #[cfg(test)]
 mod test {
     use alloy_primitives::{
-        address, b256,
+        Bytes, Log, LogData, address, b256,
         bytes::{Buf, BytesMut},
-        hex, Bytes, Log, LogData,
+        hex,
     };
     use alloy_rlp::{Decodable, RlpDecodable};
     use reth_ethereum_primitives::{Receipt, TxType};
@@ -266,7 +266,7 @@ mod test {
 
         fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
             if src.is_empty() {
-                return Ok(None)
+                return Ok(None);
             }
 
             let buf_slice = &mut src.as_ref();

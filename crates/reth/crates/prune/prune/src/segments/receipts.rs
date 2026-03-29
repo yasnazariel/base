@@ -3,21 +3,22 @@
 //! - [`crate::segments::user::Receipts`] is responsible for pruning receipts according to the
 //!   user-configured settings (for example, on a full node or with a custom prune config)
 
-use crate::{
-    db_ext::DbTxPruneExt,
-    segments::{self, PruneInput},
-    PrunerError,
-};
 use reth_db_api::{table::Value, tables, transaction::DbTxMut};
 use reth_primitives_traits::NodePrimitives;
 use reth_provider::{
-    errors::provider::ProviderResult, BlockReader, DBProvider, EitherWriter,
-    NodePrimitivesProvider, PruneCheckpointWriter, StaticFileProviderFactory, StorageSettingsCache,
-    TransactionsProvider,
+    BlockReader, DBProvider, EitherWriter, NodePrimitivesProvider, PruneCheckpointWriter,
+    StaticFileProviderFactory, StorageSettingsCache, TransactionsProvider,
+    errors::provider::ProviderResult,
 };
 use reth_prune_types::{PruneCheckpoint, PruneSegment, SegmentOutput, SegmentOutputCheckpoint};
 use reth_static_file_types::StaticFileSegment;
 use tracing::{debug, trace};
+
+use crate::{
+    PrunerError,
+    db_ext::DbTxPruneExt,
+    segments::{self, PruneInput},
+};
 
 pub(crate) fn prune<Provider>(
     provider: &Provider,
@@ -33,7 +34,7 @@ where
 {
     if EitherWriter::receipts_destination(provider).is_static_file() {
         debug!(target: "pruner", "Pruning receipts from static files.");
-        return segments::prune_static_files(provider, input, StaticFileSegment::Receipts)
+        return segments::prune_static_files(provider, input, StaticFileSegment::Receipts);
     }
     debug!(target: "pruner", "Pruning receipts from database.");
 
@@ -42,7 +43,7 @@ where
         Some(range) => range,
         None => {
             trace!(target: "pruner", "No receipts to prune");
-            return Ok(SegmentOutput::done())
+            return Ok(SegmentOutput::done());
         }
     };
     let tx_range_end = *tx_range.end();
@@ -94,8 +95,9 @@ pub(crate) fn save_checkpoint(
 
 #[cfg(test)]
 mod tests {
-    use crate::segments::{PruneInput, PruneLimiter, SegmentOutput};
-    use alloy_primitives::{BlockNumber, TxNumber, B256};
+    use std::ops::Sub;
+
+    use alloy_primitives::{B256, BlockNumber, TxNumber};
     use assert_matches::assert_matches;
     use itertools::{
         FoldWhile::{Continue, Done},
@@ -108,9 +110,10 @@ mod tests {
     };
     use reth_stages::test_utils::{StorageKind, TestStageDB};
     use reth_testing_utils::generators::{
-        self, random_block_range, random_receipt, BlockRangeParams,
+        self, BlockRangeParams, random_block_range, random_receipt,
     };
-    use std::ops::Sub;
+
+    use crate::segments::{PruneInput, PruneLimiter, SegmentOutput};
 
     #[test]
     fn prune_legacy() {
@@ -182,8 +185,8 @@ mod tests {
                 .map(|block| block.transaction_count())
                 .sum::<usize>()
                 .min(
-                    next_tx_number_to_prune as usize +
-                        input.limiter.deleted_entries_limit().unwrap(),
+                    next_tx_number_to_prune as usize
+                        + input.limiter.deleted_entries_limit().unwrap(),
                 )
                 .sub(1);
 

@@ -1,4 +1,9 @@
-use alloy_primitives::{b256, bytes::BufMut, keccak256, Address, B256};
+use std::{
+    fmt::Debug,
+    sync::mpsc::{self, Receiver},
+};
+
+use alloy_primitives::{Address, B256, b256, bytes::BufMut, keccak256};
 use itertools::Itertools;
 use reth_config::config::{EtlConfig, HashingConfig};
 use reth_db_api::{
@@ -17,10 +22,6 @@ use reth_stages_api::{
 };
 use reth_storage_api::StorageSettingsCache;
 use reth_storage_errors::provider::ProviderResult;
-use std::{
-    fmt::Debug,
-    sync::mpsc::{self, Receiver},
-};
 use tracing::*;
 
 /// Maximum number of channels that can exist in memory.
@@ -84,7 +85,7 @@ where
     fn execute(&mut self, provider: &Provider, input: ExecInput) -> Result<ExecOutput, StageError> {
         let tx = provider.tx_ref();
         if input.target_reached() {
-            return Ok(ExecOutput::done(input.checkpoint()))
+            return Ok(ExecOutput::done(input.checkpoint()));
         }
 
         // If use_hashed_state is enabled, execution writes directly to `HashedStorages`,
@@ -233,11 +234,6 @@ fn stage_checkpoint_progress(provider: &impl StatsReader) -> ProviderResult<Enti
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::test_utils::{
-        stage_test_suite_ext, ExecuteStageTestRunner, StageTestRunner, TestRunnerError,
-        TestStageDB, UnwindStageTestRunner,
-    };
     use alloy_primitives::{Address, U256};
     use assert_matches::assert_matches;
     use rand::Rng;
@@ -249,7 +245,13 @@ mod tests {
     use reth_primitives_traits::SealedBlock;
     use reth_provider::providers::StaticFileWriter;
     use reth_testing_utils::generators::{
-        self, random_block_range, random_contract_account_range, BlockRangeParams,
+        self, BlockRangeParams, random_block_range, random_contract_account_range,
+    };
+
+    use super::*;
+    use crate::test_utils::{
+        ExecuteStageTestRunner, StageTestRunner, TestRunnerError, TestStageDB,
+        UnwindStageTestRunner, stage_test_suite_ext,
     };
 
     stage_test_suite_ext!(StorageHashingTestRunner, storage_hashing);
@@ -296,7 +298,7 @@ mod tests {
 
                     // Continue from checkpoint
                     input.checkpoint = Some(checkpoint);
-                    continue
+                    continue;
                 }
                 assert_eq!(checkpoint.block_number, previous_stage);
                 assert_matches!(checkpoint.storage_hashing_stage_checkpoint(), Some(StorageHashingCheckpoint {
@@ -314,7 +316,7 @@ mod tests {
                     "execution validation"
                 );
 
-                break
+                break;
             }
             panic!("Failed execution");
         }
@@ -447,7 +449,7 @@ mod tests {
                 let start_block = input.checkpoint().block_number + 1;
                 let end_block = output.checkpoint.block_number;
                 if start_block > end_block {
-                    return Ok(())
+                    return Ok(());
                 }
             }
             self.check_hashed_storage()
@@ -548,7 +550,7 @@ mod tests {
 
                 while let Some((bn_address, entry)) = rev_changeset_walker.next().transpose()? {
                     if bn_address.block_number() < target_block {
-                        break
+                        break;
                     }
 
                     if storage_cursor

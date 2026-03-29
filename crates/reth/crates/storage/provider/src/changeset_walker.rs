@@ -1,12 +1,14 @@
 //! Account/storage changeset iteration support for walking through historical state changes in
 //! static files.
 
-use crate::ProviderResult;
+use std::ops::{Bound, RangeBounds};
+
 use alloy_primitives::BlockNumber;
 use reth_db::models::AccountBeforeTx;
 use reth_db_api::models::BlockNumberAddress;
 use reth_storage_api::{ChangeSetReader, ChangesetEntry, StorageChangeSetReader};
-use std::ops::{Bound, RangeBounds};
+
+use crate::ProviderResult;
 
 /// Iterator that walks account changesets from static files in a block range.
 ///

@@ -1,12 +1,10 @@
 //! Block production actions for the e2e testing framework.
 
-use crate::testsuite::{
-    actions::{expect_fcu_not_syncing_or_accepted, validate_fcu_response, Action, Sequence},
-    BlockInfo, Environment,
-};
-use alloy_primitives::{Bytes, B256};
+use std::{collections::HashSet, marker::PhantomData, time::Duration};
+
+use alloy_primitives::{B256, Bytes};
 use alloy_rpc_types_engine::{
-    payload::ExecutionPayloadEnvelopeV3, ForkchoiceState, PayloadAttributes, PayloadStatusEnum,
+    ForkchoiceState, PayloadAttributes, PayloadStatusEnum, payload::ExecutionPayloadEnvelopeV3,
 };
 use alloy_rpc_types_eth::{Block, Header, Receipt, Transaction, TransactionRequest};
 use eyre::Result;
@@ -14,9 +12,13 @@ use futures_util::future::BoxFuture;
 use reth_ethereum_primitives::TransactionSigned;
 use reth_node_api::{EngineTypes, PayloadTypes};
 use reth_rpc_api::clients::{EngineApiClient, EthApiClient};
-use std::{collections::HashSet, marker::PhantomData, time::Duration};
 use tokio::time::sleep;
 use tracing::debug;
+
+use crate::testsuite::{
+    BlockInfo, Environment,
+    actions::{Action, Sequence, expect_fcu_not_syncing_or_accepted, validate_fcu_response},
+};
 
 /// Mine a single block with the given transactions and verify the block was created
 /// successfully.
@@ -293,8 +295,8 @@ where
                 debug!("No payload ID returned, generating fresh payload attributes for forking");
 
                 let fresh_payload_attributes = PayloadAttributes {
-                    timestamp: env.active_node_state()?.latest_header_time +
-                        env.block_timestamp_increment,
+                    timestamp: env.active_node_state()?.latest_header_time
+                        + env.block_timestamp_increment,
                     prev_randao: B256::random(),
                     suggested_fee_recipient: alloy_primitives::Address::random(),
                     withdrawals: Some(vec![]),
@@ -319,7 +321,9 @@ where
                 if let Some(payload_id) = fresh_fcu_result.payload_id {
                     payload_id
                 } else {
-                    debug!("Engine considers the fork base already canonical, skipping payload generation");
+                    debug!(
+                        "Engine considers the fork base already canonical, skipping payload generation"
+                    );
                     return Ok(());
                 }
             };

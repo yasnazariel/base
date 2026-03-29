@@ -1,14 +1,14 @@
 use std::{collections::BTreeMap, fmt::Debug, sync::Arc};
 
-use crate::mock::{KeyVisit, KeyVisitType};
-
-use super::{HashedCursor, HashedCursorFactory, HashedStorageCursor};
-use alloy_primitives::{map::B256Map, B256, U256};
+use alloy_primitives::{B256, U256, map::B256Map};
 use parking_lot::{Mutex, MutexGuard};
 use reth_primitives_traits::Account;
 use reth_storage_errors::db::DatabaseError;
 use reth_trie_common::HashedPostState;
 use tracing::instrument;
+
+use super::{HashedCursor, HashedCursorFactory, HashedStorageCursor};
+use crate::mock::{KeyVisit, KeyVisitType};
 
 /// Mock hashed cursor factory.
 #[derive(Clone, Default, Debug)]

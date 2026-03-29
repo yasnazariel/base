@@ -1,10 +1,7 @@
 //! Cursor wrapper for libmdbx-sys.
 
-use super::utils::*;
-use crate::{
-    metrics::{DatabaseEnvMetrics, Operation},
-    DatabaseError,
-};
+use std::{borrow::Cow, collections::Bound, marker::PhantomData, ops::RangeBounds, sync::Arc};
+
 use reth_db_api::{
     common::{PairResult, ValueOnlyResult},
     cursor::{
@@ -13,9 +10,14 @@ use reth_db_api::{
     },
     table::{Compress, Decode, Decompress, DupSort, Encode, IntoVec, Table},
 };
-use reth_libmdbx::{Error as MDBXError, TransactionKind, WriteFlags, RO, RW};
+use reth_libmdbx::{Error as MDBXError, RO, RW, TransactionKind, WriteFlags};
 use reth_storage_errors::db::{DatabaseErrorInfo, DatabaseWriteError, DatabaseWriteOperation};
-use std::{borrow::Cow, collections::Bound, marker::PhantomData, ops::RangeBounds, sync::Arc};
+
+use super::utils::*;
+use crate::{
+    DatabaseError,
+    metrics::{DatabaseEnvMetrics, Operation},
+};
 
 /// Read only Cursor.
 pub type CursorRO<T> = Cursor<RO, T>;
@@ -361,12 +363,7 @@ impl<T: DupSort> DbDupCursorRW<T> for Cursor<RW, T> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        mdbx::{DatabaseArguments, DatabaseEnv, DatabaseEnvKind},
-        tables::StorageChangeSets,
-        Database,
-    };
-    use alloy_primitives::{address, Address, B256, U256};
+    use alloy_primitives::{Address, B256, U256, address};
     use reth_db_api::{
         cursor::{DbCursorRO, DbDupCursorRW},
         models::{BlockNumberAddress, ClientVersion},
@@ -375,6 +372,12 @@ mod tests {
     };
     use reth_primitives_traits::StorageEntry;
     use tempfile::TempDir;
+
+    use crate::{
+        Database,
+        mdbx::{DatabaseArguments, DatabaseEnv, DatabaseEnvKind},
+        tables::StorageChangeSets,
+    };
 
     fn create_test_db() -> DatabaseEnv {
         let path = TempDir::new().unwrap();

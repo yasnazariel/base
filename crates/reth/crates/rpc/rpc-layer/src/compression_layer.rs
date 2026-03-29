@@ -1,9 +1,10 @@
-use jsonrpsee_http_client::{HttpBody, HttpRequest, HttpResponse};
 use std::{
     future::Future,
     pin::Pin,
     task::{Context, Poll},
 };
+
+use jsonrpsee_http_client::{HttpBody, HttpRequest, HttpResponse};
 use tower::{Layer, Service};
 use tower_http::compression::{Compression, CompressionLayer as TowerCompressionLayer};
 
@@ -78,11 +79,13 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::{convert::Infallible, future::ready};
+
     use http::header::{ACCEPT_ENCODING, CONTENT_ENCODING};
     use http_body_util::BodyExt;
     use jsonrpsee_http_client::{HttpRequest, HttpResponse};
-    use std::{convert::Infallible, future::ready};
+
+    use super::*;
 
     const TEST_DATA: &str = "compress test data ";
     const REPEAT_COUNT: usize = 1000;
@@ -109,8 +112,8 @@ mod tests {
         }
     }
 
-    fn setup_compression_service(
-    ) -> impl Service<HttpRequest, Response = HttpResponse, Error = Infallible> {
+    fn setup_compression_service()
+    -> impl Service<HttpRequest, Response = HttpResponse, Error = Infallible> {
         CompressionLayer::new().layer(MockRequestService)
     }
 

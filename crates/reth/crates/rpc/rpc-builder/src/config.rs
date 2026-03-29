@@ -1,16 +1,17 @@
+use std::{net::SocketAddr, path::PathBuf};
+
 use jsonrpsee::server::ServerConfigBuilder;
 use reth_node_core::{args::RpcServerArgs, utils::get_or_create_jwt_secret_from_path};
 use reth_rpc::ValidationApiConfig;
 use reth_rpc_eth_types::{EthConfig, EthStateCacheConfig, GasPriceOracleConfig};
 use reth_rpc_layer::{JwtError, JwtSecret};
 use reth_rpc_server_types::RpcModuleSelection;
-use std::{net::SocketAddr, path::PathBuf};
 use tower::layer::util::Identity;
 use tracing::{debug, warn};
 
 use crate::{
-    auth::AuthServerConfig, error::RpcError, IpcServerBuilder, RpcModuleConfig, RpcServerConfig,
-    TransportRpcModuleConfig,
+    IpcServerBuilder, RpcModuleConfig, RpcServerConfig, TransportRpcModuleConfig,
+    auth::AuthServerConfig, error::RpcError,
 };
 
 /// A trait that provides a configured RPC server.
@@ -255,11 +256,12 @@ impl RethRpcServerConfig for RpcServerArgs {
 
 #[cfg(test)]
 mod tests {
+    use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+
     use clap::{Args, Parser};
     use reth_node_core::args::RpcServerArgs;
     use reth_rpc_eth_types::RPC_DEFAULT_GAS_CAP;
-    use reth_rpc_server_types::{constants, RethRpcModule, RpcModuleSelection};
-    use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+    use reth_rpc_server_types::{RethRpcModule, RpcModuleSelection, constants};
 
     use crate::config::RethRpcServerConfig;
 

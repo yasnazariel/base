@@ -1,4 +1,9 @@
-use alloy_primitives::{BlockNumber, B256};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
+
+use alloy_primitives::{B256, BlockNumber};
 use metrics::{Counter, Histogram};
 use reth_chain_state::LazyOverlay;
 use reth_db_api::DatabaseError;
@@ -13,16 +18,12 @@ use reth_storage_api::{
     StorageChangeSetReader, StorageSettingsCache,
 };
 use reth_trie::{
+    HashedPostStateSorted,
     hashed_cursor::{HashedCursorFactory, HashedPostStateCursorFactory},
     trie_cursor::{InMemoryTrieCursorFactory, TrieCursorFactory},
     updates::TrieUpdatesSorted,
-    HashedPostStateSorted,
 };
 use reth_trie_db::{ChangesetCache, DatabaseHashedCursorFactory, DatabaseTrieCursorFactory};
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
 use tracing::{debug, debug_span, instrument};
 
 /// Metrics for overlay state provider operations.
@@ -252,7 +253,7 @@ where
         // If the requested block is the DB tip then there won't be any reverts necessary, and we
         // can simply return Ok.
         if db_tip_block == requested_block {
-            return Ok(false)
+            return Ok(false);
         }
 
         // Check account history prune checkpoint to determine the lower bound of available data.
@@ -299,8 +300,8 @@ where
 
         // If block_hash is provided, collect reverts
         let (trie_updates, hashed_post_state) = if let Some(from_block) =
-            self.get_requested_block_number(provider)? &&
-            self.reverts_required(provider, db_tip_block, from_block)?
+            self.get_requested_block_number(provider)?
+            && self.reverts_required(provider, db_tip_block, from_block)?
         {
             debug!(
                 target: "providers::state::overlay",
@@ -408,7 +409,7 @@ where
         // return the in-memory overlay (resolving lazy overlay if set).
         if self.block_hash.is_none() {
             let (trie_updates, hashed_post_state) = self.resolve_overlays();
-            return Ok(Overlay { trie_updates, hashed_post_state })
+            return Ok(Overlay { trie_updates, hashed_post_state });
         }
 
         let db_tip_block = self.get_db_tip_block_number(provider)?;

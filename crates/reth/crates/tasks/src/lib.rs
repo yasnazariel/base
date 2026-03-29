@@ -12,26 +12,28 @@
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-use crate::shutdown::{signal, GracefulShutdown, Shutdown, Signal};
-use dyn_clone::DynClone;
-use futures_util::future::BoxFuture;
 use std::{
     any::Any,
     fmt::{Display, Formatter},
     pin::Pin,
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicUsize, Ordering},
     },
-    task::{ready, Context, Poll},
+    task::{Context, Poll, ready},
     thread,
 };
+
+use dyn_clone::DynClone;
+use futures_util::future::BoxFuture;
 use tokio::{
     runtime::Handle,
-    sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
+    sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel},
     task::JoinHandle,
 };
 use tracing::debug;
+
+use crate::shutdown::{GracefulShutdown, Shutdown, Signal, signal};
 
 pub mod metrics;
 pub mod runtime;
@@ -350,11 +352,12 @@ pub trait TaskSpawnerExt: Send + Sync + Unpin + std::fmt::Debug + DynClone {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::{
         sync::atomic::{AtomicBool, AtomicUsize, Ordering},
         time::Duration,
     };
+
+    use super::*;
 
     #[test]
     fn test_cloneable() {

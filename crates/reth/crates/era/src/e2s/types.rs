@@ -8,9 +8,11 @@
 //! An [`Entry`] is a complete record in the file, consisting of both a [`Header`] and its
 //! associated data
 
-use crate::e2s::error::E2sError;
-use ssz_derive::{Decode, Encode};
 use std::io::{self, Read, Write};
+
+use ssz_derive::{Decode, Encode};
+
+use crate::e2s::error::E2sError;
 
 /// [`Version`] record: ['e', '2']
 pub const VERSION: [u8; 2] = [0x65, 0x32];

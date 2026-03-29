@@ -2,10 +2,13 @@
 
 mod fcu_finalized_blocks;
 
+use std::sync::Arc;
+
 use alloy_rpc_types_engine::PayloadStatusEnum;
 use eyre::Result;
 use reth_chainspec::{ChainSpecBuilder, MAINNET};
 use reth_e2e_test_utils::testsuite::{
+    TestBuilder,
     actions::{
         BlockReference, CaptureBlock, CompareNodeChainTips, CreateFork, ExpectFcuStatus,
         MakeCanonical, ProduceBlocks, ProduceBlocksLocally, ProduceInvalidBlocks, ReorgTo,
@@ -13,12 +16,10 @@ use reth_e2e_test_utils::testsuite::{
         ValidateCanonicalTag, WaitForSync,
     },
     setup::{NetworkSetup, Setup},
-    TestBuilder,
 };
 use reth_engine_tree::tree::TreeConfig;
 use reth_ethereum_engine_primitives::EthEngineTypes;
 use reth_node_ethereum::EthereumNode;
-use std::sync::Arc;
 
 /// Creates the standard setup for engine tree e2e tests.
 fn default_engine_tree_setup() -> Setup<EthEngineTypes> {

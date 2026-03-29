@@ -1,14 +1,15 @@
 #![allow(unreachable_pub)]
 //! `WebSocket` subscription tests for `eth_subscribe` / `eth_unsubscribe`
 
-use crate::utils::{launch_ws, test_rpc_builder};
+use std::time::Duration;
+
 use jsonrpsee::core::client::{Subscription, SubscriptionClientT};
+use reth_rpc_builder::{RpcServerConfig, TransportRpcModuleConfig};
 use reth_rpc_server_types::RpcModuleSelection;
 use reth_tokio_util::EventSender;
 use serde_json::Value;
-use std::time::Duration;
 
-use reth_rpc_builder::{RpcServerConfig, TransportRpcModuleConfig};
+use crate::utils::{launch_ws, test_rpc_builder};
 
 /// Helper to launch a WS server with the Eth module.
 async fn launch_ws_eth() -> reth_rpc_builder::RpcServerHandle {
@@ -147,8 +148,8 @@ async fn test_eth_subscribe_pending_transactions_receives_tx() {
     use reth_rpc_builder::RpcModuleBuilder;
     use reth_tasks::TokioTaskExecutor;
     use reth_transaction_pool::{
-        test_utils::{TestPool, TestPoolBuilder},
         PoolTransaction, TransactionOrigin, TransactionPool,
+        test_utils::{TestPool, TestPoolBuilder},
     };
 
     reth_tracing::init_test_tracing();

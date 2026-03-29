@@ -1,14 +1,16 @@
-use crate::{ClientWithFakeIndex, ITHACA_ERA_INDEX_URL};
+use std::str::FromStr;
+
 use reqwest::{Client, Url};
 use reth_db_common::init::init_genesis;
 use reth_era::era1::types::execution::MAX_BLOCKS_PER_ERA1;
 use reth_era_downloader::{EraClient, EraStream, EraStreamConfig};
-use reth_era_utils::{export, import, ExportConfig};
+use reth_era_utils::{ExportConfig, export, import};
 use reth_etl::Collector;
 use reth_fs_util as fs;
-use reth_provider::{test_utils::create_test_provider_factory, BlockNumReader, BlockReader};
-use std::str::FromStr;
+use reth_provider::{BlockNumReader, BlockReader, test_utils::create_test_provider_factory};
 use tempfile::tempdir;
+
+use crate::{ClientWithFakeIndex, ITHACA_ERA_INDEX_URL};
 
 const EXPORT_FIRST_BLOCK: u64 = 0;
 const EXPORT_BLOCKS_PER_FILE: u64 = 250;

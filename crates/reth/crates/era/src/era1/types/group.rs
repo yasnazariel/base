@@ -2,12 +2,13 @@
 //!
 //! See also <https://github.com/eth-clients/e2store-format-specs/blob/main/formats/era1.md>
 
+use alloy_primitives::BlockNumber;
+
 use crate::{
     common::file_ops::{EraFileId, EraFileType},
     e2s::types::{Entry, IndexEntry},
     era1::types::execution::{Accumulator, BlockTuple, MAX_BLOCKS_PER_ERA1},
 };
-use alloy_primitives::BlockNumber;
 
 /// `BlockIndex` record: ['f', '2']
 pub const BLOCK_INDEX: [u8; 2] = [0x66, 0x32];
@@ -167,13 +168,14 @@ impl EraFileId for Era1Id {
 
 #[cfg(test)]
 mod tests {
+    use alloy_consensus::ReceiptWithBloom;
+    use alloy_primitives::{B256, U256};
+
     use super::*;
     use crate::{
         common::decode::DecodeCompressedRlp,
         test_utils::{create_sample_block, create_test_block_with_compressed_data},
     };
-    use alloy_consensus::ReceiptWithBloom;
-    use alloy_primitives::{B256, U256};
 
     #[test]
     fn test_alloy_components_decode_and_receipt_in_bloom() {

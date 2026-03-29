@@ -1,8 +1,10 @@
 //! Utils for testing purposes.
 
-use crate::{
-    traits::KeepPayloadJobAlive, EthBuiltPayload, EthPayloadBuilderAttributes,
-    PayloadBuilderHandle, PayloadBuilderService, PayloadJob, PayloadJobGenerator,
+use std::{
+    future::Future,
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll},
 };
 
 use alloy_consensus::Block;
@@ -11,11 +13,10 @@ use reth_chain_state::CanonStateNotification;
 use reth_payload_builder_primitives::PayloadBuilderError;
 use reth_payload_primitives::{PayloadKind, PayloadTypes};
 use reth_primitives_traits::Block as _;
-use std::{
-    future::Future,
-    pin::Pin,
-    sync::Arc,
-    task::{Context, Poll},
+
+use crate::{
+    EthBuiltPayload, EthPayloadBuilderAttributes, PayloadBuilderHandle, PayloadBuilderService,
+    PayloadJob, PayloadJobGenerator, traits::KeepPayloadJobAlive,
 };
 
 /// Creates a new [`PayloadBuilderService`] for testing purposes.

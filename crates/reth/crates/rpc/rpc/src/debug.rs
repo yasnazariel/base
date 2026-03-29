@@ -1,13 +1,15 @@
-use alloy_consensus::{transaction::TxHashRef, BlockHeader};
+use std::{collections::VecDeque, sync::Arc};
+
+use alloy_consensus::{BlockHeader, transaction::TxHashRef};
 use alloy_eip7928::BlockAccessList;
-use alloy_eips::{eip2718::Encodable2718, BlockId, BlockNumberOrTag};
+use alloy_eips::{BlockId, BlockNumberOrTag, eip2718::Encodable2718};
 use alloy_evm::env::BlockEnvironment;
 use alloy_genesis::ChainConfig;
-use alloy_primitives::{hex::decode, uint, Address, Bytes, B256, U64};
+use alloy_primitives::{Address, B256, Bytes, U64, hex::decode, uint};
 use alloy_rlp::{Decodable, Encodable};
 use alloy_rpc_types::BlockTransactionsKind;
 use alloy_rpc_types_debug::ExecutionWitness;
-use alloy_rpc_types_eth::{state::EvmOverrides, BlockError, Bundle, StateContext};
+use alloy_rpc_types_eth::{BlockError, Bundle, StateContext, state::EvmOverrides};
 use alloy_rpc_types_trace::geth::{
     BlockTraceResult, GethDebugTracingCallOptions, GethDebugTracingOptions, GethTrace, TraceResult,
 };
@@ -18,7 +20,7 @@ use parking_lot::RwLock;
 use reth_chainspec::{ChainSpecProvider, EthChainSpec, EthereumHardforks};
 use reth_engine_primitives::ConsensusEngineEvent;
 use reth_errors::RethError;
-use reth_evm::{execute::Executor, ConfigureEvm, EvmEnvFor};
+use reth_evm::{ConfigureEvm, EvmEnvFor, execute::Executor};
 use reth_primitives_traits::{
     Block as BlockTrait, BlockBody, BlockTy, ReceiptWithBloom, RecoveredBlock,
 };
@@ -26,21 +28,20 @@ use reth_revm::{db::State, witness::ExecutionWitnessRecord};
 use reth_rpc_api::DebugApiServer;
 use reth_rpc_convert::RpcTxReq;
 use reth_rpc_eth_api::{
-    helpers::{EthTransactions, TraceExt},
     FromEthApiError, RpcConvert, RpcNodeCore,
+    helpers::{EthTransactions, TraceExt},
 };
 use reth_rpc_eth_types::EthApiError;
-use reth_rpc_server_types::{result::internal_rpc_err, ToRpcResult};
+use reth_rpc_server_types::{ToRpcResult, result::internal_rpc_err};
 use reth_storage_api::{
     BlockIdReader, BlockReaderIdExt, HeaderProvider, ProviderBlock, ReceiptProviderIdExt,
     StateProofProvider, StateProviderFactory, StateRootProvider, TransactionVariant,
 };
-use reth_tasks::{pool::BlockingTaskGuard, TaskSpawner};
-use reth_trie_common::{updates::TrieUpdates, HashedPostState};
+use reth_tasks::{TaskSpawner, pool::BlockingTaskGuard};
+use reth_trie_common::{HashedPostState, updates::TrieUpdates};
 use revm::DatabaseCommit;
 use revm_inspectors::tracing::{DebugInspector, TransactionContext};
 use serde::{Deserialize, Serialize};
-use std::{collections::VecDeque, sync::Arc};
 use tokio::sync::{AcquireError, OwnedSemaphorePermit};
 use tokio_stream::StreamExt;
 
@@ -72,8 +73,8 @@ where
         // Spawn a task caching bad blocks
         executor.spawn_task(Box::pin(async move {
             while let Some(event) = stream.next().await {
-                if let ConsensusEngineEvent::InvalidBlock(block) = event &&
-                    let Ok(recovered) =
+                if let ConsensusEngineEvent::InvalidBlock(block) = event
+                    && let Ok(recovered) =
                         RecoveredBlock::try_recover_sealed(block.as_ref().clone())
                 {
                     bad_block_store.insert(recovered);
@@ -349,7 +350,7 @@ where
                 tx_index,
                 block.transaction_count()
             ))
-            .into())
+            .into());
         }
 
         let (evm_env, _) = self.eth_api().evm_env_at(block.hash().into()).await?;
@@ -396,7 +397,7 @@ where
         opts: Option<GethDebugTracingCallOptions>,
     ) -> Result<Vec<Vec<GethTrace>>, Eth::Error> {
         if bundles.is_empty() {
-            return Err(EthApiError::InvalidParams(String::from("bundles are empty.")).into())
+            return Err(EthApiError::InvalidParams(String::from("bundles are empty.")).into());
         }
 
         let StateContext { transaction_index, block_number } = state_context.unwrap_or_default();

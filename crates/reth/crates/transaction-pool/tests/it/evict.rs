@@ -5,12 +5,12 @@ use alloy_eips::eip1559::{ETHEREUM_BLOCK_GAS_LIMIT_30M, MIN_PROTOCOL_BASE_FEE};
 use alloy_primitives::{Address, B256};
 use rand::distr::Uniform;
 use reth_transaction_pool::{
+    AddedTransactionOutcome, BlockInfo, PoolConfig, SubPoolLimit, TransactionOrigin,
+    TransactionPool, TransactionPoolExt,
     error::PoolErrorKind,
     test_utils::{
         MockFeeRange, MockTransactionDistribution, MockTransactionRatio, TestPool, TestPoolBuilder,
     },
-    AddedTransactionOutcome, BlockInfo, PoolConfig, SubPoolLimit, TransactionOrigin,
-    TransactionPool, TransactionPoolExt,
 };
 
 #[tokio::test(flavor = "multi_thread")]

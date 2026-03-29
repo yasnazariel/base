@@ -1,12 +1,13 @@
 //! RPC compatibility test actions for testing RPC methods against execution-apis test data.
 
-use eyre::{eyre, Result};
+use std::path::Path;
+
+use eyre::{Result, eyre};
 use futures_util::future::BoxFuture;
 use jsonrpsee::core::client::ClientT;
-use reth_e2e_test_utils::testsuite::{actions::Action, BlockInfo, Environment};
+use reth_e2e_test_utils::testsuite::{BlockInfo, Environment, actions::Action};
 use reth_node_api::EngineTypes;
 use serde_json::Value;
-use std::path::Path;
 use tracing::{debug, info};
 
 /// Test case from execution-apis .io file format
@@ -142,7 +143,12 @@ impl RunRpcCompatTests {
                 // Direct value comparison
                 (a, b) => {
                     if a != b {
-                        return Err(eyre!("Value mismatch at {}: {:?} != {:?}", current_path, a, b));
+                        return Err(eyre!(
+                            "Value mismatch at {}: {:?} != {:?}",
+                            current_path,
+                            a,
+                            b
+                        ));
                     }
                 }
             }
@@ -226,7 +232,9 @@ impl RunRpcCompatTests {
                 } else if let Some(error) = actual_error {
                     return Err(eyre!("Expected success response but got error: {}", error));
                 } else {
-                    return Err(eyre!("Expected success response but got neither result nor error"));
+                    return Err(eyre!(
+                        "Expected success response but got neither result nor error"
+                    ));
                 }
             }
             (None, Some(_)) => {
@@ -440,8 +448,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use serde_json::json;
+
+    use super::*;
 
     #[test]
     fn test_compare_json_values_deeply_nested() {

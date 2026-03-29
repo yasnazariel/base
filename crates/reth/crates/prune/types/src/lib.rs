@@ -19,9 +19,9 @@ mod segment;
 mod target;
 
 use alloc::{collections::BTreeMap, vec::Vec};
-use alloy_primitives::{Address, BlockNumber};
 use core::ops::Deref;
 
+use alloy_primitives::{Address, BlockNumber};
 pub use checkpoint::PruneCheckpoint;
 pub use event::PrunerEvent;
 pub use mode::PruneMode;
@@ -31,7 +31,7 @@ pub use pruner::{
 };
 pub use segment::{PrunePurpose, PruneSegment, PruneSegmentError};
 pub use target::{
-    PruneModes, UnwindTargetPrunedError, MINIMUM_DISTANCE, MINIMUM_UNWIND_SAFE_DISTANCE,
+    MINIMUM_DISTANCE, MINIMUM_UNWIND_SAFE_DISTANCE, PruneModes, UnwindTargetPrunedError,
 };
 
 /// Configuration for pruning receipts not associated with logs emitted by the specified contracts.
@@ -79,8 +79,8 @@ impl ReceiptsLogPruneConfig {
             let block = base_block.max(
                 mode.prune_target_block(tip, PruneSegment::ContractLogs, PrunePurpose::User)?
                     .map(|(block, _)| block)
-                    .unwrap_or_default() +
-                    1,
+                    .unwrap_or_default()
+                    + 1,
             );
 
             map.entry(block).or_insert_with(Vec::new).push(address)
@@ -98,8 +98,8 @@ impl ReceiptsLogPruneConfig {
         let mut lowest = None;
 
         for mode in self.values() {
-            if mode.is_distance() &&
-                let Some((block, _)) =
+            if mode.is_distance()
+                && let Some((block, _)) =
                     mode.prune_target_block(tip, PruneSegment::ContractLogs, PrunePurpose::User)?
             {
                 lowest = Some(lowest.unwrap_or(u64::MAX).min(block));

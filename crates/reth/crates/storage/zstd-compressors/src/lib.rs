@@ -11,9 +11,11 @@
 
 extern crate alloc;
 
-use crate::alloc::string::ToString;
 use alloc::vec::Vec;
+
 use zstd::bulk::{Compressor, Decompressor};
+
+use crate::alloc::string::ToString;
 
 /// Compression/Decompression dictionary for `Receipt`.
 pub static RECEIPT_DICTIONARY: &[u8] = include_bytes!("../receipt_dictionary.bin");
@@ -24,8 +26,9 @@ pub static TRANSACTION_DICTIONARY: &[u8] = include_bytes!("../transaction_dictio
 pub use locals::*;
 #[cfg(feature = "std")]
 mod locals {
-    use super::*;
     use core::cell::RefCell;
+
+    use super::*;
 
     // We use `thread_local` compressors and decompressors because dictionaries can be quite big,
     // and zstd-rs recommends to use one context/compressor per thread
@@ -172,10 +175,10 @@ impl ReusableDecompressor {
                 // source.
                 if !reserved_upper_bound {
                     reserved_upper_bound = true;
-                    if let Some(upper_bound) = Decompressor::upper_bound(src) &&
-                        let Some(additional) = upper_bound.checked_sub(self.buf.capacity())
+                    if let Some(upper_bound) = Decompressor::upper_bound(src)
+                        && let Some(additional) = upper_bound.checked_sub(self.buf.capacity())
                     {
-                        break 'b additional
+                        break 'b additional;
                     }
                 }
 

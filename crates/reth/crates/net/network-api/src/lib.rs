@@ -21,26 +21,24 @@ pub mod events;
 pub mod noop;
 
 pub mod test_utils;
-use test_utils::PeersHandleProvider;
+use std::{future::Future, net::SocketAddr, sync::Arc, time::Instant};
 
 pub use alloy_rpc_types_admin::EthProtocolInfo;
-pub use reth_network_p2p::{BlockClient, HeadersClient};
-pub use reth_network_types::{PeerKind, Reputation, ReputationChangeKind};
-
 pub use downloaders::BlockDownloaderProvider;
 pub use error::NetworkError;
 pub use events::{
     DiscoveredEvent, DiscoveryEvent, NetworkEvent, NetworkEventListenerProvider, PeerRequest,
     PeerRequestSender,
 };
-
 use reth_eth_wire_types::{
-    capability::Capabilities, Capability, DisconnectReason, EthVersion, NetworkPrimitives,
-    UnifiedStatus,
+    Capability, DisconnectReason, EthVersion, NetworkPrimitives, UnifiedStatus,
+    capability::Capabilities,
 };
 use reth_network_p2p::sync::NetworkSyncUpdater;
+pub use reth_network_p2p::{BlockClient, HeadersClient};
 use reth_network_peers::NodeRecord;
-use std::{future::Future, net::SocketAddr, sync::Arc, time::Instant};
+pub use reth_network_types::{PeerKind, Reputation, ReputationChangeKind};
+use test_utils::PeersHandleProvider;
 
 /// The `PeerId` type.
 pub type PeerId = alloy_primitives::B512;

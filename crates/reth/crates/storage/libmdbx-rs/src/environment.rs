@@ -1,13 +1,3 @@
-use crate::{
-    database::Database,
-    error::{mdbx_result, Error, Result},
-    flags::EnvironmentFlags,
-    transaction::{RO, RW},
-    txn_manager::{TxnManager, TxnManagerMessage, TxnPtr},
-    Mode, SyncMode, Transaction, TransactionKind,
-};
-use byteorder::{ByteOrder, NativeEndian};
-use mem::size_of;
 use std::{
     ffi::CString,
     fmt::{self, Debug},
@@ -15,11 +5,23 @@ use std::{
     ops::{Bound, RangeBounds},
     path::Path,
     ptr,
-    sync::{mpsc::sync_channel, Arc},
+    sync::{Arc, mpsc::sync_channel},
     thread::sleep,
     time::Duration,
 };
+
+use byteorder::{ByteOrder, NativeEndian};
+use mem::size_of;
 use tracing::warn;
+
+use crate::{
+    Mode, SyncMode, Transaction, TransactionKind,
+    database::Database,
+    error::{Error, Result, mdbx_result},
+    flags::EnvironmentFlags,
+    transaction::{RO, RW},
+    txn_manager::{TxnManager, TxnManagerMessage, TxnPtr},
+};
 
 /// The default maximum duration of a read transaction.
 #[cfg(feature = "read-tx-timeouts")]
@@ -118,10 +120,10 @@ impl Environment {
                     warn!(target: "libmdbx", "Process stalled, awaiting read-write transaction lock.");
                 }
                 sleep(Duration::from_millis(250));
-                continue
+                continue;
             }
 
-            break res
+            break res;
         }?;
         Ok(Transaction::new_from_ptr(self.clone(), txn.0))
     }
@@ -216,7 +218,7 @@ impl Environment {
         for result in cursor.iter_slices() {
             let (_key, value) = result?;
             if value.len() < size_of::<u32>() {
-                return Err(Error::Corrupted)
+                return Err(Error::Corrupted);
             }
             let s = &value[..size_of::<u32>()];
             freelist += NativeEndian::read_u32(s) as usize;
@@ -727,7 +729,7 @@ impl EnvironmentBuilder {
             })() {
                 ffi::mdbx_env_close_ex(env, false);
 
-                return Err(e)
+                return Err(e);
             }
         }
 
@@ -877,8 +879,9 @@ impl EnvironmentBuilder {
 
 #[cfg(feature = "read-tx-timeouts")]
 pub(crate) mod read_transactions {
-    use crate::EnvironmentBuilder;
     use std::time::Duration;
+
+    use crate::EnvironmentBuilder;
 
     /// The maximum duration of a read transaction.
     #[derive(Debug, Clone, Copy)]
@@ -919,11 +922,12 @@ fn convert_hsr_fn(callback: Option<HandleSlowReadersCallback>) -> ffi::MDBX_hsr_
 
 #[cfg(test)]
 mod tests {
-    use crate::{Environment, Error, Geometry, HandleSlowReadersReturnCode, PageSize, WriteFlags};
     use std::{
         ops::RangeInclusive,
         sync::atomic::{AtomicBool, Ordering},
     };
+
+    use crate::{Environment, Error, Geometry, HandleSlowReadersReturnCode, PageSize, WriteFlags};
 
     #[test]
     fn test_handle_slow_readers_callback() {

@@ -1,20 +1,22 @@
 //! Command that initializes the node by importing a chain from ERA files.
-use crate::common::{AccessRights, CliNodeTypes, Environment, EnvironmentArgs};
+use std::{path::PathBuf, sync::Arc};
+
 use alloy_chains::{ChainKind, NamedChain};
 use clap::{Args, Parser};
 use eyre::eyre;
 use reqwest::{Client, Url};
 use reth_chainspec::{EthChainSpec, EthereumHardforks};
 use reth_cli::chainspec::ChainSpecParser;
-use reth_era_downloader::{read_dir, EraClient, EraStream, EraStreamConfig};
+use reth_era_downloader::{EraClient, EraStream, EraStreamConfig, read_dir};
 use reth_era_utils as era;
 use reth_etl::Collector;
 use reth_fs_util as fs;
 use reth_node_core::version::version_metadata;
 use reth_provider::StaticFileProviderFactory;
 use reth_static_file_types::StaticFileSegment;
-use std::{path::PathBuf, sync::Arc};
 use tracing::info;
+
+use crate::common::{AccessRights, CliNodeTypes, Environment, EnvironmentArgs};
 
 /// Syncs ERA encoded blocks from a local or remote source.
 #[derive(Debug, Parser)]
@@ -77,8 +79,8 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + EthereumHardforks>> ImportEraC
         let next_block = provider_factory
             .static_file_provider()
             .get_highest_static_file_block(StaticFileSegment::Headers)
-            .unwrap_or_default() +
-            1;
+            .unwrap_or_default()
+            + 1;
 
         if let Some(path) = self.import.path {
             let stream = read_dir(path, next_block)?;

@@ -1,6 +1,7 @@
 //! Implements the `GetPooledTransactions` and `PooledTransactions` message types.
 
 use alloc::vec::Vec;
+
 use alloy_consensus::transaction::PooledTransaction;
 use alloy_eips::eip2718::Encodable2718;
 use alloy_primitives::B256;
@@ -84,13 +85,15 @@ impl<T> Default for PooledTransactions<T> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{message::RequestPair, GetPooledTransactions, PooledTransactions};
-    use alloy_consensus::{transaction::PooledTransaction, TxEip1559, TxLegacy};
-    use alloy_primitives::{hex, Signature, TxKind, U256};
+    use std::str::FromStr;
+
+    use alloy_consensus::{TxEip1559, TxLegacy, transaction::PooledTransaction};
+    use alloy_primitives::{Signature, TxKind, U256, hex};
     use alloy_rlp::{Decodable, Encodable};
     use reth_chainspec::MIN_TRANSACTION_GAS;
     use reth_ethereum_primitives::{Transaction, TransactionSigned};
-    use std::str::FromStr;
+
+    use crate::{GetPooledTransactions, PooledTransactions, message::RequestPair};
 
     #[test]
     // Test vector from: https://eips.ethereum.org/EIPS/eip-2481

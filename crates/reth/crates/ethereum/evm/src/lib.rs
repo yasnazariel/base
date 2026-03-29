@@ -18,23 +18,24 @@
 extern crate alloc;
 
 use alloc::{borrow::Cow, sync::Arc};
-use alloy_consensus::Header;
-use alloy_evm::{
-    eth::{EthBlockExecutionCtx, EthBlockExecutorFactory},
-    EthEvmFactory, FromRecoveredTx, FromTxWithEncoded,
-};
 use core::{convert::Infallible, fmt::Debug};
+
+use alloy_consensus::Header;
+pub use alloy_evm::EthEvm;
+use alloy_evm::{
+    EthEvmFactory, FromRecoveredTx, FromTxWithEncoded,
+    eth::{EthBlockExecutionCtx, EthBlockExecutorFactory},
+};
 use reth_chainspec::{ChainSpec, EthChainSpec, MAINNET};
 use reth_ethereum_primitives::{Block, EthPrimitives, TransactionSigned};
+#[cfg(feature = "std")]
+use reth_evm::{ConfigureEngineEvm, ExecutableTxIterator};
 use reth_evm::{
-    eth::NextEvmEnvAttributes, precompiles::PrecompilesMap, ConfigureEvm, EvmEnv, EvmFactory,
-    NextBlockEnvAttributes, TransactionEnv,
+    ConfigureEvm, EvmEnv, EvmFactory, NextBlockEnvAttributes, TransactionEnv,
+    eth::NextEvmEnvAttributes, precompiles::PrecompilesMap,
 };
 use reth_primitives_traits::{SealedBlock, SealedHeader};
 use revm::{context::BlockEnv, primitives::hardfork::SpecId};
-
-#[cfg(feature = "std")]
-use reth_evm::{ConfigureEngineEvm, ExecutableTxIterator};
 #[allow(unused_imports)]
 use {
     alloy_eips::Decodable2718,
@@ -42,13 +43,11 @@ use {
     alloy_rpc_types_engine::ExecutionData,
     reth_chainspec::EthereumHardforks,
     reth_evm::{EvmEnvFor, ExecutionCtxFor},
-    reth_primitives_traits::{constants::MAX_TX_GAS_LIMIT_OSAKA, SignedTransaction, TxTy},
+    reth_primitives_traits::{SignedTransaction, TxTy, constants::MAX_TX_GAS_LIMIT_OSAKA},
     reth_storage_errors::any::AnyError,
     revm::context::CfgEnv,
     revm::context_interface::block::BlobExcessGasAndPrice,
 };
-
-pub use alloy_evm::EthEvm;
 
 mod config;
 use alloy_evm::eth::spec::EthExecutorSpec;
@@ -310,17 +309,18 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_consensus::Header;
     use alloy_genesis::Genesis;
     use reth_chainspec::{Chain, ChainSpec};
-    use reth_evm::{execute::ProviderError, EvmEnv};
+    use reth_evm::{EvmEnv, execute::ProviderError};
     use revm::{
         context::{BlockEnv, CfgEnv},
         database::CacheDB,
         database_interface::EmptyDBTyped,
         inspector::NoOpInspector,
     };
+
+    use super::*;
 
     #[test]
     fn test_fill_cfg_and_block_env() {

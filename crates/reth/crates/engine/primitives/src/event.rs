@@ -1,17 +1,19 @@
 //! Events emitted by the beacon consensus engine.
 
-use crate::ForkchoiceStatus;
 use alloc::boxed::Box;
-use alloy_consensus::BlockHeader;
-use alloy_eips::BlockNumHash;
-use alloy_rpc_types_engine::ForkchoiceState;
 use core::{
     fmt::{Display, Formatter, Result},
     time::Duration,
 };
+
+use alloy_consensus::BlockHeader;
+use alloy_eips::BlockNumHash;
+use alloy_rpc_types_engine::ForkchoiceState;
 use reth_chain_state::ExecutedBlock;
 use reth_ethereum_primitives::EthPrimitives;
 use reth_primitives_traits::{NodePrimitives, SealedBlock, SealedHeader};
+
+use crate::ForkchoiceStatus;
 
 /// Type alias for backwards compat
 #[deprecated(note = "Use ConsensusEngineEvent instead")]

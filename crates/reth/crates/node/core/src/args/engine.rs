@@ -1,11 +1,12 @@
 //! clap [Args](clap::Args) for engine purposes
 
-use clap::{builder::Resettable, Args};
-use reth_engine_primitives::{
-    TreeConfig, DEFAULT_MULTIPROOF_TASK_CHUNK_SIZE, DEFAULT_SPARSE_TRIE_MAX_STORAGE_TRIES,
-    DEFAULT_SPARSE_TRIE_PRUNE_DEPTH,
-};
 use std::{sync::OnceLock, time::Duration};
+
+use clap::{Args, builder::Resettable};
+use reth_engine_primitives::{
+    DEFAULT_MULTIPROOF_TASK_CHUNK_SIZE, DEFAULT_SPARSE_TRIE_MAX_STORAGE_TRIES,
+    DEFAULT_SPARSE_TRIE_PRUNE_DEPTH, TreeConfig,
+};
 
 use crate::node_config::{
     DEFAULT_CROSS_BLOCK_CACHE_SIZE_MB, DEFAULT_MEMORY_BLOCK_BUFFER_TARGET,
@@ -503,8 +504,9 @@ impl EngineArgs {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use clap::Parser;
+
+    use super::*;
 
     /// A helper type to parse Args more easily
     #[derive(Parser)]

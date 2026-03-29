@@ -11,6 +11,8 @@
 //! Only a couple of era files are downloaded from `https://mainnet.era.nimbus.team/` for mainnet
 //! and `https://hoodi.era.nimbus.team/` for hoodi to keep the tests efficient.
 
+use std::io::Cursor;
+
 use reth_era::{
     common::file_ops::{EraFileFormat, StreamReader, StreamWriter},
     era::{
@@ -21,7 +23,6 @@ use reth_era::{
         },
     },
 };
-use std::io::Cursor;
 
 use crate::{EraTestDownloader, HOODI, MAINNET};
 

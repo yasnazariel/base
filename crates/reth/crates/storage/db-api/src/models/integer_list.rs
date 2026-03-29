@@ -1,13 +1,15 @@
 //! Implements [`Compress`] and [`Decompress`] for [`IntegerList`]
 
-use crate::{
-    table::{Compress, Decompress},
-    DatabaseError,
-};
-use bytes::BufMut;
 use core::fmt;
+
+use bytes::BufMut;
 use derive_more::Deref;
 use roaring::RoaringTreemap;
+
+use crate::{
+    DatabaseError,
+    table::{Compress, Decompress},
+};
 
 /// A data structure that uses Roaring Bitmaps to efficiently store a list of integers.
 ///

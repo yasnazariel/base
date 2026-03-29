@@ -1,8 +1,3 @@
-use crate::{
-    db_ext::DbTxPruneExt,
-    segments::{PruneInput, Segment, SegmentOutput},
-    PrunerError,
-};
 use alloy_eips::eip2718::Encodable2718;
 use rayon::prelude::*;
 use reth_db_api::{tables, transaction::DbTxMut};
@@ -16,6 +11,12 @@ use reth_prune_types::{
 use reth_static_file_types::StaticFileSegment;
 use reth_storage_api::StorageSettingsCache;
 use tracing::{debug, instrument, trace};
+
+use crate::{
+    PrunerError,
+    db_ext::DbTxPruneExt,
+    segments::{PruneInput, Segment, SegmentOutput},
+};
 
 #[derive(Debug)]
 pub struct TransactionLookup {
@@ -65,8 +66,8 @@ where
         // pre-merge history is dropped and then later tx lookup pruning is enabled) then we can
         // only prune from the lowest static file.
         if let Some(lowest_range) =
-            provider.static_file_provider().get_lowest_range(StaticFileSegment::Transactions) &&
-            input
+            provider.static_file_provider().get_lowest_range(StaticFileSegment::Transactions)
+            && input
                 .previous_checkpoint
                 .is_none_or(|checkpoint| checkpoint.block_number < Some(lowest_range.start()))
         {
@@ -89,7 +90,7 @@ where
             Some(range) => range,
             None => {
                 trace!(target: "pruner", "No transaction lookup entries to prune");
-                return Ok(SegmentOutput::done())
+                return Ok(SegmentOutput::done());
             }
         }
         .into_inner();
@@ -119,8 +120,8 @@ where
             });
         }
 
-        let tx_range = start..=
-            Some(end)
+        let tx_range = start
+            ..=Some(end)
                 .min(
                     input
                         .limiter
@@ -149,7 +150,7 @@ where
         if hashes.len() != tx_count {
             return Err(PrunerError::InconsistentData(
                 "Unexpected number of transaction hashes retrieved by transaction number range",
-            ))
+            ));
         }
 
         let mut limiter = input.limiter;
@@ -249,7 +250,7 @@ impl TransactionLookup {
         if hashes.len() != tx_count {
             return Err(PrunerError::InconsistentData(
                 "Unexpected number of transaction hashes retrieved by transaction number range",
-            ))
+            ));
         }
 
         let mut limiter = input.limiter;
@@ -294,8 +295,9 @@ impl TransactionLookup {
 
 #[cfg(test)]
 mod tests {
-    use crate::segments::{PruneInput, PruneLimiter, Segment, SegmentOutput, TransactionLookup};
-    use alloy_primitives::{BlockNumber, TxNumber, B256};
+    use std::ops::Sub;
+
+    use alloy_primitives::{B256, BlockNumber, TxNumber};
     use assert_matches::assert_matches;
     use itertools::{
         FoldWhile::{Continue, Done},
@@ -307,8 +309,9 @@ mod tests {
         PruneCheckpoint, PruneInterruptReason, PruneMode, PruneProgress, PruneSegment,
     };
     use reth_stages::test_utils::{StorageKind, TestStageDB};
-    use reth_testing_utils::generators::{self, random_block_range, BlockRangeParams};
-    use std::ops::Sub;
+    use reth_testing_utils::generators::{self, BlockRangeParams, random_block_range};
+
+    use crate::segments::{PruneInput, PruneLimiter, Segment, SegmentOutput, TransactionLookup};
 
     #[test]
     fn prune() {
@@ -372,8 +375,8 @@ mod tests {
                 .map(|block| block.transaction_count())
                 .sum::<usize>()
                 .min(
-                    next_tx_number_to_prune as usize +
-                        input.limiter.deleted_entries_limit().unwrap(),
+                    next_tx_number_to_prune as usize
+                        + input.limiter.deleted_entries_limit().unwrap(),
                 )
                 .sub(1);
 

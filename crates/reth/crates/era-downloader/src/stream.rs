@@ -1,8 +1,3 @@
-use crate::{client::HttpClient, EraClient, BLOCKS_PER_FILE};
-use alloy_primitives::BlockNumber;
-use futures_util::{stream::FuturesOrdered, FutureExt, Stream, StreamExt};
-use reqwest::Url;
-use reth_fs_util as fs;
 use std::{
     collections::VecDeque,
     fmt::{Debug, Formatter},
@@ -11,6 +6,13 @@ use std::{
     pin::Pin,
     task::{Context, Poll},
 };
+
+use alloy_primitives::BlockNumber;
+use futures_util::{FutureExt, Stream, StreamExt, stream::FuturesOrdered};
+use reqwest::Url;
+use reth_fs_util as fs;
+
+use crate::{BLOCKS_PER_FILE, EraClient, client::HttpClient};
 
 /// Parameters that alter the behavior of [`EraStream`].
 ///
@@ -262,8 +264,8 @@ impl<Http: HttpClient + Clone + Send + Sync + 'static + Unpin> Stream for Starti
             self.fetch_file_list();
         }
 
-        if self.state == State::FetchFileList &&
-            let Poll::Ready(result) = self.fetch_file_list.poll_unpin(cx)
+        if self.state == State::FetchFileList
+            && let Poll::Ready(result) = self.fetch_file_list.poll_unpin(cx)
         {
             match result {
                 Ok(_) => self.delete_outside_range(),
@@ -275,8 +277,8 @@ impl<Http: HttpClient + Clone + Send + Sync + 'static + Unpin> Stream for Starti
             }
         }
 
-        if self.state == State::DeleteOutsideRange &&
-            let Poll::Ready(result) = self.delete_outside_range.poll_unpin(cx)
+        if self.state == State::DeleteOutsideRange
+            && let Poll::Ready(result) = self.delete_outside_range.poll_unpin(cx)
         {
             match result {
                 Ok(_) => self.recover_index(),
@@ -288,15 +290,15 @@ impl<Http: HttpClient + Clone + Send + Sync + 'static + Unpin> Stream for Starti
             }
         }
 
-        if self.state == State::RecoverIndex &&
-            let Poll::Ready(last) = self.recover_index.poll_unpin(cx)
+        if self.state == State::RecoverIndex
+            && let Poll::Ready(last) = self.recover_index.poll_unpin(cx)
         {
             self.last = last;
             self.count_files();
         }
 
-        if self.state == State::CountFiles &&
-            let Poll::Ready(downloaded) = self.files_count.poll_unpin(cx)
+        if self.state == State::CountFiles
+            && let Poll::Ready(downloaded) = self.files_count.poll_unpin(cx)
         {
             let max_missing = self
                 .max_files
@@ -316,8 +318,8 @@ impl<Http: HttpClient + Clone + Send + Sync + 'static + Unpin> Stream for Starti
             }
         }
 
-        if let State::NextUrl(max_missing) = self.state &&
-            let Poll::Ready(url) = self.next_url.poll_unpin(cx)
+        if let State::NextUrl(max_missing) = self.state
+            && let Poll::Ready(url) = self.next_url.poll_unpin(cx)
         {
             self.state = State::Missing(max_missing - 1);
 

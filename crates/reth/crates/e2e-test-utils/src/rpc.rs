@@ -1,15 +1,15 @@
 use alloy_consensus::{EthereumTxEnvelope, TxEip4844Variant};
 use alloy_eips::eip7594::BlobTransactionSidecarVariant;
 use alloy_network::eip2718::Decodable2718;
-use alloy_primitives::{Bytes, B256};
+use alloy_primitives::{B256, Bytes};
 use reth_chainspec::EthereumHardforks;
 use reth_node_api::{BlockTy, FullNodeComponents};
-use reth_node_builder::{rpc::RpcRegistry, NodeTypes};
+use reth_node_builder::{NodeTypes, rpc::RpcRegistry};
 use reth_provider::BlockReader;
 use reth_rpc_api::DebugApiServer;
 use reth_rpc_eth_api::{
-    helpers::{EthApiSpec, EthTransactions, TraceExt},
     EthApiTypes,
+    helpers::{EthApiSpec, EthTransactions, TraceExt},
 };
 
 #[expect(missing_debug_implementations)]

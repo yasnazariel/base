@@ -136,8 +136,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use clap::Parser;
+
+    use super::*;
 
     /// A test command that uses the `MaxOr` parser
     #[derive(Parser, Debug)]

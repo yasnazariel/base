@@ -1,14 +1,15 @@
 //! Events related to Consensus Layer health.
 
-use alloy_consensus::Header;
-use futures::Stream;
-use reth_storage_api::CanonChainTracker;
 use std::{
     fmt,
     pin::Pin,
-    task::{ready, Context, Poll},
+    task::{Context, Poll, ready},
     time::Duration,
 };
+
+use alloy_consensus::Header;
+use futures::Stream;
+use reth_storage_api::CanonChainTracker;
 use tokio::time::{Instant, Interval};
 
 /// Interval of checking Consensus Layer client health.
@@ -51,18 +52,18 @@ impl<H: Send + Sync> Stream for ConsensusLayerHealthEvents<H> {
             if let Some(fork_choice) = this.canon_chain.last_received_update_timestamp() {
                 if fork_choice.elapsed() <= NO_FORKCHOICE_UPDATE_RECEIVED_PERIOD {
                     // We had an FCU, and it's recent. CL is healthy.
-                    continue
+                    continue;
                 }
                 // We had an FCU, but it's too old.
                 return Poll::Ready(Some(
                     ConsensusLayerHealthEvent::HaveNotReceivedUpdatesForAWhile(
                         fork_choice.elapsed(),
                     ),
-                ))
+                ));
             }
 
             // We never received any forkchoice updates.
-            return Poll::Ready(Some(ConsensusLayerHealthEvent::NeverSeen))
+            return Poll::Ready(Some(ConsensusLayerHealthEvent::NeverSeen));
         }
     }
 }

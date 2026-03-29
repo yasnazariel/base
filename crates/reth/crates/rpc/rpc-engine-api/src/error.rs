@@ -86,7 +86,9 @@ pub enum EngineApiError {
     #[error(transparent)]
     EngineObjectValidationError(#[from] EngineObjectValidationError),
     /// Requests hash provided, but can't be accepted by the API.
-    #[error("requests hash cannot be accepted by the API without `--engine.accept-execution-requests-hash` flag")]
+    #[error(
+        "requests hash cannot be accepted by the API without `--engine.accept-execution-requests-hash` flag"
+    )]
     UnexpectedRequestsHash,
     /// Any other rpc error
     #[error("{0}")]
@@ -117,12 +119,12 @@ impl ErrorData {
 impl From<EngineApiError> for jsonrpsee_types::error::ErrorObject<'static> {
     fn from(error: EngineApiError) -> Self {
         match error {
-            EngineApiError::InvalidBodiesRange { .. } |
-            EngineApiError::EngineObjectValidationError(
-                EngineObjectValidationError::Payload(_) |
-                EngineObjectValidationError::InvalidParams(_),
-            ) |
-            EngineApiError::UnexpectedRequestsHash => {
+            EngineApiError::InvalidBodiesRange { .. }
+            | EngineApiError::EngineObjectValidationError(
+                EngineObjectValidationError::Payload(_)
+                | EngineObjectValidationError::InvalidParams(_),
+            )
+            | EngineApiError::UnexpectedRequestsHash => {
                 // Note: the data field is not required by the spec, but is also included by other
                 // clients
                 jsonrpsee_types::error::ErrorObject::owned(
@@ -147,8 +149,8 @@ impl From<EngineApiError> for jsonrpsee_types::error::ErrorObject<'static> {
                 error.to_string(),
                 None::<()>,
             ),
-            EngineApiError::PayloadRequestTooLarge { .. } |
-            EngineApiError::BlobRequestTooLarge { .. } => {
+            EngineApiError::PayloadRequestTooLarge { .. }
+            | EngineApiError::BlobRequestTooLarge { .. } => {
                 jsonrpsee_types::error::ErrorObject::owned(
                     REQUEST_TOO_LARGE_CODE,
                     REQUEST_TOO_LARGE_MESSAGE,
@@ -172,8 +174,8 @@ impl From<EngineApiError> for jsonrpsee_types::error::ErrorObject<'static> {
                             None::<()>,
                         )
                     }
-                    ForkchoiceUpdateError::InvalidState |
-                    ForkchoiceUpdateError::UnknownFinalBlock => {
+                    ForkchoiceUpdateError::InvalidState
+                    | ForkchoiceUpdateError::UnknownFinalBlock => {
                         jsonrpsee_types::error::ErrorObject::owned(
                             INVALID_FORK_CHOICE_STATE_ERROR,
                             INVALID_FORK_CHOICE_STATE_ERROR_MSG,
@@ -181,8 +183,8 @@ impl From<EngineApiError> for jsonrpsee_types::error::ErrorObject<'static> {
                         )
                     }
                 },
-                BeaconForkChoiceUpdateError::EngineUnavailable |
-                BeaconForkChoiceUpdateError::Internal(_) => {
+                BeaconForkChoiceUpdateError::EngineUnavailable
+                | BeaconForkChoiceUpdateError::Internal(_) => {
                     jsonrpsee_types::error::ErrorObject::owned(
                         INTERNAL_ERROR_CODE,
                         SERVER_ERROR_MSG,
@@ -191,10 +193,10 @@ impl From<EngineApiError> for jsonrpsee_types::error::ErrorObject<'static> {
                 }
             },
             // Any other server error
-            EngineApiError::TerminalBlockHash { .. } |
-            EngineApiError::NewPayload(_) |
-            EngineApiError::Internal(_) |
-            EngineApiError::GetPayloadError(_) => jsonrpsee_types::error::ErrorObject::owned(
+            EngineApiError::TerminalBlockHash { .. }
+            | EngineApiError::NewPayload(_)
+            | EngineApiError::Internal(_)
+            | EngineApiError::GetPayloadError(_) => jsonrpsee_types::error::ErrorObject::owned(
                 INTERNAL_ERROR_CODE,
                 SERVER_ERROR_MSG,
                 Some(ErrorData::new(error)),
@@ -206,8 +208,9 @@ impl From<EngineApiError> for jsonrpsee_types::error::ErrorObject<'static> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_rpc_types_engine::ForkchoiceUpdateError;
+
+    use super::*;
 
     #[track_caller]
     fn ensure_engine_rpc_error(

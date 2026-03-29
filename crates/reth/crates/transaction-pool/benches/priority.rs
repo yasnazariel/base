@@ -1,10 +1,11 @@
 #![allow(missing_docs)]
+use std::hint::black_box;
+
 use criterion::{
-    criterion_group, criterion_main, measurement::WallTime, BenchmarkGroup, Criterion,
+    BenchmarkGroup, Criterion, criterion_group, criterion_main, measurement::WallTime,
 };
 use proptest::{prelude::*, strategy::ValueTree, test_runner::TestRunner};
 use reth_transaction_pool::{blob_tx_priority, fee_delta};
-use std::hint::black_box;
 
 fn generate_test_data_fee_delta() -> (u128, u128) {
     let mut runner = TestRunner::deterministic();

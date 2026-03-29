@@ -33,12 +33,13 @@ pub mod error;
 pub mod header;
 
 use alloc::{fmt, vec::Vec};
+
 use alloy_primitives::{Address, B256};
 use alloy_rlp::{Decodable, Encodable};
 
 use crate::{
-    block::error::BlockRecoveryError, transaction::signed::RecoveryError, BlockBody, BlockHeader,
-    FullBlockBody, FullBlockHeader, InMemorySize, MaybeSerde, SealedHeader, SignedTransaction,
+    BlockBody, BlockHeader, FullBlockBody, FullBlockHeader, InMemorySize, MaybeSerde, SealedHeader,
+    SignedTransaction, block::error::BlockRecoveryError, transaction::signed::RecoveryError,
 };
 
 /// Bincode-compatible header type serde implementations.
@@ -161,7 +162,7 @@ pub trait Block:
         } else {
             // Fall back to recovery if lengths don't match
             let Ok(senders) = self.body().recover_signers_unchecked() else {
-                return Err(BlockRecoveryError::new(self))
+                return Err(BlockRecoveryError::new(self));
             };
             senders
         };
@@ -184,7 +185,7 @@ pub trait Block:
     /// Returns the block as error if a signature is invalid.
     fn try_into_recovered(self) -> Result<RecoveredBlock<Self>, BlockRecoveryError<Self>> {
         let Ok(signers) = self.body().recover_signers() else {
-            return Err(BlockRecoveryError::new(self))
+            return Err(BlockRecoveryError::new(self));
         };
         Ok(RecoveredBlock::new_unhashed(self, signers))
     }

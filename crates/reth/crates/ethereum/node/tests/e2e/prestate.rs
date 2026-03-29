@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use alloy_eips::BlockId;
 use alloy_genesis::{Genesis, GenesisAccount};
 use alloy_primitives::address;
@@ -6,7 +8,7 @@ use alloy_rpc_types_eth::{Transaction, TransactionRequest};
 use alloy_rpc_types_trace::geth::{
     AccountState, GethDebugTracingOptions, PreStateConfig, PreStateFrame,
 };
-use eyre::{eyre, Result};
+use eyre::{Result, eyre};
 use reth_chainspec::{ChainSpecBuilder, MAINNET};
 use reth_node_builder::{NodeBuilder, NodeHandle};
 use reth_node_core::{args::RpcServerArgs, node_config::NodeConfig};
@@ -14,7 +16,6 @@ use reth_node_ethereum::EthereumNode;
 use reth_rpc_server_types::RpcModuleSelection;
 use reth_tasks::Runtime;
 use serde::Deserialize;
-use std::sync::Arc;
 
 const PRESTATE_SNAPSHOT: &str =
     include_str!("../../../../../testing/prestate/tx-selfdestruct-prestate.json");

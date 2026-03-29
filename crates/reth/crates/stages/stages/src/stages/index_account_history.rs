@@ -1,5 +1,5 @@
-use super::collect_account_history_indices;
-use crate::stages::utils::{collect_history_indices, load_account_history};
+use std::fmt::Debug;
+
 use reth_config::config::{EtlConfig, IndexHistoryConfig};
 #[cfg(all(unix, feature = "rocksdb"))]
 use reth_db_api::Tables;
@@ -12,8 +12,10 @@ use reth_prune_types::{PruneCheckpoint, PruneMode, PrunePurpose, PruneSegment};
 use reth_stages_api::{
     ExecInput, ExecOutput, Stage, StageCheckpoint, StageError, StageId, UnwindInput, UnwindOutput,
 };
-use std::fmt::Debug;
 use tracing::info;
+
+use super::collect_account_history_indices;
+use crate::stages::utils::{collect_history_indices, load_account_history};
 
 /// Stage is indexing history the account changesets generated in
 /// [`ExecutionStage`][crate::stages::ExecutionStage]. For more information
@@ -78,8 +80,8 @@ where
                 )
             })
             .transpose()?
-            .flatten() &&
-            target_prunable_block > input.checkpoint().block_number
+            .flatten()
+            && target_prunable_block > input.checkpoint().block_number
         {
             input.checkpoint = Some(StageCheckpoint::new(target_prunable_block));
 
@@ -98,7 +100,7 @@ where
         }
 
         if input.target_reached() {
-            return Ok(ExecOutput::done(input.checkpoint()))
+            return Ok(ExecOutput::done(input.checkpoint()));
         }
 
         let mut range = input.next_block_range();
@@ -171,28 +173,30 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::test_utils::{
-        stage_test_suite_ext, ExecuteStageTestRunner, StageTestRunner, TestRunnerError,
-        TestStageDB, UnwindStageTestRunner,
-    };
-    use alloy_primitives::{address, Address, BlockNumber, B256};
+    use std::collections::BTreeMap;
+
+    use alloy_primitives::{Address, B256, BlockNumber, address};
     use itertools::Itertools;
     use reth_db_api::{
+        BlockNumberList,
         cursor::DbCursorRO,
         models::{
-            sharded_key, sharded_key::NUM_OF_INDICES_IN_SHARD, AccountBeforeTx,
-            StoredBlockBodyIndices,
+            AccountBeforeTx, StoredBlockBodyIndices, sharded_key,
+            sharded_key::NUM_OF_INDICES_IN_SHARD,
         },
         transaction::DbTx,
-        BlockNumberList,
     };
-    use reth_provider::{providers::StaticFileWriter, DatabaseProviderFactory};
+    use reth_provider::{DatabaseProviderFactory, providers::StaticFileWriter};
     use reth_testing_utils::generators::{
-        self, random_block_range, random_changeset_range, random_contract_account_range,
-        BlockRangeParams,
+        self, BlockRangeParams, random_block_range, random_changeset_range,
+        random_contract_account_range,
     };
-    use std::collections::BTreeMap;
+
+    use super::*;
+    use crate::test_utils::{
+        ExecuteStageTestRunner, StageTestRunner, TestRunnerError, TestStageDB,
+        UnwindStageTestRunner, stage_test_suite_ext,
+    };
 
     const ADDRESS: Address = address!("0x0000000000000000000000000000000000000001");
 
@@ -597,7 +601,7 @@ mod tests {
                 let start_block = input.next_block();
                 let end_block = output.checkpoint.block_number;
                 if start_block > end_block {
-                    return Ok(())
+                    return Ok(());
                 }
 
                 assert_eq!(
@@ -665,12 +669,13 @@ mod tests {
 
     #[cfg(all(unix, feature = "rocksdb"))]
     mod rocksdb_tests {
-        use super::*;
         use reth_provider::{
-            providers::StaticFileWriter, RocksDBProviderFactory, StaticFileProviderFactory,
+            RocksDBProviderFactory, StaticFileProviderFactory, providers::StaticFileWriter,
         };
         use reth_static_file_types::StaticFileSegment;
         use reth_storage_api::StorageSettings;
+
+        use super::*;
 
         /// Sets up v2 account test data: writes block body indices to MDBX and
         /// account changesets to static files (matching realistic v2 layout).

@@ -1,6 +1,7 @@
 use alloc::vec::Vec;
-use alloy_primitives::BlockNumber;
 use core::ops::RangeInclusive;
+
+use alloy_primitives::BlockNumber;
 use reth_db_models::StoredBlockBodyIndices;
 use reth_storage_errors::provider::ProviderResult;
 

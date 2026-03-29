@@ -1,9 +1,9 @@
-use alloy_primitives::{
-    keccak256,
-    map::{HashMap, HashSet},
-    BlockNumber, B256,
-};
 use core::ops::RangeInclusive;
+
+use alloy_primitives::{
+    B256, BlockNumber, keccak256,
+    map::{HashMap, HashSet},
+};
 use reth_db_api::{
     cursor::DbCursorRO,
     models::{AccountBeforeTx, BlockNumberAddress},
@@ -13,8 +13,8 @@ use reth_db_api::{
 use reth_storage_api::{ChangeSetReader, DBProvider, StorageChangeSetReader};
 use reth_storage_errors::provider::ProviderError;
 use reth_trie::{
-    prefix_set::{PrefixSetMut, TriePrefixSets},
     Nibbles,
+    prefix_set::{PrefixSetMut, TriePrefixSets},
 };
 
 /// Load prefix sets using a provider that implements [`ChangeSetReader`]. This function can read

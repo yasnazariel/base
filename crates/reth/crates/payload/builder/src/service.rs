@@ -3,18 +3,6 @@
 //! The payload builder is responsible for building payloads.
 //! Once a new payload is created, it is continuously updated.
 
-use crate::{
-    metrics::PayloadBuilderServiceMetrics, traits::PayloadJobGenerator, KeepPayloadJobAlive,
-    PayloadJob,
-};
-use alloy_consensus::BlockHeader;
-use alloy_primitives::BlockTimestamp;
-use alloy_rpc_types::engine::PayloadId;
-use futures_util::{future::FutureExt, Stream, StreamExt};
-use reth_chain_state::CanonStateNotification;
-use reth_payload_builder_primitives::{Events, PayloadBuilderError, PayloadEvents};
-use reth_payload_primitives::{BuiltPayload, PayloadBuilderAttributes, PayloadKind, PayloadTypes};
-use reth_primitives_traits::NodePrimitives;
 use std::{
     fmt,
     future::Future,
@@ -22,6 +10,15 @@ use std::{
     sync::Arc,
     task::{Context, Poll},
 };
+
+use alloy_consensus::BlockHeader;
+use alloy_primitives::BlockTimestamp;
+use alloy_rpc_types::engine::PayloadId;
+use futures_util::{Stream, StreamExt, future::FutureExt};
+use reth_chain_state::CanonStateNotification;
+use reth_payload_builder_primitives::{Events, PayloadBuilderError, PayloadEvents};
+use reth_payload_primitives::{BuiltPayload, PayloadBuilderAttributes, PayloadKind, PayloadTypes};
+use reth_primitives_traits::NodePrimitives;
 use tokio::sync::{
     broadcast, mpsc,
     oneshot::{self, Receiver},
@@ -29,6 +26,11 @@ use tokio::sync::{
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tracing::{debug, info, trace, warn};
+
+use crate::{
+    KeepPayloadJobAlive, PayloadJob, metrics::PayloadBuilderServiceMetrics,
+    traits::PayloadJobGenerator,
+};
 
 type PayloadFuture<P> = Pin<Box<dyn Future<Output = Result<P, PayloadBuilderError>> + Send>>;
 
@@ -305,8 +307,8 @@ where
     ) -> Option<PayloadFuture<T::BuiltPayload>> {
         debug!(target: "payload_builder", %id, "resolving payload job");
 
-        if let Some((cached, _, payload)) = &*self.cached_payload_rx.borrow() &&
-            *cached == id
+        if let Some((cached, _, payload)) = &*self.cached_payload_rx.borrow()
+            && *cached == id
         {
             return Some(Box::pin(core::future::ready(Ok(payload.clone()))));
         }
@@ -356,8 +358,8 @@ where
 {
     /// Returns the payload timestamp for the given payload.
     fn payload_timestamp(&self, id: PayloadId) -> Option<Result<u64, PayloadBuilderError>> {
-        if let Some((cached_id, timestamp, _)) = *self.cached_payload_rx.borrow() &&
-            cached_id == id
+        if let Some((cached_id, timestamp, _)) = *self.cached_payload_rx.borrow()
+            && cached_id == id
         {
             return Some(Ok(timestamp));
         }
@@ -472,7 +474,7 @@ where
             }
 
             if !new_job {
-                return Poll::Pending
+                return Poll::Pending;
             }
         }
     }

@@ -12,7 +12,8 @@
 extern crate alloc;
 
 use alloc::{fmt::Debug, sync::Arc};
-use alloy_consensus::{constants::MAXIMUM_EXTRA_DATA_SIZE, EMPTY_OMMER_ROOT_HASH};
+
+use alloy_consensus::{EMPTY_OMMER_ROOT_HASH, constants::MAXIMUM_EXTRA_DATA_SIZE};
 use alloy_eips::eip7840::BlobParams;
 use reth_chainspec::{EthChainSpec, EthereumHardforks};
 use reth_consensus::{Consensus, ConsensusError, FullConsensus, HeaderValidator, ReceiptRootBloom};
@@ -133,8 +134,8 @@ where
                     .unwrap()
                     .as_secs();
 
-                if header.timestamp() >
-                    present_timestamp + alloy_eips::merge::ALLOWED_FUTURE_BLOCK_TIME_SECONDS
+                if header.timestamp()
+                    > present_timestamp + alloy_eips::merge::ALLOWED_FUTURE_BLOCK_TIME_SECONDS
                 {
                     return Err(ConsensusError::TimestampIsInFuture {
                         timestamp: header.timestamp(),
@@ -148,14 +149,14 @@ where
         validate_header_base_fee(header, &self.chain_spec)?;
 
         // EIP-4895: Beacon chain push withdrawals as operations
-        if self.chain_spec.is_shanghai_active_at_timestamp(header.timestamp()) &&
-            header.withdrawals_root().is_none()
+        if self.chain_spec.is_shanghai_active_at_timestamp(header.timestamp())
+            && header.withdrawals_root().is_none()
         {
-            return Err(ConsensusError::WithdrawalsRootMissing)
-        } else if !self.chain_spec.is_shanghai_active_at_timestamp(header.timestamp()) &&
-            header.withdrawals_root().is_some()
+            return Err(ConsensusError::WithdrawalsRootMissing);
+        } else if !self.chain_spec.is_shanghai_active_at_timestamp(header.timestamp())
+            && header.withdrawals_root().is_some()
         {
-            return Err(ConsensusError::WithdrawalsRootUnexpected)
+            return Err(ConsensusError::WithdrawalsRootUnexpected);
         }
 
         // Ensures that EIP-4844 fields are valid once cancun is active.
@@ -167,19 +168,19 @@ where
                     .unwrap_or_else(BlobParams::cancun),
             )?;
         } else if header.blob_gas_used().is_some() {
-            return Err(ConsensusError::BlobGasUsedUnexpected)
+            return Err(ConsensusError::BlobGasUsedUnexpected);
         } else if header.excess_blob_gas().is_some() {
-            return Err(ConsensusError::ExcessBlobGasUnexpected)
+            return Err(ConsensusError::ExcessBlobGasUnexpected);
         } else if header.parent_beacon_block_root().is_some() {
-            return Err(ConsensusError::ParentBeaconBlockRootUnexpected)
+            return Err(ConsensusError::ParentBeaconBlockRootUnexpected);
         }
 
         if self.chain_spec.is_prague_active_at_timestamp(header.timestamp()) {
             if header.requests_hash().is_none() {
-                return Err(ConsensusError::RequestsHashMissing)
+                return Err(ConsensusError::RequestsHashMissing);
             }
         } else if header.requests_hash().is_some() {
-            return Err(ConsensusError::RequestsHashUnexpected)
+            return Err(ConsensusError::RequestsHashUnexpected);
         }
 
         Ok(())
@@ -213,7 +214,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_consensus::Header;
     use alloy_primitives::B256;
     use reth_chainspec::{ChainSpec, ChainSpecBuilder};
@@ -222,6 +222,8 @@ mod tests {
         constants::{GAS_LIMIT_BOUND_DIVISOR, MINIMUM_GAS_LIMIT},
         proofs,
     };
+
+    use super::*;
 
     fn header_with_gas_limit(gas_limit: u64) -> SealedHeader {
         let header = reth_primitives_traits::Header { gas_limit, ..Default::default() };
@@ -233,12 +235,10 @@ mod tests {
         let parent = header_with_gas_limit(GAS_LIMIT_BOUND_DIVISOR * 10);
         let child = header_with_gas_limit((parent.gas_limit + 5) as u64);
 
-        assert!(validate_against_parent_gas_limit(
-            &child,
-            &parent,
-            &ChainSpec::<Header>::default()
-        )
-        .is_ok());
+        assert!(
+            validate_against_parent_gas_limit(&child, &parent, &ChainSpec::<Header>::default())
+                .is_ok()
+        );
     }
 
     #[test]
@@ -272,12 +272,10 @@ mod tests {
         let parent = header_with_gas_limit(GAS_LIMIT_BOUND_DIVISOR * 10);
         let child = header_with_gas_limit(parent.gas_limit - 5);
 
-        assert!(validate_against_parent_gas_limit(
-            &child,
-            &parent,
-            &ChainSpec::<Header>::default()
-        )
-        .is_ok());
+        assert!(
+            validate_against_parent_gas_limit(&child, &parent, &ChainSpec::<Header>::default())
+                .is_ok()
+        );
     }
 
     #[test]
@@ -306,8 +304,10 @@ mod tests {
             ..Default::default()
         };
 
-        assert!(EthBeaconConsensus::new(chain_spec)
-            .validate_header(&SealedHeader::seal_slow(header,))
-            .is_ok());
+        assert!(
+            EthBeaconConsensus::new(chain_spec)
+                .validate_header(&SealedHeader::seal_slow(header,))
+                .is_ok()
+        );
     }
 }

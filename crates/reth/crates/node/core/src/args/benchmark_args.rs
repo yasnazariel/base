@@ -1,7 +1,8 @@
 //! clap [Args](clap::Args) for benchmark configuration
 
-use clap::Args;
 use std::path::PathBuf;
+
+use clap::Args;
 
 /// Parameters for benchmark configuration
 #[derive(Debug, Args, PartialEq, Eq, Default, Clone)]
@@ -62,8 +63,9 @@ pub struct BenchmarkArgs {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use clap::Parser;
+
+    use super::*;
 
     /// A helper type to parse Args more easily
     #[derive(Parser)]

@@ -1,4 +1,17 @@
+use alloy_primitives::{
+    Address, B256, keccak256,
+    map::{B256Map, B256Set, HashSet},
+};
+use alloy_rlp::{BufMut, Encodable};
+use alloy_trie::proof::AddedRemovedKeys;
+use reth_execution_errors::trie::StateProofError;
+use reth_trie_common::{
+    AccountProof, BranchNodeMasks, BranchNodeMasksMap, MultiProof, MultiProofTargets,
+    StorageMultiProof, proof::ProofRetainer,
+};
+
 use crate::{
+    HashBuilder, Nibbles, TRIE_ACCOUNT_RLP_MAX_SIZE,
     hashed_cursor::{
         HashedCursorFactory, HashedCursorMetricsCache, HashedStorageCursor,
         InstrumentedHashedCursor,
@@ -7,19 +20,6 @@ use crate::{
     prefix_set::{PrefixSetMut, TriePrefixSetsMut},
     trie_cursor::{InstrumentedTrieCursor, TrieCursorFactory, TrieCursorMetricsCache},
     walker::TrieWalker,
-    HashBuilder, Nibbles, TRIE_ACCOUNT_RLP_MAX_SIZE,
-};
-use alloy_primitives::{
-    keccak256,
-    map::{B256Map, B256Set, HashSet},
-    Address, B256,
-};
-use alloy_rlp::{BufMut, Encodable};
-use alloy_trie::proof::AddedRemovedKeys;
-use reth_execution_errors::trie::StateProofError;
-use reth_trie_common::{
-    proof::ProofRetainer, AccountProof, BranchNodeMasks, BranchNodeMasksMap, MultiProof,
-    MultiProofTargets, StorageMultiProof,
 };
 
 mod trie_node;
@@ -358,7 +358,7 @@ where
 
         // short circuit on empty storage
         if hashed_storage_cursor.is_storage_empty()? {
-            return Ok(StorageMultiProof::empty())
+            return Ok(StorageMultiProof::empty());
         }
 
         let mut discard_trie_cursor_metrics = TrieCursorMetricsCache::default();

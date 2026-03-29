@@ -10,14 +10,14 @@
 
 use clap::ValueEnum;
 use eyre::ensure;
-use opentelemetry::{global, trace::TracerProvider, KeyValue, Value};
+use opentelemetry::{KeyValue, Value, global, trace::TracerProvider};
 use opentelemetry_otlp::{SpanExporter, WithExportConfig};
 use opentelemetry_sdk::{
+    Resource,
     propagation::TraceContextPropagator,
     trace::{Sampler, SdkTracer, SdkTracerProvider},
-    Resource,
 };
-use opentelemetry_semantic_conventions::{attribute::SERVICE_VERSION, SCHEMA_URL};
+use opentelemetry_semantic_conventions::{SCHEMA_URL, attribute::SERVICE_VERSION};
 use tracing::Subscriber;
 use tracing_opentelemetry::OpenTelemetryLayer;
 use tracing_subscriber::registry::LookupSpan;

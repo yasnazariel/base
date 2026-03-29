@@ -1,6 +1,16 @@
-use crate::{
-    wal::Wal, ExExEvent, ExExNotification, ExExNotifications, FinishedExExHeight, WalHandle,
+use std::{
+    collections::VecDeque,
+    fmt::Debug,
+    future::{Future, poll_fn},
+    ops::Not,
+    pin::Pin,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+    task::{Context, Poll, ready},
 };
+
 use alloy_consensus::BlockHeader;
 use alloy_eips::BlockNumHash;
 use futures::StreamExt;
@@ -9,28 +19,20 @@ use metrics::Gauge;
 use reth_chain_state::ForkChoiceStream;
 use reth_ethereum_primitives::EthPrimitives;
 use reth_evm::ConfigureEvm;
-use reth_metrics::{metrics::Counter, Metrics};
+use reth_metrics::{Metrics, metrics::Counter};
 use reth_node_api::NodePrimitives;
 use reth_primitives_traits::SealedHeader;
 use reth_provider::HeaderProvider;
 use reth_tracing::tracing::{debug, warn};
-use std::{
-    collections::VecDeque,
-    fmt::Debug,
-    future::{poll_fn, Future},
-    ops::Not,
-    pin::Pin,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
-    task::{ready, Context, Poll},
-};
 use tokio::sync::{
-    mpsc::{self, error::SendError, UnboundedReceiver, UnboundedSender},
+    mpsc::{self, UnboundedReceiver, UnboundedSender, error::SendError},
     watch,
 };
 use tokio_util::sync::{PollSendError, PollSender, ReusableBoxFuture};
+
+use crate::{
+    ExExEvent, ExExNotification, ExExNotifications, FinishedExExHeight, WalHandle, wal::Wal,
+};
 
 /// Default max size of the internal state notifications buffer.
 ///
@@ -149,7 +151,7 @@ impl<N: NodePrimitives> ExExHandle<N> {
                         );
 
                         self.next_notification_id = notification_id + 1;
-                        return Poll::Ready(Ok(()))
+                        return Poll::Ready(Ok(()));
                     }
                 }
                 // Do not handle [ExExNotification::ChainReorged] and
@@ -499,9 +501,9 @@ where
                 }
 
                 this.push_notification(notification);
-                continue
+                continue;
             }
-            break
+            break;
         }
         let buffer_full = this.buffer.len() >= this.max_capacity;
 
@@ -519,11 +521,11 @@ where
                 .next_notification_id
                 .checked_sub(this.min_id)
                 .expect("exex expected notification ID outside the manager's range");
-            if let Some(notification) = this.buffer.get(notification_index) &&
-                let Poll::Ready(Err(err)) = exex.send(cx, notification)
+            if let Some(notification) = this.buffer.get(notification_index)
+                && let Poll::Ready(Err(err)) = exex.send(cx, notification)
             {
                 // The channel was closed, which is irrecoverable for the manager
-                return Poll::Ready(Err(err.into()))
+                return Poll::Ready(Err(err.into()));
             }
             min_id = min_id.min(exex.next_notification_id);
             this.exex_handles.push(exex);
@@ -681,8 +683,6 @@ impl<N: NodePrimitives> Clone for ExExManagerHandle<N> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::wal::WalResult;
     use alloy_primitives::B256;
     use futures::{StreamExt, TryStreamExt};
     use rand::Rng;
@@ -690,10 +690,13 @@ mod tests {
     use reth_evm_ethereum::EthEvmConfig;
     use reth_primitives_traits::RecoveredBlock;
     use reth_provider::{
-        providers::BlockchainProvider, test_utils::create_test_provider_factory, BlockReader,
-        BlockWriter, Chain, DBProvider, DatabaseProviderFactory, TransactionVariant,
+        BlockReader, BlockWriter, Chain, DBProvider, DatabaseProviderFactory, TransactionVariant,
+        providers::BlockchainProvider, test_utils::create_test_provider_factory,
     };
-    use reth_testing_utils::generators::{self, random_block, BlockParams};
+    use reth_testing_utils::generators::{self, BlockParams, random_block};
+
+    use super::*;
+    use crate::wal::WalResult;
 
     fn empty_finalized_header_stream() -> ForkChoiceStream<SealedHeader> {
         let (tx, rx) = watch::channel(None);
@@ -735,13 +738,17 @@ mod tests {
             wal.handle(),
         );
 
-        assert!(!ExExManager::new((), vec![], 0, wal.clone(), empty_finalized_header_stream())
-            .handle
-            .has_exexs());
+        assert!(
+            !ExExManager::new((), vec![], 0, wal.clone(), empty_finalized_header_stream())
+                .handle
+                .has_exexs()
+        );
 
-        assert!(ExExManager::new((), vec![exex_handle_1], 0, wal, empty_finalized_header_stream())
-            .handle
-            .has_exexs());
+        assert!(
+            ExExManager::new((), vec![exex_handle_1], 0, wal, empty_finalized_header_stream())
+                .handle
+                .has_exexs()
+        );
     }
 
     #[tokio::test]
@@ -757,19 +764,17 @@ mod tests {
             wal.handle(),
         );
 
-        assert!(!ExExManager::new((), vec![], 0, wal.clone(), empty_finalized_header_stream())
-            .handle
-            .has_capacity());
+        assert!(
+            !ExExManager::new((), vec![], 0, wal.clone(), empty_finalized_header_stream())
+                .handle
+                .has_capacity()
+        );
 
-        assert!(ExExManager::new(
-            (),
-            vec![exex_handle_1],
-            10,
-            wal,
-            empty_finalized_header_stream()
-        )
-        .handle
-        .has_capacity());
+        assert!(
+            ExExManager::new((), vec![exex_handle_1], 10, wal, empty_finalized_header_stream())
+                .handle
+                .has_capacity()
+        );
     }
 
     #[test]

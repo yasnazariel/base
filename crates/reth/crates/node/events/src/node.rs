@@ -1,16 +1,5 @@
 //! Support for handling events emitted by node components.
 
-use crate::cl::ConsensusLayerHealthEvent;
-use alloy_consensus::{constants::GWEI_TO_WEI, BlockHeader};
-use alloy_primitives::{BlockNumber, B256};
-use alloy_rpc_types_engine::ForkchoiceState;
-use futures::Stream;
-use reth_engine_primitives::{ConsensusEngineEvent, ForkchoiceStatus};
-use reth_network_api::PeersInfo;
-use reth_primitives_traits::{format_gas, format_gas_throughput, BlockBody, NodePrimitives};
-use reth_prune_types::PrunerEvent;
-use reth_stages::{EntitiesCheckpoint, ExecOutput, PipelineEvent, StageCheckpoint, StageId};
-use reth_static_file_types::StaticFileProducerEvent;
 use std::{
     fmt::{Display, Formatter},
     future::Future,
@@ -18,8 +7,21 @@ use std::{
     task::{Context, Poll},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+
+use alloy_consensus::{BlockHeader, constants::GWEI_TO_WEI};
+use alloy_primitives::{B256, BlockNumber};
+use alloy_rpc_types_engine::ForkchoiceState;
+use futures::Stream;
+use reth_engine_primitives::{ConsensusEngineEvent, ForkchoiceStatus};
+use reth_network_api::PeersInfo;
+use reth_primitives_traits::{BlockBody, NodePrimitives, format_gas, format_gas_throughput};
+use reth_prune_types::PrunerEvent;
+use reth_stages::{EntitiesCheckpoint, ExecOutput, PipelineEvent, StageCheckpoint, StageId};
+use reth_static_file_types::StaticFileProducerEvent;
 use tokio::time::Interval;
 use tracing::{debug, info, warn};
+
+use crate::cl::ConsensusLayerHealthEvent;
 
 /// Interval of reporting node state.
 const INFO_MESSAGE_INTERVAL: Duration = Duration::from_secs(25);
@@ -215,8 +217,8 @@ impl NodeState {
             ConsensusEngineEvent::ForkchoiceUpdated(state, status) => {
                 let ForkchoiceState { head_block_hash, safe_block_hash, finalized_block_hash } =
                     state;
-                if self.safe_block_hash != Some(safe_block_hash) &&
-                    self.finalized_block_hash != Some(finalized_block_hash)
+                if self.safe_block_hash != Some(safe_block_hash)
+                    && self.finalized_block_hash != Some(finalized_block_hash)
                 {
                     let msg = match status {
                         ForkchoiceStatus::Valid => "Forkchoice updated",
@@ -324,11 +326,7 @@ struct OptionalField<T: Display>(Option<T>);
 
 impl<T: Display> Display for OptionalField<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        if let Some(field) = &self.0 {
-            write!(f, "{field}")
-        } else {
-            write!(f, "None")
-        }
+        if let Some(field) = &self.0 { write!(f, "{field}") } else { write!(f, "None") }
     }
 }
 
@@ -531,7 +529,7 @@ impl Eta {
             else {
                 self.eta = None;
                 debug!(target: "reth::cli", %stage, ?current, ?self.last_checkpoint, "Failed to calculate the ETA: processed entities is less than the last checkpoint");
-                return
+                return;
             };
             let elapsed = last_checkpoint_time.elapsed();
             let per_second = processed_since_last as f64 / elapsed.as_secs_f64();
@@ -539,7 +537,7 @@ impl Eta {
             let Some(remaining) = current.total.checked_sub(current.processed) else {
                 self.eta = None;
                 debug!(target: "reth::cli", %stage, ?current, "Failed to calculate the ETA: total entities is less than processed entities");
-                return
+                return;
             };
 
             self.eta = Duration::try_from_secs_f64(remaining as f64 / per_second).ok();
@@ -560,8 +558,8 @@ impl Eta {
     /// It's not the case for network-dependent ([`StageId::Headers`] and [`StageId::Bodies`]) and
     /// [`StageId::Execution`] stages.
     fn fmt_for_stage(&self, stage: StageId) -> Option<String> {
-        if !self.is_available() ||
-            matches!(stage, StageId::Headers | StageId::Bodies | StageId::Execution)
+        if !self.is_available()
+            || matches!(stage, StageId::Headers | StageId::Bodies | StageId::Execution)
         {
             None
         } else {
@@ -582,7 +580,7 @@ impl Display for Eta {
                     humantime::format_duration(Duration::from_secs(remaining.as_secs()))
                         .to_string()
                         .replace(' ', "")
-                )
+                );
             }
         }
 

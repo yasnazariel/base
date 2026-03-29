@@ -1,13 +1,14 @@
-use crate::{
-    in_memory::ExecutedBlock, CanonStateNotification, CanonStateNotifications,
-    CanonStateSubscriptions, ComputedTrieData,
+use core::marker::PhantomData;
+use std::{
+    ops::Range,
+    sync::{Arc, Mutex},
 };
-use alloy_consensus::{Header, SignableTransaction, TxEip1559, TxReceipt, EMPTY_ROOT_HASH};
+
+use alloy_consensus::{EMPTY_ROOT_HASH, Header, SignableTransaction, TxEip1559, TxReceipt};
 use alloy_eips::eip1559::{ETHEREUM_BLOCK_GAS_LIMIT_30M, INITIAL_BASE_FEE};
-use alloy_primitives::{Address, BlockNumber, B256, U256};
+use alloy_primitives::{Address, B256, BlockNumber, U256};
 use alloy_signer::SignerSync;
 use alloy_signer_local::PrivateKeySigner;
-use core::marker::PhantomData;
 use rand::Rng;
 use reth_chainspec::{ChainSpec, EthereumHardfork, MIN_TRANSACTION_GAS};
 use reth_ethereum_primitives::{
@@ -15,19 +16,20 @@ use reth_ethereum_primitives::{
 };
 use reth_execution_types::{BlockExecutionOutput, BlockExecutionResult, Chain, ExecutionOutcome};
 use reth_primitives_traits::{
-    proofs::{calculate_receipt_root, calculate_transaction_root, calculate_withdrawals_root},
     Account, NodePrimitives, Recovered, RecoveredBlock, SealedBlock, SealedHeader,
     SignedTransaction,
+    proofs::{calculate_receipt_root, calculate_transaction_root, calculate_withdrawals_root},
 };
 use reth_storage_api::NodePrimitivesProvider;
 use reth_trie::root::state_root_unhashed;
 use revm_database::BundleState;
 use revm_state::AccountInfo;
-use std::{
-    ops::Range,
-    sync::{Arc, Mutex},
-};
 use tokio::sync::broadcast::{self, Sender};
+
+use crate::{
+    CanonStateNotification, CanonStateNotifications, CanonStateSubscriptions, ComputedTrieData,
+    in_memory::ExecutedBlock,
+};
 
 /// Functionality to build blocks for tests and help with assertions about
 /// their execution.
@@ -155,8 +157,8 @@ impl<N: NodePrimitives> TestBlockBuilder<N> {
                 .into_trie_account(EMPTY_ROOT_HASH),
             )]),
             // use the number as the timestamp so it is monotonically increasing
-            timestamp: number +
-                EthereumHardfork::Cancun.activation_timestamp(self.chain_spec.chain).unwrap(),
+            timestamp: number
+                + EthereumHardfork::Cancun.activation_timestamp(self.chain_spec.chain).unwrap(),
             withdrawals_root: Some(calculate_withdrawals_root(&[])),
             blob_gas_used: Some(0),
             excess_blob_gas: Some(0),

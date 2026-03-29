@@ -1,16 +1,18 @@
 //! All capability related types
 
+use std::{
+    borrow::Cow,
+    collections::{BTreeSet, HashMap},
+};
+
+use derive_more::{Deref, DerefMut};
+
 use crate::{
+    Capability, EthMessageID, EthVersion,
     errors::{P2PHandshakeError, P2PStreamError},
     p2pstream::MAX_RESERVED_MESSAGE_ID,
     protocol::{ProtoVersion, Protocol},
     version::ParseVersionError,
-    Capability, EthMessageID, EthVersion,
-};
-use derive_more::{Deref, DerefMut};
-use std::{
-    borrow::Cow,
-    collections::{BTreeSet, HashMap},
 };
 
 /// This represents a shared capability, its version, and its message id offset.
@@ -58,7 +60,7 @@ impl SharedCapability {
         messages: u8,
     ) -> Result<Self, SharedCapabilityError> {
         if offset <= MAX_RESERVED_MESSAGE_ID {
-            return Err(SharedCapabilityError::ReservedMessageIdOffset(offset))
+            return Err(SharedCapabilityError::ReservedMessageIdOffset(offset));
         }
 
         match name {
@@ -214,12 +216,12 @@ impl SharedCapabilities {
         let mut cap = iter.next()?;
         if offset < cap.message_id_offset() {
             // reserved message id space
-            return None
+            return None;
         }
 
         for next in iter {
             if offset < next.message_id_offset() {
-                return Some(cap)
+                return Some(cap);
             }
             cap = next
         }
@@ -303,7 +305,7 @@ pub fn shared_capability_offsets(
 
     // disconnect if we don't share any capabilities
     if shared_capabilities.is_empty() {
-        return Err(P2PStreamError::HandshakeError(P2PHandshakeError::NoSharedCapabilities))
+        return Err(P2PStreamError::HandshakeError(P2PHandshakeError::NoSharedCapabilities));
     }
 
     // order versions based on capability name (alphabetical) and select offsets based on
@@ -327,7 +329,7 @@ pub fn shared_capability_offsets(
     }
 
     if shared_with_offsets.is_empty() {
-        return Err(P2PStreamError::HandshakeError(P2PHandshakeError::NoSharedCapabilities))
+        return Err(P2PStreamError::HandshakeError(P2PHandshakeError::NoSharedCapabilities));
     }
 
     Ok(shared_with_offsets)
@@ -361,11 +363,12 @@ impl UnsupportedCapabilityError {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{Capabilities, Capability};
     use alloy_primitives::bytes::Bytes;
     use alloy_rlp::{Decodable, Encodable};
     use reth_eth_wire_types::RawCapabilityMessage;
+
+    use super::*;
+    use crate::{Capabilities, Capability};
 
     #[test]
     fn from_eth_68() {

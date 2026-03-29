@@ -17,5 +17,4 @@ pub use module::{
     DefaultRpcModuleValidator, LenientRpcModuleValidator, RethRpcModule, RpcModuleSelection,
     RpcModuleValidator,
 };
-
 pub use result::ToRpcResult;

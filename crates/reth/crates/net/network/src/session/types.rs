@@ -1,15 +1,16 @@
 //! Shared types for network sessions.
 
-use alloy_primitives::B256;
-use parking_lot::RwLock;
-use reth_eth_wire::BlockRangeUpdate;
 use std::{
     ops::RangeInclusive,
     sync::{
-        atomic::{AtomicU64, Ordering},
         Arc,
+        atomic::{AtomicU64, Ordering},
     },
 };
+
+use alloy_primitives::B256;
+use parking_lot::RwLock;
+use reth_eth_wire::BlockRangeUpdate;
 
 /// Information about the range of full blocks available from a peer.
 ///

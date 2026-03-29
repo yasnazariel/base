@@ -1,8 +1,10 @@
-use crate::tree::{LinkEntry, TreeRootEntry};
+use std::time::{Duration, Instant};
+
 use enr::EnrKeyUnambiguous;
 use linked_hash_set::LinkedHashSet;
 use secp256k1::SecretKey;
-use std::time::{Duration, Instant};
+
+use crate::tree::{LinkEntry, TreeRootEntry};
 
 /// A sync-able tree
 pub(crate) struct SyncTree<K: EnrKeyUnambiguous = SecretKey> {
@@ -63,27 +65,27 @@ impl<K: EnrKeyUnambiguous> SyncTree<K> {
         match self.sync_state {
             SyncState::Pending => {
                 self.sync_state = SyncState::Enr;
-                return Some(SyncAction::Link(self.root.link_root.clone()))
+                return Some(SyncAction::Link(self.root.link_root.clone()));
             }
             SyncState::Enr => {
                 self.sync_state = SyncState::Active;
-                return Some(SyncAction::Enr(self.root.enr_root.clone()))
+                return Some(SyncAction::Enr(self.root.enr_root.clone()));
             }
             SyncState::Link => {
                 self.sync_state = SyncState::Active;
-                return Some(SyncAction::Link(self.root.link_root.clone()))
+                return Some(SyncAction::Link(self.root.link_root.clone()));
             }
             SyncState::Active => {
                 if now > self.root_updated + update_timeout {
                     self.sync_state = SyncState::RootUpdate;
-                    return Some(SyncAction::UpdateRoot)
+                    return Some(SyncAction::UpdateRoot);
                 }
             }
             SyncState::RootUpdate => return None,
         }
 
         if let Some(link) = self.unresolved_links.pop_front() {
-            return Some(SyncAction::Link(link))
+            return Some(SyncAction::Link(link));
         }
 
         let enr = self.unresolved_nodes.pop_front()?;
@@ -155,9 +157,10 @@ impl ResolveKind {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use enr::EnrKey;
     use secp256k1::rand::thread_rng;
+
+    use super::*;
 
     fn base_root() -> TreeRootEntry {
         // taken from existing tests to ensure valid formatting

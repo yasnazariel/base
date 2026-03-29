@@ -1,4 +1,5 @@
 use alloc::vec::Vec;
+
 use derive_more::Deref;
 pub use nybbles::Nibbles;
 
@@ -96,9 +97,10 @@ impl reth_codecs::Compact for StoredNibblesSubKey {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use bytes::BytesMut;
     use reth_codecs::Compact;
+
+    use super::*;
 
     #[test]
     fn test_stored_nibbles_from_nibbles() {

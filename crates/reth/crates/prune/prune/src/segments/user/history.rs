@@ -1,16 +1,17 @@
-use crate::PruneLimiter;
 use alloy_primitives::BlockNumber;
 use itertools::Itertools;
 use reth_db_api::{
+    BlockNumberList, DatabaseError, RawKey, RawTable, RawValue,
     cursor::{DbCursorRO, DbCursorRW},
     models::ShardedKey,
     table::Table,
     transaction::DbTxMut,
-    BlockNumberList, DatabaseError, RawKey, RawTable, RawValue,
 };
 use reth_provider::DBProvider;
 use reth_prune_types::{SegmentOutput, SegmentOutputCheckpoint};
 use rustc_hash::FxHashMap;
+
+use crate::PruneLimiter;
 
 enum PruneShardOutcome {
     Deleted,
@@ -112,7 +113,7 @@ where
             let Some((key, block_nums)) =
                 shard.map(|(k, v)| Result::<_, DatabaseError>::Ok((k.key()?, v))).transpose()?
             else {
-                break
+                break;
             };
 
             if key_matches(&key, &sharded_key) {
@@ -123,7 +124,7 @@ where
                 }
             } else {
                 // If such shard doesn't exist, skip to the next sharded key
-                break 'shard
+                break 'shard;
             }
 
             shard = cursor.next()?;

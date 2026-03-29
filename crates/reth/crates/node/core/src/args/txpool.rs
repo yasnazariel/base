@@ -1,21 +1,23 @@
 //! Transaction pool arguments
 
-use crate::cli::config::RethTransactionPoolConfig;
+use std::{path::PathBuf, sync::OnceLock, time::Duration};
+
 use alloy_eips::eip1559::{ETHEREUM_BLOCK_GAS_LIMIT_30M, MIN_PROTOCOL_BASE_FEE};
 use alloy_primitives::Address;
-use clap::{builder::Resettable, Args};
+use clap::{Args, builder::Resettable};
 use reth_cli_util::{parse_duration_from_secs_or_ms, parsers::format_duration_as_secs_or_ms};
 use reth_transaction_pool::{
+    DEFAULT_PRICE_BUMP, DEFAULT_TXPOOL_ADDITIONAL_VALIDATION_TASKS, LocalTransactionConfig,
+    MAX_NEW_PENDING_TXS_NOTIFICATIONS, PoolConfig, PriceBumpConfig, REPLACE_BLOB_PRICE_BUMP,
+    SubPoolLimit, TXPOOL_MAX_ACCOUNT_SLOTS_PER_SENDER, TXPOOL_SUBPOOL_MAX_SIZE_MB_DEFAULT,
+    TXPOOL_SUBPOOL_MAX_TXS_DEFAULT,
     blobstore::disk::DEFAULT_MAX_CACHED_BLOBS,
     maintain::MAX_QUEUED_TRANSACTION_LIFETIME,
     pool::{NEW_TX_LISTENER_BUFFER_SIZE, PENDING_TX_LISTENER_BUFFER_SIZE},
     validate::DEFAULT_MAX_TX_INPUT_BYTES,
-    LocalTransactionConfig, PoolConfig, PriceBumpConfig, SubPoolLimit, DEFAULT_PRICE_BUMP,
-    DEFAULT_TXPOOL_ADDITIONAL_VALIDATION_TASKS, MAX_NEW_PENDING_TXS_NOTIFICATIONS,
-    REPLACE_BLOB_PRICE_BUMP, TXPOOL_MAX_ACCOUNT_SLOTS_PER_SENDER,
-    TXPOOL_SUBPOOL_MAX_SIZE_MB_DEFAULT, TXPOOL_SUBPOOL_MAX_TXS_DEFAULT,
 };
-use std::{path::PathBuf, sync::OnceLock, time::Duration};
+
+use crate::cli::config::RethTransactionPoolConfig;
 
 /// Global static transaction pool defaults
 static TXPOOL_DEFAULTS: OnceLock<DefaultTxPoolValues> = OnceLock::new();
@@ -551,9 +553,10 @@ impl RethTransactionPoolConfig for TxPoolArgs {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_primitives::address;
     use clap::Parser;
+
+    use super::*;
 
     /// A helper type to parse Args more easily
     #[derive(Parser)]

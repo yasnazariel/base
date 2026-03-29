@@ -1,4 +1,5 @@
-use crate::utils::eth_payload_attributes;
+use std::sync::Arc;
+
 use alloy_genesis::Genesis;
 use alloy_primitives::B256;
 use reth_chainspec::{ChainSpecBuilder, MAINNET};
@@ -6,7 +7,8 @@ use reth_e2e_test_utils::{setup, transaction::TransactionTestContext};
 use reth_node_ethereum::EthereumNode;
 use reth_provider::{HeaderProvider, StageCheckpointReader};
 use reth_stages_types::StageId;
-use std::sync::Arc;
+
+use crate::utils::eth_payload_attributes;
 
 /// Tests that a node can initialize and advance with a custom genesis block number.
 #[tokio::test]

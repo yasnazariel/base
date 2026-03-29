@@ -1,6 +1,8 @@
-use crate::StageId;
-use reth_metrics::{metrics::Gauge, Metrics};
 use std::collections::HashMap;
+
+use reth_metrics::{Metrics, metrics::Gauge};
+
+use crate::StageId;
 
 #[derive(Debug, Default)]
 pub(crate) struct SyncMetrics {

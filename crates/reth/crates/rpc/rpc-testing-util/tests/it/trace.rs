@@ -1,5 +1,7 @@
 //! Integration tests for the trace API.
 
+use std::time::Instant;
+
 use alloy_primitives::map::HashSet;
 use alloy_rpc_types_eth::{Block, Header, Transaction, TransactionRequest};
 use alloy_rpc_types_trace::{
@@ -11,7 +13,6 @@ use jsonrpsee_http_client::HttpClient;
 use reth_ethereum_primitives::{Receipt, TransactionSigned};
 use reth_rpc_api_testing_util::{debug::DebugApiExt, trace::TraceApiExt, utils::parse_env_url};
 use reth_rpc_eth_api::EthApiClient;
-use std::time::Instant;
 
 /// This is intended to be run locally against a running node.
 ///
@@ -20,7 +21,7 @@ use std::time::Instant;
 async fn trace_many_blocks() {
     let url = parse_env_url("RETH_RPC_TEST_NODE_URL");
     if url.is_err() {
-        return
+        return;
     }
     let url = url.unwrap();
 
@@ -107,7 +108,7 @@ async fn trace_call() {
 async fn debug_trace_block_entire_chain() {
     let url = parse_env_url("RETH_RPC_TEST_NODE_URL");
     if url.is_err() {
-        return
+        return;
     }
     let url = url.unwrap();
 
@@ -142,7 +143,7 @@ async fn debug_trace_block_opcodes_entire_chain() {
     let opcodes7702 = ["EXTCODESIZE", "EXTCODECOPY", "EXTCODEHASH"];
     let url = parse_env_url("RETH_RPC_TEST_NODE_URL");
     if url.is_err() {
-        return
+        return;
     }
     let url = url.unwrap();
 

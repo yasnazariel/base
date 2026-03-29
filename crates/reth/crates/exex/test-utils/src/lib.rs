@@ -10,7 +10,7 @@
 
 use std::{
     fmt::Debug,
-    future::{poll_fn, Future},
+    future::{Future, poll_fn},
     sync::Arc,
     task::Poll,
 };
@@ -20,43 +20,43 @@ use futures_util::FutureExt;
 use reth_chainspec::{ChainSpec, MAINNET};
 use reth_consensus::test_utils::TestConsensus;
 use reth_db::{
-    test_utils::{
-        create_test_rocksdb_dir, create_test_rw_db, create_test_static_files_dir, TempDatabase,
-    },
     DatabaseEnv,
+    test_utils::{
+        TempDatabase, create_test_rocksdb_dir, create_test_rw_db, create_test_static_files_dir,
+    },
 };
 use reth_db_common::init::init_genesis;
 use reth_ethereum_primitives::{EthPrimitives, TransactionSigned};
 use reth_evm_ethereum::MockEvmConfig;
 use reth_execution_types::Chain;
 use reth_exex::{ExExContext, ExExEvent, ExExNotification, ExExNotifications, Wal};
-use reth_network::{config::rng_secret_key, NetworkConfigBuilder, NetworkManager};
+use reth_network::{NetworkConfigBuilder, NetworkManager, config::rng_secret_key};
 use reth_node_api::{
     FullNodeTypes, FullNodeTypesAdapter, NodePrimitives, NodeTypes, NodeTypesWithDBAdapter,
 };
 use reth_node_builder::{
+    BuilderContext, Node, NodeAdapter, RethFullAdapter,
     components::{
         BasicPayloadServiceBuilder, Components, ComponentsBuilder, ConsensusBuilder,
         ExecutorBuilder, PoolBuilder,
     },
-    BuilderContext, Node, NodeAdapter, RethFullAdapter,
 };
 use reth_node_core::node_config::NodeConfig;
 use reth_node_ethereum::{
+    EthEngineTypes,
     node::{
         EthereumAddOns, EthereumEngineValidatorBuilder, EthereumEthApiBuilder,
         EthereumNetworkBuilder, EthereumPayloadBuilder,
     },
-    EthEngineTypes,
 };
 use reth_payload_builder::noop::NoopPayloadBuilderService;
 use reth_primitives_traits::{Block as _, RecoveredBlock};
 use reth_provider::{
-    providers::{BlockchainProvider, RocksDBProvider, StaticFileProvider},
     BlockReader, EthStorage, ProviderFactory,
+    providers::{BlockchainProvider, RocksDBProvider, StaticFileProvider},
 };
 use reth_tasks::Runtime;
-use reth_transaction_pool::test_utils::{testing_pool, TestPool};
+use reth_transaction_pool::test_utils::{TestPool, testing_pool};
 use tempfile::TempDir;
 use thiserror::Error;
 use tokio::sync::mpsc::{Sender, UnboundedReceiver};

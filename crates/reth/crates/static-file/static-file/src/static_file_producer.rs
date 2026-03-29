@@ -1,6 +1,11 @@
 //! Support for producing static files.
 
-use crate::{segments, segments::Segment, StaticFileProducerEvent};
+use std::{
+    ops::{Deref, RangeInclusive},
+    sync::Arc,
+    time::Instant,
+};
+
 use alloy_primitives::BlockNumber;
 use parking_lot::Mutex;
 use rayon::prelude::*;
@@ -8,20 +13,17 @@ use reth_codecs::Compact;
 use reth_db_api::table::Value;
 use reth_primitives_traits::NodePrimitives;
 use reth_provider::{
-    providers::StaticFileWriter, BlockReader, ChainStateBlockReader, DBProvider,
-    DatabaseProviderFactory, StageCheckpointReader, StaticFileProviderFactory,
+    BlockReader, ChainStateBlockReader, DBProvider, DatabaseProviderFactory, StageCheckpointReader,
+    StaticFileProviderFactory, providers::StaticFileWriter,
 };
 use reth_prune_types::PruneModes;
 use reth_stages_types::StageId;
 use reth_static_file_types::{HighestStaticFiles, StaticFileTargets};
 use reth_storage_errors::provider::ProviderResult;
 use reth_tokio_util::{EventSender, EventStream};
-use std::{
-    ops::{Deref, RangeInclusive},
-    sync::Arc,
-    time::Instant,
-};
 use tracing::{debug, trace};
+
+use crate::{StaticFileProducerEvent, segments, segments::Segment};
 
 /// Result of [`StaticFileProducerInner::run`] execution.
 pub type StaticFileProducerResult = ProviderResult<StaticFileTargets>;
@@ -117,7 +119,7 @@ where
     pub fn run(&self, targets: StaticFileTargets) -> StaticFileProducerResult {
         // If there are no targets, do not produce any static files and return early
         if !targets.any() {
-            return Ok(targets)
+            return Ok(targets);
         }
 
         debug_assert!(targets.is_contiguous_to_highest_static_files(
@@ -194,8 +196,8 @@ where
 
         let targets = StaticFileTargets {
             // StaticFile receipts only if they're not pruned according to the user configuration
-            receipts: if self.prune_modes.receipts.is_none() &&
-                self.prune_modes.receipts_log_filter.is_empty()
+            receipts: if self.prune_modes.receipts.is_none()
+                && self.prune_modes.receipts_log_filter.is_empty()
             {
                 finalized_block_numbers.receipts.and_then(|finalized_block_number| {
                     self.get_static_file_target(
@@ -232,23 +234,25 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::static_file_producer::{
-        StaticFileProducer, StaticFileProducerInner, StaticFileTargets,
-    };
+    use std::{sync::mpsc::channel, time::Duration};
+
     use alloy_primitives::B256;
     use assert_matches::assert_matches;
     use reth_provider::{
-        providers::StaticFileWriter, test_utils::MockNodeTypesWithDB, ProviderError,
-        ProviderFactory, StaticFileProviderFactory,
+        ProviderError, ProviderFactory, StaticFileProviderFactory, providers::StaticFileWriter,
+        test_utils::MockNodeTypesWithDB,
     };
     use reth_prune_types::PruneModes;
     use reth_stages::test_utils::{StorageKind, TestStageDB};
     use reth_static_file_types::{HighestStaticFiles, StaticFileSegment};
     use reth_testing_utils::generators::{
-        self, random_block_range, random_receipt, BlockRangeParams,
+        self, BlockRangeParams, random_block_range, random_receipt,
     };
-    use std::{sync::mpsc::channel, time::Duration};
     use tempfile::TempDir;
+
+    use crate::static_file_producer::{
+        StaticFileProducer, StaticFileProducerInner, StaticFileTargets,
+    };
 
     fn setup() -> (ProviderFactory<MockNodeTypesWithDB>, TempDir) {
         let mut rng = generators::rng();

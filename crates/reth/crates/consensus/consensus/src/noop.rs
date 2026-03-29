@@ -18,10 +18,12 @@
 //!
 //! **Not for production use** - provides no security guarantees or consensus validation.
 
-use crate::{Consensus, ConsensusError, FullConsensus, HeaderValidator, ReceiptRootBloom};
 use alloc::sync::Arc;
+
 use reth_execution_types::BlockExecutionResult;
 use reth_primitives_traits::{Block, NodePrimitives, RecoveredBlock, SealedBlock, SealedHeader};
+
+use crate::{Consensus, ConsensusError, FullConsensus, HeaderValidator, ReceiptRootBloom};
 
 /// A Consensus implementation that does nothing.
 ///

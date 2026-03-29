@@ -1,13 +1,15 @@
-use crate::{
-    capabilities::EngineCapabilities, metrics::EngineApiMetrics, EngineApiError, EngineApiResult,
+use std::{
+    sync::Arc,
+    time::{Instant, SystemTime},
 };
+
 use alloy_eips::{
     eip1898::BlockHashOrNumber,
     eip4844::{BlobAndProofV1, BlobAndProofV2},
     eip4895::Withdrawals,
     eip7685::RequestsOrHash,
 };
-use alloy_primitives::{BlockHash, BlockNumber, B256, U64};
+use alloy_primitives::{B256, BlockHash, BlockNumber, U64};
 use alloy_rpc_types_engine::{
     CancunPayloadFields, ClientVersionV1, ExecutionData, ExecutionPayloadBodiesV1,
     ExecutionPayloadBodiesV2, ExecutionPayloadBodyV1, ExecutionPayloadBodyV2,
@@ -16,26 +18,26 @@ use alloy_rpc_types_engine::{
     PraguePayloadFields,
 };
 use async_trait::async_trait;
-use jsonrpsee_core::{server::RpcModule, RpcResult};
+use jsonrpsee_core::{RpcResult, server::RpcModule};
 use reth_chainspec::EthereumHardforks;
 use reth_engine_primitives::{ConsensusEngineHandle, EngineApiValidator, EngineTypes};
 use reth_network_api::NetworkInfo;
 use reth_payload_builder::PayloadStore;
 use reth_payload_primitives::{
-    validate_payload_timestamp, EngineApiMessageVersion, MessageValidationKind,
-    PayloadOrAttributes, PayloadTypes,
+    EngineApiMessageVersion, MessageValidationKind, PayloadOrAttributes, PayloadTypes,
+    validate_payload_timestamp,
 };
 use reth_primitives_traits::{Block, BlockBody};
 use reth_rpc_api::{EngineApiServer, IntoEngineApiRpcModule};
 use reth_storage_api::{BlockReader, HeaderProvider, StateProviderFactory};
 use reth_tasks::TaskSpawner;
 use reth_transaction_pool::TransactionPool;
-use std::{
-    sync::Arc,
-    time::{Instant, SystemTime},
-};
 use tokio::sync::oneshot;
 use tracing::{debug, trace, warn};
+
+use crate::{
+    EngineApiError, EngineApiResult, capabilities::EngineCapabilities, metrics::EngineApiMetrics,
+};
 
 /// The Engine API response sender.
 pub type EngineApiSender<Ok> = oneshot::Sender<EngineApiResult<Ok>>;
@@ -551,9 +553,10 @@ where
             // > Client software MUST NOT return trailing null values if the request extends past the current latest known block.
             // truncate the end if it's greater than the last block
             if let Ok(best_block) = inner.provider.best_block_number()
-                && end > best_block {
-                    end = best_block;
-                }
+                && end > best_block
+            {
+                end = best_block;
+            }
 
             // Check if the requested range starts before the earliest available block due to pruning/expiry
             let earliest_block = inner.provider.earliest_block_number().unwrap_or(0);
@@ -770,9 +773,9 @@ where
                 // TODO: decide if we want this branch - the FCU INVALID response might be more
                 // useful than the payload attributes INVALID response
                 if fcu_res.is_invalid() {
-                    return Ok(fcu_res)
+                    return Ok(fcu_res);
                 }
-                return Err(err.into())
+                return Err(err.into());
             }
         }
 
@@ -798,7 +801,7 @@ where
         }
 
         if versioned_hashes.len() > MAX_BLOB_LIMIT {
-            return Err(EngineApiError::BlobRequestTooLarge { len: versioned_hashes.len() })
+            return Err(EngineApiError::BlobRequestTooLarge { len: versioned_hashes.len() });
         }
 
         self.inner
@@ -842,7 +845,7 @@ where
         }
 
         if versioned_hashes.len() > MAX_BLOB_LIMIT {
-            return Err(EngineApiError::BlobRequestTooLarge { len: versioned_hashes.len() })
+            return Err(EngineApiError::BlobRequestTooLarge { len: versioned_hashes.len() });
         }
 
         self.inner
@@ -865,12 +868,12 @@ where
         }
 
         if versioned_hashes.len() > MAX_BLOB_LIMIT {
-            return Err(EngineApiError::BlobRequestTooLarge { len: versioned_hashes.len() })
+            return Err(EngineApiError::BlobRequestTooLarge { len: versioned_hashes.len() });
         }
 
         // Spec requires returning `null` if syncing.
         if (*self.inner.is_syncing)() {
-            return Ok(None)
+            return Ok(None);
         }
 
         self.inner
@@ -1343,7 +1346,6 @@ struct EngineApiInner<Provider, PayloadT: PayloadTypes, Pool, Validator, ChainSp
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_rpc_types_engine::{ClientCode, ClientVersionV1};
     use assert_matches::assert_matches;
     use reth_chainspec::{ChainSpec, ChainSpecBuilder, MAINNET};
@@ -1351,14 +1353,16 @@ mod tests {
     use reth_ethereum_engine_primitives::EthEngineTypes;
     use reth_ethereum_primitives::Block;
     use reth_network_api::{
-        noop::NoopNetwork, EthProtocolInfo, NetworkError, NetworkInfo, NetworkStatus,
+        EthProtocolInfo, NetworkError, NetworkInfo, NetworkStatus, noop::NoopNetwork,
     };
     use reth_node_ethereum::EthereumEngineValidator;
     use reth_payload_builder::test_utils::spawn_test_payload_service;
     use reth_provider::test_utils::MockEthProvider;
     use reth_tasks::TokioTaskExecutor;
     use reth_transaction_pool::noop::NoopTransactionPool;
-    use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
+    use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
+
+    use super::*;
 
     fn setup_engine_api() -> (
         EngineApiTestHandle,
@@ -1507,9 +1511,10 @@ mod tests {
 
     // tests covering `engine_getPayloadBodiesByRange` and `engine_getPayloadBodiesByHash`
     mod get_payload_bodies {
-        use super::*;
         use alloy_rpc_types_engine::ExecutionPayloadBodyV1;
-        use reth_testing_utils::generators::{self, random_block_range, BlockRangeParams};
+        use reth_testing_utils::generators::{self, BlockRangeParams, random_block_range};
+
+        use super::*;
 
         #[tokio::test]
         async fn invalid_params() {
@@ -1582,8 +1587,8 @@ mod tests {
                 blocks
                     .iter()
                     .filter(|b| {
-                        !first_missing_range.contains(&b.number) &&
-                            !second_missing_range.contains(&b.number)
+                        !first_missing_range.contains(&b.number)
+                            && !second_missing_range.contains(&b.number)
                     })
                     .map(|b| (b.hash(), b.clone().into_block())),
             );
@@ -1612,8 +1617,8 @@ mod tests {
                 // ensure we still return trailing `None`s here because by-hash will not be aware
                 // of the missing block's number, and cannot compare it to the current best block
                 .map(|b| {
-                    if first_missing_range.contains(&b.number) ||
-                        second_missing_range.contains(&b.number)
+                    if first_missing_range.contains(&b.number)
+                        || second_missing_range.contains(&b.number)
                     {
                         None
                     } else {

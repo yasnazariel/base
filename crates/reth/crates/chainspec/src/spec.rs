@@ -1,15 +1,3 @@
-pub use alloy_eips::eip1559::BaseFeeParams;
-use alloy_evm::eth::spec::EthExecutorSpec;
-
-use crate::{
-    constants::{MAINNET_DEPOSIT_CONTRACT, MAINNET_PRUNE_DELETE_LIMIT},
-    ethereum::SEPOLIA_PARIS_TTD,
-    holesky, hoodi, mainnet,
-    mainnet::{MAINNET_PARIS_BLOCK, MAINNET_PARIS_TTD},
-    sepolia,
-    sepolia::SEPOLIA_PARIS_BLOCK,
-    EthChainSpec,
-};
 use alloc::{
     boxed::Box,
     collections::BTreeMap,
@@ -18,29 +6,42 @@ use alloc::{
     sync::Arc,
     vec::Vec,
 };
+use core::fmt::Debug;
+
 use alloy_chains::{Chain, NamedChain};
 use alloy_consensus::{
+    Header,
     constants::{
         EMPTY_WITHDRAWALS, HOLESKY_GENESIS_HASH, HOODI_GENESIS_HASH, MAINNET_GENESIS_HASH,
         SEPOLIA_GENESIS_HASH,
     },
-    Header,
 };
+pub use alloy_eips::eip1559::BaseFeeParams;
 use alloy_eips::{
     eip1559::INITIAL_BASE_FEE, eip7685::EMPTY_REQUESTS_HASH, eip7840::BlobParams,
     eip7892::BlobScheduleBlobParams,
 };
+use alloy_evm::eth::spec::EthExecutorSpec;
 use alloy_genesis::{ChainConfig, Genesis};
-use alloy_primitives::{address, b256, Address, BlockNumber, B256, U256};
+use alloy_primitives::{Address, B256, BlockNumber, U256, address, b256};
 use alloy_trie::root::state_root_ref_unhashed;
-use core::fmt::Debug;
 use derive_more::From;
 use reth_ethereum_forks::{
-    ChainHardforks, DisplayHardforks, EthereumHardfork, EthereumHardforks, ForkCondition,
-    ForkFilter, ForkFilterKey, ForkHash, ForkId, Hardfork, Hardforks, Head, DEV_HARDFORKS,
+    ChainHardforks, DEV_HARDFORKS, DisplayHardforks, EthereumHardfork, EthereumHardforks,
+    ForkCondition, ForkFilter, ForkFilterKey, ForkHash, ForkId, Hardfork, Hardforks, Head,
 };
-use reth_network_peers::{holesky_nodes, hoodi_nodes, mainnet_nodes, sepolia_nodes, NodeRecord};
-use reth_primitives_traits::{sync::LazyLock, BlockHeader, SealedHeader};
+use reth_network_peers::{NodeRecord, holesky_nodes, hoodi_nodes, mainnet_nodes, sepolia_nodes};
+use reth_primitives_traits::{BlockHeader, SealedHeader, sync::LazyLock};
+
+use crate::{
+    EthChainSpec,
+    constants::{MAINNET_DEPOSIT_CONTRACT, MAINNET_PRUNE_DELETE_LIMIT},
+    ethereum::SEPOLIA_PARIS_TTD,
+    holesky, hoodi, mainnet,
+    mainnet::{MAINNET_PARIS_BLOCK, MAINNET_PARIS_TTD},
+    sepolia,
+    sepolia::SEPOLIA_PARIS_BLOCK,
+};
 
 /// Helper method building a [`Header`] given [`Genesis`] and [`ChainHardforks`].
 pub fn make_genesis_header(genesis: &Genesis, hardforks: &ChainHardforks) -> Header {
@@ -341,8 +342,8 @@ pub fn blob_params_to_schedule(
     let bpo_forks = EthereumHardfork::bpo_variants();
     for (timestamp, blob_params) in &params.scheduled {
         for bpo_fork in bpo_forks {
-            if let ForkCondition::Timestamp(fork_ts) = hardforks.fork(bpo_fork) &&
-                fork_ts == *timestamp
+            if let ForkCondition::Timestamp(fork_ts) = hardforks.fork(bpo_fork)
+                && fork_ts == *timestamp
             {
                 schedule.insert(bpo_fork.name().to_lowercase(), *blob_params);
                 break;
@@ -534,7 +535,7 @@ impl<H: BlockHeader> ChainSpec<H> {
                 // given timestamp.
                 for (fork, params) in bf_params.iter().rev() {
                     if self.hardforks.is_fork_active_at_timestamp(fork.clone(), timestamp) {
-                        return *params
+                        return *params;
                     }
                 }
 
@@ -627,8 +628,8 @@ impl<H: BlockHeader> ChainSpec<H> {
             // We filter out TTD-based forks w/o a pre-known block since those do not show up in
             // the fork filter.
             Some(match condition {
-                ForkCondition::Block(block) |
-                ForkCondition::TTD { fork_block: Some(block), .. } => ForkFilterKey::Block(block),
+                ForkCondition::Block(block)
+                | ForkCondition::TTD { fork_block: Some(block), .. } => ForkFilterKey::Block(block),
                 ForkCondition::Timestamp(time) => ForkFilterKey::Time(time),
                 _ => return None,
             })
@@ -662,8 +663,8 @@ impl<H: BlockHeader> ChainSpec<H> {
         for (_, cond) in self.hardforks.forks_iter() {
             // handle block based forks and the sepolia merge netsplit block edge case (TTD
             // ForkCondition with Some(block))
-            if let ForkCondition::Block(block) |
-            ForkCondition::TTD { fork_block: Some(block), .. } = cond
+            if let ForkCondition::Block(block)
+            | ForkCondition::TTD { fork_block: Some(block), .. } = cond
             {
                 if head.number >= block {
                     // skip duplicated hardforks: hardforks enabled at genesis block
@@ -674,7 +675,7 @@ impl<H: BlockHeader> ChainSpec<H> {
                 } else {
                     // we can return here because this block fork is not active, so we set the
                     // `next` value
-                    return ForkId { hash: forkhash, next: block }
+                    return ForkId { hash: forkhash, next: block };
                 }
             }
         }
@@ -696,7 +697,7 @@ impl<H: BlockHeader> ChainSpec<H> {
                 // can safely return here because we have already handled all block forks and
                 // have handled all active timestamp forks, and set the next value to the
                 // timestamp that is known but not active yet
-                return ForkId { hash: forkhash, next: timestamp }
+                return ForkId { hash: forkhash, next: timestamp };
             }
         }
 
@@ -835,50 +836,49 @@ impl From<Genesis> for ChainSpec {
         // We expect no new networks to be configured with the merge, so we ignore the TTD field
         // and merge netsplit block from external genesis files. All existing networks that have
         // merged should have a static ChainSpec already (namely mainnet and sepolia).
-        let paris_block_and_final_difficulty = if let Some(ttd) =
-            genesis.config.terminal_total_difficulty
-        {
-            hardforks.push((
-                EthereumHardfork::Paris.boxed(),
-                ForkCondition::TTD {
-                    // NOTE: this will not work properly if the merge is not activated at
-                    // genesis, and there is no merge netsplit block
-                    activation_block_number: genesis
-                        .config
-                        .merge_netsplit_block
-                        .or_else(|| {
-                            // due to this limitation we can't determine the merge block,
-                            // this is the case for perfnet testing for example
-                            // at the time of this fix, only two networks transitioned: MAINNET +
-                            // SEPOLIA and this parsing from genesis is used for shadowforking, so
-                            // we can reasonably assume that if the TTD and the chainid matches
-                            // those networks we use the activation
-                            // blocks of those networks
-                            match genesis.config.chain_id {
-                                1 => {
-                                    if ttd == MAINNET_PARIS_TTD {
-                                        return Some(MAINNET_PARIS_BLOCK)
+        let paris_block_and_final_difficulty =
+            if let Some(ttd) = genesis.config.terminal_total_difficulty {
+                hardforks.push((
+                    EthereumHardfork::Paris.boxed(),
+                    ForkCondition::TTD {
+                        // NOTE: this will not work properly if the merge is not activated at
+                        // genesis, and there is no merge netsplit block
+                        activation_block_number: genesis
+                            .config
+                            .merge_netsplit_block
+                            .or_else(|| {
+                                // due to this limitation we can't determine the merge block,
+                                // this is the case for perfnet testing for example
+                                // at the time of this fix, only two networks transitioned: MAINNET +
+                                // SEPOLIA and this parsing from genesis is used for shadowforking, so
+                                // we can reasonably assume that if the TTD and the chainid matches
+                                // those networks we use the activation
+                                // blocks of those networks
+                                match genesis.config.chain_id {
+                                    1 => {
+                                        if ttd == MAINNET_PARIS_TTD {
+                                            return Some(MAINNET_PARIS_BLOCK);
+                                        }
                                     }
-                                }
-                                11155111 => {
-                                    if ttd == SEPOLIA_PARIS_TTD {
-                                        return Some(SEPOLIA_PARIS_BLOCK)
+                                    11155111 => {
+                                        if ttd == SEPOLIA_PARIS_TTD {
+                                            return Some(SEPOLIA_PARIS_BLOCK);
+                                        }
                                     }
-                                }
-                                _ => {}
-                            };
-                            None
-                        })
-                        .unwrap_or_default(),
-                    total_difficulty: ttd,
-                    fork_block: genesis.config.merge_netsplit_block,
-                },
-            ));
+                                    _ => {}
+                                };
+                                None
+                            })
+                            .unwrap_or_default(),
+                        total_difficulty: ttd,
+                        fork_block: genesis.config.merge_netsplit_block,
+                    },
+                ));
 
-            genesis.config.merge_netsplit_block.map(|block| (block, ttd))
-        } else {
-            None
-        };
+                genesis.config.merge_netsplit_block.map(|block| (block, ttd))
+            } else {
+                None
+            };
 
         // Time-based hardforks
         let time_hardfork_opts = [
@@ -1278,17 +1278,19 @@ pub fn test_fork_ids(spec: &ChainSpec, cases: &[(Head, ForkId)]) {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use core::ops::Deref;
+    use std::{collections::HashMap, str::FromStr};
+
     use alloy_chains::Chain;
     use alloy_consensus::constants::ETH_TO_WEI;
     use alloy_eips::{eip4844::BLOB_TX_MIN_BLOB_GASPRICE, eip7840::BlobParams};
     use alloy_evm::block::calc::{base_block_reward, block_reward};
     use alloy_genesis::{ChainConfig, GenesisAccount};
     use alloy_primitives::{b256, hex};
-    use alloy_trie::{TrieAccount, EMPTY_ROOT_HASH};
-    use core::ops::Deref;
+    use alloy_trie::{EMPTY_ROOT_HASH, TrieAccount};
     use reth_ethereum_forks::{ForkCondition, ForkHash, ForkId, Head};
-    use std::{collections::HashMap, str::FromStr};
+
+    use super::*;
 
     fn test_hardfork_fork_ids(spec: &ChainSpec, cases: &[(EthereumHardfork, ForkId)]) {
         for (hardfork, expected_id) in cases {
@@ -2137,16 +2139,20 @@ Post-merge hard forks (timestamp based):
         // Check that Paris is not active on terminal PoW block #15537393.
         let terminal_block_ttd = U256::from(58750003716598352816469_u128);
         let terminal_block_difficulty = U256::from(11055787484078698_u128);
-        assert!(!chainspec
-            .fork(EthereumHardfork::Paris)
-            .active_at_ttd(terminal_block_ttd, terminal_block_difficulty));
+        assert!(
+            !chainspec
+                .fork(EthereumHardfork::Paris)
+                .active_at_ttd(terminal_block_ttd, terminal_block_difficulty)
+        );
 
         // Check that Paris is active on first PoS block #15537394.
         let first_pos_block_ttd = U256::from(58750003716598352816469_u128);
         let first_pos_difficulty = U256::ZERO;
-        assert!(chainspec
-            .fork(EthereumHardfork::Paris)
-            .active_at_ttd(first_pos_block_ttd, first_pos_difficulty));
+        assert!(
+            chainspec
+                .fork(EthereumHardfork::Paris)
+                .active_at_ttd(first_pos_block_ttd, first_pos_difficulty)
+        );
     }
 
     #[test]
@@ -2640,9 +2646,11 @@ Post-merge hard forks (timestamp based):
 
     #[test]
     fn holesky_paris_activated_at_genesis() {
-        assert!(HOLESKY
-            .fork(EthereumHardfork::Paris)
-            .active_at_ttd(HOLESKY.genesis.difficulty, HOLESKY.genesis.difficulty));
+        assert!(
+            HOLESKY
+                .fork(EthereumHardfork::Paris)
+                .active_at_ttd(HOLESKY.genesis.difficulty, HOLESKY.genesis.difficulty)
+        );
     }
 
     #[test]
@@ -2799,10 +2807,12 @@ Post-merge hard forks (timestamp based):
             EthereumHardfork::Cancun.boxed(),
         ];
 
-        assert!(expected_hardforks
-            .iter()
-            .zip(hardforks.iter())
-            .all(|(expected, actual)| &**expected == *actual));
+        assert!(
+            expected_hardforks
+                .iter()
+                .zip(hardforks.iter())
+                .all(|(expected, actual)| &**expected == *actual)
+        );
         assert_eq!(expected_hardforks.len(), hardforks.len());
     }
 

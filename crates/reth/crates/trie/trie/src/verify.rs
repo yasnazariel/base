@@ -1,20 +1,22 @@
-use crate::{
-    hashed_cursor::{HashedCursor, HashedCursorFactory},
-    progress::{IntermediateStateRootState, StateRootProgress},
-    trie::StateRoot,
-    trie_cursor::{
-        depth_first::{self, DepthFirstTrieIterator},
-        noop::NoopTrieCursorFactory,
-        TrieCursor, TrieCursorFactory,
-    },
-    Nibbles,
-};
+use std::cmp::{Ordering, Reverse};
+
 use alloy_primitives::B256;
 use alloy_trie::BranchNodeCompact;
 use reth_execution_errors::StateRootError;
 use reth_storage_errors::db::DatabaseError;
-use std::cmp::{Ordering, Reverse};
 use tracing::trace;
+
+use crate::{
+    Nibbles,
+    hashed_cursor::{HashedCursor, HashedCursorFactory},
+    progress::{IntermediateStateRootState, StateRootProgress},
+    trie::StateRoot,
+    trie_cursor::{
+        TrieCursor, TrieCursorFactory,
+        depth_first::{self, DepthFirstTrieIterator},
+        noop::NoopTrieCursorFactory,
+    },
+};
 
 /// Used by [`StateRootBranchNodesIter`] to iterate over branch nodes in a state root.
 #[derive(Debug)]
@@ -73,11 +75,11 @@ impl<H: HashedCursorFactory + Clone> Iterator for StateRootBranchNodesIter<H> {
         loop {
             // If we already started iterating through a storage trie's updates, continue doing
             // so.
-            if let Some((account, storage_updates)) = self.curr_storage.as_mut() &&
-                let Some((path, node)) = storage_updates.pop()
+            if let Some((account, storage_updates)) = self.curr_storage.as_mut()
+                && let Some((path, node)) = storage_updates.pop()
             {
                 let node = BranchNode::Storage(*account, path, node);
-                return Some(Ok(node))
+                return Some(Ok(node));
             }
 
             // If there's not a storage trie already being iterated over then check if there's a
@@ -91,14 +93,14 @@ impl<H: HashedCursorFactory + Clone> Iterator for StateRootBranchNodesIter<H> {
 
             // `storage_updates` is empty, check if there are account updates.
             if let Some((path, node)) = self.account_nodes.pop() {
-                return Some(Ok(BranchNode::Account(path, node)))
+                return Some(Ok(BranchNode::Account(path, node)));
             }
 
             // All data from any previous runs of the `StateRoot` has been produced, run the next
             // partial computation, unless `StateRootProgress::Complete` has been returned in which
             // case iteration is over.
             if self.complete {
-                return None
+                return None;
             }
 
             let state_root =
@@ -246,7 +248,7 @@ impl<C: TrieCursor> SingleVerifier<DepthFirstTrieIterator<C>> {
             // found must be considered missing.
             if self.curr.is_none() {
                 outputs.push(self.output_missing(path, node));
-                return Ok(())
+                return Ok(());
             }
 
             let (curr_path, curr_node) = self.curr.as_ref().expect("not None");
@@ -258,7 +260,7 @@ impl<C: TrieCursor> SingleVerifier<DepthFirstTrieIterator<C>> {
                     // If the given path comes before the cursor's current path in depth-first
                     // order, then the given path was not produced by the cursor.
                     outputs.push(self.output_missing(path, node));
-                    return Ok(())
+                    return Ok(());
                 }
                 Ordering::Equal => {
                     // If the current path matches the given one (happy path) but the nodes
@@ -268,7 +270,7 @@ impl<C: TrieCursor> SingleVerifier<DepthFirstTrieIterator<C>> {
                         outputs.push(self.output_wrong(path, node, curr_node.clone()))
                     }
                     self.curr = self.trie_iter.next().transpose()?;
-                    return Ok(())
+                    return Ok(());
                 }
                 Ordering::Greater => {
                     // If the given path comes after the current path in depth-first order,
@@ -291,7 +293,7 @@ impl<C: TrieCursor> SingleVerifier<DepthFirstTrieIterator<C>> {
                 outputs.push(self.output_extra(curr_path, curr_node));
                 self.curr = self.trie_iter.next().transpose()?;
             } else {
-                return Ok(())
+                return Ok(());
             }
         }
     }
@@ -369,7 +371,7 @@ impl<'a, T: TrieCursorFactory, H: HashedCursorFactory + Clone> Verifier<'a, T, H
                 account_seeked = true;
                 account_cursor.seek(last_account)?
             }) else {
-                return Ok(())
+                return Ok(());
             };
 
             if curr_account < next_account || (end_inclusive && curr_account == next_account) {
@@ -387,7 +389,7 @@ impl<'a, T: TrieCursorFactory, H: HashedCursorFactory + Clone> Verifier<'a, T, H
                     self.outputs.push(Output::StorageExtra(curr_account, path, node));
                 }
             } else {
-                return Ok(())
+                return Ok(());
             }
         }
     }
@@ -453,15 +455,15 @@ impl<'a, T: TrieCursorFactory, H: HashedCursorFactory + Clone> Iterator for Veri
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             if let Some(output) = self.outputs.pop() {
-                return Some(Ok(output))
+                return Some(Ok(output));
             }
 
             if self.complete {
-                return None
+                return None;
             }
 
             if let Err(err) = self.try_next() {
-                return Some(Err(err))
+                return Some(Err(err));
             }
         }
     }
@@ -469,16 +471,18 @@ impl<'a, T: TrieCursorFactory, H: HashedCursorFactory + Clone> Iterator for Veri
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
+    use alloy_primitives::{U256, address, keccak256, map::B256Map};
+    use alloy_trie::TrieMask;
+    use assert_matches::assert_matches;
+    use reth_primitives_traits::Account;
+
     use super::*;
     use crate::{
         hashed_cursor::mock::MockHashedCursorFactory,
         trie_cursor::mock::{MockTrieCursor, MockTrieCursorFactory},
     };
-    use alloy_primitives::{address, keccak256, map::B256Map, U256};
-    use alloy_trie::TrieMask;
-    use assert_matches::assert_matches;
-    use reth_primitives_traits::Account;
-    use std::collections::BTreeMap;
 
     /// Helper function to create a simple test `BranchNodeCompact`
     fn test_branch_node(

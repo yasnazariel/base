@@ -1,17 +1,18 @@
 //! API of a signed transaction.
 
-use crate::{InMemorySize, MaybeCompact, MaybeSerde, MaybeSerdeBincodeCompat};
 use alloc::fmt;
-use alloy_consensus::{
-    transaction::{Recovered, RlpEcdsaEncodableTx, SignerRecoverable, TxHashRef},
-    EthereumTxEnvelope, SignableTransaction,
-};
-use alloy_eips::eip2718::{Decodable2718, Encodable2718, IsTyped2718};
-use alloy_primitives::{keccak256, Address, Signature, B256};
-use alloy_rlp::{Decodable, Encodable};
 use core::hash::Hash;
 
 pub use alloy_consensus::crypto::RecoveryError;
+use alloy_consensus::{
+    EthereumTxEnvelope, SignableTransaction,
+    transaction::{Recovered, RlpEcdsaEncodableTx, SignerRecoverable, TxHashRef},
+};
+use alloy_eips::eip2718::{Decodable2718, Encodable2718, IsTyped2718};
+use alloy_primitives::{Address, B256, Signature, keccak256};
+use alloy_rlp::{Decodable, Encodable};
+
+use crate::{InMemorySize, MaybeCompact, MaybeSerde, MaybeSerdeBincodeCompat};
 
 /// Helper trait that unifies all behaviour required by block to support full node operations.
 pub trait FullSignedTx: SignedTransaction + MaybeCompact + MaybeSerdeBincodeCompat {}
@@ -149,8 +150,9 @@ where
 
 #[cfg(feature = "op")]
 mod op {
-    use super::*;
     use op_alloy_consensus::{OpPooledTransaction, OpTxEnvelope};
+
+    use super::*;
 
     impl SignedTransaction for OpPooledTransaction {}
 

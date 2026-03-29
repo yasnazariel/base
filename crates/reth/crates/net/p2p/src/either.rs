@@ -2,15 +2,15 @@
 
 use std::ops::RangeInclusive;
 
+use alloy_primitives::B256;
+pub use futures::future::Either;
+
 use crate::{
     bodies::client::BodiesClient,
     download::DownloadClient,
     headers::client::{HeadersClient, HeadersRequest},
     priority::Priority,
 };
-use alloy_primitives::B256;
-
-pub use futures::future::Either;
 
 impl<A, B> DownloadClient for Either<A, B>
 where

@@ -1,17 +1,19 @@
 //! A simple diskstore for blobs
 
-use crate::blobstore::{BlobStore, BlobStoreCleanupStat, BlobStoreError, BlobStoreSize};
+use std::{fmt, fs, io, path::PathBuf, sync::Arc};
+
 use alloy_eips::{
     eip4844::{BlobAndProofV1, BlobAndProofV2},
     eip7594::BlobTransactionSidecarVariant,
     eip7840::BlobParams,
     merge::EPOCH_SLOTS,
 };
-use alloy_primitives::{map::B256Set, TxHash, B256};
+use alloy_primitives::{B256, TxHash, map::B256Set};
 use parking_lot::{Mutex, RwLock};
 use schnellru::{ByLength, LruMap};
-use std::{fmt, fs, io, path::PathBuf, sync::Arc};
 use tracing::{debug, trace};
+
+use crate::blobstore::{BlobStore, BlobStoreCleanupStat, BlobStoreError, BlobStoreSize};
 
 /// How many [`BlobTransactionSidecarVariant`] to cache in memory.
 pub const DEFAULT_MAX_CACHED_BLOBS: u32 = 100;
@@ -142,7 +144,7 @@ impl BlobStore for DiskFileBlobStore {
         txs: Vec<(B256, BlobTransactionSidecarVariant)>,
     ) -> Result<(), BlobStoreError> {
         if txs.is_empty() {
-            return Ok(())
+            return Ok(());
         }
         self.inner.insert_many(txs)
     }
@@ -156,7 +158,7 @@ impl BlobStore for DiskFileBlobStore {
 
     fn delete_all(&self, txs: Vec<B256>) -> Result<(), BlobStoreError> {
         if txs.is_empty() {
-            return Ok(())
+            return Ok(());
         }
         let txs = self.inner.retain_existing(txs)?;
         self.inner.txs_to_delete.write().extend(txs);
@@ -201,7 +203,7 @@ impl BlobStore for DiskFileBlobStore {
         txs: Vec<B256>,
     ) -> Result<Vec<(B256, Arc<BlobTransactionSidecarVariant>)>, BlobStoreError> {
         if txs.is_empty() {
-            return Ok(Vec::new())
+            return Ok(Vec::new());
         }
         self.inner.get_all(txs)
     }
@@ -211,7 +213,7 @@ impl BlobStore for DiskFileBlobStore {
         txs: Vec<B256>,
     ) -> Result<Vec<Arc<BlobTransactionSidecarVariant>>, BlobStoreError> {
         if txs.is_empty() {
-            return Ok(Vec::new())
+            return Ok(Vec::new());
         }
         self.inner.get_exact(txs)
     }
@@ -434,7 +436,7 @@ impl DiskFileBlobStoreInner {
     /// Returns true if the blob for the given transaction hash is in the blob cache or on disk.
     fn contains(&self, tx: B256) -> Result<bool, BlobStoreError> {
         if self.blob_cache.lock().get(&tx).is_some() {
-            return Ok(true)
+            return Ok(true);
         }
         // we only check if the file exists and assume it's valid
         Ok(self.blob_disk_file(tx).is_file())
@@ -463,13 +465,13 @@ impl DiskFileBlobStoreInner {
         tx: B256,
     ) -> Result<Option<Arc<BlobTransactionSidecarVariant>>, BlobStoreError> {
         if let Some(blob) = self.blob_cache.lock().get(&tx) {
-            return Ok(Some(blob.clone()))
+            return Ok(Some(blob.clone()));
         }
 
         if let Some(blob) = self.read_one(tx)? {
             let blob_arc = Arc::new(blob);
             self.blob_cache.lock().insert(tx, blob_arc.clone());
-            return Ok(Some(blob_arc))
+            return Ok(Some(blob_arc));
         }
 
         Ok(None)
@@ -493,7 +495,7 @@ impl DiskFileBlobStoreInner {
                 Err(e) => {
                     return Err(BlobStoreError::Other(Box::new(DiskFileBlobStoreError::ReadFile(
                         tx, path, e,
-                    ))))
+                    ))));
                 }
             }
         };
@@ -576,11 +578,11 @@ impl DiskFileBlobStoreInner {
             }
         }
         if cache_miss.is_empty() {
-            return Ok(res)
+            return Ok(res);
         }
         let from_disk = self.read_many_decoded(cache_miss);
         if from_disk.is_empty() {
-            return Ok(res)
+            return Ok(res);
         }
         let from_disk = from_disk
             .into_iter()
@@ -685,16 +687,17 @@ pub enum OpenDiskFileBlobStore {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::Ordering;
+
     use alloy_consensus::BlobTransactionSidecar;
     use alloy_eips::{
-        eip4844::{kzg_to_versioned_hash, Blob, BlobAndProofV2, Bytes48},
+        eip4844::{Blob, BlobAndProofV2, Bytes48, kzg_to_versioned_hash},
         eip7594::{
             BlobTransactionSidecarEip7594, BlobTransactionSidecarVariant, CELLS_PER_EXT_BLOB,
         },
     };
 
     use super::*;
-    use std::sync::atomic::Ordering;
 
     fn tmp_store() -> (DiskFileBlobStore, tempfile::TempDir) {
         let dir = tempfile::tempdir().unwrap();
