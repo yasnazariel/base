@@ -55,6 +55,11 @@ pub const EOA_AUTH_GAS: u64 = 6_000;
 /// creating disproportionate mempool/inclusion validation work.
 pub const MAX_CALLS_PER_TX: usize = 100;
 
+/// Maximum number of EIP-7702 authorizations in one AA transaction.
+///
+/// Kept intentionally small during rollout to bound ingress verification work.
+pub const MAX_AUTHORIZATIONS_PER_TX: usize = 1;
+
 /// Maximum number of account-change units in one transaction.
 ///
 /// Counting rules:
@@ -126,7 +131,8 @@ pub struct VerifierGasCosts {
 
 impl VerifierGasCosts {
     /// Default gas costs for BASE_V1.
-    pub const BASE_V1: Self = Self { k1: 6_000, p256_raw: 9_500, p256_webauthn: 15_000, delegate: 3_000 };
+    pub const BASE_V1: Self =
+        Self { k1: 6_000, p256_raw: 9_500, p256_webauthn: 15_000, delegate: 3_000 };
 
     /// Returns the verification gas for a given verifier type byte.
     ///
@@ -143,9 +149,8 @@ impl VerifierGasCosts {
             VERIFIER_P256_RAW => self.p256_raw,
             VERIFIER_P256_WEBAUTHN => self.p256_webauthn,
             VERIFIER_DELEGATE => {
-                let inner_cost = inner_verifier_type
-                    .map(|t| self.gas_for_verifier(t, None))
-                    .unwrap_or(0);
+                let inner_cost =
+                    inner_verifier_type.map(|t| self.gas_for_verifier(t, None)).unwrap_or(0);
                 self.delegate + inner_cost
             }
             _ => 0,

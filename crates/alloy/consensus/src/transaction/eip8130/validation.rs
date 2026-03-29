@@ -12,7 +12,10 @@ use super::{
     OwnerScope,
     accessors::{read_change_sequence, read_lock_state, read_nonce, read_owner_config},
     account_change_units,
-    constants::{MAX_ACCOUNT_CHANGES_PER_TX, MAX_CALLS_PER_TX, MAX_SIGNATURE_SIZE},
+    constants::{
+        MAX_ACCOUNT_CHANGES_PER_TX, MAX_AUTHORIZATIONS_PER_TX, MAX_CALLS_PER_TX,
+        MAX_CONFIG_OPS_PER_TX, MAX_SIGNATURE_SIZE,
+    },
     predeploys::{
         DELEGATE_VERIFIER_ADDRESS, K1_VERIFIER_ADDRESS, P256_RAW_VERIFIER_ADDRESS,
         P256_WEBAUTHN_VERIFIER_ADDRESS,
@@ -31,6 +34,10 @@ pub enum ValidationError {
     #[error("payer_auth exceeds max size ({0} > {MAX_SIGNATURE_SIZE})")]
     PayerAuthTooLarge(usize),
 
+    /// A config-change `authorizer_auth` field is too large.
+    #[error("authorizer_auth exceeds max size ({0} > {MAX_SIGNATURE_SIZE})")]
+    AuthorizerAuthTooLarge(usize),
+
     /// Failed to parse `sender_auth`.
     #[error("invalid sender_auth: {0}")]
     InvalidSenderAuth(&'static str),
@@ -42,6 +49,15 @@ pub enum ValidationError {
     /// `account_changes` has invalid structure (e.g. create not first).
     #[error("invalid account_changes structure: {0}")]
     InvalidAccountChanges(&'static str),
+
+    /// The transaction has too many EIP-7702 authorizations.
+    #[error("too many authorizations in transaction ({count} > {limit})")]
+    TooManyAuthorizations {
+        /// Number of authorizations in the transaction.
+        count: usize,
+        /// Maximum allowed authorizations.
+        limit: usize,
+    },
 
     /// The transaction has too many calls across all phases.
     #[error("too many calls in transaction ({count} > {limit})")]
@@ -58,6 +74,15 @@ pub enum ValidationError {
         /// Number of account-change units in the transaction.
         count: usize,
         /// Maximum allowed account-change units.
+        limit: usize,
+    },
+
+    /// The transaction has too many config operations across all config changes.
+    #[error("too many config operations in transaction ({count} > {limit})")]
+    TooManyConfigOperations {
+        /// Number of config operations in the transaction.
+        count: usize,
+        /// Maximum allowed config operations.
         limit: usize,
     },
 
@@ -145,10 +170,25 @@ pub fn validate_structure(tx: &TxEip8130) -> Result<(), ValidationError> {
         return Err(ValidationError::NonceKeyTooLarge);
     }
 
+    validate_authorizations_limit(tx)?;
     validate_account_changes_structure(tx)?;
     validate_calls_limit(tx)?;
     validate_account_changes_limit(tx)?;
+    validate_config_operations_limit(tx)?;
+    validate_authorizer_auth_sizes(tx)?;
 
+    Ok(())
+}
+
+/// Validates the EIP-7702 authorization list length.
+fn validate_authorizations_limit(tx: &TxEip8130) -> Result<(), ValidationError> {
+    let count = tx.authorization_list.len();
+    if count > MAX_AUTHORIZATIONS_PER_TX {
+        return Err(ValidationError::TooManyAuthorizations {
+            count,
+            limit: MAX_AUTHORIZATIONS_PER_TX,
+        });
+    }
     Ok(())
 }
 
@@ -161,9 +201,7 @@ fn validate_account_changes_structure(tx: &TxEip8130) -> Result<(), ValidationEr
         match entry {
             AccountChangeEntry::Create(_) => {
                 if seen_create {
-                    return Err(ValidationError::InvalidAccountChanges(
-                        "multiple create entries",
-                    ));
+                    return Err(ValidationError::InvalidAccountChanges("multiple create entries"));
                 }
                 if i != 0 {
                     return Err(ValidationError::InvalidAccountChanges(
@@ -172,7 +210,13 @@ fn validate_account_changes_structure(tx: &TxEip8130) -> Result<(), ValidationEr
                 }
                 seen_create = true;
             }
-            AccountChangeEntry::ConfigChange(_) => {}
+            AccountChangeEntry::ConfigChange(cc) => {
+                if cc.operations.is_empty() {
+                    return Err(ValidationError::InvalidAccountChanges(
+                        "config change entry must include at least one operation",
+                    ));
+                }
+            }
         }
     }
     Ok(())
@@ -182,10 +226,7 @@ fn validate_account_changes_structure(tx: &TxEip8130) -> Result<(), ValidationEr
 fn validate_calls_limit(tx: &TxEip8130) -> Result<(), ValidationError> {
     let total_calls: usize = tx.calls.iter().map(Vec::len).sum();
     if total_calls > MAX_CALLS_PER_TX {
-        return Err(ValidationError::TooManyCalls {
-            count: total_calls,
-            limit: MAX_CALLS_PER_TX,
-        });
+        return Err(ValidationError::TooManyCalls { count: total_calls, limit: MAX_CALLS_PER_TX });
     }
     Ok(())
 }
@@ -202,6 +243,42 @@ fn validate_account_changes_limit(tx: &TxEip8130) -> Result<(), ValidationError>
     Ok(())
 }
 
+/// Validates total config operation count across all config change entries.
+fn validate_config_operations_limit(tx: &TxEip8130) -> Result<(), ValidationError> {
+    use super::types::AccountChangeEntry;
+
+    let total_ops: usize = tx
+        .account_changes
+        .iter()
+        .map(|entry| match entry {
+            AccountChangeEntry::ConfigChange(cc) => cc.operations.len(),
+            AccountChangeEntry::Create(_) => 0,
+        })
+        .sum();
+    if total_ops > MAX_CONFIG_OPS_PER_TX {
+        return Err(ValidationError::TooManyConfigOperations {
+            count: total_ops,
+            limit: MAX_CONFIG_OPS_PER_TX,
+        });
+    }
+    Ok(())
+}
+
+/// Validates config-change authorizer auth blobs with the same size bound as sender/payer auth.
+fn validate_authorizer_auth_sizes(tx: &TxEip8130) -> Result<(), ValidationError> {
+    use super::types::AccountChangeEntry;
+
+    for entry in &tx.account_changes {
+        let AccountChangeEntry::ConfigChange(cc) = entry else {
+            continue;
+        };
+        if cc.authorizer_auth.len() > MAX_SIGNATURE_SIZE {
+            return Err(ValidationError::AuthorizerAuthTooLarge(cc.authorizer_auth.len()));
+        }
+    }
+    Ok(())
+}
+
 /// Validates expiry against the current block timestamp.
 pub fn validate_expiry(tx: &TxEip8130, block_timestamp: u64) -> Result<(), ValidationError> {
     if tx.expiry != 0 && block_timestamp > tx.expiry {
@@ -213,9 +290,10 @@ pub fn validate_expiry(tx: &TxEip8130, block_timestamp: u64) -> Result<(), Valid
 /// Validates the nonce against on-chain state.
 pub fn validate_nonce<DB: Database>(
     db: &mut DB,
+    sender: Address,
     tx: &TxEip8130,
 ) -> Result<(), ValidationError> {
-    let current = read_nonce(db, tx.effective_sender(), tx.nonce_key)
+    let current = read_nonce(db, sender, tx.nonce_key)
         .map_err(|e| ValidationError::Database(format!("{e:?}")))?;
     if current != tx.nonce_sequence {
         return Err(ValidationError::NonceMismatch { expected: current, got: tx.nonce_sequence });
@@ -225,10 +303,17 @@ pub fn validate_nonce<DB: Database>(
 
 /// Resolves the effective sender address.
 ///
-/// If `from == Address::ZERO` (EOA mode), the sender must be recovered from
-/// `sender_auth` via ecrecover. Otherwise, the `from` field is used directly.
-pub fn resolve_sender(tx: &TxEip8130) -> Address {
-    tx.effective_sender()
+/// If `from == Address::ZERO` (EOA mode), a recovered sender address must be
+/// provided by ingress recovery. Otherwise, the `from` field is used directly.
+pub fn resolve_sender(
+    tx: &TxEip8130,
+    recovered_sender: Option<Address>,
+) -> Result<Address, ValidationError> {
+    if tx.is_eoa() {
+        return recovered_sender
+            .ok_or(ValidationError::InvalidSenderAuth("EOA sender must be recovered at ingress"));
+    }
+    Ok(tx.from)
 }
 
 /// Checks whether the sender is authorized by verifying their `owner_config`.
@@ -287,8 +372,8 @@ pub fn check_lock_state<DB: Database>(
     db: &mut DB,
     account: Address,
 ) -> Result<(), ValidationError> {
-    let lock = read_lock_state(db, account)
-        .map_err(|e| ValidationError::Database(format!("{e:?}")))?;
+    let lock =
+        read_lock_state(db, account).map_err(|e| ValidationError::Database(format!("{e:?}")))?;
     if lock.locked {
         return Err(ValidationError::AccountLocked);
     }
@@ -298,19 +383,17 @@ pub fn check_lock_state<DB: Database>(
 /// Validates config change sequences.
 pub fn validate_config_change_sequences<DB: Database>(
     db: &mut DB,
+    sender: Address,
     tx: &TxEip8130,
 ) -> Result<(), ValidationError> {
     use super::types::AccountChangeEntry;
 
     for entry in &tx.account_changes {
         if let AccountChangeEntry::ConfigChange(change) = entry {
-            let expected = read_change_sequence(db, tx.effective_sender(), change.chain_id)
+            let expected = read_change_sequence(db, sender, change.chain_id)
                 .map_err(|e| ValidationError::Database(format!("{e:?}")))?;
             if change.sequence != expected {
-                return Err(ValidationError::SequenceMismatch {
-                    expected,
-                    got: change.sequence,
-                });
+                return Err(ValidationError::SequenceMismatch { expected, got: change.sequence });
             }
         }
     }
@@ -338,10 +421,7 @@ pub fn verifier_type_to_address(verifier_type: u8) -> Option<Address> {
 /// Encodes a STATICCALL to `IVerifier.verify(hash, data)`.
 pub fn encode_verify_call(hash: B256, data: &Bytes) -> Bytes {
     use super::abi::IVerifier;
-    let call = IVerifier::verifyCall {
-        hash,
-        data: data.clone(),
-    };
+    let call = IVerifier::verifyCall { hash, data: data.clone() };
     Bytes::from(call.abi_encode())
 }
 
@@ -353,8 +433,24 @@ pub fn decode_verify_return(output: &[u8]) -> Option<B256> {
 
 #[cfg(test)]
 mod tests {
+    use alloy_eips::eip7702::{Authorization, SignedAuthorization};
+    use alloy_primitives::{Address, U256};
+
     use super::*;
     use alloy_primitives::address;
+
+    fn sample_authorization() -> SignedAuthorization {
+        SignedAuthorization::new_unchecked(
+            Authorization {
+                chain_id: U256::from(8453),
+                address: address!("0x4444444444444444444444444444444444444444"),
+                nonce: 0,
+            },
+            0,
+            U256::from(1),
+            U256::from(2),
+        )
+    }
 
     #[test]
     fn implicit_eoa_owner_id_correct() {
@@ -386,22 +482,13 @@ mod tests {
             sender_auth: Bytes::from(vec![0u8; MAX_SIGNATURE_SIZE + 1]),
             ..Default::default()
         };
-        assert!(matches!(
-            validate_structure(&tx),
-            Err(ValidationError::SenderAuthTooLarge(_))
-        ));
+        assert!(matches!(validate_structure(&tx), Err(ValidationError::SenderAuthTooLarge(_))));
     }
 
     #[test]
     fn structure_validation_nonce_key_too_large() {
-        let tx = TxEip8130 {
-            nonce_key: UINT192_MAX + U256::from(1),
-            ..Default::default()
-        };
-        assert!(matches!(
-            validate_structure(&tx),
-            Err(ValidationError::NonceKeyTooLarge)
-        ));
+        let tx = TxEip8130 { nonce_key: UINT192_MAX + U256::from(1), ..Default::default() };
+        assert!(matches!(validate_structure(&tx), Err(ValidationError::NonceKeyTooLarge)));
     }
 
     #[test]
@@ -412,10 +499,7 @@ mod tests {
                 data: Bytes::new(),
             })
             .collect();
-        let tx = TxEip8130 {
-            calls: vec![calls],
-            ..Default::default()
-        };
+        let tx = TxEip8130 { calls: vec![calls], ..Default::default() };
         assert!(validate_structure(&tx).is_ok());
     }
 
@@ -427,16 +511,35 @@ mod tests {
                 data: Bytes::new(),
             })
             .collect();
-        let tx = TxEip8130 {
-            calls: vec![calls],
-            ..Default::default()
-        };
+        let tx = TxEip8130 { calls: vec![calls], ..Default::default() };
         assert!(matches!(
             validate_structure(&tx),
             Err(ValidationError::TooManyCalls {
                 count,
                 limit
             }) if count == MAX_CALLS_PER_TX + 1 && limit == MAX_CALLS_PER_TX
+        ));
+    }
+
+    #[test]
+    fn structure_validation_authorizations_limit() {
+        let tx =
+            TxEip8130 { authorization_list: vec![sample_authorization()], ..Default::default() };
+        assert!(validate_structure(&tx).is_ok());
+    }
+
+    #[test]
+    fn structure_validation_too_many_authorizations() {
+        let tx = TxEip8130 {
+            authorization_list: vec![sample_authorization(), sample_authorization()],
+            ..Default::default()
+        };
+        assert!(matches!(
+            validate_structure(&tx),
+            Err(ValidationError::TooManyAuthorizations {
+                count,
+                limit
+            }) if count == 2 && limit == MAX_AUTHORIZATIONS_PER_TX
         ));
     }
 
@@ -500,14 +603,107 @@ mod tests {
     }
 
     #[test]
+    fn structure_validation_rejects_empty_config_change_operations() {
+        let tx = TxEip8130 {
+            account_changes: vec![super::super::types::AccountChangeEntry::ConfigChange(
+                super::super::types::ConfigChangeEntry {
+                    chain_id: 8453,
+                    sequence: 0,
+                    operations: vec![],
+                    authorizer_auth: Bytes::new(),
+                },
+            )],
+            ..Default::default()
+        };
+        assert!(matches!(
+            validate_structure(&tx),
+            Err(ValidationError::InvalidAccountChanges(
+                "config change entry must include at least one operation"
+            ))
+        ));
+    }
+
+    #[test]
+    fn structure_validation_rejects_too_many_config_operations() {
+        let ops = (0..(MAX_CONFIG_OPS_PER_TX + 1))
+            .map(|_| super::super::types::ConfigOperation {
+                op_type: 0x01,
+                verifier: address!("0x5555555555555555555555555555555555555555"),
+                owner_id: B256::ZERO,
+                scope: 0,
+            })
+            .collect();
+        let tx = TxEip8130 {
+            account_changes: vec![super::super::types::AccountChangeEntry::ConfigChange(
+                super::super::types::ConfigChangeEntry {
+                    chain_id: 8453,
+                    sequence: 0,
+                    operations: ops,
+                    authorizer_auth: Bytes::new(),
+                },
+            )],
+            ..Default::default()
+        };
+        assert!(matches!(
+            validate_structure(&tx),
+            Err(ValidationError::TooManyConfigOperations {
+                count,
+                limit
+            }) if count == MAX_CONFIG_OPS_PER_TX + 1 && limit == MAX_CONFIG_OPS_PER_TX
+        ));
+    }
+
+    #[test]
+    fn structure_validation_authorizer_auth_too_large() {
+        let tx = TxEip8130 {
+            account_changes: vec![super::super::types::AccountChangeEntry::ConfigChange(
+                super::super::types::ConfigChangeEntry {
+                    chain_id: 8453,
+                    sequence: 0,
+                    operations: vec![super::super::types::ConfigOperation {
+                        op_type: 0x01,
+                        verifier: address!("0x6666666666666666666666666666666666666666"),
+                        owner_id: B256::ZERO,
+                        scope: 0,
+                    }],
+                    authorizer_auth: Bytes::from(vec![0u8; MAX_SIGNATURE_SIZE + 1]),
+                },
+            )],
+            ..Default::default()
+        };
+        assert!(matches!(
+            validate_structure(&tx),
+            Err(ValidationError::AuthorizerAuthTooLarge(size))
+            if size == MAX_SIGNATURE_SIZE + 1
+        ));
+    }
+
+    #[test]
+    fn resolve_sender_eoa_requires_recovered_sender() {
+        let tx = TxEip8130 { from: Address::ZERO, ..Default::default() };
+        assert!(matches!(
+            resolve_sender(&tx, None),
+            Err(ValidationError::InvalidSenderAuth("EOA sender must be recovered at ingress"))
+        ));
+
+        let recovered = address!("0x7777777777777777777777777777777777777777");
+        assert_eq!(resolve_sender(&tx, Some(recovered)).unwrap(), recovered);
+    }
+
+    #[test]
+    fn resolve_sender_configured_uses_from() {
+        let from = address!("0x8888888888888888888888888888888888888888");
+        let tx = TxEip8130 { from, ..Default::default() };
+        assert_eq!(resolve_sender(&tx, None).unwrap(), from);
+        assert_eq!(resolve_sender(&tx, Some(Address::repeat_byte(0x99))).unwrap(), from);
+    }
+
+    #[test]
     fn expiry_validation() {
         let tx = TxEip8130 { expiry: 100, ..Default::default() };
         assert!(validate_expiry(&tx, 50).is_ok());
         assert!(validate_expiry(&tx, 100).is_ok());
-        assert!(matches!(
-            validate_expiry(&tx, 101),
-            Err(ValidationError::Expired { .. })
-        ));
+        assert!(matches!(validate_expiry(&tx, 101), Err(ValidationError::Expired { .. })));
     }
 
     #[test]

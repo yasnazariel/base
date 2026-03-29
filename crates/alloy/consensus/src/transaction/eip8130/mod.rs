@@ -7,17 +7,17 @@
 mod constants;
 pub use constants::{
     AA_BASE_COST, AA_PAYER_TYPE, AA_TX_TYPE_ID, BYTECODE_BASE_GAS, BYTECODE_PER_BYTE_GAS,
-    CONFIG_CHANGE_OP_GAS, CONFIG_CHANGE_SKIP_GAS, CUSTOM_VERIFIER_GAS_CAP, EOA_AUTH_GAS,
-    MAX_ACCOUNT_CHANGES_PER_TX, MAX_CALLS_PER_TX, MAX_CONFIG_OPS_PER_TX,
-    DEPLOYMENT_HEADER_SIZE, MAX_SIGNATURE_SIZE, NONCE_KEY_COLD_GAS, NONCE_KEY_WARM_GAS,
-    SLOAD_GAS, VERIFIER_CUSTOM, VERIFIER_DELEGATE, VERIFIER_K1, VERIFIER_P256_RAW,
-    VERIFIER_P256_WEBAUTHN, VerifierGasCosts,
+    CONFIG_CHANGE_OP_GAS, CONFIG_CHANGE_SKIP_GAS, CUSTOM_VERIFIER_GAS_CAP, DEPLOYMENT_HEADER_SIZE,
+    EOA_AUTH_GAS, MAX_ACCOUNT_CHANGES_PER_TX, MAX_AUTHORIZATIONS_PER_TX, MAX_CALLS_PER_TX,
+    MAX_CONFIG_OPS_PER_TX, MAX_SIGNATURE_SIZE, NONCE_KEY_COLD_GAS, NONCE_KEY_WARM_GAS, SLOAD_GAS,
+    VERIFIER_CUSTOM, VERIFIER_DELEGATE, VERIFIER_K1, VERIFIER_P256_RAW, VERIFIER_P256_WEBAUTHN,
+    VerifierGasCosts,
 };
 
 mod types;
 pub use types::{
-    AccountChangeEntry, Call, ConfigChangeEntry, ConfigOperation, CreateEntry, Owner, OwnerScope,
-    CHANGE_TYPE_CONFIG, CHANGE_TYPE_CREATE, OP_AUTHORIZE_OWNER, OP_REVOKE_OWNER,
+    AccountChangeEntry, CHANGE_TYPE_CONFIG, CHANGE_TYPE_CREATE, Call, ConfigChangeEntry,
+    ConfigOperation, CreateEntry, OP_AUTHORIZE_OWNER, OP_REVOKE_OWNER, Owner, OwnerScope,
 };
 
 mod tx;
@@ -25,8 +25,8 @@ pub use tx::TxEip8130;
 
 mod signature;
 pub use signature::{
-    ParsedSenderAuth, VerifierTarget, config_change_digest, payer_signature_hash,
-    parse_sender_auth, resolve_verifier, sender_signature_hash,
+    ParsedSenderAuth, VerifierTarget, config_change_digest, parse_sender_auth,
+    payer_signature_hash, resolve_verifier, sender_signature_hash,
 };
 
 mod gas;
@@ -55,13 +55,13 @@ pub use predeploys::{
 };
 
 mod storage;
+#[allow(deprecated)]
+pub use storage::sequence_slot;
 pub use storage::{
     LOCK_BASE_SLOT, NONCE_BASE_SLOT, OWNER_CONFIG_BASE_SLOT, SEQUENCE_BASE_SLOT,
     encode_owner_config, lock_slot, nonce_slot, owner_config_slot, parse_owner_config,
     read_sequence, sequence_base_slot, write_sequence,
 };
-#[allow(deprecated)]
-pub use storage::sequence_slot;
 
 #[cfg(feature = "evm")]
 mod accessors;

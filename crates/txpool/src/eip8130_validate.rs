@@ -15,15 +15,14 @@ use alloy_primitives::{Address, B256, Bytes, U256};
 use reth_storage_api::StateProviderFactory;
 
 use base_alloy_consensus::{
-    ACCOUNT_CONFIG_ADDRESS, AccountChangeEntry, CUSTOM_VERIFIER_GAS_CAP,
-    DELEGATE_VERIFIER_ADDRESS, K1_VERIFIER_ADDRESS, MAX_CONFIG_OPS_PER_TX,
-    NONCE_MANAGER_ADDRESS, NativeVerifyResult, OwnerScope, ParsedSenderAuth,
-    P256_RAW_VERIFIER_ADDRESS, P256_WEBAUTHN_VERIFIER_ADDRESS, TxEip8130, ValidationError,
-    VerifierTarget, VERIFIER_CUSTOM, VERIFIER_K1, config_change_digest, encode_verify_call,
-    implicit_eoa_owner_id, intrinsic_gas, lock_slot, nonce_slot, owner_config_slot,
-    parse_owner_config, parse_sender_auth, payer_signature_hash, read_sequence, resolve_verifier,
-    sender_signature_hash, sequence_base_slot, try_native_verify, validate_expiry,
-    validate_structure, verifier_type_to_address,
+    ACCOUNT_CONFIG_ADDRESS, AccountChangeEntry, CUSTOM_VERIFIER_GAS_CAP, DELEGATE_VERIFIER_ADDRESS,
+    K1_VERIFIER_ADDRESS, MAX_CONFIG_OPS_PER_TX, NONCE_MANAGER_ADDRESS, NativeVerifyResult,
+    OwnerScope, P256_RAW_VERIFIER_ADDRESS, P256_WEBAUTHN_VERIFIER_ADDRESS, ParsedSenderAuth,
+    TxEip8130, VERIFIER_CUSTOM, VERIFIER_K1, ValidationError, VerifierTarget, config_change_digest,
+    encode_verify_call, implicit_eoa_owner_id, intrinsic_gas, lock_slot, nonce_slot,
+    owner_config_slot, parse_owner_config, parse_sender_auth, payer_signature_hash, read_sequence,
+    resolve_verifier, sender_signature_hash, sequence_base_slot, try_native_verify,
+    validate_expiry, validate_structure, verifier_type_to_address,
 };
 
 use crate::{InvalidationKey, OpPooledTx, SenderThroughputTier, compute_invalidation_keys};
@@ -86,6 +85,13 @@ pub struct Eip8130ValidationOutcome {
 pub enum Eip8130ValidationError {
     /// Failed to decode the `TxEip8130` from 2718-encoded bytes.
     DecodeFailed(String),
+    /// AA transaction exceeds the txpool ingress encoded size cap.
+    TxTooLarge {
+        /// Encoded transaction size in bytes.
+        size: usize,
+        /// Maximum allowed encoded size in bytes.
+        limit: usize,
+    },
     /// Structural validation failed (sizes, nonce_key range, account_changes).
     Structural(ValidationError),
     /// Transaction chain_id does not match the network.
@@ -174,6 +180,9 @@ impl std::fmt::Display for Eip8130ValidationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::DecodeFailed(e) => write!(f, "decode failed: {e}"),
+            Self::TxTooLarge { size, limit } => {
+                write!(f, "AA tx too large (size={size}, limit={limit})")
+            }
             Self::Structural(e) => write!(f, "structural: {e}"),
             Self::ChainIdMismatch { expected, got } => {
                 write!(f, "chain_id mismatch (expected={expected}, got={got})")
@@ -226,6 +235,7 @@ impl reth_transaction_pool::error::PoolTransactionError for Eip8130ValidationErr
             self,
             Self::Structural(_)
                 | Self::DecodeFailed(_)
+                | Self::TxTooLarge { .. }
                 | Self::ChainIdMismatch { .. }
                 | Self::CustomVerifierCallFailed(_)
                 | Self::VerifierEip7702Delegated(_)
@@ -242,7 +252,9 @@ impl reth_transaction_pool::error::PoolTransactionError for Eip8130ValidationErr
 }
 
 /// Extracts `TxEip8130` from a pool transaction, avoiding re-encode/re-decode.
-fn decode_tx_eip8130<Tx: OpPooledTx>(transaction: &Tx) -> Result<TxEip8130, Eip8130ValidationError> {
+fn decode_tx_eip8130<Tx: OpPooledTx>(
+    transaction: &Tx,
+) -> Result<TxEip8130, Eip8130ValidationError> {
     transaction
         .as_eip8130()
         .cloned()
@@ -317,11 +329,9 @@ fn resolve_sender_address(tx: &TxEip8130) -> Result<(Address, B256), Eip8130Vali
                 NativeVerifyResult::Invalid(e) => {
                     Err(Eip8130ValidationError::SenderAuthInvalid(e.to_string()))
                 }
-                NativeVerifyResult::Unsupported => Err(
-                    Eip8130ValidationError::SenderAuthInvalid(
-                        "K1 should be natively supported".into(),
-                    ),
-                ),
+                NativeVerifyResult::Unsupported => Err(Eip8130ValidationError::SenderAuthInvalid(
+                    "K1 should be natively supported".into(),
+                )),
             }
         }
         ParsedSenderAuth::Configured { .. } => Ok((tx.from, B256::ZERO)),
@@ -333,6 +343,12 @@ fn resolve_sender_address(tx: &TxEip8130) -> Result<(Address, B256), Eip8130Vali
 /// Matches [`CUSTOM_VERIFIER_GAS_CAP`] from the consensus layer.
 /// Override via [`OpTransactionValidator::with_custom_verifier_gas_limit`].
 pub const DEFAULT_CUSTOM_VERIFIER_GAS_LIMIT: u64 = CUSTOM_VERIFIER_GAS_CAP;
+
+/// Maximum EIP-2718 encoded size accepted for a single AA transaction at txpool ingress.
+///
+/// This is a pragmatic first guard for parse/allocation amplification: oversized
+/// AA envelopes are rejected before running deeper stateful validation.
+pub const MAX_AA_TX_ENCODED_BYTES: usize = 128 * 1024;
 
 /// Executes a custom verifier's `IVerifier.verify(hash, data)` via a
 /// lightweight EVM STATICCALL and validates the returned owner_id against
@@ -351,9 +367,7 @@ fn verify_custom_via_evm(
 ) -> Result<B256, Eip8130ValidationError> {
     use reth_revm::database::StateProviderDatabase;
     use revm::{
-        Context, ExecuteEvm, MainBuilder, MainContext,
-        context::TxEnv,
-        database::CacheDB,
+        Context, ExecuteEvm, MainBuilder, MainContext, context::TxEnv, database::CacheDB,
         primitives::TxKind,
     };
 
@@ -371,19 +385,18 @@ fn verify_custom_via_evm(
     let ctx = Context::mainnet().with_db(db).with_tx(tx);
     let mut evm = ctx.build_mainnet();
 
-    let exec_result = evm.replay().map_err(|e| {
-        Eip8130ValidationError::CustomVerifierCallFailed(format!("{e:?}"))
-    })?;
+    let exec_result = evm
+        .replay()
+        .map_err(|e| Eip8130ValidationError::CustomVerifierCallFailed(format!("{e:?}")))?;
 
     if !exec_result.result.is_success() {
-        return Err(role.not_authorized(
-            "custom verifier STATICCALL reverted".into(),
-        ));
+        return Err(role.not_authorized("custom verifier STATICCALL reverted".into()));
     }
 
-    let output = exec_result.result.output().ok_or_else(|| {
-        role.not_authorized("custom verifier returned no output".into())
-    })?;
+    let output = exec_result
+        .result
+        .output()
+        .ok_or_else(|| role.not_authorized("custom verifier returned no output".into()))?;
 
     if output.len() < 32 {
         return Err(role.not_authorized(format!(
@@ -394,14 +407,7 @@ fn verify_custom_via_evm(
 
     let owner_id = B256::from_slice(&output[..32]);
 
-    check_owner_authorized(
-        state,
-        account,
-        owner_id,
-        verifier,
-        required_scope,
-        role,
-    )?;
+    check_owner_authorized(state, account, owner_id, verifier, required_scope, role)?;
 
     Ok(owner_id)
 }
@@ -458,18 +464,16 @@ fn validate_sender_authorization(
                 NativeVerifyResult::Invalid(e) => {
                     Err(Eip8130ValidationError::SenderAuthInvalid(e.to_string()))
                 }
-                NativeVerifyResult::Unsupported => {
-                    verify_custom_via_evm(
-                        state,
-                        verifier_address,
-                        sig_hash,
-                        &verify_data,
-                        sender,
-                        OwnerScope::SENDER,
-                        OwnerRole::Sender,
-                        custom_verifier_gas_limit,
-                    )
-                }
+                NativeVerifyResult::Unsupported => verify_custom_via_evm(
+                    state,
+                    verifier_address,
+                    sig_hash,
+                    &verify_data,
+                    sender,
+                    OwnerScope::SENDER,
+                    OwnerRole::Sender,
+                    custom_verifier_gas_limit,
+                ),
             }
         }
     }
@@ -513,19 +517,19 @@ fn validate_payer(
             )?;
             Ok(owner_id)
         }
-        NativeVerifyResult::Invalid(e) => Err(Eip8130ValidationError::PayerAuthInvalid(e.to_string())),
-        NativeVerifyResult::Unsupported => {
-            verify_custom_via_evm(
-                state,
-                verifier_address,
-                sig_hash,
-                &verify_data,
-                payer,
-                OwnerScope::PAYER,
-                OwnerRole::Payer,
-                custom_verifier_gas_limit,
-            )
+        NativeVerifyResult::Invalid(e) => {
+            Err(Eip8130ValidationError::PayerAuthInvalid(e.to_string()))
         }
+        NativeVerifyResult::Unsupported => verify_custom_via_evm(
+            state,
+            verifier_address,
+            sig_hash,
+            &verify_data,
+            payer,
+            OwnerScope::PAYER,
+            OwnerRole::Payer,
+            custom_verifier_gas_limit,
+        ),
     }
 }
 
@@ -538,9 +542,7 @@ fn resolve_target(target: &VerifierTarget) -> Result<(Address, Bytes), Eip8130Va
             })?;
             Ok((addr, data.clone()))
         }
-        VerifierTarget::Custom { verifier_address, data } => {
-            Ok((*verifier_address, data.clone()))
-        }
+        VerifierTarget::Custom { verifier_address, data } => Ok((*verifier_address, data.clone())),
     }
 }
 
@@ -555,9 +557,7 @@ fn resolve_target_for_payer(
             })?;
             Ok((addr, data.clone()))
         }
-        VerifierTarget::Custom { verifier_address, data } => {
-            Ok((*verifier_address, data.clone()))
-        }
+        VerifierTarget::Custom { verifier_address, data } => Ok((*verifier_address, data.clone())),
     }
 }
 
@@ -583,9 +583,8 @@ fn check_owner_authorized(
             )));
         }
         if scope != 0 && (scope & required_scope) == 0 {
-            return Err(role.not_authorized(format!(
-                "owner lacks required scope bit 0x{required_scope:02x}"
-            )));
+            return Err(role
+                .not_authorized(format!("owner lacks required scope bit 0x{required_scope:02x}")));
         }
         return Ok(());
     }
@@ -595,9 +594,7 @@ fn check_owner_authorized(
         return Ok(());
     }
 
-    Err(role.not_authorized(
-        "no owner_config and implicit EOA rule doesn't apply".into(),
-    ))
+    Err(role.not_authorized("no owner_config and implicit EOA rule doesn't apply".into()))
 }
 
 /// Distinguishes between sender, payer, and authorizer roles for error reporting.
@@ -616,7 +613,6 @@ impl OwnerRole {
             Self::Authorizer => Eip8130ValidationError::AuthorizerNotAuthorized(detail),
         }
     }
-
 }
 
 /// Validates the authorizer chain for config change entries at mempool time.
@@ -680,15 +676,11 @@ fn validate_authorizer_chain(
         let (verifier_address, verify_data) = match &target {
             VerifierTarget::Native { verifier_type, data } => {
                 let addr = verifier_type_to_address(*verifier_type).ok_or_else(|| {
-                    Eip8130ValidationError::AuthorizerAuthInvalid(
-                        "unknown native verifier".into(),
-                    )
+                    Eip8130ValidationError::AuthorizerAuthInvalid("unknown native verifier".into())
                 })?;
                 (addr, data.clone())
             }
-            VerifierTarget::Custom { verifier_address, data } => {
-                (*verifier_address, data.clone())
-            }
+            VerifierTarget::Custom { verifier_address, data } => (*verifier_address, data.clone()),
         };
 
         let result = try_native_verify(verifier_type, &verify_data, digest);
@@ -707,18 +699,16 @@ fn validate_authorizer_chain(
             NativeVerifyResult::Invalid(e) => {
                 return Err(Eip8130ValidationError::AuthorizerAuthInvalid(e.to_string()));
             }
-            NativeVerifyResult::Unsupported => {
-                verify_custom_via_evm(
-                    state,
-                    verifier_address,
-                    digest,
-                    &verify_data,
-                    sender,
-                    OwnerScope::CONFIG,
-                    OwnerRole::Authorizer,
-                    custom_verifier_gas_limit,
-                )?
-            }
+            NativeVerifyResult::Unsupported => verify_custom_via_evm(
+                state,
+                verifier_address,
+                digest,
+                &verify_data,
+                sender,
+                OwnerScope::CONFIG,
+                OwnerRole::Authorizer,
+                custom_verifier_gas_limit,
+            )?,
         };
 
         // Track pending additions/revocations for chaining.
@@ -789,6 +779,14 @@ where
     Tx: OpPooledTx + Transaction,
     Client: StateProviderFactory,
 {
+    let encoded_len = transaction.encoded_2718().len();
+    if encoded_len > MAX_AA_TX_ENCODED_BYTES {
+        return Err(Eip8130ValidationError::TxTooLarge {
+            size: encoded_len,
+            limit: MAX_AA_TX_ENCODED_BYTES,
+        });
+    }
+
     let tx = decode_tx_eip8130(transaction)?;
 
     // 1. Structural validation (no state needed)
@@ -836,9 +834,7 @@ where
     let (sender, eoa_owner_id) = resolve_sender_address(&tx)?;
 
     // 4. Open state provider for storage reads
-    let state = client
-        .latest()
-        .map_err(|e| Eip8130ValidationError::StateError(e.to_string()))?;
+    let state = client.latest().map_err(|e| Eip8130ValidationError::StateError(e.to_string()))?;
 
     // 4b. Reject custom verifiers whose bytecode starts with the EIP-7702
     //     delegation designator (0xef0100). Delegated accounts must not be
@@ -855,8 +851,7 @@ where
 
     // 5. Nonce validation
     let nonce_key_slot = nonce_slot(sender, tx.nonce_key);
-    let current_nonce =
-        read_storage(&*state, NONCE_MANAGER_ADDRESS, nonce_key_slot)?.to::<u64>();
+    let current_nonce = read_storage(&*state, NONCE_MANAGER_ADDRESS, nonce_key_slot)?.to::<u64>();
     if current_nonce != tx.nonce_sequence {
         return Err(Eip8130ValidationError::NonceMismatch {
             expected: current_nonce,
@@ -865,10 +860,8 @@ where
     }
 
     // 6. Lock state — reject config changes on locked accounts
-    let has_config_changes = tx
-        .account_changes
-        .iter()
-        .any(|e| matches!(e, AccountChangeEntry::ConfigChange(_)));
+    let has_config_changes =
+        tx.account_changes.iter().any(|e| matches!(e, AccountChangeEntry::ConfigChange(_)));
     if has_config_changes {
         let lock_slot_key = lock_slot(sender);
         let lock_value = read_storage(&*state, ACCOUNT_CONFIG_ADDRESS, lock_slot_key)?;
@@ -943,7 +936,11 @@ where
 
     // 9. Sender authorization (checks owner_config for the resolved sender)
     let sender_owner_id = validate_sender_authorization(
-        &tx, sender, eoa_owner_id, &*state, custom_verifier_gas_limit,
+        &tx,
+        sender,
+        eoa_owner_id,
+        &*state,
+        custom_verifier_gas_limit,
     )?;
 
     // 10. Payer resolution and authorization
@@ -956,19 +953,16 @@ where
 
     // 11. Balance check — payer must cover max gas cost.
     //     Total = (intrinsic + custom_verifier_cap + execution_gas_limit) * max_fee_per_gas
-    let sender_is_custom = !tx.is_eoa()
-        && !tx.sender_auth.is_empty()
-        && tx.sender_auth[0] == VERIFIER_CUSTOM;
-    let payer_is_custom = !tx.is_self_pay()
-        && !tx.payer_auth.is_empty()
-        && tx.payer_auth[0] == VERIFIER_CUSTOM;
+    let sender_is_custom =
+        !tx.is_eoa() && !tx.sender_auth.is_empty() && tx.sender_auth[0] == VERIFIER_CUSTOM;
+    let payer_is_custom =
+        !tx.is_self_pay() && !tx.payer_auth.is_empty() && tx.payer_auth[0] == VERIFIER_CUSTOM;
     let authorizer_is_custom = tx.account_changes.iter().any(|e| {
         matches!(e, AccountChangeEntry::ConfigChange(cc)
             if !cc.authorizer_auth.is_empty() && cc.authorizer_auth[0] == VERIFIER_CUSTOM)
     });
     let has_custom_verifier = sender_is_custom || payer_is_custom || authorizer_is_custom;
-    let verifier_gas_cap =
-        if has_custom_verifier { CUSTOM_VERIFIER_GAS_CAP } else { 0u64 };
+    let verifier_gas_cap = if has_custom_verifier { CUSTOM_VERIFIER_GAS_CAP } else { 0u64 };
     let total_gas =
         U256::from(aa_intrinsic_gas) + U256::from(verifier_gas_cap) + U256::from(tx.gas_limit);
     let max_gas_cost = total_gas.saturating_mul(U256::from(tx.max_fee_per_gas));
@@ -996,12 +990,8 @@ where
     // 13. Determine sender throughput tier for the 2D nonce pool.
     //     Read the lock state only when we haven't already (step 6 reads it
     //     only when there are config changes).
-    let sender_throughput_tier = compute_sender_throughput_tier(
-        sender,
-        payer,
-        &*state,
-        trusted_payer_bytecodes,
-    );
+    let sender_throughput_tier =
+        compute_sender_throughput_tier(sender, payer, &*state, trusted_payer_bytecodes);
 
     Ok(Eip8130ValidationOutcome {
         balance,

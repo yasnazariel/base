@@ -24,9 +24,7 @@ use k256::ecdsa::{RecoveryId, Signature as K256Signature, VerifyingKey};
 use p256::ecdsa::{Signature as P256Signature, VerifyingKey as P256VerifyingKey};
 use sha2::{Digest, Sha256};
 
-use super::constants::{
-    VERIFIER_DELEGATE, VERIFIER_K1, VERIFIER_P256_RAW, VERIFIER_P256_WEBAUTHN,
-};
+use super::constants::{VERIFIER_DELEGATE, VERIFIER_K1, VERIFIER_P256_RAW, VERIFIER_P256_WEBAUTHN};
 
 /// Outcome of a native verification attempt.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -89,11 +87,7 @@ pub enum NativeVerifyError {
 /// Returns [`NativeVerifyResult::Unsupported`] only for custom verifiers
 /// (0x00) and unknown types, signaling the caller to use the EVM
 /// STATICCALL path.
-pub fn try_native_verify(
-    verifier_type: u8,
-    data: &Bytes,
-    hash: B256,
-) -> NativeVerifyResult {
+pub fn try_native_verify(verifier_type: u8, data: &Bytes, hash: B256) -> NativeVerifyResult {
     match verifier_type {
         VERIFIER_K1 => verify_k1(data, hash),
         VERIFIER_P256_RAW => verify_p256_raw(data, hash),
@@ -120,18 +114,16 @@ fn verify_k1(data: &Bytes, hash: B256) -> NativeVerifyResult {
         0 | 27 => 0,
         1 | 28 => 1,
         _ => {
-            return NativeVerifyResult::Invalid(NativeVerifyError::K1RecoveryFailed(
-                format!("invalid v byte: {v_byte}"),
-            ));
+            return NativeVerifyResult::Invalid(NativeVerifyError::K1RecoveryFailed(format!(
+                "invalid v byte: {v_byte}"
+            )));
         }
     };
 
     let signature = match K256Signature::from_slice(r_s) {
         Ok(sig) => sig,
         Err(e) => {
-            return NativeVerifyResult::Invalid(NativeVerifyError::K1RecoveryFailed(
-                e.to_string(),
-            ));
+            return NativeVerifyResult::Invalid(NativeVerifyError::K1RecoveryFailed(e.to_string()));
         }
     };
 
@@ -141,9 +133,7 @@ fn verify_k1(data: &Bytes, hash: B256) -> NativeVerifyResult {
     {
         Ok(key) => key,
         Err(e) => {
-            return NativeVerifyResult::Invalid(NativeVerifyError::K1RecoveryFailed(
-                e.to_string(),
-            ));
+            return NativeVerifyResult::Invalid(NativeVerifyError::K1RecoveryFailed(e.to_string()));
         }
     };
 
@@ -186,7 +176,11 @@ fn verify_p256_raw(data: &Bytes, hash: B256) -> NativeVerifyResult {
 
 /// Shared P256 signature verification: parses the key and signature,
 /// then verifies against the given prehash message.
-fn verify_p256_signature(pubkey_raw: &[u8], message: &[u8], sig_bytes: &[u8]) -> Result<(), String> {
+fn verify_p256_signature(
+    pubkey_raw: &[u8],
+    message: &[u8],
+    sig_bytes: &[u8],
+) -> Result<(), String> {
     let mut uncompressed = [0u8; 65];
     uncompressed[0] = 0x04;
     uncompressed[1..].copy_from_slice(pubkey_raw);
@@ -197,9 +191,7 @@ fn verify_p256_signature(pubkey_raw: &[u8], message: &[u8], sig_bytes: &[u8]) ->
     let signature = P256Signature::from_slice(sig_bytes).map_err(|e| e.to_string())?;
 
     use p256::ecdsa::signature::hazmat::PrehashVerifier;
-    verifying_key
-        .verify_prehash(message, &signature)
-        .map_err(|e| e.to_string())
+    verifying_key.verify_prehash(message, &signature).map_err(|e| e.to_string())
 }
 
 // ── WebAuthn ───────────────────────────────────────────────────────
@@ -239,9 +231,8 @@ fn verify_webauthn(data: &Bytes, expected_hash: B256) -> NativeVerifyResult {
         return NativeVerifyResult::Invalid(NativeVerifyError::WebAuthnTooShort(data.len()));
     }
 
-    let len_bytes: [u8; 4] = rest[client_data_len_offset..client_data_len_offset + 4]
-        .try_into()
-        .unwrap();
+    let len_bytes: [u8; 4] =
+        rest[client_data_len_offset..client_data_len_offset + 4].try_into().unwrap();
     let client_data_len = u32::from_be_bytes(len_bytes) as usize;
 
     let client_data_start = client_data_len_offset + CLIENT_DATA_LEN_PREFIX;
@@ -266,7 +257,7 @@ fn verify_webauthn(data: &Bytes, expected_hash: B256) -> NativeVerifyResult {
     };
 
     let expected_challenge = base64_url_encode(expected_hash.as_slice());
-    if !client_data_str.contains(&expected_challenge) {
+    if !webauthn_challenge_matches(client_data_str, expected_challenge.as_str()) {
         return NativeVerifyResult::Invalid(NativeVerifyError::WebAuthnChallengeMismatch);
     }
 
@@ -282,8 +273,172 @@ fn verify_webauthn(data: &Bytes, expected_hash: B256) -> NativeVerifyResult {
             let owner_id = alloy_primitives::keccak256(pubkey_bytes);
             NativeVerifyResult::Verified(owner_id)
         }
-        Err(e) => {
-            NativeVerifyResult::Invalid(NativeVerifyError::WebAuthnSignatureInvalid(e))
+        Err(e) => NativeVerifyResult::Invalid(NativeVerifyError::WebAuthnSignatureInvalid(e)),
+    }
+}
+
+/// Returns `true` iff top-level `clientDataJSON.challenge` exactly matches the expected value.
+///
+/// This intentionally parses JSON key/value structure instead of a substring check so
+/// attackers cannot satisfy validation by embedding the expected challenge in another field.
+fn webauthn_challenge_matches(client_data_json: &str, expected_challenge: &str) -> bool {
+    extract_top_level_json_string_field(client_data_json, "challenge")
+        .is_some_and(|challenge| challenge == expected_challenge)
+}
+
+/// Extracts a top-level object string field value from JSON.
+///
+/// Returns `None` for malformed JSON, missing keys, non-string values, or escaped key/value
+/// strings (strict by design for WebAuthn challenge matching).
+fn extract_top_level_json_string_field<'a>(json: &'a str, field: &str) -> Option<&'a str> {
+    let bytes = json.as_bytes();
+    let mut i = skip_json_ws(bytes, 0);
+    if bytes.get(i) != Some(&b'{') {
+        return None;
+    }
+    i += 1;
+
+    loop {
+        i = skip_json_ws(bytes, i);
+        match bytes.get(i) {
+            Some(b'}') => return None,
+            Some(b'"') => {}
+            _ => return None,
+        }
+
+        let (key_bytes, next, key_escaped) = parse_json_string(bytes, i)?;
+        if key_escaped {
+            return None;
+        }
+        i = skip_json_ws(bytes, next);
+        if bytes.get(i) != Some(&b':') {
+            return None;
+        }
+        i += 1;
+        i = skip_json_ws(bytes, i);
+
+        let is_target = key_bytes == field.as_bytes();
+        if is_target {
+            let (value_bytes, _, value_escaped) = parse_json_string(bytes, i)?;
+            if value_escaped {
+                return None;
+            }
+            return core::str::from_utf8(value_bytes).ok();
+        }
+
+        i = skip_json_value(bytes, i)?;
+        i = skip_json_ws(bytes, i);
+        match bytes.get(i) {
+            Some(b',') => {
+                i += 1;
+            }
+            Some(b'}') => return None,
+            _ => return None,
+        }
+    }
+}
+
+fn skip_json_ws(bytes: &[u8], mut i: usize) -> usize {
+    while i < bytes.len() && matches!(bytes[i], b' ' | b'\n' | b'\r' | b'\t') {
+        i += 1;
+    }
+    i
+}
+
+fn parse_json_string(bytes: &[u8], start: usize) -> Option<(&[u8], usize, bool)> {
+    if bytes.get(start) != Some(&b'"') {
+        return None;
+    }
+
+    let mut i = start + 1;
+    let content_start = i;
+    let mut has_escape = false;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' => {
+                has_escape = true;
+                i += 1;
+                if i >= bytes.len() {
+                    return None;
+                }
+                i += 1;
+            }
+            b'"' => return Some((&bytes[content_start..i], i + 1, has_escape)),
+            _ => i += 1,
+        }
+    }
+    None
+}
+
+fn skip_json_value(bytes: &[u8], start: usize) -> Option<usize> {
+    let i = skip_json_ws(bytes, start);
+    match bytes.get(i) {
+        Some(b'"') => parse_json_string(bytes, i).map(|(_, next, _)| next),
+        Some(b'{') => skip_json_object(bytes, i),
+        Some(b'[') => skip_json_array(bytes, i),
+        Some(_) => {
+            let mut j = i;
+            while j < bytes.len() {
+                match bytes[j] {
+                    b',' | b'}' | b']' => break,
+                    _ => j += 1,
+                }
+            }
+            Some(j)
+        }
+        None => None,
+    }
+}
+
+fn skip_json_object(bytes: &[u8], start: usize) -> Option<usize> {
+    if bytes.get(start) != Some(&b'{') {
+        return None;
+    }
+    let mut i = start + 1;
+    loop {
+        i = skip_json_ws(bytes, i);
+        match bytes.get(i) {
+            Some(b'}') => return Some(i + 1),
+            Some(b'"') => {}
+            _ => return None,
+        }
+
+        let (_, next, _) = parse_json_string(bytes, i)?;
+        i = skip_json_ws(bytes, next);
+        if bytes.get(i) != Some(&b':') {
+            return None;
+        }
+        i += 1;
+
+        i = skip_json_value(bytes, i)?;
+        i = skip_json_ws(bytes, i);
+        match bytes.get(i) {
+            Some(b',') => i += 1,
+            Some(b'}') => return Some(i + 1),
+            _ => return None,
+        }
+    }
+}
+
+fn skip_json_array(bytes: &[u8], start: usize) -> Option<usize> {
+    if bytes.get(start) != Some(&b'[') {
+        return None;
+    }
+    let mut i = start + 1;
+    loop {
+        i = skip_json_ws(bytes, i);
+        match bytes.get(i) {
+            Some(b']') => return Some(i + 1),
+            Some(_) => {}
+            None => return None,
+        }
+
+        i = skip_json_value(bytes, i)?;
+        i = skip_json_ws(bytes, i);
+        match bytes.get(i) {
+            Some(b',') => i += 1,
+            Some(b']') => return Some(i + 1),
+            _ => return None,
         }
     }
 }
@@ -292,8 +447,7 @@ fn verify_webauthn(data: &Bytes, expected_hash: B256) -> NativeVerifyResult {
 fn base64_url_encode(bytes: &[u8]) -> alloc::string::String {
     use alloc::string::String;
 
-    const TABLE: &[u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
     let mut out = String::with_capacity((bytes.len() * 4 + 2) / 3);
     let chunks = bytes.chunks(3);
@@ -350,14 +504,8 @@ mod tests {
         let data = Bytes::from(vec![0u8; 65]);
         let hash = B256::repeat_byte(0xAA);
 
-        assert_eq!(
-            try_native_verify(0x00, &data, hash),
-            NativeVerifyResult::Unsupported,
-        );
-        assert_eq!(
-            try_native_verify(0xFF, &data, hash),
-            NativeVerifyResult::Unsupported,
-        );
+        assert_eq!(try_native_verify(0x00, &data, hash), NativeVerifyResult::Unsupported,);
+        assert_eq!(try_native_verify(0xFF, &data, hash), NativeVerifyResult::Unsupported,);
     }
 
     #[test]
@@ -365,10 +513,7 @@ mod tests {
         let data = Bytes::from(vec![0u8; 64]);
         let hash = B256::repeat_byte(0xAA);
         let result = try_native_verify(VERIFIER_K1, &data, hash);
-        assert!(matches!(
-            result,
-            NativeVerifyResult::Invalid(NativeVerifyError::K1BadLength(64))
-        ));
+        assert!(matches!(result, NativeVerifyResult::Invalid(NativeVerifyError::K1BadLength(64))));
     }
 
     #[test]
@@ -419,8 +564,7 @@ mod tests {
 
         let hash = keccak256(b"p256 test");
 
-        let (signature, _): (P256Signature, _) =
-            signing_key.sign_prehash(hash.as_slice()).unwrap();
+        let (signature, _): (P256Signature, _) = signing_key.sign_prehash(hash.as_slice()).unwrap();
 
         let pk_uncompressed = verifying_key.to_encoded_point(false);
         let pk_raw = &pk_uncompressed.as_bytes()[1..];
@@ -474,11 +618,6 @@ mod tests {
         signing_key: &p256::ecdsa::SigningKey,
         tamper_challenge: bool,
     ) -> Bytes {
-        let pk_uncompressed = P256VerifyingKey::from(signing_key).to_encoded_point(false);
-        let pk_raw = &pk_uncompressed.as_bytes()[1..];
-
-        let authenticator_data = vec![0xAA; MIN_AUTHENTICATOR_DATA_LEN];
-
         let challenge_b64 = base64_url_encode(hash.as_slice());
         let client_data_json = if tamper_challenge {
             alloc::format!(
@@ -490,12 +629,22 @@ mod tests {
                 challenge_b64,
             )
         };
+        build_webauthn_envelope_with_client_data_json(signing_key, client_data_json.as_bytes())
+    }
 
-        let cd_bytes = client_data_json.as_bytes();
-        let cd_len = (cd_bytes.len() as u32).to_be_bytes();
+    fn build_webauthn_envelope_with_client_data_json(
+        signing_key: &p256::ecdsa::SigningKey,
+        client_data_json: &[u8],
+    ) -> Bytes {
+        let pk_uncompressed = P256VerifyingKey::from(signing_key).to_encoded_point(false);
+        let pk_raw = &pk_uncompressed.as_bytes()[1..];
+
+        let authenticator_data = vec![0xAA; MIN_AUTHENTICATOR_DATA_LEN];
+
+        let cd_len = (client_data_json.len() as u32).to_be_bytes();
 
         // sign: sha256(authenticatorData || sha256(clientDataJSON))
-        let client_data_hash = Sha256::digest(cd_bytes);
+        let client_data_hash = Sha256::digest(client_data_json);
         let mut hasher = Sha256::new();
         hasher.update(&authenticator_data);
         hasher.update(client_data_hash);
@@ -508,7 +657,7 @@ mod tests {
         envelope.extend_from_slice(pk_raw);
         envelope.extend_from_slice(&authenticator_data);
         envelope.extend_from_slice(&cd_len);
-        envelope.extend_from_slice(cd_bytes);
+        envelope.extend_from_slice(client_data_json);
         envelope.extend_from_slice(&sig.to_bytes());
         Bytes::from(envelope)
     }
@@ -558,6 +707,28 @@ mod tests {
     }
 
     #[test]
+    fn webauthn_challenge_must_match_challenge_field() {
+        use p256::ecdsa::SigningKey as P256SigningKey;
+
+        let signing_key = P256SigningKey::random(&mut OsRng);
+        let hash = keccak256(b"webauthn challenge field match");
+        let expected_challenge = base64_url_encode(hash.as_slice());
+        let client_data_json = alloc::format!(
+            r#"{{"type":"webauthn.get","challenge":"WRONG_CHALLENGE","origin":"https://example.com/{}"}}"#,
+            expected_challenge,
+        );
+        let data = build_webauthn_envelope_with_client_data_json(
+            &signing_key,
+            client_data_json.as_bytes(),
+        );
+
+        assert!(matches!(
+            try_native_verify(VERIFIER_P256_WEBAUTHN, &data, hash),
+            NativeVerifyResult::Invalid(NativeVerifyError::WebAuthnChallengeMismatch),
+        ));
+    }
+
+    #[test]
     fn webauthn_wrong_key_returns_invalid() {
         use p256::ecdsa::SigningKey as P256SigningKey;
 
@@ -574,11 +745,7 @@ mod tests {
         let mut tampered = pk_b_raw.to_vec();
         tampered.extend_from_slice(&data[P256_PUBKEY_LEN..]);
 
-        let result = try_native_verify(
-            VERIFIER_P256_WEBAUTHN,
-            &Bytes::from(tampered),
-            hash,
-        );
+        let result = try_native_verify(VERIFIER_P256_WEBAUTHN, &Bytes::from(tampered), hash);
         assert!(matches!(
             result,
             NativeVerifyResult::Invalid(NativeVerifyError::WebAuthnSignatureInvalid(_)),
@@ -636,8 +803,7 @@ mod tests {
         let verifying_key = P256VerifyingKey::from(&signing_key);
 
         let hash = keccak256(b"delegate p256 test");
-        let (signature, _): (P256Signature, _) =
-            signing_key.sign_prehash(hash.as_slice()).unwrap();
+        let (signature, _): (P256Signature, _) = signing_key.sign_prehash(hash.as_slice()).unwrap();
 
         let pk_uncompressed = verifying_key.to_encoded_point(false);
         let pk_raw = &pk_uncompressed.as_bytes()[1..];

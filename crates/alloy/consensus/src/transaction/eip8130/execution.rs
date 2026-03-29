@@ -96,21 +96,14 @@ pub fn nonce_increment_write(sender: Address, nonce_key: U256, new_sequence: u64
 }
 
 /// Builds the owner registration storage writes for a create entry.
-pub fn owner_registration_writes(
-    account: Address,
-    create: &CreateEntry,
-) -> Vec<StorageWrite> {
+pub fn owner_registration_writes(account: Address, create: &CreateEntry) -> Vec<StorageWrite> {
     create
         .initial_owners
         .iter()
         .map(|owner| {
             let slot = owner_config_slot(account, owner.owner_id);
             let value = encode_owner_config(owner.verifier, owner.scope);
-            StorageWrite {
-                address: ACCOUNT_CONFIG_ADDRESS,
-                slot: slot.into(),
-                value: value.into(),
-            }
+            StorageWrite { address: ACCOUNT_CONFIG_ADDRESS, slot: slot.into(), value: value.into() }
         })
         .collect()
 }
@@ -119,10 +112,7 @@ pub fn owner_registration_writes(
 ///
 /// Sequence bumps are handled separately via [`config_change_sequence`]
 /// because the packed `ChangeSequences` slot requires read-modify-write.
-pub fn config_change_writes(
-    account: Address,
-    change: &ConfigChangeEntry,
-) -> Vec<StorageWrite> {
+pub fn config_change_writes(account: Address, change: &ConfigChangeEntry) -> Vec<StorageWrite> {
     use super::types::{OP_AUTHORIZE_OWNER, OP_REVOKE_OWNER};
 
     let mut writes = Vec::new();
@@ -148,10 +138,7 @@ pub fn config_change_writes(
 ///
 /// The caller should apply this as a read-modify-write on the packed
 /// `ChangeSequences { uint64 multichain; uint64 local }` storage slot.
-pub fn config_change_sequence(
-    account: Address,
-    change: &ConfigChangeEntry,
-) -> SequenceUpdateInfo {
+pub fn config_change_sequence(account: Address, change: &ConfigChangeEntry) -> SequenceUpdateInfo {
     SequenceUpdateInfo {
         slot: sequence_base_slot(account).into(),
         is_multichain: change.chain_id == 0,
@@ -178,8 +165,7 @@ pub fn auto_delegation_code() -> Bytes {
 }
 
 /// Converts a `TxEip8130` into phased execution calls.
-pub fn build_execution_calls(tx: &TxEip8130) -> Vec<Vec<ExecutionCall>> {
-    let sender = tx.effective_sender();
+pub fn build_execution_calls(tx: &TxEip8130, sender: Address) -> Vec<Vec<ExecutionCall>> {
     tx.calls
         .iter()
         .map(|phase| {
@@ -233,11 +219,7 @@ mod tests {
 
     #[test]
     fn max_execution_gas_cost_calculation() {
-        let tx = TxEip8130 {
-            gas_limit: 100_000,
-            max_fee_per_gas: 10,
-            ..Default::default()
-        };
+        let tx = TxEip8130 { gas_limit: 100_000, max_fee_per_gas: 10, ..Default::default() };
         assert_eq!(max_execution_gas_cost(&tx), U256::from(1_000_000));
     }
 
@@ -254,7 +236,7 @@ mod tests {
     #[test]
     fn build_calls_from_empty_tx() {
         let tx = TxEip8130::default();
-        let calls = build_execution_calls(&tx);
+        let calls = build_execution_calls(&tx, Address::repeat_byte(0x01));
         assert!(calls.is_empty());
     }
 

@@ -15,8 +15,8 @@ pub use eip8130_invalidation::{
 
 mod eip8130_pool;
 pub use eip8130_pool::{
-    BestEip8130Transactions, Eip8130Pool, Eip8130PoolConfig, Eip8130PoolError,
-    Eip8130SequenceId, Eip8130TxId, SenderThroughputTier, SharedEip8130Pool, is_2d_nonce,
+    BestEip8130Transactions, Eip8130Pool, Eip8130PoolConfig, Eip8130PoolError, Eip8130SequenceId,
+    Eip8130TxId, SenderThroughputTier, SharedEip8130Pool, is_2d_nonce,
 };
 
 mod best;
@@ -25,7 +25,7 @@ pub use best::MergedBestTransactions;
 mod eip8130_validate;
 pub use eip8130_validate::{
     DEFAULT_CUSTOM_VERIFIER_GAS_LIMIT, Eip8130ValidationError, Eip8130ValidationOutcome,
-    VerifierAllowlist, validate_eip8130_transaction,
+    MAX_AA_TX_ENCODED_BYTES, VerifierAllowlist, validate_eip8130_transaction,
 };
 
 mod validator;
@@ -61,8 +61,7 @@ pub use wire::ValidatedTransaction;
 pub mod estimated_da_size;
 
 use reth_transaction_pool::{
-    BlobStore, EthPoolTransaction, Pool, TransactionOrdering,
-    TransactionValidationTaskExecutor,
+    BlobStore, EthPoolTransaction, Pool, TransactionOrdering, TransactionValidationTaskExecutor,
 };
 
 /// Type alias for default Base transaction pool
@@ -84,9 +83,8 @@ pub trait HasEip8130Pool {
 impl<Client, Tx, Evm, O, S> HasEip8130Pool
     for Pool<TransactionValidationTaskExecutor<OpTransactionValidator<Client, Tx, Evm>>, O, S>
 where
-    Client: reth_chainspec::ChainSpecProvider<
-            ChainSpec: base_alloy_chains::BaseUpgrades,
-        > + reth_storage_api::StateProviderFactory
+    Client: reth_chainspec::ChainSpecProvider<ChainSpec: base_alloy_chains::BaseUpgrades>
+        + reth_storage_api::StateProviderFactory
         + reth_storage_api::BlockReaderIdExt
         + Sync
         + 'static,

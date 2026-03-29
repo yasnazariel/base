@@ -10,11 +10,11 @@ mod integration {
     use alloy_primitives::{Address, B256, Bytes, U256};
 
     use crate::transaction::eip8130::{
-        AA_BASE_COST, AA_TX_TYPE_ID, AccountChangeEntry, Call, ConfigChangeEntry,
-        ConfigOperation, CreateEntry, Owner, OwnerScope, TxEip8130,
-        address::{create2_address, derive_account_address},
+        AA_BASE_COST, AA_TX_TYPE_ID, AccountChangeEntry, Call, ConfigChangeEntry, ConfigOperation,
+        CreateEntry, Owner, OwnerScope, TxEip8130,
+        address::create2_address,
         gas::intrinsic_gas,
-        signature::{payer_signature_hash, parse_sender_auth, sender_signature_hash},
+        signature::{parse_sender_auth, payer_signature_hash, sender_signature_hash},
     };
 
     fn simple_tx(from: Address) -> TxEip8130 {
@@ -78,11 +78,7 @@ mod integration {
     fn sponsored_tx_payer_set() {
         let from = Address::repeat_byte(0xAA);
         let payer = Address::repeat_byte(0xCC);
-        let tx = TxEip8130 {
-            payer,
-            payer_auth: Bytes::from(vec![0u8; 65]),
-            ..simple_tx(from)
-        };
+        let tx = TxEip8130 { payer, payer_auth: Bytes::from(vec![0u8; 65]), ..simple_tx(from) };
 
         assert_eq!(tx.payer, payer);
         assert!(!tx.payer_auth.is_empty());
@@ -219,10 +215,7 @@ mod integration {
     fn phased_calls_structure() {
         let tx = TxEip8130 {
             calls: vec![
-                vec![Call {
-                    to: Address::repeat_byte(0x01),
-                    data: Bytes::from_static(&[0x01]),
-                }],
+                vec![Call { to: Address::repeat_byte(0x01), data: Bytes::from_static(&[0x01]) }],
                 vec![
                     Call { to: Address::repeat_byte(0x02), data: Bytes::from_static(&[0x02]) },
                     Call { to: Address::repeat_byte(0x03), data: Bytes::from_static(&[0x03]) },
@@ -348,10 +341,14 @@ mod integration {
     fn predeploy_addresses_unique() {
         use crate::transaction::eip8130::predeploys::*;
         let addrs = [
-            ACCOUNT_CONFIG_ADDRESS, NONCE_MANAGER_ADDRESS,
-            TX_CONTEXT_ADDRESS, DEFAULT_ACCOUNT_ADDRESS,
-            K1_VERIFIER_ADDRESS, P256_RAW_VERIFIER_ADDRESS,
-            P256_WEBAUTHN_VERIFIER_ADDRESS, DELEGATE_VERIFIER_ADDRESS,
+            ACCOUNT_CONFIG_ADDRESS,
+            NONCE_MANAGER_ADDRESS,
+            TX_CONTEXT_ADDRESS,
+            DEFAULT_ACCOUNT_ADDRESS,
+            K1_VERIFIER_ADDRESS,
+            P256_RAW_VERIFIER_ADDRESS,
+            P256_WEBAUTHN_VERIFIER_ADDRESS,
+            DELEGATE_VERIFIER_ADDRESS,
         ];
         for (i, a) in addrs.iter().enumerate() {
             for (j, b) in addrs.iter().enumerate() {
@@ -372,10 +369,7 @@ mod integration {
 
         let account = Address::repeat_byte(0x42);
         let owner_id = B256::repeat_byte(0x01);
-        assert_eq!(
-            owner_config_slot(account, owner_id),
-            owner_config_slot(account, owner_id)
-        );
+        assert_eq!(owner_config_slot(account, owner_id), owner_config_slot(account, owner_id));
         assert_ne!(
             owner_config_slot(account, owner_id),
             owner_config_slot(account, B256::repeat_byte(0x02))
@@ -407,10 +401,14 @@ mod integration {
 
     #[test]
     fn large_nonce_key() {
-        let tx = TxEip8130 { nonce_key: U256::from(u64::MAX), ..simple_tx(Address::repeat_byte(0xAA)) };
+        let tx =
+            TxEip8130 { nonce_key: U256::from(u64::MAX), ..simple_tx(Address::repeat_byte(0xAA)) };
         let mut buf = Vec::new();
         tx.rlp_encode(&mut buf);
-        assert_eq!(TxEip8130::rlp_decode(&mut buf.as_slice()).unwrap().nonce_key, U256::from(u64::MAX));
+        assert_eq!(
+            TxEip8130::rlp_decode(&mut buf.as_slice()).unwrap().nonce_key,
+            U256::from(u64::MAX)
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -430,7 +428,8 @@ mod integration {
             U256::from(1),
             U256::from(2),
         );
-        let tx = TxEip8130 { authorization_list: vec![auth], ..simple_tx(Address::repeat_byte(0xAA)) };
+        let tx =
+            TxEip8130 { authorization_list: vec![auth], ..simple_tx(Address::repeat_byte(0xAA)) };
 
         let mut buf = Vec::new();
         tx.rlp_encode(&mut buf);
@@ -518,8 +517,8 @@ mod evm_integration {
             TxContextValues, auto_delegation_code, build_execution_calls, gas_refund,
             max_execution_gas_cost, nonce_increment_write,
         },
-        predeploys::NONCE_MANAGER_ADDRESS,
         precompiles::{PrecompileError, TX_CONTEXT_GAS, handle_tx_context},
+        predeploys::NONCE_MANAGER_ADDRESS,
         validation::{validate_expiry, validate_structure},
     };
 
@@ -578,7 +577,8 @@ mod evm_integration {
 
     #[test]
     fn execution_calls_single() {
-        let calls = build_execution_calls(&simple_tx(Address::repeat_byte(0xAA)));
+        let sender = Address::repeat_byte(0xAA);
+        let calls = build_execution_calls(&simple_tx(sender), sender);
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].len(), 1);
     }
@@ -595,7 +595,7 @@ mod evm_integration {
             ],
             ..simple_tx(Address::repeat_byte(0xAA))
         };
-        let calls = build_execution_calls(&tx);
+        let calls = build_execution_calls(&tx, tx.from);
         assert_eq!(calls.len(), 2);
         assert_eq!(calls[1].len(), 2);
     }
@@ -609,7 +609,10 @@ mod evm_integration {
     #[test]
     fn max_cost() {
         let tx = simple_tx(Address::repeat_byte(0xAA));
-        assert_eq!(max_execution_gas_cost(&tx), U256::from(tx.max_fee_per_gas) * U256::from(tx.gas_limit));
+        assert_eq!(
+            max_execution_gas_cost(&tx),
+            U256::from(tx.max_fee_per_gas) * U256::from(tx.gas_limit)
+        );
     }
 
     #[test]
@@ -624,8 +627,8 @@ mod evm_integration {
 
     #[test]
     fn tx_context_getters() {
-        use alloy_sol_types::SolCall;
         use crate::transaction::eip8130::abi::ITxContext;
+        use alloy_sol_types::SolCall;
 
         let ctx = TxContextValues {
             sender: Address::repeat_byte(0xAA),
