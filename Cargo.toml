@@ -658,8 +658,6 @@ aes = "0.8.1"
 ahash = "0.8"
 alloy-dyn-abi = "1.5.6"
 alloy-eip2124 = { version = "0.2.0", default-features = false }
-alloy-op-evm = { version = "0.27.2", default-features = false }
-alloy-op-hardforks = "0.4.4"
 alloy-pubsub = { version = "1.6.3", default-features = false }
 alloy-rpc-types-admin = { version = "1.6.3", default-features = false }
 alloy-rpc-types-anvil = { version = "1.6.3", default-features = false }
@@ -716,13 +714,6 @@ mev-share-sse = { version = "0.5.0", default-features = false }
 num-traits = "0.2.15"
 nybbles = { version = "0.4.8", default-features = false }
 once_cell = { version = "1.19", default-features = false, features = ["critical-section"] }
-op-alloy-consensus = { version = "0.23.1", default-features = false }
-op-alloy-flz = { version = "0.13.1", default-features = false }
-op-alloy-network = { version = "0.23.1", default-features = false }
-op-alloy-rpc-jsonrpsee = { version = "0.23.1", default-features = false }
-op-alloy-rpc-types = { version = "0.23.1", default-features = false }
-op-alloy-rpc-types-engine = { version = "0.23.1", default-features = false }
-op-revm = { version = "15.0.0", default-features = false }
 opentelemetry-appender-tracing = "0.31"
 opentelemetry-otlp = "0.31"
 opentelemetry-semantic-conventions = "0.31"

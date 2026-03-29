@@ -118,9 +118,3 @@ test-utils = [
     "reth-primitives-traits/test-utils",
     "reth-tasks/test-utils",
 ]
-op = [
-    "reth-db/op",
-    "reth-db-api/op",
-    "reth-evm/op",
-    "reth-primitives-traits/op",
-]

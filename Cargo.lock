@@ -368,7 +368,6 @@ dependencies = [
  "alloy-consensus",
  "alloy-eips",
  "alloy-hardforks 0.4.7",
- "alloy-op-hardforks",
  "alloy-primitives",
  "alloy-rpc-types-engine",
  "alloy-rpc-types-eth",
@@ -509,18 +508,6 @@ dependencies = [
  "thiserror 2.0.18",
  "tracing",
  "url",
-]
-
-[[package]]
-name = "alloy-op-hardforks"
-version = "0.4.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6472c610150c4c4c15be9e1b964c9b78068f933bda25fb9cdf09b9ac2bb66f36"
-dependencies = [
- "alloy-chains",
- "alloy-hardforks 0.4.7",
- "alloy-primitives",
- "auto_impl",
 ]
 
 [[package]]
@@ -12157,10 +12144,8 @@ dependencies = [
  "alloy-rlp",
  "alloy-rpc-types-eth",
  "alloy-serde",
- "arbitrary",
  "derive_more",
  "serde",
- "serde_with",
  "thiserror 2.0.18",
 ]
 
@@ -14286,7 +14271,6 @@ dependencies = [
  "arbitrary",
  "bytes",
  "modular-bitfield",
- "op-alloy-consensus",
  "proptest",
  "proptest-arbitrary-interop",
  "reth-codecs-derive",
@@ -14399,7 +14383,6 @@ dependencies = [
  "derive_more",
  "metrics",
  "modular-bitfield",
- "op-alloy-consensus",
  "parity-scale-codec",
  "proptest",
  "proptest-arbitrary-interop",
@@ -14674,7 +14657,6 @@ dependencies = [
  "alloy-rpc-types-engine",
  "eyre",
  "futures-util",
- "op-alloy-rpc-types-engine",
  "reth-chainspec",
  "reth-engine-primitives",
  "reth-ethereum-engine-primitives",
@@ -15875,7 +15857,6 @@ dependencies = [
  "assert_matches",
  "auto_impl",
  "either",
- "op-alloy-rpc-types-engine",
  "reth-chain-state",
  "reth-chainspec",
  "reth-errors",
@@ -15947,7 +15928,6 @@ dependencies = [
  "derive_more",
  "modular-bitfield",
  "once_cell",
- "op-alloy-consensus",
  "proptest",
  "proptest-arbitrary-interop",
  "rand 0.8.5",
@@ -16285,9 +16265,6 @@ dependencies = [
  "auto_impl",
  "dyn-clone",
  "jsonrpsee-types",
- "op-alloy-consensus",
- "op-alloy-network",
- "op-alloy-rpc-types",
  "reth-ethereum-primitives",
  "reth-evm",
  "reth-primitives-traits",
