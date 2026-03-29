@@ -3,9 +3,12 @@
 //! This module provides a receipt builder that handles both deposit and non-deposit
 //! transactions seamlessly, without requiring error handling at the call site.
 
+use std::sync::Arc;
+
 use alloy_consensus::{Eip658Value, Receipt, transaction::Recovered};
 use base_alloy_chains::BaseUpgrades;
 use base_alloy_consensus::{OpDepositReceipt, OpReceipt, OpTxEnvelope, OpTxType};
+use base_execution_chainspec::OpChainSpec;
 use reth_evm::Evm;
 use revm::{Database, context::result::ExecutionResult};
 
@@ -31,23 +34,21 @@ pub enum ReceiptBuildError {
 /// let receipt = builder.build(&mut evm, &transaction, result, cumulative_gas_used, timestamp)?;
 /// ```
 #[derive(Debug, Clone)]
-pub struct UnifiedReceiptBuilder<C> {
-    chain_spec: C,
+pub struct UnifiedReceiptBuilder {
+    chain_spec: Arc<OpChainSpec>,
 }
 
-impl<C> UnifiedReceiptBuilder<C> {
+impl UnifiedReceiptBuilder {
     /// Creates a new unified receipt builder with the given chain specification.
-    pub const fn new(chain_spec: C) -> Self {
+    pub const fn new(chain_spec: Arc<OpChainSpec>) -> Self {
         Self { chain_spec }
     }
 
     /// Returns a reference to the chain specification.
-    pub const fn chain_spec(&self) -> &C {
+    pub const fn chain_spec(&self) -> &Arc<OpChainSpec> {
         &self.chain_spec
     }
-}
 
-impl<C: BaseUpgrades> UnifiedReceiptBuilder<C> {
     /// Builds a receipt for any transaction type, handling deposit receipts internally.
     ///
     /// This method builds either a regular receipt or a deposit receipt based on

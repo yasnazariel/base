@@ -15,7 +15,7 @@ use base_execution_payload_builder::{
     builder::OpPayloadTransactions,
     config::{OpBuilderConfig, OpDAConfig, OpGasLimitConfig},
 };
-use base_execution_primitives::{DepositReceipt, OpPrimitives};
+use base_execution_primitives::OpPrimitives;
 use base_execution_rpc::{
     config::{BaseEthConfigApiServer, BaseEthConfigHandler},
     eth::OpEthApiBuilder,
@@ -27,9 +27,7 @@ use base_txpool::{
     BaseOrdering, BasePooledTransaction, OpPooledTx, OpTransactionPool, OpTransactionValidator,
     TimestampedTransaction,
 };
-use reth_chainspec::{
-    BaseFeeParams, ChainSpecProvider, EthChainSpec, EthereumHardforks, Hardforks,
-};
+use reth_chainspec::{BaseFeeParams, ChainSpecProvider, EthChainSpec, Hardforks};
 use reth_evm::ConfigureEvm;
 use reth_network::{
     NetworkConfig, NetworkHandle, NetworkManager, NetworkPrimitives, PeersInfo,
@@ -73,16 +71,12 @@ use crate::{
 
 /// Marker trait for Base node types with standard engine, chain spec, and primitives.
 pub trait OpNodeTypes:
-    NodeTypes<Payload = OpEngineTypes, ChainSpec: BaseUpgrades + Hardforks, Primitives = OpPrimitives>
+    NodeTypes<Payload = OpEngineTypes, ChainSpec = OpChainSpec, Primitives = OpPrimitives>
 {
 }
 /// Blanket impl for all node types that conform to the Base spec.
 impl<N> OpNodeTypes for N where
-    N: NodeTypes<
-            Payload = OpEngineTypes,
-            ChainSpec: BaseUpgrades + Hardforks,
-            Primitives = OpPrimitives,
-        >
+    N: NodeTypes<Payload = OpEngineTypes, ChainSpec = OpChainSpec, Primitives = OpPrimitives>
 {
 }
 
@@ -90,7 +84,7 @@ impl<N> OpNodeTypes for N where
 /// data.
 pub trait OpFullNodeTypes:
     NodeTypes<
-        ChainSpec: BaseUpgrades,
+        ChainSpec = OpChainSpec,
         Primitives: OpPayloadPrimitives,
         Storage = OpStorage,
         Payload: EngineTypes<ExecutionData = OpExecutionData>,
@@ -100,7 +94,7 @@ pub trait OpFullNodeTypes:
 
 impl<N> OpFullNodeTypes for N where
     N: NodeTypes<
-            ChainSpec: BaseUpgrades,
+            ChainSpec = OpChainSpec,
             Primitives: OpPayloadPrimitives,
             Storage = OpStorage,
             Payload: EngineTypes<ExecutionData = OpExecutionData>,
@@ -547,18 +541,8 @@ impl<N, EthB, PVB, EB, EVB, Attrs, RpcMiddleware> NodeAddOns<N>
     for OpAddOns<N, EthB, PVB, EB, EVB, RpcMiddleware>
 where
     N: FullNodeComponents<
-            Types: NodeTypes<
-                ChainSpec: BaseUpgrades + EthereumHardforks + Hardforks,
-                Primitives: OpPayloadPrimitives,
-                Payload: PayloadTypes<PayloadBuilderAttributes = Attrs>,
-            >,
-            Evm: ConfigureEvm<
-                NextBlockEnvCtx: BuildNextEnv<
-                    Attrs,
-                    HeaderTy<N::Types>,
-                    <N::Types as NodeTypes>::ChainSpec,
-                >,
-            >,
+            Types: OpNodeTypes + NodeTypes<Payload: PayloadTypes<PayloadBuilderAttributes = Attrs>>,
+            Evm: ConfigureEvm<NextBlockEnvCtx: BuildNextEnv<Attrs, HeaderTy<N::Types>, OpChainSpec>>,
             Pool: TransactionPool<Transaction: OpPooledTx>,
         >,
     EthB: EthApiBuilder<N>,
@@ -630,18 +614,8 @@ impl<N, EthB, PVB, EB, EVB, Attrs, RpcMiddleware> RethRpcAddOns<N>
     for OpAddOns<N, EthB, PVB, EB, EVB, RpcMiddleware>
 where
     N: FullNodeComponents<
-            Types: NodeTypes<
-                ChainSpec: BaseUpgrades + EthereumHardforks + Hardforks,
-                Primitives: OpPayloadPrimitives,
-                Payload: PayloadTypes<PayloadBuilderAttributes = Attrs>,
-            >,
-            Evm: ConfigureEvm<
-                NextBlockEnvCtx: BuildNextEnv<
-                    Attrs,
-                    HeaderTy<N::Types>,
-                    <N::Types as NodeTypes>::ChainSpec,
-                >,
-            >,
+            Types: OpNodeTypes + NodeTypes<Payload: PayloadTypes<PayloadBuilderAttributes = Attrs>>,
+            Evm: ConfigureEvm<NextBlockEnvCtx: BuildNextEnv<Attrs, HeaderTy<N::Types>, OpChainSpec>>,
         >,
     <<N as FullNodeComponents>::Pool as TransactionPool>::Transaction: OpPooledTx,
     EthB: EthApiBuilder<N>,
@@ -829,7 +803,7 @@ pub struct OpExecutorBuilder;
 
 impl<Node> ExecutorBuilder<Node> for OpExecutorBuilder
 where
-    Node: FullNodeTypes<Types: NodeTypes<ChainSpec: BaseUpgrades, Primitives = OpPrimitives>>,
+    Node: FullNodeTypes<Types: OpNodeTypes>,
 {
     type EVM =
         OpEvmConfig<<Node::Types as NodeTypes>::ChainSpec, <Node::Types as NodeTypes>::Primitives>;
@@ -894,7 +868,7 @@ impl<T> OpPoolBuilder<T> {
 
 impl<Node, T, Evm> PoolBuilder<Node, Evm> for OpPoolBuilder<T>
 where
-    Node: FullNodeTypes<Types: NodeTypes<ChainSpec: BaseUpgrades>>,
+    Node: FullNodeTypes<Types: OpNodeTypes>,
     T: EthPoolTransaction<Consensus = TxTy<Node::Types>> + OpPooledTx + TimestampedTransaction,
     Evm: ConfigureEvm<Primitives = PrimitivesTy<Node::Types>> + Clone + 'static,
 {
@@ -1155,14 +1129,9 @@ pub struct OpConsensusBuilder;
 
 impl<Node> ConsensusBuilder<Node> for OpConsensusBuilder
 where
-    Node: FullNodeTypes<
-        Types: NodeTypes<
-            ChainSpec: BaseUpgrades,
-            Primitives: NodePrimitives<Receipt: DepositReceipt>,
-        >,
-    >,
+    Node: FullNodeTypes<Types: OpNodeTypes>,
 {
-    type Consensus = Arc<OpBeaconConsensus<<Node::Types as NodeTypes>::ChainSpec>>;
+    type Consensus = Arc<OpBeaconConsensus>;
 
     async fn build_consensus(self, ctx: &BuilderContext<Node>) -> eyre::Result<Self::Consensus> {
         Ok(Arc::new(OpBeaconConsensus::new(ctx.chain_spec())))
@@ -1178,7 +1147,7 @@ impl<Node> PayloadValidatorBuilder<Node> for OpEngineValidatorBuilder
 where
     Node: FullNodeComponents<
         Types: NodeTypes<
-            ChainSpec: BaseUpgrades,
+            ChainSpec = OpChainSpec,
             Payload: PayloadTypes<ExecutionData = OpExecutionData>,
         >,
     >,
@@ -1186,7 +1155,6 @@ where
     type Validator = OpEngineValidator<
         Node::Provider,
         <<Node::Types as NodeTypes>::Primitives as NodePrimitives>::SignedTx,
-        <Node::Types as NodeTypes>::ChainSpec,
     >;
 
     async fn build(self, ctx: &AddOnsContext<'_, Node>) -> eyre::Result<Self::Validator> {

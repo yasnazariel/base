@@ -25,7 +25,7 @@ reth-tracing.workspace = true
 reth-provider.workspace = true
 reth-node-api.workspace = true
 reth-rpc-api.workspace = true
-reth-chainspec.workspace = true
+reth-chainspec = { workspace = true, optional = true }
 reth-node-builder.workspace = true
 reth-primitives-traits.workspace = true
 reth-rpc-server-types.workspace = true
@@ -55,7 +55,6 @@ alloy-rpc-client = { workspace = true, optional = true }
 alloy-rpc-types-engine = { workspace = true, optional = true, features = ["std"] }
 
 # base-alloy
-base-alloy-chains.workspace = true
 base-alloy-network = { workspace = true, optional = true }
 base-alloy-consensus = { workspace = true, optional = true }
 base-alloy-rpc-types-engine = { workspace = true, optional = true }
@@ -93,6 +92,7 @@ test-utils = [
 	"dep:base-test-utils",
 	"dep:chrono",
 	"dep:jsonrpsee",
+	"dep:reth-chainspec",
 	"dep:reth-ipc",
 	"dep:reth-node-core",
 	"dep:reth-rpc-layer",

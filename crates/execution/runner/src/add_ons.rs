@@ -1,6 +1,5 @@
 use std::marker::PhantomData;
 
-use base_alloy_chains::BaseUpgrades;
 use base_execution_payload_builder::{
     OpAttributes, OpPayloadPrimitives,
     config::{OpDAConfig, OpGasLimitConfig},
@@ -13,7 +12,6 @@ use base_execution_rpc::{
 };
 use base_node_core::{OpEngineApiBuilder, OpEngineValidatorBuilder, OpNodeTypes};
 use base_txpool::OpPooledTx;
-use reth_chainspec::{EthereumHardforks, Hardforks};
 use reth_evm::ConfigureEvm;
 use reth_node_api::{BuildNextEnv, FullNodeComponents, HeaderTy, NodeAddOns, PayloadTypes, TxTy};
 use reth_node_builder::{
@@ -182,17 +180,9 @@ impl<N, EthB, PVB, EB, EVB, Attrs, RpcMiddleware> NodeAddOns<N>
     for BaseAddOns<N, EthB, PVB, EB, EVB, RpcMiddleware>
 where
     N: FullNodeComponents<
-            Types: NodeTypes<
-                ChainSpec: BaseUpgrades + EthereumHardforks + Hardforks,
-                Primitives: OpPayloadPrimitives,
-                Payload: PayloadTypes<PayloadBuilderAttributes = Attrs>,
-            >,
+            Types: OpNodeTypes + NodeTypes<Payload: PayloadTypes<PayloadBuilderAttributes = Attrs>>,
             Evm: ConfigureEvm<
-                NextBlockEnvCtx: BuildNextEnv<
-                    Attrs,
-                    HeaderTy<N::Types>,
-                    <N::Types as NodeTypes>::ChainSpec,
-                >,
+                NextBlockEnvCtx: BuildNextEnv<Attrs, HeaderTy<N::Types>, base_execution_chainspec::OpChainSpec>,
             >,
             Pool: TransactionPool<Transaction: OpPooledTx>,
         >,
@@ -265,17 +255,9 @@ impl<N, EthB, PVB, EB, EVB, Attrs, RpcMiddleware> RethRpcAddOns<N>
     for BaseAddOns<N, EthB, PVB, EB, EVB, RpcMiddleware>
 where
     N: FullNodeComponents<
-            Types: NodeTypes<
-                ChainSpec: BaseUpgrades + EthereumHardforks + Hardforks,
-                Primitives: OpPayloadPrimitives,
-                Payload: PayloadTypes<PayloadBuilderAttributes = Attrs>,
-            >,
+            Types: OpNodeTypes + NodeTypes<Payload: PayloadTypes<PayloadBuilderAttributes = Attrs>>,
             Evm: ConfigureEvm<
-                NextBlockEnvCtx: BuildNextEnv<
-                    Attrs,
-                    HeaderTy<N::Types>,
-                    <N::Types as NodeTypes>::ChainSpec,
-                >,
+                NextBlockEnvCtx: BuildNextEnv<Attrs, HeaderTy<N::Types>, base_execution_chainspec::OpChainSpec>,
             >,
         >,
     <<N as FullNodeComponents>::Pool as TransactionPool>::Transaction: OpPooledTx,

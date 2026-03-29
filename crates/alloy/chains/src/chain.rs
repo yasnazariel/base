@@ -13,7 +13,7 @@ use EthereumHardfork::{
 use alloy_hardforks::{EthereumHardfork, EthereumHardforks, ForkCondition};
 use alloy_primitives::U256;
 
-use crate::{BaseUpgrade, BaseUpgrades};
+use crate::{BaseChainConfig, BaseUpgrade, BaseUpgrades};
 
 /// A type allowing to configure activation [`ForkCondition`]s for a given list of
 /// [`BaseUpgrade`]s.
@@ -41,29 +41,34 @@ impl BaseChainUpgrades {
         Self { forks }
     }
 
+    /// Creates a new [`BaseChainUpgrades`] from the given chain configuration.
+    pub fn from_config(config: &BaseChainConfig) -> Self {
+        Self::new(BaseUpgrade::forks_for(config))
+    }
+
     /// Creates a new [`BaseChainUpgrades`] with Base mainnet configuration.
     pub fn mainnet() -> Self {
-        Self::new(BaseUpgrade::mainnet())
+        Self::from_config(BaseChainConfig::mainnet())
     }
 
     /// Creates a new [`BaseChainUpgrades`] with Base Sepolia configuration.
     pub fn sepolia() -> Self {
-        Self::new(BaseUpgrade::sepolia())
+        Self::from_config(BaseChainConfig::sepolia())
     }
 
     /// Creates a new [`BaseChainUpgrades`] with devnet configuration.
     pub fn devnet() -> Self {
-        Self::new(BaseUpgrade::devnet())
+        Self::from_config(BaseChainConfig::devnet())
     }
 
     /// Creates a new [`BaseChainUpgrades`] with Base devnet-0-sepolia-dev-0 configuration.
     pub fn base_devnet_0_sepolia_dev_0() -> Self {
-        Self::new(BaseUpgrade::base_devnet_0_sepolia_dev_0())
+        Self::from_config(BaseChainConfig::alpha())
     }
 
     /// Creates a new [`BaseChainUpgrades`] with Base Zeronet configuration.
     pub fn zeronet() -> Self {
-        Self::new(BaseUpgrade::zeronet())
+        Self::from_config(BaseChainConfig::zeronet())
     }
 }
 

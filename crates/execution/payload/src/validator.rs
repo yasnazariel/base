@@ -4,26 +4,24 @@ use alloc::sync::Arc;
 
 use alloy_consensus::Block;
 use alloy_rpc_types_engine::PayloadError;
-use base_alloy_chains::BaseUpgrades;
 use base_alloy_rpc_types_engine::{OpExecutionData, OpPayloadError};
+use base_execution_chainspec::OpChainSpec;
 use derive_more::{Constructor, Deref};
+use reth_chainspec::EthereumHardforks;
 use reth_payload_validator::{cancun, prague, shanghai};
 use reth_primitives_traits::{Block as _, SealedBlock, SignedTransaction};
 
 /// Execution payload validator.
 #[derive(Clone, Debug, Deref, Constructor)]
-pub struct OpExecutionPayloadValidator<ChainSpec> {
+pub struct OpExecutionPayloadValidator {
     /// Chain spec to validate against.
     #[deref]
-    inner: Arc<ChainSpec>,
+    inner: Arc<OpChainSpec>,
 }
 
-impl<ChainSpec> OpExecutionPayloadValidator<ChainSpec>
-where
-    ChainSpec: BaseUpgrades,
-{
+impl OpExecutionPayloadValidator {
     /// Returns reference to chain spec.
-    pub fn chain_spec(&self) -> &ChainSpec {
+    pub fn chain_spec(&self) -> &OpChainSpec {
         &self.inner
     }
 
@@ -57,12 +55,11 @@ where
 /// are empty as well as those passed in the sidecar. If the payload fields are not provided.
 ///
 /// Validation according to specs <https://specs.optimism.io/protocol/exec-engine.html#engine-api>.
-pub fn ensure_well_formed_payload<ChainSpec, T>(
-    chain_spec: ChainSpec,
+pub fn ensure_well_formed_payload<T>(
+    chain_spec: &OpChainSpec,
     payload: OpExecutionData,
 ) -> Result<SealedBlock<Block<T>>, OpPayloadError>
 where
-    ChainSpec: BaseUpgrades,
     T: SignedTransaction,
 {
     let OpExecutionData { payload, sidecar } = payload;

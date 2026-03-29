@@ -7,6 +7,7 @@ use alloy_rpc_types_engine::{
     ForkchoiceState, ForkchoiceUpdated, PayloadId, PayloadStatus,
 };
 use base_alloy_rpc_types_engine::{OpExecutionData, OpExecutionPayloadV4};
+use base_execution_chainspec::OpChainSpec;
 use derive_more::Constructor;
 use jsonrpsee::proc_macros::rpc;
 use jsonrpsee_core::{RpcResult, server::RpcModule};
@@ -246,12 +247,12 @@ pub trait OpEngineApi<Engine: EngineTypes> {
 /// The Engine API implementation that grants the Consensus layer access to data and
 /// functions in the Execution layer that are crucial for the consensus process.
 #[derive(Debug, Constructor)]
-pub struct OpEngineApi<Provider, EngineT: EngineTypes, Pool, Validator, ChainSpec> {
-    inner: EngineApi<Provider, EngineT, Pool, Validator, ChainSpec>,
+pub struct OpEngineApi<Provider, EngineT: EngineTypes, Pool, Validator> {
+    inner: EngineApi<Provider, EngineT, Pool, Validator, OpChainSpec>,
 }
 
-impl<Provider, PayloadT, Pool, Validator, ChainSpec> Clone
-    for OpEngineApi<Provider, PayloadT, Pool, Validator, ChainSpec>
+impl<Provider, PayloadT, Pool, Validator> Clone
+    for OpEngineApi<Provider, PayloadT, Pool, Validator>
 where
     PayloadT: EngineTypes,
 {
@@ -261,14 +262,14 @@ where
 }
 
 #[async_trait::async_trait]
-impl<Provider, EngineT, Pool, Validator, ChainSpec> OpEngineApiServer<EngineT>
-    for OpEngineApi<Provider, EngineT, Pool, Validator, ChainSpec>
+impl<Provider, EngineT, Pool, Validator> OpEngineApiServer<EngineT>
+    for OpEngineApi<Provider, EngineT, Pool, Validator>
 where
     Provider: HeaderProvider + BlockReader + StateProviderFactory + 'static,
     EngineT: EngineTypes<ExecutionData = OpExecutionData>,
     Pool: TransactionPool + 'static,
     Validator: EngineApiValidator<EngineT>,
-    ChainSpec: EthereumHardforks + Send + Sync + 'static,
+    OpChainSpec: EthereumHardforks + Send + Sync + 'static,
 {
     async fn new_payload_v2(&self, payload: ExecutionPayloadInputV2) -> RpcResult<PayloadStatus> {
         trace!(target: "rpc::engine", "Serving engine_newPayloadV2");
@@ -432,8 +433,8 @@ where
     }
 }
 
-impl<Provider, EngineT, Pool, Validator, ChainSpec> IntoEngineApiRpcModule
-    for OpEngineApi<Provider, EngineT, Pool, Validator, ChainSpec>
+impl<Provider, EngineT, Pool, Validator> IntoEngineApiRpcModule
+    for OpEngineApi<Provider, EngineT, Pool, Validator>
 where
     EngineT: EngineTypes,
     Self: OpEngineApiServer<EngineT>,

@@ -9,6 +9,7 @@ use base_alloy_rpc_types_engine::{
     OpExecutionData, OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4,
     OpExecutionPayloadEnvelopeV5, OpPayloadAttributes,
 };
+use base_execution_chainspec::OpChainSpec;
 use base_execution_consensus::isthmus;
 use base_execution_payload_builder::{OpExecutionPayloadValidator, OpPayloadTypes};
 use base_protocol::Predeploys;
@@ -70,16 +71,16 @@ where
 
 /// Validator for Base engine API.
 #[derive(Debug)]
-pub struct OpEngineValidator<P, Tx, ChainSpec> {
-    inner: OpExecutionPayloadValidator<ChainSpec>,
+pub struct OpEngineValidator<P, Tx> {
+    inner: OpExecutionPayloadValidator,
     provider: P,
     hashed_addr_l2tol1_msg_passer: B256,
     phantom: PhantomData<Tx>,
 }
 
-impl<P, Tx, ChainSpec> OpEngineValidator<P, Tx, ChainSpec> {
+impl<P, Tx> OpEngineValidator<P, Tx> {
     /// Instantiates a new validator.
-    pub fn new<KH: KeyHasher>(chain_spec: Arc<ChainSpec>, provider: P) -> Self {
+    pub fn new<KH: KeyHasher>(chain_spec: Arc<OpChainSpec>, provider: P) -> Self {
         let hashed_addr_l2tol1_msg_passer = KH::hash_key(Predeploys::L2_TO_L1_MESSAGE_PASSER);
         Self {
             inner: OpExecutionPayloadValidator::new(chain_spec),
@@ -90,14 +91,13 @@ impl<P, Tx, ChainSpec> OpEngineValidator<P, Tx, ChainSpec> {
     }
 }
 
-impl<P, Tx, ChainSpec> Clone for OpEngineValidator<P, Tx, ChainSpec>
+impl<P, Tx> Clone for OpEngineValidator<P, Tx>
 where
     P: Clone,
-    ChainSpec: BaseUpgrades,
 {
     fn clone(&self) -> Self {
         Self {
-            inner: OpExecutionPayloadValidator::new(self.inner.clone()),
+            inner: self.inner.clone(),
             provider: self.provider.clone(),
             hashed_addr_l2tol1_msg_passer: self.hashed_addr_l2tol1_msg_passer,
             phantom: Default::default(),
@@ -105,22 +105,18 @@ where
     }
 }
 
-impl<P, Tx, ChainSpec> OpEngineValidator<P, Tx, ChainSpec>
-where
-    ChainSpec: BaseUpgrades,
-{
+impl<P, Tx> OpEngineValidator<P, Tx> {
     /// Returns the chain spec used by the validator.
     #[inline]
-    pub fn chain_spec(&self) -> &ChainSpec {
+    pub fn chain_spec(&self) -> &OpChainSpec {
         self.inner.chain_spec()
     }
 }
 
-impl<P, Tx, ChainSpec, Types> PayloadValidator<Types> for OpEngineValidator<P, Tx, ChainSpec>
+impl<P, Tx, Types> PayloadValidator<Types> for OpEngineValidator<P, Tx>
 where
     P: StateProviderFactory + Unpin + 'static,
     Tx: SignedTransaction + Unpin + 'static,
-    ChainSpec: BaseUpgrades + Send + Sync + 'static,
     Types: PayloadTypes<ExecutionData = OpExecutionData>,
 {
     type Block = alloy_consensus::Block<Tx>;
@@ -163,7 +159,7 @@ where
     }
 }
 
-impl<Types, P, Tx, ChainSpec> EngineApiValidator<Types> for OpEngineValidator<P, Tx, ChainSpec>
+impl<Types, P, Tx> EngineApiValidator<Types> for OpEngineValidator<P, Tx>
 where
     Types: PayloadTypes<
             PayloadAttributes = OpPayloadAttributes,
@@ -172,7 +168,6 @@ where
         >,
     P: StateProviderFactory + Unpin + 'static,
     Tx: SignedTransaction + Unpin + 'static,
-    ChainSpec: BaseUpgrades + Send + Sync + 'static,
 {
     fn validate_version_specific_fields(
         &self,
@@ -355,7 +350,7 @@ mod tests {
         );
         let attributes = get_attributes(None, None, 1732633199);
 
-        let result = <engine::OpEngineValidator<_, _, _> as EngineApiValidator<
+        let result = <engine::OpEngineValidator<_, _> as EngineApiValidator<
             OpEngineTypes,
         >>::ensure_well_formed_attributes(
             &validator, EngineApiMessageVersion::V3, &attributes,
@@ -371,7 +366,7 @@ mod tests {
         );
         let attributes = get_attributes(None, None, 1732633200);
 
-        let result = <engine::OpEngineValidator<_, _, _> as EngineApiValidator<
+        let result = <engine::OpEngineValidator<_, _> as EngineApiValidator<
             OpEngineTypes,
         >>::ensure_well_formed_attributes(
             &validator, EngineApiMessageVersion::V3, &attributes,
@@ -387,7 +382,7 @@ mod tests {
         );
         let attributes = get_attributes(Some(b64!("0000000000000008")), None, 1732633200);
 
-        let result = <engine::OpEngineValidator<_, _, _> as EngineApiValidator<
+        let result = <engine::OpEngineValidator<_, _> as EngineApiValidator<
             OpEngineTypes,
         >>::ensure_well_formed_attributes(
             &validator, EngineApiMessageVersion::V3, &attributes,
@@ -403,7 +398,7 @@ mod tests {
         );
         let attributes = get_attributes(Some(b64!("0000000800000000")), None, 1732633200);
 
-        let result = <engine::OpEngineValidator<_, _, _> as EngineApiValidator<
+        let result = <engine::OpEngineValidator<_, _> as EngineApiValidator<
             OpEngineTypes,
         >>::ensure_well_formed_attributes(
             &validator, EngineApiMessageVersion::V3, &attributes,
@@ -419,7 +414,7 @@ mod tests {
         );
         let attributes = get_attributes(Some(b64!("0000000800000008")), None, 1732633200);
 
-        let result = <engine::OpEngineValidator<_, _, _> as EngineApiValidator<
+        let result = <engine::OpEngineValidator<_, _> as EngineApiValidator<
             OpEngineTypes,
         >>::ensure_well_formed_attributes(
             &validator, EngineApiMessageVersion::V3, &attributes,
@@ -435,7 +430,7 @@ mod tests {
         );
         let attributes = get_attributes(Some(b64!("0000000000000000")), None, 1732633200);
 
-        let result = <engine::OpEngineValidator<_, _, _> as EngineApiValidator<
+        let result = <engine::OpEngineValidator<_, _> as EngineApiValidator<
             OpEngineTypes,
         >>::ensure_well_formed_attributes(
             &validator, EngineApiMessageVersion::V3, &attributes,
@@ -455,7 +450,7 @@ mod tests {
             BaseChainConfig::sepolia().jovian_timestamp,
         );
 
-        let result = <engine::OpEngineValidator<_, _, _> as EngineApiValidator<
+        let result = <engine::OpEngineValidator<_, _> as EngineApiValidator<
             OpEngineTypes,
         >>::ensure_well_formed_attributes(
             &validator, EngineApiMessageVersion::V3, &attributes,
@@ -472,7 +467,7 @@ mod tests {
         );
         let attributes = get_attributes(None, Some(1), BaseChainConfig::sepolia().jovian_timestamp);
 
-        let result = <engine::OpEngineValidator<_, _, _> as EngineApiValidator<
+        let result = <engine::OpEngineValidator<_, _> as EngineApiValidator<
             OpEngineTypes,
         >>::ensure_well_formed_attributes(
             &validator, EngineApiMessageVersion::V3, &attributes,
@@ -489,7 +484,7 @@ mod tests {
         );
         let attributes = get_attributes(Some(b64!("0000000000000000")), Some(1), 1732633200);
 
-        let result = <engine::OpEngineValidator<_, _, _> as EngineApiValidator<
+        let result = <engine::OpEngineValidator<_, _> as EngineApiValidator<
             OpEngineTypes,
         >>::ensure_well_formed_attributes(
             &validator, EngineApiMessageVersion::V3, &attributes,
@@ -510,7 +505,7 @@ mod tests {
             BaseChainConfig::sepolia().jovian_timestamp,
         );
 
-        let result = <engine::OpEngineValidator<_, _, _> as EngineApiValidator<
+        let result = <engine::OpEngineValidator<_, _> as EngineApiValidator<
             OpEngineTypes,
         >>::ensure_well_formed_attributes(
             &validator, EngineApiMessageVersion::V3, &attributes,

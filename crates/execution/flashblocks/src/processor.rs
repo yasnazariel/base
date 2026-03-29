@@ -11,17 +11,18 @@ use alloy_network::TransactionResponse;
 use alloy_primitives::{Address, BlockNumber};
 use alloy_rpc_types_eth::state::StateOverride;
 use arc_swap::ArcSwapOption;
-use base_alloy_chains::BaseUpgrades;
-use base_alloy_consensus::{OpBlock, OpTxEnvelope};
+use base_alloy_consensus::{EIP1559ParamError, OpBlock, OpTxEnvelope};
 use base_alloy_flashblocks::Flashblock;
+use base_execution_chainspec::OpChainSpec;
 use base_execution_evm::{OpEvmConfig, OpNextBlockEnvAttributes};
 use rayon::prelude::*;
-use reth_chainspec::{ChainSpecProvider, EthChainSpec};
+use reth_chainspec::ChainSpecProvider;
 use reth_evm::ConfigureEvm;
 use reth_primitives::RecoveredBlock;
 use reth_provider::{BlockReaderIdExt, StateProviderFactory};
 use reth_revm::{State, database::StateProviderDatabase};
 use reth_trie_common::TrieInput;
+use revm::state::Account as RevmAccount;
 use revm_database::states::bundle_state::BundleRetention;
 use tokio::sync::{Mutex, broadcast::Sender, mpsc::UnboundedReceiver};
 
@@ -59,7 +60,7 @@ pub struct StateProcessor<Client> {
 impl<Client> StateProcessor<Client>
 where
     Client: StateProviderFactory
-        + ChainSpecProvider<ChainSpec: EthChainSpec<Header = Header> + BaseUpgrades>
+        + ChainSpecProvider<ChainSpec = OpChainSpec>
         + BlockReaderIdExt<Header = Header>
         + Clone
         + 'static,
@@ -370,7 +371,7 @@ where
             .map_err(|e| ProviderError::StateProvider(e.to_string()))?
             .ok_or(ProviderError::MissingCanonicalHeader { block_number: canonical_block })?;
 
-        let evm_config = OpEvmConfig::optimism(self.client.chain_spec());
+        let evm_config: OpEvmConfig = OpEvmConfig::optimism(self.client.chain_spec());
         let state_provider = self
             .client
             .state_by_block_number_or_tag(BlockNumberOrTag::Number(canonical_block))
@@ -415,7 +416,7 @@ where
 
             let evm_env = evm_config
                 .next_evm_env(&last_block_header, &block_env_attributes)
-                .map_err(|e| ExecutionError::EvmEnv(e.to_string()))?;
+                .map_err(|e: EIP1559ParamError| ExecutionError::EvmEnv(e.to_string()))?;
             let evm = evm_config.evm_with_env(db, evm_env);
 
             // Parallel sender recovery - batch all ECDSA operations upfront
@@ -514,6 +515,7 @@ where
                 }
 
                 for (address, account) in &executed_transaction.state {
+                    let account: &RevmAccount = account;
                     if account.is_touched() {
                         pending_blocks_builder.with_account_balance(*address, account.info.balance);
                     }

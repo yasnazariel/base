@@ -6,6 +6,7 @@ use alloy_consensus::{
 };
 use alloy_eips::Encodable2718;
 use alloy_evm::{
+    block::BlockExecutionError,
     Database as AlloyDatabase,
     block::{StateDB, SystemCaller},
 };
@@ -17,9 +18,11 @@ use base_alloy_consensus::{OpReceipt, OpTxEnvelope};
 use base_alloy_evm::ensure_create2_deployer;
 use base_alloy_flz::tx_estimated_size_fjord as estimate_tx_compressed_size;
 use base_alloy_rpc_types::{OpTransactionReceipt, Transaction};
+use base_execution_chainspec::OpChainSpec;
 use base_execution_primitives::OpPrimitives;
 use base_execution_rpc::OpReceiptBuilder as OpRpcReceiptBuilder;
 use base_revm::{L1_BLOCK_CONTRACT, L1BlockInfo, OpHaltReason};
+use reth_chainspec::EthereumHardforks;
 use reth_evm::{Evm, FromRecoveredTx};
 use reth_rpc_convert::transaction::ConvertReceiptInput;
 use revm::{
@@ -58,30 +61,28 @@ struct CachedTransactionExecution {
 
 /// Executes or fetches cached values for transactions in a flashblock.
 #[derive(Debug)]
-pub struct PendingStateBuilder<E, ChainSpec> {
+pub struct PendingStateBuilder<E> {
     cumulative_gas_used: u64,
     next_log_index: usize,
 
     evm: E,
     pending_block: Block<OpTxEnvelope, Header>,
     l1_block_info: L1BlockInfo,
-    receipt_builder: UnifiedReceiptBuilder<ChainSpec>,
-    chain_spec: ChainSpec,
+    receipt_builder: UnifiedReceiptBuilder,
 
     prev_pending_blocks: Option<Arc<PendingBlocks>>,
     state_overrides: StateOverride,
 }
 
-impl<E, ChainSpec, DB> PendingStateBuilder<E, ChainSpec>
+impl<E, DB> PendingStateBuilder<E>
 where
     E: Evm<DB = DB, HaltReason = OpHaltReason>,
     DB: Database + DatabaseCommit,
     E::Tx: FromRecoveredTx<OpTxEnvelope>,
-    ChainSpec: BaseUpgrades + Clone,
 {
     /// Creates a new pending state builder.
     pub fn new(
-        chain_spec: ChainSpec,
+        chain_spec: Arc<OpChainSpec>,
         evm: E,
         pending_block: Block<OpTxEnvelope, Header>,
         prev_pending_blocks: Option<Arc<PendingBlocks>>,
@@ -96,7 +97,6 @@ where
             prev_pending_blocks,
             l1_block_info,
             state_overrides,
-            chain_spec: chain_spec.clone(),
             receipt_builder: UnifiedReceiptBuilder::new(chain_spec),
         }
     }
@@ -164,7 +164,6 @@ where
     ) -> Result<(), StateProcessorError>
     where
         DB: AlloyDatabase + StateDB,
-        ChainSpec: Clone,
     {
         let spec = self.receipt_builder.chain_spec();
         let state_clear_flag = spec.is_spurious_dragon_active_at_block(self.pending_block.number);
@@ -173,10 +172,10 @@ where
         let mut system_caller = SystemCaller::new(spec.clone());
         system_caller
             .apply_blockhashes_contract_call(parent_hash, &mut self.evm)
-            .map_err(|e| ExecutionError::EvmEnv(e.to_string()))?;
+            .map_err(|e: BlockExecutionError| ExecutionError::EvmEnv(e.to_string()))?;
         system_caller
             .apply_beacon_root_contract_call(parent_beacon_block_root, &mut self.evm)
-            .map_err(|e| ExecutionError::EvmEnv(e.to_string()))?;
+            .map_err(|e: BlockExecutionError| ExecutionError::EvmEnv(e.to_string()))?;
 
         ensure_create2_deployer(spec, self.pending_block.timestamp, self.evm.db_mut())
             .map_err(|e| ExecutionError::EvmEnv(e.to_string()))?;
@@ -269,7 +268,8 @@ where
         let is_deposit = transaction.is_deposit();
 
         let da_footprint_used = if self
-            .chain_spec
+            .receipt_builder
+            .chain_spec()
             .is_jovian_active_at_timestamp(self.evm.block().timestamp().saturating_to())
             && !is_deposit
         {
@@ -575,7 +575,7 @@ mod tests {
         let evm = evm_config.evm_with_env(db, evm_env);
         let pending_block = Block { header: header.clone(), body: Default::default() };
         let mut first_builder = PendingStateBuilder::new(
-            (*chain_spec).clone(),
+            Arc::clone(&chain_spec),
             evm,
             pending_block,
             None,
@@ -630,7 +630,7 @@ mod tests {
         let second_evm = evm_config.evm_with_env(InMemoryDB::default(), second_evm_env);
         let second_pending_block = Block { header, body: Default::default() };
         let mut second_builder = PendingStateBuilder::new(
-            (*chain_spec).clone(),
+            Arc::clone(&chain_spec),
             second_evm,
             second_pending_block,
             Some(prev_pending_blocks),
@@ -681,7 +681,7 @@ mod tests {
         let pending_block = Block { header, body: Default::default() };
 
         let mut builder = PendingStateBuilder::new(
-            (*chain_spec).clone(),
+            Arc::clone(&chain_spec),
             evm,
             pending_block,
             None,
@@ -724,7 +724,7 @@ mod tests {
         let pending_block = Block { header, body: Default::default() };
 
         let mut builder = PendingStateBuilder::new(
-            (*chain_spec).clone(),
+            Arc::clone(&chain_spec),
             evm,
             pending_block,
             None,
@@ -780,7 +780,7 @@ mod tests {
         let pending_block = Block { header, body: Default::default() };
 
         let mut builder = PendingStateBuilder::new(
-            (*chain_spec).clone(),
+            Arc::clone(&chain_spec),
             evm,
             pending_block,
             None,

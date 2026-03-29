@@ -301,7 +301,7 @@ pub fn chain_spec_with_base_v1() -> Arc<OpChainSpec> {
     let genesis = include_str!("./artifacts/genesis.json.tmpl");
     let genesis = serde_json::from_str(genesis).expect("invalid genesis JSON");
     let mut spec = OpChainSpec::from_genesis(genesis);
-    spec.inner.hardforks.insert(BaseUpgrade::V1, ForkCondition::Timestamp(0));
+    spec.set_fork(BaseUpgrade::V1, ForkCondition::Timestamp(0));
     Arc::new(spec)
 }
 

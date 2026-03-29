@@ -6,8 +6,8 @@ use alloy_eips::eip7840::BlobParams;
 use alloy_genesis::Genesis;
 use alloy_hardforks::Hardfork;
 use alloy_primitives::{B256, U256};
-use base_alloy_chains::{BaseUpgrade, BaseUpgrades};
-use base_execution_forks::BASE_MAINNET_HARDFORKS;
+use base_alloy_chains::{BaseChainConfig, BaseChainUpgrades, BaseUpgrade, BaseUpgrades};
+use base_execution_forks::BaseChainUpgradesExt;
 use base_protocol::Predeploys;
 use derive_more::{Constructor, Deref, Into};
 use reth_chainspec::{
@@ -16,12 +16,151 @@ use reth_chainspec::{
 };
 use reth_ethereum_forks::{ChainHardforks, EthereumHardfork, ForkCondition};
 use reth_network_peers::NodeRecord;
-use reth_primitives_traits::SealedHeader;
+use reth_primitives_traits::{SealedHeader, sync::LazyLock};
 
-use crate::{
-    BASE_DEV, BASE_DEVNET_0_SEPOLIA_DEV_0, BASE_MAINNET, BASE_SEPOLIA, BASE_ZERONET,
-    compute_jovian_base_fee, decode_holocene_base_fee,
-};
+use crate::{compute_jovian_base_fee, decode_holocene_base_fee};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BaseFeeSchedule {
+    Ethereum,
+    Configured,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GenesisHeaderSeal {
+    KnownHash,
+    Compute,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct BuiltInBaseSpec {
+    config: &'static BaseChainConfig,
+    chain: Chain,
+    prune_delete_limit: usize,
+    base_fee_schedule: BaseFeeSchedule,
+    genesis_header_seal: GenesisHeaderSeal,
+}
+
+fn configured_base_fee_params(config: &BaseChainConfig) -> BaseFeeParamsKind {
+    BaseFeeParamsKind::Variable(
+        vec![
+            (
+                EthereumHardfork::London.boxed(),
+                BaseFeeParams::new(
+                    config.eip1559_denominator as u128,
+                    config.eip1559_elasticity as u128,
+                ),
+            ),
+            (
+                BaseUpgrade::Canyon.boxed(),
+                BaseFeeParams::new(
+                    config.eip1559_denominator_canyon as u128,
+                    config.eip1559_elasticity as u128,
+                ),
+            ),
+        ]
+        .into(),
+    )
+}
+
+fn built_in_hardforks(config: &BaseChainConfig) -> ChainHardforks {
+    BaseChainUpgrades::from_config(config).to_chain_hardforks()
+}
+
+fn build_builtin_spec(def: BuiltInBaseSpec) -> Arc<OpChainSpec> {
+    let BuiltInBaseSpec {
+        config,
+        chain,
+        prune_delete_limit,
+        base_fee_schedule,
+        genesis_header_seal,
+    } = def;
+
+    let genesis = serde_json::from_str(config.genesis_json)
+        .unwrap_or_else(|_| panic!("Can't deserialize {chain} genesis json"));
+    let hardforks = built_in_hardforks(config);
+    let genesis_header = match genesis_header_seal {
+        GenesisHeaderSeal::KnownHash => SealedHeader::new(
+            OpChainSpec::make_genesis_header(&genesis, &hardforks),
+            config.genesis_l2_hash,
+        ),
+        GenesisHeaderSeal::Compute => {
+            SealedHeader::seal_slow(OpChainSpec::make_genesis_header(&genesis, &hardforks))
+        }
+    };
+    let base_fee_params = match base_fee_schedule {
+        BaseFeeSchedule::Ethereum => BaseFeeParams::ethereum().into(),
+        BaseFeeSchedule::Configured => configured_base_fee_params(config),
+    };
+
+    Arc::new(OpChainSpec {
+        inner: ChainSpec {
+            chain,
+            genesis_header,
+            genesis,
+            paris_block_and_final_difficulty: Some((0, U256::ZERO)),
+            hardforks,
+            base_fee_params,
+            prune_delete_limit,
+            ..Default::default()
+        },
+    })
+}
+
+/// The Base mainnet spec.
+pub static BASE_MAINNET: LazyLock<Arc<OpChainSpec>> = LazyLock::new(|| {
+    build_builtin_spec(BuiltInBaseSpec {
+        config: BaseChainConfig::mainnet(),
+        chain: Chain::base_mainnet(),
+        prune_delete_limit: 20_000,
+        base_fee_schedule: BaseFeeSchedule::Configured,
+        genesis_header_seal: GenesisHeaderSeal::KnownHash,
+    })
+});
+
+/// The Base Sepolia spec.
+pub static BASE_SEPOLIA: LazyLock<Arc<OpChainSpec>> = LazyLock::new(|| {
+    build_builtin_spec(BuiltInBaseSpec {
+        config: BaseChainConfig::sepolia(),
+        chain: Chain::base_sepolia(),
+        prune_delete_limit: 10_000,
+        base_fee_schedule: BaseFeeSchedule::Configured,
+        genesis_header_seal: GenesisHeaderSeal::KnownHash,
+    })
+});
+
+/// The Base devnet-0-sepolia-dev-0 spec.
+pub static BASE_DEVNET_0_SEPOLIA_DEV_0: LazyLock<Arc<OpChainSpec>> = LazyLock::new(|| {
+    build_builtin_spec(BuiltInBaseSpec {
+        config: BaseChainConfig::alpha(),
+        chain: Chain::from_id(BaseChainConfig::alpha().chain_id),
+        prune_delete_limit: 10_000,
+        base_fee_schedule: BaseFeeSchedule::Configured,
+        genesis_header_seal: GenesisHeaderSeal::KnownHash,
+    })
+});
+
+/// The Base zeronet spec.
+pub static BASE_ZERONET: LazyLock<Arc<OpChainSpec>> = LazyLock::new(|| {
+    build_builtin_spec(BuiltInBaseSpec {
+        config: BaseChainConfig::zeronet(),
+        chain: Chain::from_id(BaseChainConfig::zeronet().chain_id),
+        prune_delete_limit: 10_000,
+        base_fee_schedule: BaseFeeSchedule::Configured,
+        genesis_header_seal: GenesisHeaderSeal::KnownHash,
+    })
+});
+
+/// Base dev testnet specification.
+pub static BASE_DEV: LazyLock<Arc<OpChainSpec>> = LazyLock::new(|| {
+    build_builtin_spec(BuiltInBaseSpec {
+        config: BaseChainConfig::devnet(),
+        chain: Chain::dev(),
+        prune_delete_limit: 20_000,
+        base_fee_schedule: BaseFeeSchedule::Ethereum,
+        genesis_header_seal: GenesisHeaderSeal::Compute,
+    })
+});
 
 /// All supported chain names for the CLI.
 pub const SUPPORTED_CHAINS: &[&str] =
@@ -122,6 +261,17 @@ impl OpChainSpec {
             "base-zeronet" => Some(BASE_ZERONET.clone()),
             _ => None,
         }
+    }
+
+    /// Activates or updates the given hardfork condition in-place.
+    pub fn set_fork<H: Hardfork>(&mut self, fork: H, condition: ForkCondition) {
+        self.inner.hardforks.insert(fork, condition);
+    }
+
+    /// Sets the sealed genesis hash in-place.
+    pub fn set_genesis_hash(&mut self, hash: B256) {
+        self.inner.genesis_header =
+            SealedHeader::new(self.inner.genesis_header.clone_header(), hash);
     }
 }
 
@@ -292,7 +442,7 @@ impl From<Genesis> for OpChainSpec {
         block_hardforks.append(&mut time_hardforks);
 
         // Order hardforks to match mainnet ordering
-        let mainnet_hardforks = BASE_MAINNET_HARDFORKS.clone();
+        let mainnet_hardforks = built_in_hardforks(BaseChainConfig::mainnet());
         let mainnet_order = mainnet_hardforks.forks_iter();
 
         let mut ordered_hardforks = Vec::with_capacity(block_hardforks.len());
@@ -388,7 +538,7 @@ mod tests {
     #[test]
     fn base_mainnet_forkids() {
         let mut base_mainnet = OpChainSpecBuilder::base_mainnet().build();
-        base_mainnet.inner.genesis_header.set_hash(BASE_MAINNET.genesis_hash());
+        base_mainnet.set_genesis_hash(BASE_MAINNET.genesis_hash());
         test_fork_ids(
             &BASE_MAINNET,
             &[

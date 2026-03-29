@@ -31,6 +31,7 @@ base-execution-evm.workspace = true
 base-execution-rpc.workspace = true
 reth-rpc-eth-types.workspace = true
 base-execution-primitives.workspace = true
+base-execution-chainspec.workspace = true
 
 # revm
 revm.workspace = true
@@ -85,7 +86,6 @@ derive_more = { workspace = true, features = ["from"] }
 [dev-dependencies]
 rstest.workspace = true
 alloy-eips.workspace = true
-base-execution-chainspec.workspace = true
 
 [features]
 default = [ "metrics" ]

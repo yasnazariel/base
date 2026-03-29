@@ -31,6 +31,7 @@ reth-revm = { workspace = true, features = ["witness"] }
 base-txpool.workspace = true
 base-revm.workspace = true
 base-protocol.workspace = true
+base-execution-chainspec.workspace = true
 base-execution-evm.workspace = true
 base-execution-primitives.workspace = true
 
