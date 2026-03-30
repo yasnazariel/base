@@ -977,12 +977,7 @@ impl OpPayloadBuilderCtx {
     ///
     /// Derives the EVM environment from the given chain spec and parent header,
     /// using default builder attributes and a no-op cancellation token.
-    pub fn for_test(
-        chain_spec: Arc<OpChainSpec>,
-        parent: Arc<SealedHeader>,
-    ) -> Self {
-        use reth_evm::ConfigureEvm;
-
+    pub fn for_test(chain_spec: Arc<OpChainSpec>, parent: Arc<SealedHeader>) -> Self {
         let evm_config = OpEvmConfig::optimism(Arc::clone(&chain_spec));
         let timestamp = parent.timestamp + 2;
 
@@ -1003,7 +998,7 @@ impl OpPayloadBuilderCtx {
             suggested_fee_recipient: Default::default(),
             prev_randao: Default::default(),
             gas_limit: parent.gas_limit,
-            parent_beacon_block_root: None,
+            parent_beacon_block_root: Some(B256::ZERO),
             extra_data: Default::default(),
         };
 

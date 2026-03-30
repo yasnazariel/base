@@ -1197,7 +1197,7 @@ mod tests {
     use reth_provider::noop::NoopProvider;
     use reth_revm::{State, database::StateProviderDatabase};
 
-    use super::FlashblocksMetadata;
+    use super::{FlashblocksMetadata, build_block};
     use crate::{ExecutionInfo, flashblocks::context::OpPayloadBuilderCtx};
 
     /// Creates a minimal [`OpChainSpec`] with all L1 hardforks through Cancun
@@ -1214,22 +1214,15 @@ mod tests {
         });
         let genesis = serde_json::from_value(genesis).expect("valid genesis");
 
-        let inner = ChainSpec::builder()
-            .chain(901.into())
-            .genesis(genesis)
-            .cancun_activated()
-            .build();
+        let inner =
+            ChainSpec::builder().chain(901.into()).genesis(genesis).cancun_activated().build();
 
         Arc::new(OpChainSpec { inner })
     }
 
     /// Builds a sealed genesis header consistent with [`minimal_chain_spec`].
     fn genesis_header() -> Arc<SealedHeader> {
-        let header = Header {
-            gas_limit: 30_000_000,
-            timestamp: 0,
-            ..Default::default()
-        };
+        let header = Header { gas_limit: 30_000_000, timestamp: 0, ..Default::default() };
         Arc::new(SealedHeader::seal_slow(header))
     }
 
@@ -1241,8 +1234,6 @@ mod tests {
     /// no node, no disk, no network.
     #[test]
     fn build_block_empty_no_state_root() {
-        use super::build_block;
-
         let chain_spec = minimal_chain_spec();
         let parent = genesis_header();
         let ctx = OpPayloadBuilderCtx::for_test(chain_spec, Arc::clone(&parent));
@@ -1256,11 +1247,7 @@ mod tests {
                 .expect("build_block should succeed for an empty block");
 
         // Block number must be parent + 1.
-        assert_eq!(
-            payload.block().number,
-            parent.number + 1,
-            "block number should be parent + 1"
-        );
+        assert_eq!(payload.block().number, parent.number + 1, "block number should be parent + 1");
 
         // No transactions were executed, so gas used must be zero.
         assert_eq!(payload.block().gas_used, 0, "empty block should use zero gas");
