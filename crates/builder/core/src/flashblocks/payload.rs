@@ -899,7 +899,7 @@ struct FlashblocksMetadata {
     access_list: Option<FlashblockAccessList>,
 }
 
-fn execute_pre_steps<DB>(
+pub(crate) fn execute_pre_steps<DB>(
     state: &mut State<DB>,
     ctx: &OpPayloadBuilderCtx,
 ) -> Result<ExecutionInfo, PayloadBuilderError>
@@ -918,7 +918,7 @@ where
     Ok(info)
 }
 
-pub(super) fn build_block<DB, P>(
+pub(crate) fn build_block<DB, P>(
     state: &mut State<DB>,
     ctx: &OpPayloadBuilderCtx,
     info: &mut ExecutionInfo,
@@ -1185,12 +1185,89 @@ where
 
 #[cfg(test)]
 mod tests {
-    use alloy_consensus::Receipt;
+    use std::sync::Arc;
+
+    use alloy_consensus::{Header, Receipt};
     use alloy_primitives::{Address, B256, Log, U256, map::foldhash::HashMap};
     use base_alloy_consensus::OpReceipt;
     use base_alloy_flashblocks::Metadata;
+    use base_execution_chainspec::OpChainSpec;
+    use reth_chainspec::ChainSpec;
+    use reth_primitives_traits::SealedHeader;
+    use reth_provider::noop::NoopProvider;
+    use reth_revm::{State, database::StateProviderDatabase};
 
     use super::FlashblocksMetadata;
+    use crate::{ExecutionInfo, flashblocks::context::OpPayloadBuilderCtx};
+
+    /// Creates a minimal [`OpChainSpec`] with all L1 hardforks through Cancun
+    /// active at genesis but **no** OP-specific hardforks (Bedrock, Canyon,
+    /// Ecotone, Holocene, Isthmus, Jovian are all absent).
+    ///
+    /// This keeps `build_block` on the simplest code paths: no blob fields,
+    /// default extra data, no withdrawals root calculation.
+    fn minimal_chain_spec() -> Arc<OpChainSpec> {
+        let genesis: serde_json::Value = serde_json::json!({
+            "config": { "chainId": 901 },
+            "gasLimit": "0x1C9C380",
+            "timestamp": "0x0"
+        });
+        let genesis = serde_json::from_value(genesis).expect("valid genesis");
+
+        let inner = ChainSpec::builder()
+            .chain(901.into())
+            .genesis(genesis)
+            .cancun_activated()
+            .build();
+
+        Arc::new(OpChainSpec { inner })
+    }
+
+    /// Builds a sealed genesis header consistent with [`minimal_chain_spec`].
+    fn genesis_header() -> Arc<SealedHeader> {
+        let header = Header {
+            gas_limit: 30_000_000,
+            timestamp: 0,
+            ..Default::default()
+        };
+        Arc::new(SealedHeader::seal_slow(header))
+    }
+
+    /// Verify that [`build_block`] produces a valid empty block when called
+    /// with no transactions and `calculate_state_root = false`.
+    ///
+    /// This exercises the full block-assembly path (receipts root, logs bloom,
+    /// header construction, flashblocks payload) using only in-memory state —
+    /// no node, no disk, no network.
+    #[test]
+    fn build_block_empty_no_state_root() {
+        use super::build_block;
+
+        let chain_spec = minimal_chain_spec();
+        let parent = genesis_header();
+        let ctx = OpPayloadBuilderCtx::for_test(chain_spec, Arc::clone(&parent));
+
+        let db = StateProviderDatabase::new(NoopProvider::default());
+        let mut state = State::builder().with_database(db).with_bundle_update().build();
+        let mut info = ExecutionInfo::default();
+
+        let (payload, fb_payload) =
+            build_block::<_, NoopProvider>(&mut state, &ctx, &mut info, false)
+                .expect("build_block should succeed for an empty block");
+
+        // Block number must be parent + 1.
+        assert_eq!(
+            payload.block().number,
+            parent.number + 1,
+            "block number should be parent + 1"
+        );
+
+        // No transactions were executed, so gas used must be zero.
+        assert_eq!(payload.block().gas_used, 0, "empty block should use zero gas");
+
+        // The flashblocks payload must reference the same block.
+        assert_eq!(fb_payload.diff.block_hash, payload.block().hash(), "hash mismatch");
+    }
 
     /// Pin the JSON field names and structure of [`FlashblocksMetadata`].
     ///

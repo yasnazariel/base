@@ -4,7 +4,7 @@ use std::{sync::Arc, time::Instant};
 use alloy_consensus::{Eip658Value, Transaction};
 use alloy_eips::{Encodable2718, Typed2718};
 use alloy_evm::Database;
-use alloy_primitives::{BlockHash, Bytes, U256};
+use alloy_primitives::{B256, BlockHash, Bytes, U256};
 use alloy_rpc_types_eth::Withdrawals;
 use base_access_lists::FBALBuilderDb;
 use base_alloy_chains::BaseUpgrades;
@@ -967,6 +967,61 @@ impl OpPayloadBuilderCtx {
             ExecutionMeteringLimitExceeded::BlockStateRootTime(_, _, _) => {
                 BuilderMetrics::block_state_root_time_exceeded_total().increment(1);
             }
+        }
+    }
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+impl OpPayloadBuilderCtx {
+    /// Creates a minimal [`OpPayloadBuilderCtx`] for unit tests.
+    ///
+    /// Derives the EVM environment from the given chain spec and parent header,
+    /// using default builder attributes and a no-op cancellation token.
+    pub fn for_test(
+        chain_spec: Arc<OpChainSpec>,
+        parent: Arc<SealedHeader>,
+    ) -> Self {
+        use reth_evm::ConfigureEvm;
+
+        let evm_config = OpEvmConfig::optimism(Arc::clone(&chain_spec));
+        let timestamp = parent.timestamp + 2;
+
+        let attributes = OpPayloadBuilderAttributes {
+            payload_attributes: reth_payload_builder::EthPayloadBuilderAttributes {
+                id: PayloadId::new([0; 8]),
+                parent: parent.hash(),
+                timestamp,
+                parent_beacon_block_root: Some(B256::ZERO),
+                ..Default::default()
+            },
+            gas_limit: Some(parent.gas_limit),
+            ..Default::default()
+        };
+
+        let block_env_attributes = OpNextBlockEnvAttributes {
+            timestamp,
+            suggested_fee_recipient: Default::default(),
+            prev_randao: Default::default(),
+            gas_limit: parent.gas_limit,
+            parent_beacon_block_root: None,
+            extra_data: Default::default(),
+        };
+
+        let evm_env = evm_config
+            .next_evm_env(&parent, &block_env_attributes)
+            .expect("failed to create test evm env");
+
+        let config = PayloadConfig::new(parent, attributes);
+
+        Self {
+            evm_config,
+            chain_spec,
+            config,
+            evm_env,
+            block_env_attributes,
+            cancel: CancellationToken::new(),
+            extra: FlashblocksExtraCtx::default(),
+            builder_config: crate::BuilderConfig::default(),
         }
     }
 }
