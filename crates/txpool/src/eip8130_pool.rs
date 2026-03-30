@@ -326,21 +326,14 @@ impl<T> Eip8130Pool<T> {
     /// actually present.
     pub fn remove_transactions(&self, hashes: &[B256]) -> Vec<B256> {
         let mut inner = self.inner.write();
-        hashes
-            .iter()
-            .filter_map(|h| Self::remove_from_inner(&mut inner, h).map(|_| *h))
-            .collect()
+        hashes.iter().filter_map(|h| Self::remove_from_inner(&mut inner, h).map(|_| *h)).collect()
     }
 
     /// Updates the known on-chain nonce for a sequence lane and removes any
     /// transactions with `nonce_sequence < new_nonce`.
     ///
     /// Returns the hashes of pruned transactions.
-    pub fn update_sequence_nonce(
-        &self,
-        seq_id: &Eip8130SequenceId,
-        new_nonce: u64,
-    ) -> Vec<B256>
+    pub fn update_sequence_nonce(&self, seq_id: &Eip8130SequenceId, new_nonce: u64) -> Vec<B256>
     where
         T: PoolTransaction,
     {
@@ -349,8 +342,7 @@ impl<T> Eip8130Pool<T> {
 
         if let Some(seq) = inner.sequences.get_mut(seq_id) {
             seq.next_nonce = new_nonce;
-            let stale: Vec<u64> =
-                seq.pending.range(..new_nonce).map(|(&nonce, _)| nonce).collect();
+            let stale: Vec<u64> = seq.pending.range(..new_nonce).map(|(&nonce, _)| nonce).collect();
             for nonce in stale {
                 if let Some(entry) = seq.pending.remove(&nonce) {
                     removed_hashes.push(*entry.transaction.hash());
@@ -519,10 +511,7 @@ impl<T: PoolTransaction> Eip8130Pool<T> {
     }
 
     /// Returns all transactions from a specific sender across all nonce lanes.
-    pub fn get_transactions_by_sender(
-        &self,
-        sender: &Address,
-    ) -> Vec<Arc<ValidPoolTransaction<T>>>
+    pub fn get_transactions_by_sender(&self, sender: &Address) -> Vec<Arc<ValidPoolTransaction<T>>>
     where
         T: Clone,
     {
@@ -596,9 +585,8 @@ impl<T: PoolTransaction> Eip8130Pool<T> {
     where
         T: Clone,
     {
-        let sender_id_val = u64::from_be_bytes(
-            entry.id.sender.as_slice()[..8].try_into().unwrap_or_default(),
-        );
+        let sender_id_val =
+            u64::from_be_bytes(entry.id.sender.as_slice()[..8].try_into().unwrap_or_default());
         Arc::new(ValidPoolTransaction {
             transaction: entry.transaction.clone(),
             transaction_id: TransactionId::new(
@@ -676,14 +664,8 @@ impl<T: EthPoolTransaction> Iterator for BestEip8130Transactions<T> {
     }
 }
 
-impl<T: EthPoolTransaction> reth_transaction_pool::BestTransactions
-    for BestEip8130Transactions<T>
-{
-    fn mark_invalid(
-        &mut self,
-        transaction: &Self::Item,
-        _kind: &InvalidPoolTransactionError,
-    ) {
+impl<T: EthPoolTransaction> reth_transaction_pool::BestTransactions for BestEip8130Transactions<T> {
+    fn mark_invalid(&mut self, transaction: &Self::Item, _kind: &InvalidPoolTransactionError) {
         self.invalid.insert(transaction.sender());
     }
 
@@ -783,11 +765,7 @@ mod tests {
         B256::from(buf)
     }
 
-    fn make_tx(
-        sender_byte: u8,
-        nonce: u64,
-        priority_fee: u128,
-    ) -> BasePooledTransaction {
+    fn make_tx(sender_byte: u8, nonce: u64, priority_fee: u128) -> BasePooledTransaction {
         let sender = Address::repeat_byte(sender_byte);
         let tx = TxEip1559 {
             chain_id: 1,
@@ -805,8 +783,7 @@ mod tests {
             U256::from(priority_fee),
             false,
         );
-        let signed =
-            OpTransactionSigned::new_unhashed(OpTypedTransaction::Eip1559(tx), sig);
+        let signed = OpTransactionSigned::new_unhashed(OpTypedTransaction::Eip1559(tx), sig);
         let recovered = Recovered::new_unchecked(signed, sender);
         let len = recovered.encoded_2718_len();
         BasePooledTransaction::new(recovered, len)
@@ -856,7 +833,14 @@ mod tests {
         let hash = *tx.hash();
         let slot = make_slot(0x01, 1);
 
-        pool.add_transaction(id, tx, TransactionOrigin::External, slot, SenderThroughputTier::Default).unwrap();
+        pool.add_transaction(
+            id,
+            tx,
+            TransactionOrigin::External,
+            slot,
+            SenderThroughputTier::Default,
+        )
+        .unwrap();
 
         assert_eq!(pool.len(), 1);
         assert!(pool.contains(&hash));
@@ -870,11 +854,22 @@ mod tests {
         let id = make_id(0x01, 1, 0);
         let slot = make_slot(0x01, 1);
 
-        pool.add_transaction(id.clone(), tx.clone(), TransactionOrigin::External, slot, SenderThroughputTier::Default)
-            .unwrap();
+        pool.add_transaction(
+            id.clone(),
+            tx.clone(),
+            TransactionOrigin::External,
+            slot,
+            SenderThroughputTier::Default,
+        )
+        .unwrap();
 
-        let result =
-            pool.add_transaction(id, tx, TransactionOrigin::External, slot, SenderThroughputTier::Default);
+        let result = pool.add_transaction(
+            id,
+            tx,
+            TransactionOrigin::External,
+            slot,
+            SenderThroughputTier::Default,
+        );
         assert!(matches!(result, Err(Eip8130PoolError::DuplicateHash(_))));
     }
 
@@ -885,12 +880,24 @@ mod tests {
 
         let tx1 = make_tx(0x01, 0, 10);
         let id1 = make_id(0x01, 1, 0);
-        pool.add_transaction(id1, tx1, TransactionOrigin::External, slot, SenderThroughputTier::Default).unwrap();
+        pool.add_transaction(
+            id1,
+            tx1,
+            TransactionOrigin::External,
+            slot,
+            SenderThroughputTier::Default,
+        )
+        .unwrap();
 
         let tx2 = make_tx(0x01, 100, 20);
         let id2 = make_id(0x01, 1, 0);
-        let result =
-            pool.add_transaction(id2, tx2, TransactionOrigin::External, slot, SenderThroughputTier::Default);
+        let result = pool.add_transaction(
+            id2,
+            tx2,
+            TransactionOrigin::External,
+            slot,
+            SenderThroughputTier::Default,
+        );
         assert!(matches!(result, Err(Eip8130PoolError::NonceAlreadyPending { .. })));
     }
 
@@ -903,12 +910,25 @@ mod tests {
         for seq in 0..c.max_txs_per_sequence as u64 {
             let tx = make_tx(0x01, seq, 10);
             let id = make_id(0x01, 1, seq);
-            pool.add_transaction(id, tx, TransactionOrigin::External, slot, SenderThroughputTier::Default).unwrap();
+            pool.add_transaction(
+                id,
+                tx,
+                TransactionOrigin::External,
+                slot,
+                SenderThroughputTier::Default,
+            )
+            .unwrap();
         }
 
         let tx = make_tx(0x01, c.max_txs_per_sequence as u64, 10);
         let id = make_id(0x01, 1, c.max_txs_per_sequence as u64);
-        let result = pool.add_transaction(id, tx, TransactionOrigin::External, slot, SenderThroughputTier::Default);
+        let result = pool.add_transaction(
+            id,
+            tx,
+            TransactionOrigin::External,
+            slot,
+            SenderThroughputTier::Default,
+        );
         assert!(matches!(result, Err(Eip8130PoolError::SequenceFull)));
     }
 
@@ -921,14 +941,27 @@ mod tests {
             let tx = make_tx(0x01, key, 10);
             let id = make_id(0x01, key, 0);
             let slot = make_slot(0x01, key);
-            pool.add_transaction(id, tx, TransactionOrigin::External, slot, SenderThroughputTier::Default).unwrap();
+            pool.add_transaction(
+                id,
+                tx,
+                TransactionOrigin::External,
+                slot,
+                SenderThroughputTier::Default,
+            )
+            .unwrap();
         }
 
         let key = c.default_max_txs_per_sender as u64 + 1;
         let tx = make_tx(0x01, key, 10);
         let id = make_id(0x01, key, 0);
         let slot = make_slot(0x01, key);
-        let result = pool.add_transaction(id, tx, TransactionOrigin::External, slot, SenderThroughputTier::Default);
+        let result = pool.add_transaction(
+            id,
+            tx,
+            TransactionOrigin::External,
+            slot,
+            SenderThroughputTier::Default,
+        );
         assert!(matches!(result, Err(Eip8130PoolError::SenderCapacityExceeded(_))));
     }
 
@@ -943,7 +976,14 @@ mod tests {
             hashes.push(*tx.hash());
             let id = make_id(0x01, key, 0);
             let slot = make_slot(0x01, key);
-            pool.add_transaction(id, tx, TransactionOrigin::External, slot, SenderThroughputTier::Default).unwrap();
+            pool.add_transaction(
+                id,
+                tx,
+                TransactionOrigin::External,
+                slot,
+                SenderThroughputTier::Default,
+            )
+            .unwrap();
         }
 
         pool.remove_transaction(&hashes[0]);
@@ -952,8 +992,14 @@ mod tests {
         let tx = make_tx(0x01, key, 10);
         let id = make_id(0x01, key, 0);
         let slot = make_slot(0x01, key);
-        pool.add_transaction(id, tx, TransactionOrigin::External, slot, SenderThroughputTier::Default)
-            .expect("should succeed after freeing a slot");
+        pool.add_transaction(
+            id,
+            tx,
+            TransactionOrigin::External,
+            slot,
+            SenderThroughputTier::Default,
+        )
+        .expect("should succeed after freeing a slot");
     }
 
     #[test]
@@ -965,14 +1011,27 @@ mod tests {
             let tx = make_tx(0x01, key, 10);
             let id = make_id(0x01, key, 0);
             let slot = make_slot(0x01, key);
-            pool.add_transaction(id, tx, TransactionOrigin::External, slot, SenderThroughputTier::Default).unwrap();
+            pool.add_transaction(
+                id,
+                tx,
+                TransactionOrigin::External,
+                slot,
+                SenderThroughputTier::Default,
+            )
+            .unwrap();
         }
 
         let tx = make_tx(0x02, 1, 10);
         let id = make_id(0x02, 1, 0);
         let slot = make_slot(0x02, 1);
-        pool.add_transaction(id, tx, TransactionOrigin::External, slot, SenderThroughputTier::Default)
-            .expect("different sender should not be affected");
+        pool.add_transaction(
+            id,
+            tx,
+            TransactionOrigin::External,
+            slot,
+            SenderThroughputTier::Default,
+        )
+        .expect("different sender should not be affected");
     }
 
     // ------------------------------------------------------------------ //
@@ -989,7 +1048,11 @@ mod tests {
             let id = make_id(0x01, key, 0);
             let slot = make_slot(0x01, key);
             pool.add_transaction(
-                id, tx, TransactionOrigin::External, slot, SenderThroughputTier::Locked,
+                id,
+                tx,
+                TransactionOrigin::External,
+                slot,
+                SenderThroughputTier::Locked,
             )
             .unwrap();
         }
@@ -999,7 +1062,11 @@ mod tests {
         let id = make_id(0x01, key, 0);
         let slot = make_slot(0x01, key);
         pool.add_transaction(
-            id, tx, TransactionOrigin::External, slot, SenderThroughputTier::Locked,
+            id,
+            tx,
+            TransactionOrigin::External,
+            slot,
+            SenderThroughputTier::Locked,
         )
         .expect("locked sender should accept more than the default limit");
     }
@@ -1013,7 +1080,11 @@ mod tests {
         let id1 = make_id(0x01, 1, 0);
         let slot1 = make_slot(0x01, 1);
         pool.add_transaction(
-            id1, tx1, TransactionOrigin::External, slot1, SenderThroughputTier::Default,
+            id1,
+            tx1,
+            TransactionOrigin::External,
+            slot1,
+            SenderThroughputTier::Default,
         )
         .unwrap();
 
@@ -1022,7 +1093,11 @@ mod tests {
             let id = make_id(0x01, key, 0);
             let slot = make_slot(0x01, key);
             pool.add_transaction(
-                id, tx, TransactionOrigin::External, slot, SenderThroughputTier::Locked,
+                id,
+                tx,
+                TransactionOrigin::External,
+                slot,
+                SenderThroughputTier::Locked,
             )
             .unwrap();
         }
@@ -1052,14 +1127,27 @@ mod tests {
             let tx = make_tx(sender, i as u64, 10);
             let id = make_id(sender, key, 0);
             let slot = make_slot(sender, key);
-            pool.add_transaction(id, tx, TransactionOrigin::External, slot, SenderThroughputTier::Default).unwrap();
+            pool.add_transaction(
+                id,
+                tx,
+                TransactionOrigin::External,
+                slot,
+                SenderThroughputTier::Default,
+            )
+            .unwrap();
         }
 
         assert_eq!(pool.len(), c.max_pool_size);
         let tx = make_tx(0xFF, 9999, 10);
         let id = make_id(0xFF, 9999, 0);
         let slot = make_slot(0xFF, 9999);
-        let result = pool.add_transaction(id, tx, TransactionOrigin::External, slot, SenderThroughputTier::Default);
+        let result = pool.add_transaction(
+            id,
+            tx,
+            TransactionOrigin::External,
+            slot,
+            SenderThroughputTier::Default,
+        );
         assert!(matches!(result, Err(Eip8130PoolError::PoolFull)));
     }
 
@@ -1075,7 +1163,11 @@ mod tests {
         let id = make_id(0x01, 1, 0);
         let slot = make_slot(0x01, 1);
         pool.add_transaction(
-            id, tx, TransactionOrigin::External, slot, SenderThroughputTier::Locked,
+            id,
+            tx,
+            TransactionOrigin::External,
+            slot,
+            SenderThroughputTier::Locked,
         )
         .unwrap();
 
@@ -1093,7 +1185,11 @@ mod tests {
         let id2 = make_id(0x01, 2, 0);
         let slot2 = make_slot(0x01, 2);
         pool.add_transaction(
-            id2, tx2, TransactionOrigin::External, slot2, SenderThroughputTier::Default,
+            id2,
+            tx2,
+            TransactionOrigin::External,
+            slot2,
+            SenderThroughputTier::Default,
         )
         .unwrap();
 
@@ -1119,7 +1215,14 @@ mod tests {
         let id = make_id(0x01, 1, 0);
         let slot = make_slot(0x01, 1);
 
-        pool.add_transaction(id, tx, TransactionOrigin::External, slot, SenderThroughputTier::Default).unwrap();
+        pool.add_transaction(
+            id,
+            tx,
+            TransactionOrigin::External,
+            slot,
+            SenderThroughputTier::Default,
+        )
+        .unwrap();
         assert_eq!(pool.len(), 1);
 
         let removed_id = pool.remove_transaction(&hash);
@@ -1147,7 +1250,14 @@ mod tests {
             let tx = make_tx(0x01, seq, 10);
             hashes.push(*tx.hash());
             let id = make_id(0x01, 1, seq);
-            pool.add_transaction(id, tx, TransactionOrigin::External, slot, SenderThroughputTier::Default).unwrap();
+            pool.add_transaction(
+                id,
+                tx,
+                TransactionOrigin::External,
+                slot,
+                SenderThroughputTier::Default,
+            )
+            .unwrap();
         }
 
         let removed = pool.remove_transactions(&hashes[..2]);
@@ -1168,14 +1278,19 @@ mod tests {
         for seq in 0..5u64 {
             let tx = make_tx(0x01, seq, 10);
             let id = make_id(0x01, 1, seq);
-            pool.add_transaction(id, tx, TransactionOrigin::External, slot, SenderThroughputTier::Default).unwrap();
+            pool.add_transaction(
+                id,
+                tx,
+                TransactionOrigin::External,
+                slot,
+                SenderThroughputTier::Default,
+            )
+            .unwrap();
         }
         assert_eq!(pool.len(), 5);
 
-        let seq_id = Eip8130SequenceId {
-            sender: Address::repeat_byte(0x01),
-            nonce_key: U256::from(1),
-        };
+        let seq_id =
+            Eip8130SequenceId { sender: Address::repeat_byte(0x01), nonce_key: U256::from(1) };
         let pruned = pool.update_sequence_nonce(&seq_id, 3);
         assert_eq!(pruned.len(), 3);
         assert_eq!(pool.len(), 2);
@@ -1188,12 +1303,17 @@ mod tests {
 
         let tx = make_tx(0x01, 0, 10);
         let id = make_id(0x01, 1, 0);
-        pool.add_transaction(id, tx, TransactionOrigin::External, slot, SenderThroughputTier::Default).unwrap();
+        pool.add_transaction(
+            id,
+            tx,
+            TransactionOrigin::External,
+            slot,
+            SenderThroughputTier::Default,
+        )
+        .unwrap();
 
-        let seq_id = Eip8130SequenceId {
-            sender: Address::repeat_byte(0x01),
-            nonce_key: U256::from(1),
-        };
+        let seq_id =
+            Eip8130SequenceId { sender: Address::repeat_byte(0x01), nonce_key: U256::from(1) };
         pool.update_sequence_nonce(&seq_id, 1);
         assert!(pool.is_empty());
 
@@ -1214,7 +1334,14 @@ mod tests {
         for seq in [0, 1, 3, 4] {
             let tx = make_tx(0x01, seq, 10);
             let id = make_id(0x01, 1, seq);
-            pool.add_transaction(id, tx, TransactionOrigin::External, slot, SenderThroughputTier::Default).unwrap();
+            pool.add_transaction(
+                id,
+                tx,
+                TransactionOrigin::External,
+                slot,
+                SenderThroughputTier::Default,
+            )
+            .unwrap();
         }
 
         let (pending, queued) = pool.pending_and_queued_count();
@@ -1233,14 +1360,26 @@ mod tests {
         let tx_low = make_tx(0x01, 0, 5);
         let id_low = make_id(0x01, 1, 0);
         let slot1 = make_slot(0x01, 1);
-        pool.add_transaction(id_low, tx_low, TransactionOrigin::External, slot1, SenderThroughputTier::Default)
-            .unwrap();
+        pool.add_transaction(
+            id_low,
+            tx_low,
+            TransactionOrigin::External,
+            slot1,
+            SenderThroughputTier::Default,
+        )
+        .unwrap();
 
         let tx_high = make_tx(0x02, 0, 50);
         let id_high = make_id(0x02, 2, 0);
         let slot2 = make_slot(0x02, 2);
-        pool.add_transaction(id_high, tx_high, TransactionOrigin::External, slot2, SenderThroughputTier::Default)
-            .unwrap();
+        pool.add_transaction(
+            id_high,
+            tx_high,
+            TransactionOrigin::External,
+            slot2,
+            SenderThroughputTier::Default,
+        )
+        .unwrap();
 
         let mut best = pool.best_transactions();
         let first = best.next().unwrap();
@@ -1248,10 +1387,7 @@ mod tests {
 
         let first_prio = first.max_priority_fee_per_gas().unwrap_or_default();
         let second_prio = second.max_priority_fee_per_gas().unwrap_or_default();
-        assert!(
-            first_prio >= second_prio,
-            "first={first_prio}, second={second_prio}"
-        );
+        assert!(first_prio >= second_prio, "first={first_prio}, second={second_prio}");
         assert!(best.next().is_none());
     }
 
@@ -1262,7 +1398,14 @@ mod tests {
 
         let tx = make_tx(0x01, 2, 10);
         let id = make_id(0x01, 1, 2);
-        pool.add_transaction(id, tx, TransactionOrigin::External, slot, SenderThroughputTier::Default).unwrap();
+        pool.add_transaction(
+            id,
+            tx,
+            TransactionOrigin::External,
+            slot,
+            SenderThroughputTier::Default,
+        )
+        .unwrap();
 
         let mut best = pool.best_transactions();
         assert!(best.next().is_none(), "nonce 2 has a gap from next_nonce=0");
@@ -1275,16 +1418,37 @@ mod tests {
         let tx1 = make_tx(0x01, 0, 50);
         let id1 = make_id(0x01, 1, 0);
         let slot1 = make_slot(0x01, 1);
-        pool.add_transaction(id1, tx1, TransactionOrigin::External, slot1, SenderThroughputTier::Default).unwrap();
+        pool.add_transaction(
+            id1,
+            tx1,
+            TransactionOrigin::External,
+            slot1,
+            SenderThroughputTier::Default,
+        )
+        .unwrap();
 
         let tx2 = make_tx(0x01, 1, 40);
         let id2 = make_id(0x01, 1, 1);
-        pool.add_transaction(id2, tx2, TransactionOrigin::External, slot1, SenderThroughputTier::Default).unwrap();
+        pool.add_transaction(
+            id2,
+            tx2,
+            TransactionOrigin::External,
+            slot1,
+            SenderThroughputTier::Default,
+        )
+        .unwrap();
 
         let tx3 = make_tx(0x02, 0, 30);
         let id3 = make_id(0x02, 2, 0);
         let slot2 = make_slot(0x02, 2);
-        pool.add_transaction(id3, tx3, TransactionOrigin::External, slot2, SenderThroughputTier::Default).unwrap();
+        pool.add_transaction(
+            id3,
+            tx3,
+            TransactionOrigin::External,
+            slot2,
+            SenderThroughputTier::Default,
+        )
+        .unwrap();
 
         let mut best = pool.best_transactions();
         let first = best.next().unwrap();
@@ -1317,7 +1481,14 @@ mod tests {
         let tx = make_tx(0x01, 0, 10);
         let id = make_id(0x01, 1, 0);
 
-        pool.add_transaction(id, tx, TransactionOrigin::External, slot, SenderThroughputTier::Default).unwrap();
+        pool.add_transaction(
+            id,
+            tx,
+            TransactionOrigin::External,
+            slot,
+            SenderThroughputTier::Default,
+        )
+        .unwrap();
 
         let seq_id = pool.seq_id_for_slot(&slot).unwrap();
         assert_eq!(seq_id.sender, Address::repeat_byte(0x01));
@@ -1335,12 +1506,26 @@ mod tests {
         let tx1 = make_tx(0x01, 0, 10);
         let id1 = make_id(0x01, 1, 0);
         let slot1 = make_slot(0x01, 1);
-        pool.add_transaction(id1, tx1, TransactionOrigin::External, slot1, SenderThroughputTier::Default).unwrap();
+        pool.add_transaction(
+            id1,
+            tx1,
+            TransactionOrigin::External,
+            slot1,
+            SenderThroughputTier::Default,
+        )
+        .unwrap();
 
         let tx2 = make_tx(0x01, 1, 10);
         let id2 = make_id(0x01, 2, 0);
         let slot2 = make_slot(0x01, 2);
-        pool.add_transaction(id2, tx2, TransactionOrigin::External, slot2, SenderThroughputTier::Default).unwrap();
+        pool.add_transaction(
+            id2,
+            tx2,
+            TransactionOrigin::External,
+            slot2,
+            SenderThroughputTier::Default,
+        )
+        .unwrap();
 
         assert_eq!(pool.sender_tx_count(&Address::repeat_byte(0x01)), 2);
         assert_eq!(pool.sender_tx_count(&Address::repeat_byte(0x02)), 0);

@@ -137,10 +137,7 @@ impl<Client, Tx, Evm> OpTransactionValidator<Client, Tx, Evm> {
 
     /// Overrides the EIP-8130 pool configuration (throughput limits, TTL, etc).
     pub fn with_eip8130_pool_config(self, config: Eip8130PoolConfig) -> Self {
-        Self {
-            eip8130_pool: Arc::new(Eip8130Pool::with_config(config)),
-            ..self
-        }
+        Self { eip8130_pool: Arc::new(Eip8130Pool::with_config(config)), ..self }
     }
 }
 
@@ -312,11 +309,8 @@ where
                                     return TransactionValidationOutcome::Invalid(
                                         transaction,
                                         InvalidTransactionError::InsufficientFunds(
-                                            GotExpected {
-                                                got: outcome.balance,
-                                                expected: total,
-                                            }
-                                            .into(),
+                                            GotExpected { got: outcome.balance, expected: total }
+                                                .into(),
                                         )
                                         .into(),
                                     );
@@ -337,11 +331,8 @@ where
                     if is_2d_nonce(nonce_key) {
                         let sender = transaction.sender();
                         let nonce_storage_slot = nonce_slot(sender, nonce_key);
-                        let id = Eip8130TxId {
-                            sender,
-                            nonce_key,
-                            nonce_sequence: outcome.state_nonce,
-                        };
+                        let id =
+                            Eip8130TxId { sender, nonce_key, nonce_sequence: outcome.state_nonce };
                         if let Err(err) = self.eip8130_pool.add_transaction(
                             id,
                             transaction.clone(),

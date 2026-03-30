@@ -33,8 +33,8 @@ pub fn handle_nonce_manager<DB: Database>(
         .map_err(|_| PrecompileError::InvalidInput)?;
 
     let nonce_key = U256::from(call.nonceKey);
-    let nonce = read_nonce(db, call.account, nonce_key)
-        .map_err(|_| PrecompileError::DatabaseError)?;
+    let nonce =
+        read_nonce(db, call.account, nonce_key).map_err(|_| PrecompileError::DatabaseError)?;
 
     let encoded = <sol_data::Uint<64>>::abi_encode(&nonce);
     Ok((NONCE_MANAGER_GAS, Bytes::from(encoded)))
@@ -120,10 +120,7 @@ mod tests {
 
     #[test]
     fn tx_context_get_payer() {
-        let ctx = TxContextValues {
-            payer: Address::repeat_byte(0xBB),
-            ..Default::default()
-        };
+        let ctx = TxContextValues { payer: Address::repeat_byte(0xBB), ..Default::default() };
 
         let mut input = Vec::new();
         input.extend_from_slice(&ITxContext::getPayerCall::SELECTOR);
@@ -135,10 +132,7 @@ mod tests {
 
     #[test]
     fn tx_context_get_gas_limit() {
-        let ctx = TxContextValues {
-            gas_limit: 42_000,
-            ..Default::default()
-        };
+        let ctx = TxContextValues { gas_limit: 42_000, ..Default::default() };
 
         let mut input = Vec::new();
         input.extend_from_slice(&ITxContext::getGasLimitCall::SELECTOR);
@@ -152,19 +146,13 @@ mod tests {
     fn tx_context_invalid_selector() {
         let ctx = TxContextValues::default();
         let input = [0xFF, 0xFF, 0xFF, 0xFF];
-        assert!(matches!(
-            handle_tx_context(&ctx, &input),
-            Err(PrecompileError::UnknownSelector)
-        ));
+        assert!(matches!(handle_tx_context(&ctx, &input), Err(PrecompileError::UnknownSelector)));
     }
 
     #[test]
     fn tx_context_short_input() {
         let ctx = TxContextValues::default();
         let input = [0xFF, 0xFF];
-        assert!(matches!(
-            handle_tx_context(&ctx, &input),
-            Err(PrecompileError::InvalidInput)
-        ));
+        assert!(matches!(handle_tx_context(&ctx, &input), Err(PrecompileError::InvalidInput)));
     }
 }

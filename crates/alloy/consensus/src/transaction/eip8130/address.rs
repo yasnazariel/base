@@ -23,7 +23,7 @@ pub fn deployment_header(bytecode_len: usize) -> [u8; 14] {
     let hi = (len >> 8) as u8;
     let lo = (len & 0xFF) as u8;
     [
-        0x61, hi, lo, // PUSH2 len
+        0x61, hi, lo,   // PUSH2 len
         0x80, // DUP1
         0x60, 0x0e, // PUSH1 14  (header size = code offset)
         0x60, 0x00, // PUSH1 0
@@ -121,10 +121,16 @@ mod tests {
 
     #[test]
     fn effective_salt_order_independent() {
-        let owner_a =
-            Owner { verifier: Address::repeat_byte(1), owner_id: B256::repeat_byte(0x01), scope: 0 };
-        let owner_b =
-            Owner { verifier: Address::repeat_byte(2), owner_id: B256::repeat_byte(0x02), scope: 0 };
+        let owner_a = Owner {
+            verifier: Address::repeat_byte(1),
+            owner_id: B256::repeat_byte(0x01),
+            scope: 0,
+        };
+        let owner_b = Owner {
+            verifier: Address::repeat_byte(2),
+            owner_id: B256::repeat_byte(0x02),
+            scope: 0,
+        };
 
         let salt = B256::repeat_byte(0xAA);
 

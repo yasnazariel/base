@@ -6,7 +6,7 @@ use alloy_eips::Encodable2718;
 use alloy_primitives::{B256, ChainId, Signature, TxHash, bytes::BufMut};
 
 pub use crate::transaction::envelope::OpTypedTransaction;
-use crate::{OpTxEnvelope, OpTxType, TxEip8130, TxDeposit};
+use crate::{OpTxEnvelope, OpTxType, TxDeposit, TxEip8130};
 
 impl From<TxLegacy> for OpTypedTransaction {
     fn from(tx: TxLegacy) -> Self {
@@ -73,9 +73,7 @@ impl From<OpTypedTransaction> for alloy_rpc_types_eth::TransactionRequest {
             OpTypedTransaction::Eip2930(tx) => tx.into(),
             OpTypedTransaction::Eip1559(tx) => tx.into(),
             OpTypedTransaction::Eip7702(tx) => tx.into(),
-            OpTypedTransaction::Eip8130(_tx) => {
-                alloy_rpc_types_eth::TransactionRequest::default()
-            }
+            OpTypedTransaction::Eip8130(_tx) => alloy_rpc_types_eth::TransactionRequest::default(),
             OpTypedTransaction::Deposit(tx) => tx.into(),
         }
     }

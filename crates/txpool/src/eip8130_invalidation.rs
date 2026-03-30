@@ -20,7 +20,7 @@ use std::sync::Arc;
 
 use alloy_primitives::{Address, B256, U256};
 use base_alloy_consensus::{
-    AccountChangeEntry, ACCOUNT_CONFIG_ADDRESS, NONCE_MANAGER_ADDRESS, TxEip8130, nonce_slot,
+    ACCOUNT_CONFIG_ADDRESS, AccountChangeEntry, NONCE_MANAGER_ADDRESS, TxEip8130, nonce_slot,
     owner_config_slot,
 };
 use futures::StreamExt;
@@ -138,12 +138,8 @@ impl Eip8130InvalidationIndex {
     ///
     /// Returns the number of stale entries pruned.
     pub fn prune_stale(&mut self, live: &HashSet<B256>) -> usize {
-        let stale: Vec<B256> = self
-            .tx_to_keys
-            .keys()
-            .filter(|hash| !live.contains(*hash))
-            .copied()
-            .collect();
+        let stale: Vec<B256> =
+            self.tx_to_keys.keys().filter(|hash| !live.contains(*hash)).copied().collect();
 
         let count = stale.len();
         for hash in stale {
@@ -185,9 +181,8 @@ pub fn compute_invalidation_keys(
     //    (from validation), otherwise fall back to keccak256(sender_auth) as
     //    a proxy. The resolved owner_id gives us the exact storage slot.
     if !tx.sender_auth.is_empty() {
-        let owner_id = resolved_sender_owner_id.unwrap_or_else(|| {
-            alloy_primitives::keccak256(&tx.sender_auth)
-        });
+        let owner_id = resolved_sender_owner_id
+            .unwrap_or_else(|| alloy_primitives::keccak256(&tx.sender_auth));
         let config_slot = owner_config_slot(sender, owner_id);
         keys.insert(InvalidationKey { address: ACCOUNT_CONFIG_ADDRESS, slot: config_slot });
     }
@@ -196,9 +191,8 @@ pub fn compute_invalidation_keys(
     //    authorization can be revoked, invalidating the tx.
     let payer = tx.payer;
     if payer != Address::ZERO && payer != sender && !tx.payer_auth.is_empty() {
-        let payer_owner_id = resolved_payer_owner_id.unwrap_or_else(|| {
-            alloy_primitives::keccak256(&tx.payer_auth)
-        });
+        let payer_owner_id =
+            resolved_payer_owner_id.unwrap_or_else(|| alloy_primitives::keccak256(&tx.payer_auth));
         let payer_config_slot = owner_config_slot(payer, payer_owner_id);
         keys.insert(InvalidationKey { address: ACCOUNT_CONFIG_ADDRESS, slot: payer_config_slot });
     }
@@ -232,10 +226,7 @@ pub fn compute_invalidation_keys(
                 // is revoked (a config change on the same account), the
                 // sequence bumps and this slot changes.
                 let seq_slot = base_alloy_consensus::sequence_base_slot(sender);
-                keys.insert(InvalidationKey {
-                    address: ACCOUNT_CONFIG_ADDRESS,
-                    slot: seq_slot,
-                });
+                keys.insert(InvalidationKey { address: ACCOUNT_CONFIG_ADDRESS, slot: seq_slot });
             }
         }
     }
@@ -246,10 +237,7 @@ pub fn compute_invalidation_keys(
 /// Given a set of FAL entries (touched storage slots from a block), finds
 /// all pending AA transactions that should be invalidated and returns their
 /// hashes.
-pub fn process_fal(
-    fal: &[(Address, B256)],
-    index: &Eip8130InvalidationIndex,
-) -> HashSet<B256> {
+pub fn process_fal(fal: &[(Address, B256)], index: &Eip8130InvalidationIndex) -> HashSet<B256> {
     let mut result = HashSet::new();
     for &(address, slot) in fal {
         let key = InvalidationKey { address, slot };
@@ -399,9 +387,7 @@ pub async fn maintain_eip8130_invalidation<P, N, T>(
             if !idx_guard.is_empty() {
                 let live: HashSet<B256> = idx_guard
                     .tracked_tx_hashes()
-                    .filter(|hash| {
-                        pool.get(hash).is_some() || eip8130_pool.contains(hash)
-                    })
+                    .filter(|hash| pool.get(hash).is_some() || eip8130_pool.contains(hash))
                     .copied()
                     .collect();
                 drop(idx_guard);
@@ -419,8 +405,8 @@ pub async fn maintain_eip8130_invalidation<P, N, T>(
 mod tests {
     use alloy_primitives::{Address, B256, Bytes, U256};
     use base_alloy_consensus::{
-        AccountChangeEntry, ConfigChangeEntry, ConfigOperation, CreateEntry, TxEip8130,
-        ACCOUNT_CONFIG_ADDRESS, NONCE_MANAGER_ADDRESS, nonce_slot, OP_AUTHORIZE_OWNER,
+        ACCOUNT_CONFIG_ADDRESS, AccountChangeEntry, ConfigChangeEntry, ConfigOperation,
+        CreateEntry, NONCE_MANAGER_ADDRESS, OP_AUTHORIZE_OWNER, TxEip8130, nonce_slot,
     };
 
     use super::*;
@@ -443,10 +429,7 @@ mod tests {
     fn index_insert_lookup_remove() {
         let mut index = Eip8130InvalidationIndex::default();
         let tx_hash = B256::repeat_byte(0x01);
-        let key = InvalidationKey {
-            address: NONCE_MANAGER_ADDRESS,
-            slot: B256::repeat_byte(0xAA),
-        };
+        let key = InvalidationKey { address: NONCE_MANAGER_ADDRESS, slot: B256::repeat_byte(0xAA) };
 
         let mut keys = HashSet::new();
         keys.insert(key);
@@ -467,10 +450,9 @@ mod tests {
         let keys = compute_invalidation_keys(&tx, from, None, None);
 
         let expected_slot = nonce_slot(from, U256::ZERO);
-        assert!(keys.contains(&InvalidationKey {
-            address: NONCE_MANAGER_ADDRESS,
-            slot: expected_slot,
-        }));
+        assert!(
+            keys.contains(&InvalidationKey { address: NONCE_MANAGER_ADDRESS, slot: expected_slot })
+        );
     }
 
     #[test]
@@ -496,10 +478,9 @@ mod tests {
 
         let keys = compute_invalidation_keys(&tx, from, None, None);
         let lock_key = base_alloy_consensus::lock_slot(from);
-        assert!(keys.contains(&InvalidationKey {
-            address: ACCOUNT_CONFIG_ADDRESS,
-            slot: lock_key,
-        }));
+        assert!(
+            keys.contains(&InvalidationKey { address: ACCOUNT_CONFIG_ADDRESS, slot: lock_key })
+        );
     }
 
     #[test]
@@ -534,16 +515,14 @@ mod tests {
         let keys = compute_invalidation_keys(&tx, resolved, None, None);
 
         let expected_slot = nonce_slot(resolved, U256::ZERO);
-        assert!(keys.contains(&InvalidationKey {
-            address: NONCE_MANAGER_ADDRESS,
-            slot: expected_slot,
-        }));
+        assert!(
+            keys.contains(&InvalidationKey { address: NONCE_MANAGER_ADDRESS, slot: expected_slot })
+        );
 
         let wrong_slot = nonce_slot(Address::ZERO, U256::ZERO);
-        assert!(!keys.contains(&InvalidationKey {
-            address: NONCE_MANAGER_ADDRESS,
-            slot: wrong_slot,
-        }));
+        assert!(
+            !keys.contains(&InvalidationKey { address: NONCE_MANAGER_ADDRESS, slot: wrong_slot })
+        );
     }
 
     #[test]
@@ -613,10 +592,8 @@ mod tests {
         let keys = compute_invalidation_keys(&tx, from, None, None);
         index.insert(hash, keys, None);
 
-        let nonce_key = InvalidationKey {
-            address: NONCE_MANAGER_ADDRESS,
-            slot: nonce_slot(from, U256::ZERO),
-        };
+        let nonce_key =
+            InvalidationKey { address: NONCE_MANAGER_ADDRESS, slot: nonce_slot(from, U256::ZERO) };
         assert!(index.lookup(&nonce_key).is_some());
 
         let live: HashSet<B256> = HashSet::new();

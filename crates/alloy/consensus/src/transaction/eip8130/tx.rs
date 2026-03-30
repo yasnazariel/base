@@ -11,10 +11,7 @@ use alloy_eips::{
 use alloy_primitives::{Address, B256, Bytes, ChainId, TxKind, U256, keccak256};
 use alloy_rlp::{BufMut, Decodable, Encodable, Header, length_of_length};
 
-use super::{
-    AccountChangeEntry, Call,
-    constants::AA_TX_TYPE_ID,
-};
+use super::{AccountChangeEntry, Call, constants::AA_TX_TYPE_ID};
 
 /// An EIP-8130 account-abstracted transaction.
 ///

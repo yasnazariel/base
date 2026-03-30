@@ -1,8 +1,6 @@
 use std::{fmt, sync::Arc};
 
-use reth_transaction_pool::{
-    EthPoolTransaction, TransactionPool, ValidPoolTransaction,
-};
+use reth_transaction_pool::{EthPoolTransaction, TransactionPool, ValidPoolTransaction};
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, trace};

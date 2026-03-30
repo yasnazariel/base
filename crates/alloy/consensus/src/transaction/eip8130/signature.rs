@@ -6,7 +6,9 @@ use alloy_primitives::{Address, B256, Bytes, keccak256};
 
 use super::{
     TxEip8130,
-    constants::{VERIFIER_CUSTOM, VERIFIER_DELEGATE, VERIFIER_K1, VERIFIER_P256_RAW, VERIFIER_P256_WEBAUTHN},
+    constants::{
+        VERIFIER_CUSTOM, VERIFIER_DELEGATE, VERIFIER_K1, VERIFIER_P256_RAW, VERIFIER_P256_WEBAUTHN,
+    },
     types::ConfigChangeEntry,
 };
 
@@ -15,10 +17,7 @@ use super::{
 /// Matches the JS reference in `send-aa-tx.mjs::configChangeDigest()`.
 /// The authorizer (an owner with CONFIG scope) signs this digest to
 /// authorize the operations in a [`ConfigChangeEntry`].
-pub fn config_change_digest(
-    account: Address,
-    change: &ConfigChangeEntry,
-) -> B256 {
+pub fn config_change_digest(account: Address, change: &ConfigChangeEntry) -> B256 {
     let typehash = keccak256(
         "ConfigChange(address account,uint64 chainId,uint64 sequence,\
          ConfigOperation[] operations)\

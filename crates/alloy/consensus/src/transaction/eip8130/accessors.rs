@@ -79,7 +79,11 @@ pub fn read_nonce<DB: Database>(
 /// Builds the storage write for incrementing a nonce.
 ///
 /// Returns `(contract_address, slot, new_value)`.
-pub fn increment_nonce_op(account: Address, nonce_key: U256, current: u64) -> (Address, U256, U256) {
+pub fn increment_nonce_op(
+    account: Address,
+    nonce_key: U256,
+    current: u64,
+) -> (Address, U256, U256) {
     let slot = nonce_slot(account, nonce_key);
     (NONCE_MANAGER_ADDRESS, slot.into(), U256::from(current + 1))
 }

@@ -2,7 +2,7 @@ use alloy_consensus::InMemorySize;
 
 use crate::{
     OpDepositReceipt, OpPooledTransaction, OpReceipt, OpTxEnvelope, OpTxType, OpTypedTransaction,
-    TxEip8130, TxDeposit,
+    TxDeposit, TxEip8130,
 };
 
 impl InMemorySize for OpTxType {

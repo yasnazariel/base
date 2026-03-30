@@ -93,14 +93,9 @@ pub fn lock_slot(account: Address) -> B256 {
 pub fn sequence_base_slot(account: Address) -> B256 {
     let mut buf = [0u8; 64];
     buf[12..32].copy_from_slice(account.as_slice());
-    SEQUENCE_BASE_SLOT
-        .to_be_bytes::<32>()
-        .as_slice()
-        .iter()
-        .enumerate()
-        .for_each(|(i, &b)| {
-            buf[32 + i] = b;
-        });
+    SEQUENCE_BASE_SLOT.to_be_bytes::<32>().as_slice().iter().enumerate().for_each(|(i, &b)| {
+        buf[32 + i] = b;
+    });
     keccak256(buf)
 }
 
@@ -109,11 +104,7 @@ pub fn sequence_base_slot(account: Address) -> B256 {
 /// `is_multichain` = true  → reads the low 8 bytes  (chain_id 0)
 /// `is_multichain` = false → reads bytes [16..24]    (local chain)
 pub fn read_sequence(slot_value: U256, is_multichain: bool) -> u64 {
-    if is_multichain {
-        slot_value.as_limbs()[0]
-    } else {
-        (slot_value >> 64_u8).as_limbs()[0]
-    }
+    if is_multichain { slot_value.as_limbs()[0] } else { (slot_value >> 64_u8).as_limbs()[0] }
 }
 
 /// Writes a sequence value into a packed slot, preserving the other field.
@@ -136,14 +127,9 @@ pub fn sequence_slot(account: Address, chain_id: u64) -> B256 {
     let inner = {
         let mut buf = [0u8; 64];
         buf[12..32].copy_from_slice(account.as_slice());
-        SEQUENCE_BASE_SLOT
-            .to_be_bytes::<32>()
-            .as_slice()
-            .iter()
-            .enumerate()
-            .for_each(|(i, &b)| {
-                buf[32 + i] = b;
-            });
+        SEQUENCE_BASE_SLOT.to_be_bytes::<32>().as_slice().iter().enumerate().for_each(|(i, &b)| {
+            buf[32 + i] = b;
+        });
         keccak256(buf)
     };
 

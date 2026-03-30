@@ -39,17 +39,14 @@ pub const TX_CONTEXT_ADDRESS: Address = address!("0x0000000000000000000000000000
 
 /// Default account (wallet) implementation contract. Bare EOAs that submit
 /// AA transactions are auto-delegated to this address via EIP-7702.
-pub const DEFAULT_ACCOUNT_ADDRESS: Address =
-    address!("0xb080bA38C82F824137A12Db1Ac53baeDa70e4a03");
+pub const DEFAULT_ACCOUNT_ADDRESS: Address = address!("0xb080bA38C82F824137A12Db1Ac53baeDa70e4a03");
 
 /// Account configuration system contract.
 /// Manages owner registrations, account creation, config changes, and locks.
-pub const ACCOUNT_CONFIG_ADDRESS: Address =
-    address!("0x0F127193b72E0f8546A6F4E471b6F8241900932B");
+pub const ACCOUNT_CONFIG_ADDRESS: Address = address!("0x0F127193b72E0f8546A6F4E471b6F8241900932B");
 
 /// K1 (secp256k1 ECDSA) verifier contract.
-pub const K1_VERIFIER_ADDRESS: Address =
-    address!("0x167Ad053B3d786C6a6dC90aCa456DE98625EE31C");
+pub const K1_VERIFIER_ADDRESS: Address = address!("0x167Ad053B3d786C6a6dC90aCa456DE98625EE31C");
 
 /// P256 raw ECDSA verifier contract.
 pub const P256_RAW_VERIFIER_ADDRESS: Address =

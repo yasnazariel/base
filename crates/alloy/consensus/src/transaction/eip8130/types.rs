@@ -240,8 +240,7 @@ impl Encodable for AccountChangeEntry {
     fn encode(&self, out: &mut dyn BufMut) {
         match self {
             Self::Create(c) => {
-                let owners_payload: usize =
-                    c.initial_owners.iter().map(Encodable::length).sum();
+                let owners_payload: usize = c.initial_owners.iter().map(Encodable::length).sum();
 
                 let payload = CHANGE_TYPE_CREATE.length()
                     + c.user_salt.length()
@@ -284,8 +283,7 @@ impl Encodable for AccountChangeEntry {
     fn length(&self) -> usize {
         match self {
             Self::Create(c) => {
-                let owners_payload: usize =
-                    c.initial_owners.iter().map(Encodable::length).sum();
+                let owners_payload: usize = c.initial_owners.iter().map(Encodable::length).sum();
                 let payload = CHANGE_TYPE_CREATE.length()
                     + c.user_salt.length()
                     + c.bytecode.length()
@@ -372,8 +370,7 @@ mod tests {
 
     #[test]
     fn call_rlp_round_trip() {
-        let call =
-            Call { to: Address::repeat_byte(0xAB), data: Bytes::from_static(&[1, 2, 3, 4]) };
+        let call = Call { to: Address::repeat_byte(0xAB), data: Bytes::from_static(&[1, 2, 3, 4]) };
         let mut buf = Vec::new();
         call.encode(&mut buf);
         let decoded = Call::decode(&mut buf.as_slice()).unwrap();

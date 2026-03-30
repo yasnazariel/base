@@ -12,8 +12,7 @@ use std::{collections::HashSet, sync::Arc};
 
 use alloy_primitives::B256;
 use reth_transaction_pool::{
-    BestTransactions, EthPoolTransaction, ValidPoolTransaction,
-    error::InvalidPoolTransactionError,
+    BestTransactions, EthPoolTransaction, ValidPoolTransaction, error::InvalidPoolTransactionError,
 };
 
 /// Merges two [`BestTransactions`] iterators by effective priority (tip).
@@ -76,10 +75,8 @@ where
 
             let chosen = match (&self.peeked_left, &self.peeked_right) {
                 (Some(l), Some(r)) => {
-                    let l_prio =
-                        l.transaction.max_priority_fee_per_gas().unwrap_or_default();
-                    let r_prio =
-                        r.transaction.max_priority_fee_per_gas().unwrap_or_default();
+                    let l_prio = l.transaction.max_priority_fee_per_gas().unwrap_or_default();
+                    let r_prio = r.transaction.max_priority_fee_per_gas().unwrap_or_default();
                     if l_prio >= r_prio {
                         self.peeked_left.take()
                     } else {
@@ -108,11 +105,7 @@ where
     L: BestTransactions<Item = Arc<ValidPoolTransaction<T>>>,
     R: BestTransactions<Item = Arc<ValidPoolTransaction<T>>>,
 {
-    fn mark_invalid(
-        &mut self,
-        transaction: &Self::Item,
-        kind: &InvalidPoolTransactionError,
-    ) {
+    fn mark_invalid(&mut self, transaction: &Self::Item, kind: &InvalidPoolTransactionError) {
         self.left.mark_invalid(transaction, kind);
         self.right.mark_invalid(transaction, kind);
     }
@@ -173,8 +166,7 @@ mod tests {
             U256::from(priority_fee),
             false,
         );
-        let signed =
-            OpTransactionSigned::new_unhashed(OpTypedTransaction::Eip1559(tx), sig);
+        let signed = OpTransactionSigned::new_unhashed(OpTypedTransaction::Eip1559(tx), sig);
         let recovered = Recovered::new_unchecked(signed, sender);
         let len = recovered.encoded_2718_len();
         let pooled = BasePooledTransaction::new(recovered, len);
@@ -247,19 +239,12 @@ mod tests {
 
     #[test]
     fn merged_interleaves_correctly() {
-        let left = VecBest::new(vec![
-            make_valid_tx(0x01, 0, 50),
-            make_valid_tx(0x01, 1, 20),
-        ]);
-        let right = VecBest::new(vec![
-            make_valid_tx(0x02, 0, 30),
-            make_valid_tx(0x02, 1, 10),
-        ]);
+        let left = VecBest::new(vec![make_valid_tx(0x01, 0, 50), make_valid_tx(0x01, 1, 20)]);
+        let right = VecBest::new(vec![make_valid_tx(0x02, 0, 30), make_valid_tx(0x02, 1, 10)]);
         let merged = MergedBestTransactions::new(left, right);
 
-        let priorities: Vec<u128> = merged
-            .map(|tx| tx.max_priority_fee_per_gas().unwrap_or_default())
-            .collect();
+        let priorities: Vec<u128> =
+            merged.map(|tx| tx.max_priority_fee_per_gas().unwrap_or_default()).collect();
         assert_eq!(priorities, vec![50, 30, 20, 10]);
     }
 

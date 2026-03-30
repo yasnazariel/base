@@ -8,16 +8,15 @@ use alloy_evm::{FromRecoveredTx, FromTxWithEncoded};
 use alloy_primitives::{Address, B256, Bytes, U256};
 use base_revm::{
     DepositTransactionParts, Eip8130AuthorizerValidation, Eip8130Call, Eip8130CodePlacement,
-    Eip8130ConfigOp, Eip8130Parts, Eip8130SequenceUpdate, Eip8130StorageWrite,
-    Eip8130VerifyCall, OpTransaction,
+    Eip8130ConfigOp, Eip8130Parts, Eip8130SequenceUpdate, Eip8130StorageWrite, Eip8130VerifyCall,
+    OpTransaction,
 };
 use revm::context::TxEnv;
 
 use crate::{
     ACCOUNT_CONFIG_ADDRESS, AccountChangeEntry, CUSTOM_VERIFIER_GAS_CAP, OpTxEnvelope, OwnerScope,
     TxDeposit, TxEip8130, VERIFIER_CUSTOM, VerifierGasCosts, account_change_units,
-    auto_delegation_code,
-    config_change_digest, config_change_sequence, config_change_writes,
+    auto_delegation_code, config_change_digest, config_change_sequence, config_change_writes,
     delegate_inner_verifier_type, derive_account_address, encode_verify_call,
     intrinsic_gas_with_costs, owner_registration_writes, payer_auth_cost, payer_signature_hash,
     payer_verification_gas, sender_signature_hash, total_verification_gas,
@@ -270,10 +269,8 @@ pub fn build_eip8130_parts_with_costs(
                         value: w.value,
                     });
                 }
-                code_placements.push(Eip8130CodePlacement {
-                    address: account,
-                    code: create.bytecode.clone(),
-                });
+                code_placements
+                    .push(Eip8130CodePlacement { address: account, code: create.bytecode.clone() });
             }
             AccountChangeEntry::ConfigChange(cc) => {
                 for w in config_change_writes(sender, cc) {
@@ -318,20 +315,21 @@ pub fn build_eip8130_parts_with_costs(
         None
     };
 
-    let aa_intrinsic_gas =
-        intrinsic_gas_with_costs(tx, false /* cold nonce — worst case */, tx.chain_id, costs);
+    let aa_intrinsic_gas = intrinsic_gas_with_costs(
+        tx,
+        false, /* cold nonce — worst case */
+        tx.chain_id,
+        costs,
+    );
 
     let sender_auth_empty = !tx.is_eoa() && tx.sender_auth.is_empty();
     let payer_auth_empty = !tx.is_self_pay() && tx.payer_auth.is_empty();
 
-    let payer_intrinsic_gas =
-        payer_auth_cost(tx) + payer_verification_gas(tx, costs, payer_inner);
+    let payer_intrinsic_gas = payer_auth_cost(tx) + payer_verification_gas(tx, costs, payer_inner);
 
     let authorizer_validations = build_authorizer_validations(tx, sender);
 
-    let has_custom_authorizer = authorizer_validations
-        .iter()
-        .any(|v| v.verify_call.is_some());
+    let has_custom_authorizer = authorizer_validations.iter().any(|v| v.verify_call.is_some());
     let has_custom_verifier =
         sender_verify_call.is_some() || payer_verify_call.is_some() || has_custom_authorizer;
     let custom_verifier_gas_cap = if has_custom_verifier { CUSTOM_VERIFIER_GAS_CAP } else { 0 };
@@ -344,11 +342,8 @@ pub fn build_eip8130_parts_with_costs(
         tx.sender_auth[0]
     };
 
-    let payer_verifier_type = if tx.is_self_pay() || tx.payer_auth.is_empty() {
-        0
-    } else {
-        tx.payer_auth[0]
-    };
+    let payer_verifier_type =
+        if tx.is_self_pay() || tx.payer_auth.is_empty() { 0 } else { tx.payer_auth[0] };
 
     Eip8130Parts {
         expiry: tx.expiry,
@@ -414,8 +409,7 @@ impl FromRecoveredTx<OpTxEnvelope> for TxEnv {
                         matches!(entry, AccountChangeEntry::ConfigChange(cc)
                             if !cc.authorizer_auth.is_empty() && cc.authorizer_auth[0] == VERIFIER_CUSTOM)
                     });
-                let verifier_cap =
-                    if has_custom { CUSTOM_VERIFIER_GAS_CAP } else { 0 };
+                let verifier_cap = if has_custom { CUSTOM_VERIFIER_GAS_CAP } else { 0 };
                 Self {
                     tx_type: inner.ty(),
                     caller,

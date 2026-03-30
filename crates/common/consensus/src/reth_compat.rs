@@ -237,8 +237,8 @@ impl Compact for TxEip8130 {
     fn from_compact(buf: &[u8], _len: usize) -> (Self, &[u8]) {
         let len = u32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]]) as usize;
         let rlp_data = &buf[4..4 + len];
-        let tx = Self::rlp_decode(&mut &*rlp_data)
-            .expect("valid TxEip8130 RLP from compact storage");
+        let tx =
+            Self::rlp_decode(&mut &*rlp_data).expect("valid TxEip8130 RLP from compact storage");
         (tx, &buf[4 + len..])
     }
 }

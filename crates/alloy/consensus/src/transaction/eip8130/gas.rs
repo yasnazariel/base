@@ -16,11 +16,7 @@ use super::{
 /// For delegate auth (`[0x04, inner_type, inner_data...]`), returns
 /// `Some(inner_type)`. For non-delegate auth or empty blobs, returns `None`.
 pub fn delegate_inner_verifier_type(auth: &[u8]) -> Option<u8> {
-    if auth.len() >= 2 && auth[0] == VERIFIER_DELEGATE {
-        Some(auth[1])
-    } else {
-        None
-    }
+    if auth.len() >= 2 && auth[0] == VERIFIER_DELEGATE { Some(auth[1]) } else { None }
 }
 
 /// Computes the intrinsic gas for an AA transaction.
@@ -98,11 +94,7 @@ pub fn sender_auth_cost(_tx: &TxEip8130) -> u64 {
 
 /// Payer authentication cost (SLOAD overhead, excluding verification gas): 0 for self-pay.
 pub fn payer_auth_cost(tx: &TxEip8130) -> u64 {
-    if tx.is_self_pay() {
-        0
-    } else {
-        SLOAD_GAS
-    }
+    if tx.is_self_pay() { 0 } else { SLOAD_GAS }
 }
 
 /// Gas charged for native cryptographic verification of the sender's signature.
@@ -250,7 +242,9 @@ mod tests {
     use alloy_primitives::{Address, B256, Bytes, U256};
 
     use super::*;
-    use crate::transaction::eip8130::types::{ConfigChangeEntry, ConfigOperation, CreateEntry, Owner};
+    use crate::transaction::eip8130::types::{
+        ConfigChangeEntry, ConfigOperation, CreateEntry, Owner,
+    };
 
     #[test]
     fn calldata_gas_basic() {
@@ -481,10 +475,7 @@ mod tests {
             ..Default::default()
         };
         let costs = VerifierGasCosts::BASE_V1;
-        assert_eq!(
-            sender_verification_gas(&tx, &costs, Some(VERIFIER_K1)),
-            3_000 + 6_000,
-        );
+        assert_eq!(sender_verification_gas(&tx, &costs, Some(VERIFIER_K1)), 3_000 + 6_000,);
     }
 
     #[test]
@@ -495,10 +486,7 @@ mod tests {
             ..Default::default()
         };
         let costs = VerifierGasCosts::BASE_V1;
-        assert_eq!(
-            sender_verification_gas(&tx, &costs, Some(0x02)),
-            3_000 + 9_500,
-        );
+        assert_eq!(sender_verification_gas(&tx, &costs, Some(0x02)), 3_000 + 9_500,);
     }
 
     #[test]
@@ -566,7 +554,12 @@ mod tests {
 
     #[test]
     fn verifier_gas_costs_configurable() {
-        let custom = VerifierGasCosts { k1: 5_000, p256_raw: 10_000, p256_webauthn: 20_000, delegate: 4_000 };
+        let custom = VerifierGasCosts {
+            k1: 5_000,
+            p256_raw: 10_000,
+            p256_webauthn: 20_000,
+            delegate: 4_000,
+        };
         assert_eq!(custom.gas_for_verifier(0x01, None), 5_000);
         assert_eq!(custom.gas_for_verifier(0x02, None), 10_000);
         assert_eq!(custom.gas_for_verifier(0x03, None), 20_000);

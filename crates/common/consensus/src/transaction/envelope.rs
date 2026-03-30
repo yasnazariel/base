@@ -8,7 +8,7 @@ use alloy_eips::eip2718::Encodable2718;
 use alloy_primitives::{B256, Bytes, Signature, TxHash};
 
 use crate::{
-    OpPooledTransaction, TxEip8130, TxDeposit,
+    OpPooledTransaction, TxDeposit, TxEip8130,
     transaction::{OpDepositInfo, OpTransactionInfo},
 };
 
@@ -213,9 +213,7 @@ impl From<OpTxEnvelope> for alloy_rpc_types_eth::TransactionRequest {
             OpTxEnvelope::Eip2930(tx) => tx.into_parts().0.into(),
             OpTxEnvelope::Eip1559(tx) => tx.into_parts().0.into(),
             OpTxEnvelope::Eip7702(tx) => tx.into_parts().0.into(),
-            OpTxEnvelope::Eip8130(_tx) => {
-                alloy_rpc_types_eth::TransactionRequest::default()
-            }
+            OpTxEnvelope::Eip8130(_tx) => alloy_rpc_types_eth::TransactionRequest::default(),
             OpTxEnvelope::Deposit(tx) => tx.into_inner().into(),
             OpTxEnvelope::Legacy(tx) => tx.into_parts().0.into(),
         }
@@ -265,7 +263,10 @@ impl OpTxEnvelope {
     pub const fn is_system_transaction(&self) -> bool {
         match self {
             Self::Deposit(tx) => tx.inner().is_system_transaction,
-            Self::Eip8130(_) | Self::Legacy(_) | Self::Eip2930(_) | Self::Eip1559(_)
+            Self::Eip8130(_)
+            | Self::Legacy(_)
+            | Self::Eip2930(_)
+            | Self::Eip1559(_)
             | Self::Eip7702(_) => false,
         }
     }
@@ -652,10 +653,9 @@ pub(crate) mod serde_bincode_compat {
                     signature: *signed_7702.signature(),
                     transaction: signed_7702.tx().into(),
                 },
-                super::OpTxEnvelope::Eip8130(sealed_aa) => Self::Eip8130 {
-                    hash: sealed_aa.seal(),
-                    transaction: sealed_aa.inner().clone(),
-                },
+                super::OpTxEnvelope::Eip8130(sealed_aa) => {
+                    Self::Eip8130 { hash: sealed_aa.seal(), transaction: sealed_aa.inner().clone() }
+                }
                 super::OpTxEnvelope::Deposit(sealed_deposit) => Self::Deposit {
                     hash: sealed_deposit.seal(),
                     transaction: sealed_deposit.inner().into(),
