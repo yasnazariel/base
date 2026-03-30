@@ -45,7 +45,7 @@ base-node-runner = { workspace = true, features = ["test-utils"] }
 base-flashblocks-node = { workspace = true, features = ["test-utils"] }
 
 # reth
-base-execution-primitives.workspace = true
+reth-primitives.workspace = true
 reth-transaction-pool = { workspace = true, features = ["test-utils"] }
 
 # revm

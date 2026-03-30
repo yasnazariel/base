@@ -21,7 +21,6 @@ use base_alloy_consensus::{OpBlock, OpReceipt, OpTxType};
 use base_alloy_evm::{OpBlockExecutor, OpBlockExecutorFactory, OpEvm, OpEvmFactory, OpTxResult};
 use base_alloy_rpc_types_engine::OpExecutionData;
 use base_execution_evm::OpRethReceiptBuilder;
-use base_execution_primitives::{OpPrimitives, OpTransactionSigned};
 use base_flashblocks::FlashblocksState;
 use base_node_core::OpEngineTypes;
 use base_revm::OpHaltReason;
@@ -54,6 +53,7 @@ use reth_node_builder::{
 use reth_payload_primitives::{
     BuiltPayload, InvalidPayloadAttributesError, NewPayloadError, PayloadTypes,
 };
+use reth_primitives::{OpPrimitives, OpTransactionSigned};
 use reth_primitives_traits::{
     AlloyBlockHeader, BlockBody, GotExpected, NodePrimitives, RecoveredBlock, SealedBlock,
     SealedHeader, SignerRecoverable,

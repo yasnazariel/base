@@ -18,7 +18,6 @@ use alloy_consensus::{
 };
 use alloy_primitives::B64;
 use base_alloy_chains::BaseUpgrades;
-use base_execution_primitives::DepositReceipt;
 use reth_chainspec::ChainSpec;
 use reth_consensus::{Consensus, ConsensusError, FullConsensus, HeaderValidator, ReceiptRootBloom};
 use reth_consensus_common::validation::{
@@ -27,6 +26,7 @@ use reth_consensus_common::validation::{
     validate_header_extra_data, validate_header_gas,
 };
 use reth_execution_types::BlockExecutionResult;
+use reth_primitives::DepositReceipt;
 use reth_primitives_traits::{
     Block, BlockBody, GotExpected, NodePrimitives, RecoveredBlock, SealedBlock, SealedHeader,
 };
@@ -230,9 +230,9 @@ mod tests {
     use alloy_eips::{eip4895::Withdrawals, eip7685::Requests};
     use alloy_primitives::{Address, Bytes, Log, Signature, U256};
     use base_alloy_consensus::{HoloceneExtraData, JovianExtraData, OpReceipt, OpTypedTransaction};
-    use base_execution_primitives::{OpPrimitives, OpTransactionSigned};
     use reth_chainspec::{BASE_MAINNET, BaseFeeParams, ChainSpecBuilder};
     use reth_consensus::{Consensus, ConsensusError, FullConsensus, HeaderValidator};
+    use reth_primitives::{OpPrimitives, OpTransactionSigned};
     use reth_primitives_traits::{RecoveredBlock, SealedBlock, SealedHeader, proofs};
     use reth_provider::BlockExecutionResult;
 

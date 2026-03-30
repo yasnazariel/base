@@ -1,11 +1,11 @@
 use alloy_eips::Decodable2718;
 use alloy_primitives::{Bytes, TxHash};
-use base_execution_primitives::OpTransactionSigned;
 use jsonrpsee::{
     core::RpcResult,
     proc_macros::rpc,
     types::{ErrorCode, ErrorObjectOwned},
 };
+use reth_primitives::OpTransactionSigned;
 use reth_primitives_traits::SignedTransaction;
 use reth_transaction_pool::TransactionPool;
 use tracing::debug;

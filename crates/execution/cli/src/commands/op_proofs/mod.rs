@@ -2,11 +2,11 @@
 
 use std::sync::Arc;
 
-use base_execution_primitives::OpPrimitives;
 use clap::{Parser, Subcommand};
 use reth_chainspec::ChainSpec;
 use reth_cli::chainspec::ChainSpecParser;
 use reth_cli_commands::common::CliNodeTypes;
+use reth_primitives::OpPrimitives;
 
 pub mod init;
 pub mod prune;

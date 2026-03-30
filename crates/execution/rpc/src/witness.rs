@@ -8,12 +8,12 @@ use base_alloy_chains::BaseUpgrades;
 use base_execution_payload_builder::{
     OpPayloadAttributes, OpPayloadBuilder, OpPayloadBuilderAttributes,
 };
-use base_execution_primitives::{OpHeader, OpPrimitives, OpTransactionSigned};
 use base_txpool::OpPooledTx;
 use jsonrpsee_core::{RpcResult, async_trait};
 use reth_chainspec::{ChainSpecProvider, EthChainSpec};
 use reth_evm::ConfigureEvm;
 use reth_node_api::BuildNextEnv;
+use reth_primitives::{OpHeader, OpPrimitives, OpTransactionSigned};
 use reth_primitives_traits::SealedHeader;
 pub use reth_rpc_api::DebugExecutionWitnessApiServer;
 use reth_rpc_server_types::{ToRpcResult, result::internal_rpc_err};

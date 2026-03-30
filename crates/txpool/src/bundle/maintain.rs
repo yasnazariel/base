@@ -5,7 +5,8 @@ use std::sync::{
 
 use alloy_consensus::BlockHeader;
 use futures::StreamExt;
-use reth_provider::CanonStateNotification;
+use reth_chain_state::CanonStateNotification;
+use reth_primitives_traits::NodePrimitives;
 use reth_transaction_pool::TransactionPool;
 use tokio_stream::wrappers::BroadcastStream;
 use tracing::{debug, trace, warn};
@@ -28,7 +29,7 @@ pub async fn maintain_bundle_transactions<P, N>(
 ) where
     P: TransactionPool + 'static,
     P::Transaction: BundleTransaction,
-    N: reth_node_api::NodePrimitives,
+    N: NodePrimitives,
 {
     loop {
         let notification = match events.next().await {

@@ -607,9 +607,9 @@ mod tests {
         ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, Flashblock, Metadata,
     };
     use base_bundles::{Bundle, MeterBundleResponse};
-    use base_execution_primitives::OpTransactionSigned;
     use base_flashblocks::{FlashblocksConfig, PendingBlocksBuilder};
     use base_node_runner::test_utils::{Account, TestHarness};
+    use reth_primitives::OpTransactionSigned;
     use reth_transaction_pool::test_utils::TransactionBuilder;
     use url::Url;
 

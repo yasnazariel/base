@@ -21,7 +21,6 @@ use base_builder_publish::WebSocketPublisher;
 use base_execution_consensus::{calculate_receipt_root_no_memo_optimism, isthmus};
 use base_execution_evm::{OpEvmConfig, OpNextBlockEnvAttributes};
 use base_execution_payload_builder::{OpBuiltPayload, OpPayloadBuilderAttributes};
-use base_execution_primitives::OpTransactionSigned;
 use either::Either;
 use eyre::WrapErr as _;
 use reth_basic_payload_builder::BuildOutcome;
@@ -30,6 +29,7 @@ use reth_execution_types::ChangedAccount;
 use reth_node_api::{Block, BuiltPayloadExecutedBlock, PayloadBuilderError};
 use reth_payload_primitives::PayloadBuilderAttributes;
 use reth_payload_util::BestPayloadTransactions;
+use reth_primitives::OpTransactionSigned;
 use reth_primitives_traits::RecoveredBlock;
 use reth_provider::{
     BlockExecutionOutput, BlockExecutionResult, ExecutionOutcome, HashedPostStateProvider,

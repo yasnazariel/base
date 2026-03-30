@@ -476,10 +476,9 @@ mod tests {
     use alloy_eips::eip7685::Requests;
     use alloy_primitives::U256;
     use base_execution_payload_builder::payload::OpPayloadBuilderAttributes;
-    use base_execution_primitives::OpPrimitives;
     use rand::rng;
     use reth_node_api::{BuiltPayloadExecutedBlock, NodePrimitives};
-    use reth_primitives::SealedBlock;
+    use reth_primitives::{OpPrimitives, SealedBlock};
     use reth_provider::test_utils::MockEthProvider;
     use reth_tasks::TokioTaskExecutor;
     use reth_testing_utils::generators::{BlockRangeParams, random_block_range};

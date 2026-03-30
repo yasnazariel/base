@@ -21,12 +21,12 @@ use base_alloy_rpc_types_engine::{
     OpExecutionPayloadEnvelopeV5, OpExecutionPayloadV4,
 };
 use base_execution_evm::OpNextBlockEnvAttributes;
-use base_execution_primitives::{OpHeader, OpPrimitives, OpSealedBlock, OpTransactionSigned};
 use reth_chainspec::EthChainSpec;
 use reth_payload_builder::{EthPayloadBuilderAttributes, PayloadBuilderError};
 use reth_payload_primitives::{
     BuildNextEnv, BuiltPayload, BuiltPayloadExecutedBlock, PayloadBuilderAttributes,
 };
+use reth_primitives::{OpHeader, OpPrimitives, OpSealedBlock, OpTransactionSigned};
 use reth_primitives_traits::{SealedBlock, SealedHeader, WithEncoded};
 
 /// Base Payload Builder Attributes

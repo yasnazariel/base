@@ -25,7 +25,7 @@ reth-chainspec.workspace = true
 # op-reth
 base-protocol.workspace = true
 base-alloy-chains.workspace = true
-base-execution-primitives.workspace = true
+reth-primitives.workspace = true
 
 # ethereum
 revm.workspace = true
@@ -59,12 +59,12 @@ std = [
 	"alloy-primitives/std",
 	"alloy-trie/std",
 	"base-alloy-consensus/std",
-	"base-execution-primitives/std",
 	"base-protocol/std",
 	"reth-consensus-common/std",
 	"reth-consensus/std",
 	"reth-execution-types/std",
 	"reth-primitives-traits/std",
+	"reth-primitives/std",
 	"reth-revm/std",
 	"reth-storage-api/std",
 	"reth-storage-errors/std",

@@ -5,7 +5,6 @@ use std::sync::{
 
 use alloy_consensus::{BlockHeader, Transaction};
 use base_alloy_chains::BaseUpgrades;
-use base_execution_evm::RethL1BlockInfo;
 use base_revm::L1BlockInfo;
 use parking_lot::RwLock;
 use reth_chainspec::ChainSpecProvider;
@@ -20,7 +19,10 @@ use reth_transaction_pool::{
     TransactionValidator,
 };
 
-use crate::OpPooledTx;
+use crate::{
+    OpPooledTx,
+    op_l1::{RethL1BlockInfoExt, extract_l1_info_from_tx},
+};
 
 /// Tracks additional infos for the current block.
 #[derive(Debug, Default)]
@@ -130,7 +132,7 @@ where
     {
         self.block_info.timestamp.store(header.timestamp(), Ordering::Relaxed);
 
-        if let Some(Ok(l1_block_info)) = tx.map(base_execution_evm::extract_l1_info_from_tx) {
+        if let Some(l1_block_info) = tx.and_then(extract_l1_info_from_tx) {
             *self.block_info.l1_block_info.write() = l1_block_info;
         }
     }
@@ -200,17 +202,12 @@ where
 
             let encoded = valid_tx.transaction().encoded_2718();
 
-            let cost_addition = match l1_block_info.l1_tx_data_fee(
+            let cost_addition = l1_block_info.l1_tx_data_fee(
                 self.chain_spec(),
                 self.block_timestamp(),
                 &encoded,
                 false,
-            ) {
-                Ok(cost) => cost,
-                Err(err) => {
-                    return TransactionValidationOutcome::Error(*valid_tx.hash(), Box::new(err));
-                }
-            };
+            );
             let cost = valid_tx.transaction().cost().saturating_add(cost_addition);
 
             // Checks for max cost

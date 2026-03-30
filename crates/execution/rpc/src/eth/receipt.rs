@@ -349,8 +349,8 @@ mod tests {
     use alloy_primitives::{Address, Bytes, Signature, U256, hex};
     use base_alloy_chains::BaseChainConfig;
     use base_alloy_consensus::OpTypedTransaction;
-    use base_execution_primitives::{OpPrimitives, OpTransactionSigned};
     use reth_chainspec::BASE_MAINNET;
+    use reth_primitives::{OpPrimitives, OpTransactionSigned};
     use reth_primitives_traits::Recovered;
 
     use super::*;

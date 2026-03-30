@@ -101,7 +101,6 @@ reth-primitives-traits.workspace = true
 reth-transaction-pool.workspace = true
 reth-payload-primitives.workspace = true
 base-execution-consensus.workspace = true
-base-execution-primitives.workspace = true
 reth-basic-payload-builder.workspace = true
 reth-ipc = { workspace = true, optional = true }
 reth-payload-builder-primitives.workspace = true

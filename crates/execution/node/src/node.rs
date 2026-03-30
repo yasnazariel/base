@@ -12,7 +12,6 @@ use base_execution_payload_builder::{
     builder::OpPayloadTransactions,
     config::{OpBuilderConfig, OpDAConfig, OpGasLimitConfig},
 };
-use base_execution_primitives::{OpHeader, OpPrimitives, OpTransactionSigned};
 use base_execution_rpc::{
     config::{BaseEthConfigApiServer, BaseEthConfigHandler},
     eth::OpEthApiBuilder,
@@ -47,6 +46,7 @@ use reth_node_builder::{
         RethRpcMiddleware, RethRpcServerHandles, RpcAddOns, RpcContext, RpcHandle,
     },
 };
+use reth_primitives::{OpHeader, OpPrimitives, OpTransactionSigned};
 use reth_provider::providers::ProviderFactoryBuilder;
 use reth_rpc_api::{DebugApiServer, eth::RpcTypes};
 use reth_rpc_server_types::RethRpcModule;

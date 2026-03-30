@@ -8,12 +8,12 @@ use alloy_consensus::{BlobTransactionValidationError, Typed2718, transaction::Re
 use alloy_eips::{
     eip2718::{Encodable2718, WithEncoded},
     eip2930::AccessList,
+    eip4844::env_settings::KzgSettings,
     eip7594::BlobTransactionSidecarVariant,
     eip7702::SignedAuthorization,
 };
 use alloy_primitives::{Address, B256, Bytes, TxHash, TxKind, U256};
-use base_execution_primitives::OpTransactionSigned;
-use c_kzg::KzgSettings;
+use reth_primitives::OpTransactionSigned;
 use reth_primitives_traits::{InMemorySize, SignedTransaction};
 use reth_transaction_pool::{
     EthBlobTransactionSidecar, EthPoolTransaction, EthPooledTransaction, PoolTransaction,
@@ -426,29 +426,12 @@ mod tests {
     use alloy_eips::eip2718::Encodable2718;
     use alloy_primitives::{TxKind, U256};
     use base_alloy_consensus::TxDeposit;
-    use base_execution_evm::OpEvmConfig;
-    use base_execution_primitives::{OpPrimitives, OpTransactionSigned};
-    use reth_chainspec::BASE_MAINNET;
-    use reth_provider::test_utils::MockEthProvider;
-    use reth_transaction_pool::{
-        TransactionOrigin, TransactionValidationOutcome, blobstore::InMemoryBlobStore,
-        validate::EthTransactionValidatorBuilder,
-    };
+    use reth_primitives::OpTransactionSigned;
 
-    use crate::{BasePooledTransaction, OpTransactionValidator};
-    #[tokio::test]
-    async fn validate_base_transaction() {
-        let client = MockEthProvider::<OpPrimitives>::new()
-            .with_chain_spec(BASE_MAINNET.clone())
-            .with_genesis_block();
-        let evm_config = OpEvmConfig::optimism(BASE_MAINNET.clone());
-        let validator = EthTransactionValidatorBuilder::new(client, evm_config)
-            .no_shanghai()
-            .no_cancun()
-            .build(InMemoryBlobStore::default());
-        let validator = OpTransactionValidator::new(validator);
+    use crate::{BasePooledTransaction, BundleTransaction};
 
-        let origin = TransactionOrigin::External;
+    #[test]
+    fn preserves_encoded_bytes_and_bundle_metadata() {
         let signer = Default::default();
         let deposit_tx = TxDeposit {
             source_hash: Default::default(),
@@ -463,13 +446,12 @@ mod tests {
         let signed_tx: OpTransactionSigned = deposit_tx.into();
         let signed_recovered = Recovered::new_unchecked(signed_tx, signer);
         let len = signed_recovered.encode_2718_len();
-        let pooled_tx: BasePooledTransaction = BasePooledTransaction::new(signed_recovered, len);
-        let outcome = validator.validate_one(origin, pooled_tx).await;
+        let pooled_tx: BasePooledTransaction = BasePooledTransaction::new(signed_recovered, len)
+            .with_bundle_metadata(Some(10), Some(20), Some(30));
 
-        let err = match outcome {
-            TransactionValidationOutcome::Invalid(_, err) => err,
-            _ => panic!("Expected invalid transaction"),
-        };
-        assert_eq!(err.to_string(), "transaction type not supported");
+        assert_eq!(pooled_tx.encoded_2718().len(), len);
+        assert_eq!(pooled_tx.target_block_number(), Some(10));
+        assert_eq!(pooled_tx.min_timestamp_millis(), Some(20));
+        assert_eq!(pooled_tx.max_timestamp_millis(), Some(30));
     }
 }

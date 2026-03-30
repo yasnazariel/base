@@ -2,7 +2,6 @@
 
 use base_engine_tree::BaseEngineValidatorBuilder;
 use base_execution_payload_builder::config::{OpDAConfig, OpGasLimitConfig};
-use base_execution_primitives::OpPrimitives;
 use base_execution_rpc::eth::OpEthApiBuilder;
 use base_execution_storage::OpStorage;
 use base_node_core::{
@@ -17,6 +16,7 @@ use reth_node_builder::{
     components::{BasicPayloadServiceBuilder, ComponentsBuilder},
     node::{FullNodeTypes, NodeTypes},
 };
+use reth_primitives::OpPrimitives;
 use reth_provider::providers::ProviderFactoryBuilder;
 use reth_rpc_api::eth::RpcTypes;
 

@@ -278,6 +278,8 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 
+extern crate self as reth_transaction_pool;
+
 use std::sync::Arc;
 
 use alloy_eips::{
@@ -297,8 +299,13 @@ use tokio::sync::mpsc::Receiver;
 use tracing::{instrument, trace};
 
 pub use crate::{
+    base_ordering::{BaseOrdering, TimestampOrdering},
     batcher::{BatchTxProcessor, BatchTxRequest},
     blobstore::{BlobStore, BlobStoreError},
+    builder::{BuilderApiImpl, BuilderApiMetrics, BuilderApiServer},
+    bundle::{
+        SendBundleApiImpl, SendBundleApiServer, SendBundleRequest, maintain_bundle_transactions,
+    },
     config::{
         DEFAULT_MAX_INFLIGHT_DELEGATED_SLOTS, DEFAULT_PRICE_BUMP,
         DEFAULT_TXPOOL_ADDITIONAL_VALIDATION_TASKS, LocalTransactionConfig,
@@ -306,7 +313,9 @@ pub use crate::{
         SubPoolLimit, TXPOOL_MAX_ACCOUNT_SLOTS_PER_SENDER, TXPOOL_SUBPOOL_MAX_SIZE_MB_DEFAULT,
         TXPOOL_SUBPOOL_MAX_TXS_DEFAULT,
     },
+    consumer::{Consumer, ConsumerConfig, ConsumerMetrics, RecentlySent, SpawnedConsumer},
     error::PoolResult,
+    forwarder::{Forwarder, ForwarderConfig, ForwarderMetrics, SpawnedForwarder},
     ordering::{CoinbaseTipOrdering, Priority, TransactionOrdering},
     pool::{
         AddedTransactionOutcome, AllTransactionsEvents, FullTransactionEvent, NewTransactionEvent,
@@ -314,10 +323,17 @@ pub use crate::{
         state::SubPool,
     },
     traits::*,
+    transaction::{
+        BLOCK_TIME_SECS, BasePooledTransaction, BundleTransaction, MAX_BUNDLE_ADVANCE_BLOCKS,
+        MAX_BUNDLE_ADVANCE_MILLIS, MAX_BUNDLE_ADVANCE_SECS, OpPooledTx, TimestampedTransaction,
+        unix_time_millis,
+    },
     validate::{
         EthTransactionValidator, TransactionValidationOutcome, TransactionValidationTaskExecutor,
         TransactionValidator, ValidPoolTransaction,
     },
+    validator::{OpL1BlockInfo, OpTransactionValidator},
+    wire::ValidatedTransaction,
 };
 use crate::{identifier::TransactionId, pool::PoolInner};
 
@@ -328,12 +344,32 @@ pub mod noop;
 pub mod pool;
 pub mod validate;
 
+#[path = "../../../../txpool/src/ordering.rs"]
+mod base_ordering;
 pub mod batcher;
 pub mod blobstore;
+#[path = "../../../../txpool/src/builder/mod.rs"]
+mod builder;
+#[path = "../../../../txpool/src/bundle/mod.rs"]
+mod bundle;
 mod config;
+#[path = "../../../../txpool/src/consumer/mod.rs"]
+mod consumer;
+#[path = "../../../../txpool/src/estimated_da_size.rs"]
+pub mod estimated_da_size;
+#[path = "../../../../txpool/src/forwarder/mod.rs"]
+mod forwarder;
 pub mod identifier;
+#[path = "../../../../txpool/src/l1.rs"]
+mod op_l1;
 mod ordering;
 mod traits;
+#[path = "../../../../txpool/src/transaction.rs"]
+mod transaction;
+#[path = "../../../../txpool/src/validator.rs"]
+mod validator;
+#[path = "../../../../txpool/src/wire.rs"]
+mod wire;
 
 #[cfg(any(test, feature = "test-utils"))]
 /// Common test helpers for mocking a pool
@@ -345,6 +381,10 @@ pub type EthTransactionPool<Client, S, Evm = EthEvmConfig, T = EthPooledTransact
     CoinbaseTipOrdering<T>,
     S,
 >;
+
+/// Type alias for the default Base transaction pool.
+pub type OpTransactionPool<Client, S, Evm, T = BasePooledTransaction, O = BaseOrdering<T>> =
+    Pool<TransactionValidationTaskExecutor<OpTransactionValidator<Client, T, Evm>>, O, S>;
 
 /// A shareable, generic, customizable `TransactionPool` implementation.
 #[derive(Debug)]

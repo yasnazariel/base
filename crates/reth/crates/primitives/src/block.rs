@@ -15,3 +15,10 @@ pub type BlockBody<T = TransactionSigned, H = Header> = alloy_consensus::BlockBo
 
 /// Ethereum sealed block type
 pub type SealedBlock<B = Block> = reth_primitives_traits::block::SealedBlock<B>;
+
+/// Base block type.
+pub type OpBlock = base_alloy_consensus::OpBlock;
+
+/// Base block body type.
+pub type OpBlockBody =
+    alloy_consensus::BlockBody<base_alloy_consensus::OpTxEnvelope, alloy_consensus::Header>;

@@ -10,10 +10,10 @@ use alloy_primitives::logs_bloom;
 use base_alloy_chains::BaseUpgrades;
 use base_alloy_evm::OpBlockExecutionCtx;
 use base_execution_consensus::{calculate_receipt_root_no_memo_optimism, isthmus};
-use base_execution_primitives::DepositReceipt;
 use reth_evm::execute::{BlockAssembler, BlockAssemblerInput};
 use reth_execution_errors::BlockExecutionError;
 use reth_execution_types::BlockExecutionResult;
+use reth_primitives::DepositReceipt;
 use reth_primitives_traits::{Receipt, SignedTransaction};
 use revm::context::Block as _;
 

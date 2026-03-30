@@ -30,7 +30,6 @@ reth-trie-common.workspace = true
 base-execution-evm.workspace = true
 base-execution-rpc.workspace = true
 reth-rpc-eth-types.workspace = true
-base-execution-primitives.workspace = true
 
 # revm
 revm.workspace = true

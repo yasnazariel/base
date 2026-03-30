@@ -13,7 +13,6 @@ use base_execution_payload_builder::{
     OpPayloadAttributes, OpPayloadBuilderAttributes,
     builder::{OpBuilder, OpPayloadBuilderCtx},
 };
-use base_execution_primitives::{OpHeader, OpPrimitives, OpTransactionSigned};
 use base_execution_trie::{OpProofsStorage, OpProofsStore};
 use base_txpool::BasePooledTransaction;
 use jsonrpsee::proc_macros::rpc;
@@ -24,6 +23,7 @@ use reth_chainspec::EthChainSpec;
 use reth_evm::{ConfigureEvm, execute::Executor};
 use reth_node_api::{BuildNextEnv, PayloadBuilderAttributes, PayloadBuilderError};
 use reth_payload_util::NoopPayloadTransactions;
+use reth_primitives::{OpHeader, OpPrimitives, OpTransactionSigned};
 use reth_primitives_traits::SealedHeader;
 use reth_provider::{
     BlockReaderIdExt, ChainSpecProvider, HeaderProvider, NodePrimitivesProvider, ProviderError,

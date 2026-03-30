@@ -22,5 +22,10 @@ pub mod util;
 
 mod tx_type;
 
+/// Base transaction types.
+pub use base_alloy_consensus::{
+    OpPooledTransaction, OpTransaction, OpTxEnvelope as OpTransactionSigned, OpTxType,
+    OpTypedTransaction,
+};
 /// Signed transaction.
 pub use reth_ethereum_primitives::{Transaction, TransactionSigned};

@@ -11,7 +11,6 @@ use alloy_primitives::B256;
 pub use alloy_signer_local::PrivateKeySigner;
 pub use apis::*;
 use base_alloy_consensus::OpTypedTransaction;
-use base_execution_primitives::OpTransactionSigned;
 pub use contracts::*;
 pub use driver::*;
 pub use external::*;
@@ -19,7 +18,7 @@ pub use instance::*;
 use k256::sha2::{Digest, Sha256};
 use reth_chainspec::ChainSpec;
 use reth_node_builder::NodeConfig;
-use reth_primitives::Recovered;
+use reth_primitives::{OpTransactionSigned, Recovered};
 pub use txs::*;
 pub use utils::*;
 

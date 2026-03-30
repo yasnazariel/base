@@ -2,12 +2,12 @@ use std::time::Instant;
 
 use alloy_consensus::transaction::Recovered;
 use alloy_eips::Decodable2718;
-use base_execution_primitives::OpTransactionSigned;
 use jsonrpsee::{
     core::RpcResult,
     proc_macros::rpc,
     types::{ErrorCode, ErrorObjectOwned},
 };
+use reth_primitives::OpTransactionSigned;
 use reth_transaction_pool::TransactionPool;
 use tracing::debug;
 
@@ -105,7 +105,7 @@ mod tests {
     use alloy_eips::eip2718::Encodable2718;
     use alloy_primitives::{Address, Bytes, Signature, TxKind, U256};
     use base_alloy_consensus::{OpTypedTransaction, TxDeposit};
-    use base_execution_primitives::OpTransactionSigned;
+    use reth_primitives::OpTransactionSigned;
     use reth_transaction_pool::noop::NoopTransactionPool;
 
     use super::*;

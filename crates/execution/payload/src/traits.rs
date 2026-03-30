@@ -1,6 +1,6 @@
 use base_alloy_consensus::{OpBlock, OpReceipt};
-use base_execution_primitives::{OpBlockBody, OpHeader, OpPrimitives, OpTransactionSigned};
 use reth_payload_primitives::PayloadBuilderAttributes;
+use reth_primitives::{OpBlockBody, OpHeader, OpPrimitives, OpTransactionSigned};
 use reth_primitives_traits::{NodePrimitives, WithEncoded};
 
 use crate::OpPayloadBuilderAttributes;

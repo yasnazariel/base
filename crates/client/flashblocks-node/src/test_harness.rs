@@ -22,7 +22,6 @@ use base_alloy_consensus::{OpBlock, OpDepositReceipt, OpReceipt};
 use base_alloy_flashblocks::{
     ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, Flashblock, Metadata,
 };
-use base_execution_primitives::OpTransactionSigned;
 use base_flashblocks::{
     EthApiExt, EthApiOverrideServer, EthPubSub, EthPubSubApiServer, FlashblocksAPI,
     FlashblocksReceiver, FlashblocksState, PendingBlocksAPI,
@@ -39,6 +38,7 @@ use derive_more::Deref;
 use eyre::Result;
 use reth_chain_state::CanonStateSubscriptions;
 use reth_chainspec::{ChainSpec, EthChainSpec};
+use reth_primitives::OpTransactionSigned;
 use reth_primitives_traits::{Account as RethAccount, Block as BlockT, RecoveredBlock};
 use reth_provider::{AccountReader, BlockNumReader, BlockReader, ChainSpecProvider};
 use reth_transaction_pool::test_utils::TransactionBuilder;

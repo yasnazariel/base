@@ -41,7 +41,7 @@ base-execution-storage.workspace = true
 base-execution-payload-builder.workspace = true
 base-execution-exex = { workspace = true, features = ["metrics"] }
 base-execution-trie = { workspace = true, features = ["metrics"] }
-base-execution-primitives = { workspace = true, features = [
+reth-primitives = { workspace = true, features = [
 	"serde",
 	"serde-bincode-compat",
 	"reth-codec",
@@ -122,7 +122,6 @@ js-tracer = [
 test-utils = [
 	"alloy-genesis",
 	"base-execution-exex/test-utils",
-	"base-execution-primitives/arbitrary",
 	"base-node-core/test-utils",
 	"base-protocol/test-utils",
 	"reth-chainspec/test-utils",
@@ -136,6 +135,7 @@ test-utils = [
 	"reth-node-builder/test-utils",
 	"reth-payload-builder/test-utils",
 	"reth-primitives-traits/test-utils",
+	"reth-primitives/arbitrary",
 	"reth-provider/test-utils",
 	"reth-revm/test-utils",
 	"reth-stages-types/test-utils",
@@ -145,7 +145,7 @@ test-utils = [
 	"reth-trie-db/test-utils",
 	"serde_json",
 ]
-reth-codec = [ "base-execution-primitives/reth-codec" ]
+reth-codec = [ "reth-primitives/reth-codec" ]
 
 [[test]]
 name = "e2e_testsuite"

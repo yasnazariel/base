@@ -21,10 +21,10 @@ test-utils = [
 	"dep:alloy-rpc-types-engine",
 	"dep:base-alloy-consensus",
 	"dep:base-alloy-flashblocks",
-	"dep:base-execution-primitives",
 	"dep:derive_more",
 	"dep:eyre",
 	"dep:reth-chainspec",
+	"dep:reth-primitives",
 	"dep:reth-primitives-traits",
 	"dep:reth-provider",
 	"dep:reth-transaction-pool",
@@ -49,7 +49,7 @@ reth-chain-state.workspace = true
 reth-chainspec = { workspace = true, optional = true }
 reth-provider = { workspace = true, optional = true }
 reth-primitives-traits = { workspace = true, optional = true }
-base-execution-primitives = { workspace = true, optional = true }
+reth-primitives = { workspace = true, optional = true }
 reth-transaction-pool = { workspace = true, features = ["test-utils"], optional = true }
 
 # alloy

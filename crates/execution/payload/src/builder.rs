@@ -8,7 +8,6 @@ use alloy_rpc_types_debug::ExecutionWitness;
 use alloy_rpc_types_engine::PayloadId;
 use base_alloy_chains::BaseUpgrades;
 use base_alloy_consensus::OpReceipt;
-use base_execution_primitives::{OpHeader, OpPrimitives, OpTransactionSigned};
 use base_protocol::Predeploys;
 use base_revm::{L1_BLOCK_CONTRACT, L1BlockInfo};
 use base_txpool::{OpPooledTx, estimated_da_size::DataAvailabilitySized};
@@ -28,6 +27,7 @@ use reth_execution_types::BlockExecutionOutput;
 use reth_payload_builder_primitives::PayloadBuilderError;
 use reth_payload_primitives::{BuildNextEnv, BuiltPayloadExecutedBlock, PayloadBuilderAttributes};
 use reth_payload_util::{BestPayloadTransactions, NoopPayloadTransactions, PayloadTransactions};
+use reth_primitives::{OpHeader, OpPrimitives, OpTransactionSigned};
 use reth_primitives_traits::{SealedHeader, SignedTransaction};
 use reth_revm::{
     cancelled::CancelOnDrop, database::StateProviderDatabase, db::State,

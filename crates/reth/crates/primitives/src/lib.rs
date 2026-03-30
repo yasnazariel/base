@@ -38,23 +38,23 @@ pub use alloy_consensus::{
     ReceiptWithBloom,
     transaction::{PooledTransaction, Recovered, TransactionMeta},
 };
-pub use block::{Block, BlockBody, SealedBlock};
+pub use block::{Block, BlockBody, OpBlock, OpBlockBody, SealedBlock};
 #[cfg(any(test, feature = "arbitrary"))]
 pub use block::{generate_valid_header, valid_header_strategy};
-pub use receipt::{Receipt, gas_spent_by_transactions};
+#[cfg(feature = "c-kzg")]
+pub use c_kzg as kzg;
+pub use receipt::{DepositReceipt, OpReceipt, Receipt, gas_spent_by_transactions};
+// Re-exports
+pub use reth_ethereum_forks::*;
 pub use reth_primitives_traits::{
     Account, BlockTy, BodyTy, Bytecode, GotExpected, GotExpectedBoxed, Header, HeaderTy, Log,
     LogData, NodePrimitives, ReceiptTy, RecoveredBlock, SealedHeader, StorageEntry, TxTy,
     logs_bloom,
 };
 pub use static_file::StaticFileSegment;
-
-#[cfg(feature = "c-kzg")]
-pub use c_kzg as kzg;
-// Re-exports
-pub use reth_ethereum_forks::*;
 pub use transaction::{
-    InvalidTransactionError, Transaction, TransactionSigned, TxType,
+    InvalidTransactionError, OpPooledTransaction, OpTransaction, OpTransactionSigned, OpTxType,
+    OpTypedTransaction, Transaction, TransactionSigned, TxType,
     util::secp256k1::{public_key_to_address, recover_signer_unchecked, sign_message},
 };
 
@@ -67,8 +67,35 @@ pub use transaction::{
 /// Read more: <https://github.com/bincode-org/bincode/issues/326>
 #[cfg(feature = "serde-bincode-compat")]
 pub mod serde_bincode_compat {
+    pub use base_alloy_consensus::serde_bincode_compat::OpReceipt as LocalOpReceipt;
     pub use reth_primitives_traits::serde_bincode_compat::*;
 }
 
 // Re-export of `EthPrimitives`
 pub use reth_ethereum_primitives::EthPrimitives;
+
+/// Base header type.
+pub type OpHeader = alloy_consensus::Header;
+
+/// Base sealed header type.
+pub type OpSealedHeader = SealedHeader<OpHeader>;
+
+/// Base sealed block type.
+pub type OpSealedBlock = SealedBlock<OpBlock>;
+
+/// Base recovered block type.
+pub type OpRecoveredBlock = RecoveredBlock<OpBlock>;
+
+/// Helper struct that specifies the Base [`NodePrimitives`](reth_primitives_traits::NodePrimitives)
+/// types.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct OpPrimitives;
+
+impl NodePrimitives for OpPrimitives {
+    type Block = OpBlock;
+    type BlockHeader = OpHeader;
+    type BlockBody = OpBlockBody;
+    type SignedTx = OpTransactionSigned;
+    type Receipt = OpReceipt;
+}

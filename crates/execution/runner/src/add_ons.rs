@@ -4,7 +4,6 @@ use base_execution_payload_builder::{
     OpPayloadBuilderAttributes,
     config::{OpDAConfig, OpGasLimitConfig},
 };
-use base_execution_primitives::{OpHeader, OpPrimitives, OpTransactionSigned};
 use base_execution_rpc::{
     config::{BaseEthConfigApiServer, BaseEthConfigHandler},
     eth::OpEthApiBuilder,
@@ -20,6 +19,7 @@ use reth_node_builder::rpc::{
     EthApiBuilder, Identity, PayloadValidatorBuilder, RethRpcAddOns, RethRpcMiddleware,
     RethRpcServerHandles, RpcAddOns, RpcContext, RpcHandle,
 };
+use reth_primitives::{OpHeader, OpPrimitives, OpTransactionSigned};
 use reth_rpc_api::{DebugApiServer, DebugExecutionWitnessApiServer};
 use reth_rpc_server_types::RethRpcModule;
 use reth_tracing::tracing::debug;

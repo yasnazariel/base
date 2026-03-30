@@ -1,5 +1,5 @@
 use alloy_consensus::Header;
-use base_execution_primitives::OpTransactionSigned;
+use reth_primitives::OpTransactionSigned;
 use reth_storage_api::EmptyBodyStorage;
 
 /// Base storage implementation.

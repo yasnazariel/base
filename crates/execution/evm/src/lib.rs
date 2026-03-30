@@ -20,12 +20,12 @@ use base_alloy_consensus::{EIP1559ParamError, OpBlock, OpReceipt};
 use base_alloy_evm::{
     OpBlockExecutionCtx, OpBlockExecutorFactory, OpEvmFactory, OpReceiptBuilder, OpTxEnv,
 };
-use base_execution_primitives::{OpHeader, OpPrimitives, OpTransactionSigned};
 use base_revm::{OpSpecId, OpTransaction};
 use reth_chainspec::{ChainSpec, EthChainSpec};
 #[cfg(feature = "std")]
 use reth_evm::{ConfigureEngineEvm, ExecutableTxIterator};
 use reth_evm::{ConfigureEvm, EvmEnv, TransactionEnv, precompiles::PrecompilesMap};
+use reth_primitives::{OpHeader, OpPrimitives, OpTransactionSigned};
 use reth_primitives_traits::{SealedBlock, SealedHeader, SignedTransaction};
 use revm::context::{BlockEnv, TxEnv};
 #[allow(unused_imports)]
@@ -319,13 +319,13 @@ mod tests {
         map::{AddressMap, B256Map, HashMap},
     };
     use base_alloy_consensus::{OpBlock, OpReceipt};
-    use base_execution_primitives::OpPrimitives;
     use base_revm::OpSpecId;
     use reth_chainspec::{BASE_MAINNET, ChainSpec, ChainSpecBuilder};
     use reth_evm::execute::ProviderError;
     use reth_execution_types::{
         AccountRevertInit, BundleStateInit, Chain, ExecutionOutcome, RevertsInit,
     };
+    use reth_primitives::OpPrimitives;
     use reth_primitives_traits::{Account, RecoveredBlock};
     use revm::{
         database::{BundleState, CacheDB},

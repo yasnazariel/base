@@ -11,10 +11,10 @@ use alloy_eips::Encodable2718;
 use alloy_primitives::{B256, Bloom, Bytes};
 use alloy_trie::EMPTY_ROOT_HASH;
 use base_alloy_chains::BaseUpgrades;
-use base_execution_primitives::DepositReceipt;
 pub use reth_chainspec::decode_holocene_base_fee;
 use reth_consensus::ConsensusError;
 use reth_execution_types::BlockExecutionResult;
+use reth_primitives::DepositReceipt;
 use reth_primitives_traits::{BlockBody, GotExpected, receipt::gas_spent_by_transactions};
 use tracing::debug;
 
