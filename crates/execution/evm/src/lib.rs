@@ -16,18 +16,18 @@ use core::fmt::Debug;
 use alloy_consensus::{BlockHeader, Header};
 use alloy_evm::{EvmFactory, FromRecoveredTx, FromTxWithEncoded};
 use base_alloy_chains::BaseUpgrades;
-use base_alloy_consensus::EIP1559ParamError;
+use base_alloy_consensus::{EIP1559ParamError, OpBlock, OpReceipt};
 use base_alloy_evm::{
     OpBlockExecutionCtx, OpBlockExecutorFactory, OpEvmFactory, OpReceiptBuilder, OpTxEnv,
 };
 use base_execution_chainspec::OpChainSpec;
-use base_execution_primitives::{DepositReceipt, OpPrimitives};
+use base_execution_primitives::{OpHeader, OpPrimitives, OpTransactionSigned};
 use base_revm::{OpSpecId, OpTransaction};
 use reth_chainspec::EthChainSpec;
 #[cfg(feature = "std")]
 use reth_evm::{ConfigureEngineEvm, ExecutableTxIterator};
 use reth_evm::{ConfigureEvm, EvmEnv, TransactionEnv, precompiles::PrecompilesMap};
-use reth_primitives_traits::{NodePrimitives, SealedBlock, SealedHeader, SignedTransaction};
+use reth_primitives_traits::{SealedBlock, SealedHeader, SignedTransaction};
 use revm::context::{BlockEnv, TxEnv};
 #[allow(unused_imports)]
 use {
@@ -121,42 +121,32 @@ fn op_next_evm_env(
 
 /// Base EVM configuration.
 #[derive(Debug)]
-pub struct OpEvmConfig<
-    ChainSpec = OpChainSpec,
-    N: NodePrimitives = OpPrimitives,
-    R = OpRethReceiptBuilder,
-    EvmFactory = OpEvmFactory,
-> {
+pub struct OpEvmConfig<R = OpRethReceiptBuilder, EvmFactory = OpEvmFactory> {
     /// Inner [`OpBlockExecutorFactory`].
-    pub executor_factory: OpBlockExecutorFactory<R, Arc<ChainSpec>, EvmFactory>,
+    pub executor_factory: OpBlockExecutorFactory<R, Arc<OpChainSpec>, EvmFactory>,
     /// Base block assembler.
-    pub block_assembler: OpBlockAssembler<ChainSpec>,
-    #[doc(hidden)]
-    pub _pd: core::marker::PhantomData<N>,
+    pub block_assembler: OpBlockAssembler<OpChainSpec>,
 }
 
-impl<ChainSpec, N: NodePrimitives, R: Clone, EvmFactory: Clone> Clone
-    for OpEvmConfig<ChainSpec, N, R, EvmFactory>
-{
+impl<R: Clone, EvmFactory: Clone> Clone for OpEvmConfig<R, EvmFactory> {
     fn clone(&self) -> Self {
         Self {
             executor_factory: self.executor_factory.clone(),
             block_assembler: self.block_assembler.clone(),
-            _pd: self._pd,
         }
     }
 }
 
-impl<ChainSpec: BaseUpgrades> OpEvmConfig<ChainSpec> {
+impl OpEvmConfig {
     /// Creates a new [`OpEvmConfig`] with the given chain spec for Base chains.
-    pub fn optimism(chain_spec: Arc<ChainSpec>) -> Self {
+    pub fn optimism(chain_spec: Arc<OpChainSpec>) -> Self {
         Self::new(chain_spec, OpRethReceiptBuilder::default())
     }
 }
 
-impl<ChainSpec: BaseUpgrades, N: NodePrimitives, R> OpEvmConfig<ChainSpec, N, R> {
+impl<R> OpEvmConfig<R> {
     /// Creates a new [`OpEvmConfig`] with the given chain spec.
-    pub fn new(chain_spec: Arc<ChainSpec>, receipt_builder: R) -> Self {
+    pub fn new(chain_spec: Arc<OpChainSpec>, receipt_builder: R) -> Self {
         Self {
             block_assembler: OpBlockAssembler::new(Arc::clone(&chain_spec)),
             executor_factory: OpBlockExecutorFactory::new(
@@ -164,37 +154,25 @@ impl<ChainSpec: BaseUpgrades, N: NodePrimitives, R> OpEvmConfig<ChainSpec, N, R>
                 chain_spec,
                 OpEvmFactory::default(),
             ),
-            _pd: core::marker::PhantomData,
         }
     }
 }
 
-impl<ChainSpec, N, R, EvmFactory> OpEvmConfig<ChainSpec, N, R, EvmFactory>
-where
-    ChainSpec: BaseUpgrades,
-    N: NodePrimitives,
-{
+impl<R, EvmFactory> OpEvmConfig<R, EvmFactory> {
     /// Returns the chain spec associated with this configuration.
-    pub const fn chain_spec(&self) -> &Arc<ChainSpec> {
+    pub const fn chain_spec(&self) -> &Arc<OpChainSpec> {
         self.executor_factory.spec()
     }
 }
 
-impl<ChainSpec, N, R, EvmF> ConfigureEvm for OpEvmConfig<ChainSpec, N, R, EvmF>
+impl<R, EvmF> ConfigureEvm for OpEvmConfig<R, EvmF>
 where
-    ChainSpec: EthChainSpec<Header = Header> + BaseUpgrades,
-    N: NodePrimitives<
-            Receipt = R::Receipt,
-            SignedTx = R::Transaction,
-            BlockHeader = Header,
-            BlockBody = alloy_consensus::BlockBody<R::Transaction>,
-            Block = alloy_consensus::Block<R::Transaction>,
-        >,
-    OpTransaction<TxEnv>: FromRecoveredTx<N::SignedTx> + FromTxWithEncoded<N::SignedTx>,
-    R: OpReceiptBuilder<Receipt: DepositReceipt, Transaction: SignedTransaction>,
+    OpTransaction<TxEnv>:
+        FromRecoveredTx<OpTransactionSigned> + FromTxWithEncoded<OpTransactionSigned>,
+    R: OpReceiptBuilder<Receipt = OpReceipt, Transaction = OpTransactionSigned>,
     EvmF: EvmFactory<
-            Tx: FromRecoveredTx<R::Transaction>
-                    + FromTxWithEncoded<R::Transaction>
+            Tx: FromRecoveredTx<OpTransactionSigned>
+                    + FromTxWithEncoded<OpTransactionSigned>
                     + TransactionEnv
                     + OpTxEnv,
             Precompiles = PrecompilesMap,
@@ -203,11 +181,11 @@ where
         > + Debug,
     Self: Send + Sync + Unpin + Clone + 'static,
 {
-    type Primitives = N;
+    type Primitives = OpPrimitives;
     type Error = EIP1559ParamError;
     type NextBlockEnvCtx = OpNextBlockEnvAttributes;
-    type BlockExecutorFactory = OpBlockExecutorFactory<R, Arc<ChainSpec>, EvmF>;
-    type BlockAssembler = OpBlockAssembler<ChainSpec>;
+    type BlockExecutorFactory = OpBlockExecutorFactory<R, Arc<OpChainSpec>, EvmF>;
+    type BlockAssembler = OpBlockAssembler<OpChainSpec>;
 
     fn block_executor_factory(&self) -> &Self::BlockExecutorFactory {
         &self.executor_factory
@@ -234,7 +212,7 @@ where
 
     fn context_for_block(
         &self,
-        block: &'_ SealedBlock<N::Block>,
+        block: &'_ SealedBlock<OpBlock>,
     ) -> Result<OpBlockExecutionCtx, Self::Error> {
         Ok(OpBlockExecutionCtx {
             parent_hash: block.header().parent_hash(),
@@ -245,7 +223,7 @@ where
 
     fn context_for_next_block(
         &self,
-        parent: &SealedHeader<N::BlockHeader>,
+        parent: &SealedHeader<OpHeader>,
         attributes: Self::NextBlockEnvCtx,
     ) -> Result<OpBlockExecutionCtx, Self::Error> {
         Ok(OpBlockExecutionCtx {
@@ -257,18 +235,11 @@ where
 }
 
 #[cfg(feature = "std")]
-impl<ChainSpec, N, R> ConfigureEngineEvm<OpExecutionData> for OpEvmConfig<ChainSpec, N, R>
+impl<R> ConfigureEngineEvm<OpExecutionData> for OpEvmConfig<R>
 where
-    ChainSpec: EthChainSpec<Header = Header> + BaseUpgrades,
-    N: NodePrimitives<
-            Receipt = R::Receipt,
-            SignedTx = R::Transaction,
-            BlockHeader = Header,
-            BlockBody = alloy_consensus::BlockBody<R::Transaction>,
-            Block = alloy_consensus::Block<R::Transaction>,
-        >,
-    OpTransaction<TxEnv>: FromRecoveredTx<N::SignedTx> + FromTxWithEncoded<N::SignedTx>,
-    R: OpReceiptBuilder<Receipt: DepositReceipt, Transaction: SignedTransaction>,
+    OpTransaction<TxEnv>:
+        FromRecoveredTx<OpTransactionSigned> + FromTxWithEncoded<OpTransactionSigned>,
+    R: OpReceiptBuilder<Receipt = OpReceipt, Transaction = OpTransactionSigned>,
     Self: Send + Sync + Unpin + Clone + 'static,
 {
     fn evm_env_for_payload(

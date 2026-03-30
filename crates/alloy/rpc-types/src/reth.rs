@@ -20,7 +20,10 @@ use revm::context::TxEnv;
 
 use crate::{OpTransactionRequest, Transaction};
 
-impl<T: OpTransaction + alloy_consensus::Transaction> FromConsensusTx<T> for Transaction<T> {
+impl<T> FromConsensusTx<T> for Transaction
+where
+    T: OpTransaction + alloy_consensus::Transaction + Into<OpTxEnvelope>,
+{
     type TxInfo = OpTransactionInfo;
     type Err = Infallible;
 

@@ -13,7 +13,6 @@ use base_alloy_evm::OpReceiptBuilder;
 use base_execution_chainspec::OpChainSpec;
 use base_execution_evm::{OpEvmConfig, OpNextBlockEnvAttributes};
 use base_execution_payload_builder::{OpPayloadBuilderAttributes, error::OpPayloadBuilderError};
-use base_execution_primitives::OpTransactionSigned;
 use base_revm::{L1BlockInfo, OpSpecId};
 use base_txpool::{BundleTransaction, estimated_da_size::DataAvailabilitySized};
 use reth_basic_payload_builder::PayloadConfig;
@@ -267,7 +266,7 @@ pub struct OpPayloadBuilderCtx {
     /// The chainspec
     pub chain_spec: Arc<OpChainSpec>,
     /// How to build the payload.
-    pub config: PayloadConfig<OpPayloadBuilderAttributes<OpTransactionSigned>>,
+    pub config: PayloadConfig<OpPayloadBuilderAttributes>,
     /// Evm Settings
     pub evm_env: EvmEnv<OpSpecId>,
     /// Block env attributes for the current block.
@@ -313,7 +312,7 @@ impl OpPayloadBuilderCtx {
     }
 
     /// Returns the builder attributes.
-    pub(super) const fn attributes(&self) -> &OpPayloadBuilderAttributes<OpTransactionSigned> {
+    pub(super) const fn attributes(&self) -> &OpPayloadBuilderAttributes {
         &self.config.attributes
     }
 

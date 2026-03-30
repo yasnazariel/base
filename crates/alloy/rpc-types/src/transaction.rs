@@ -1,7 +1,7 @@
 //! Types related to transactions for Base chains.
 
 use alloy_consensus::{Transaction as TransactionTrait, Typed2718, transaction::Recovered};
-use alloy_eips::{Encodable2718, eip2930::AccessList, eip7702::SignedAuthorization};
+use alloy_eips::{eip2930::AccessList, eip7702::SignedAuthorization};
 use alloy_primitives::{Address, B256, BlockHash, Bytes, ChainId, TxKind, U256};
 use alloy_serde::OtherFields;
 use base_alloy_consensus::{OpTransaction, OpTransactionInfo, OpTxEnvelope};
@@ -15,16 +15,12 @@ pub use request::OpTransactionRequest;
     Clone, Debug, PartialEq, Eq, Serialize, Deserialize, derive_more::Deref, derive_more::DerefMut,
 )]
 #[cfg_attr(all(any(test, feature = "arbitrary"), feature = "k256"), derive(arbitrary::Arbitrary))]
-#[serde(
-    try_from = "tx_serde::TransactionSerdeHelper<T>",
-    into = "tx_serde::TransactionSerdeHelper<T>",
-    bound = "T: TransactionTrait + OpTransaction + Clone + serde::Serialize + serde::de::DeserializeOwned"
-)]
-pub struct Transaction<T = OpTxEnvelope> {
+#[serde(try_from = "tx_serde::TransactionSerdeHelper", into = "tx_serde::TransactionSerdeHelper")]
+pub struct Transaction {
     /// Ethereum Transaction Types
     #[deref]
     #[deref_mut]
-    pub inner: alloy_rpc_types_eth::Transaction<T>,
+    pub inner: alloy_rpc_types_eth::Transaction<OpTxEnvelope>,
 
     /// Nonce for deposit transactions. Only present in RPC responses.
     pub deposit_nonce: Option<u64>,
@@ -33,9 +29,12 @@ pub struct Transaction<T = OpTxEnvelope> {
     pub deposit_receipt_version: Option<u64>,
 }
 
-impl<T: OpTransaction + TransactionTrait> Transaction<T> {
+impl Transaction {
     /// Converts a consensus `tx` with an additional context `tx_info` into an RPC [`Transaction`].
-    pub fn from_transaction(tx: Recovered<T>, tx_info: OpTransactionInfo) -> Self {
+    pub fn from_transaction<T>(tx: Recovered<T>, tx_info: OpTransactionInfo) -> Self
+    where
+        T: OpTransaction + TransactionTrait + Into<OpTxEnvelope>,
+    {
         let base_fee = tx_info.inner.base_fee;
         let effective_gas_price = if tx.is_deposit() {
             // For deposits, we must always set the `gasPrice` field to 0 in rpc
@@ -49,6 +48,8 @@ impl<T: OpTransaction + TransactionTrait> Transaction<T> {
                 })
                 .unwrap_or_else(|| tx.max_fee_per_gas())
         };
+        let signer = tx.signer();
+        let tx = Recovered::new_unchecked(tx.into_inner().into(), signer);
 
         Self {
             inner: alloy_rpc_types_eth::Transaction {
@@ -64,13 +65,13 @@ impl<T: OpTransaction + TransactionTrait> Transaction<T> {
     }
 }
 
-impl<T: Typed2718> Typed2718 for Transaction<T> {
+impl Typed2718 for Transaction {
     fn ty(&self) -> u8 {
         self.inner.ty()
     }
 }
 
-impl<T: TransactionTrait> TransactionTrait for Transaction<T> {
+impl TransactionTrait for Transaction {
     fn chain_id(&self) -> Option<ChainId> {
         self.inner.chain_id()
     }
@@ -144,9 +145,7 @@ impl<T: TransactionTrait> TransactionTrait for Transaction<T> {
     }
 }
 
-impl<T: TransactionTrait + Encodable2718> alloy_network_primitives::TransactionResponse
-    for Transaction<T>
-{
+impl alloy_network_primitives::TransactionResponse for Transaction {
     fn tx_hash(&self) -> alloy_primitives::TxHash {
         self.inner.tx_hash()
     }
@@ -195,8 +194,8 @@ impl TryFrom<OpTransactionFields> for OtherFields {
     }
 }
 
-impl<T> AsRef<T> for Transaction<T> {
-    fn as_ref(&self) -> &T {
+impl AsRef<OpTxEnvelope> for Transaction {
+    fn as_ref(&self) -> &OpTxEnvelope {
         self.inner.as_ref()
     }
 }
@@ -209,8 +208,8 @@ mod tx_serde {
     //! [`alloy_rpc_types_eth::Transaction::inner`] and [`base_alloy_consensus::TxDeposit::from`].
     //!
     //! Additionally, we need similar logic for the `gasPrice` field
-    use alloy_consensus::{Transaction as TransactionTrait, transaction::Recovered};
-    use base_alloy_consensus::OpTransaction;
+    use alloy_consensus::{Transaction as _, transaction::Recovered};
+    use base_alloy_consensus::OpTxEnvelope;
     use serde::{Deserialize, Serialize, de::Error};
 
     use super::{Address, BlockHash, Transaction};
@@ -239,9 +238,9 @@ mod tx_serde {
 
     #[derive(Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
-    pub(crate) struct TransactionSerdeHelper<T> {
+    pub(crate) struct TransactionSerdeHelper {
         #[serde(flatten)]
-        inner: T,
+        inner: OpTxEnvelope,
         #[serde(default)]
         block_hash: Option<BlockHash>,
         #[serde(default, with = "alloy_serde::quantity::opt")]
@@ -259,8 +258,8 @@ mod tx_serde {
         other: OptionalFields,
     }
 
-    impl<T: TransactionTrait + OpTransaction> From<Transaction<T>> for TransactionSerdeHelper<T> {
-        fn from(value: Transaction<T>) -> Self {
+    impl From<Transaction> for TransactionSerdeHelper {
+        fn from(value: Transaction) -> Self {
             let Transaction {
                 inner:
                     alloy_rpc_types_eth::Transaction {
@@ -291,10 +290,10 @@ mod tx_serde {
         }
     }
 
-    impl<T: TransactionTrait + OpTransaction> TryFrom<TransactionSerdeHelper<T>> for Transaction<T> {
+    impl TryFrom<TransactionSerdeHelper> for Transaction {
         type Error = serde_json::Error;
 
-        fn try_from(value: TransactionSerdeHelper<T>) -> Result<Self, Self::Error> {
+        fn try_from(value: TransactionSerdeHelper) -> Result<Self, Self::Error> {
             let TransactionSerdeHelper {
                 inner,
                 block_hash,

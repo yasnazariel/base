@@ -1,6 +1,6 @@
 //! Historical proofs RPC server implementation for `debug_` namespace.
 
-use std::{marker::PhantomData, sync::Arc};
+use std::sync::Arc;
 
 use alloy_consensus::BlockHeader;
 use alloy_eips::{BlockId, BlockNumberOrTag};
@@ -10,19 +10,21 @@ use alloy_rpc_types_debug::ExecutionWitness;
 use async_trait::async_trait;
 use base_alloy_chains::BaseUpgrades;
 use base_execution_payload_builder::{
-    OpAttributes, OpPayloadPrimitives,
+    OpPayloadAttributes, OpPayloadBuilderAttributes,
     builder::{OpBuilder, OpPayloadBuilderCtx},
 };
+use base_execution_primitives::{OpHeader, OpPrimitives, OpTransactionSigned};
 use base_execution_trie::{OpProofsStorage, OpProofsStore};
 use base_txpool::BasePooledTransaction;
 use jsonrpsee::proc_macros::rpc;
 use jsonrpsee_core::RpcResult;
 use jsonrpsee_types::error::ErrorObject;
 use reth_basic_payload_builder::PayloadConfig;
+use reth_chainspec::EthChainSpec;
 use reth_evm::{ConfigureEvm, execute::Executor};
-use reth_node_api::{BuildNextEnv, NodePrimitives, PayloadBuilderError};
+use reth_node_api::{BuildNextEnv, PayloadBuilderAttributes, PayloadBuilderError};
 use reth_payload_util::NoopPayloadTransactions;
-use reth_primitives_traits::{SealedHeader, TxTy};
+use reth_primitives_traits::SealedHeader;
 use reth_provider::{
     BlockReaderIdExt, ChainSpecProvider, HeaderProvider, NodePrimitivesProvider, ProviderError,
     ProviderResult, StateProviderFactory,
@@ -71,17 +73,18 @@ pub trait DebugApiOverride<Attributes> {
 
 #[derive(Debug)]
 /// Overrides applied to the `debug_` namespace of the RPC API for the OP Proofs `ExEx`.
-pub struct DebugApiExt<Eth: FullEthApi, Storage, Provider, EvmConfig, Attrs> {
-    inner: Arc<DebugApiExtInner<Eth, Storage, Provider, EvmConfig, Attrs>>,
+pub struct DebugApiExt<Eth: FullEthApi, Storage, Provider, EvmConfig> {
+    inner: Arc<DebugApiExtInner<Eth, Storage, Provider, EvmConfig>>,
 }
 
-impl<Eth, Storage, Provider, EvmConfig, Attrs> DebugApiExt<Eth, Storage, Provider, EvmConfig, Attrs>
+impl<Eth, Storage, Provider, EvmConfig> DebugApiExt<Eth, Storage, Provider, EvmConfig>
 where
     Eth: FullEthApi + Send + Sync + 'static,
     ErrorObject<'static>: From<Eth::Error>,
     Storage: OpProofsStore + Clone + 'static,
-    Provider: BlockReaderIdExt + NodePrimitivesProvider<Primitives: OpPayloadPrimitives>,
-    EvmConfig: ConfigureEvm<Primitives = Provider::Primitives> + 'static,
+    Provider:
+        BlockReaderIdExt<Header = OpHeader> + NodePrimitivesProvider<Primitives = OpPrimitives>,
+    EvmConfig: ConfigureEvm<Primitives = OpPrimitives> + 'static,
 {
     /// Creates a new instance of the `DebugApiExt`.
     pub fn new(
@@ -105,7 +108,7 @@ where
 
 #[derive(Debug)]
 /// Overrides applied to the `debug_` namespace of the RPC API for historical proofs `ExEx`.
-pub struct DebugApiExtInner<Eth: FullEthApi, Storage, Provider, EvmConfig, Attrs> {
+pub struct DebugApiExtInner<Eth: FullEthApi, Storage, Provider, EvmConfig> {
     provider: Provider,
     eth_api: Eth,
     storage: OpProofsStorage<Storage>,
@@ -113,15 +116,14 @@ pub struct DebugApiExtInner<Eth: FullEthApi, Storage, Provider, EvmConfig, Attrs
     evm_config: EvmConfig,
     task_spawner: Box<dyn TaskSpawner>,
     semaphore: Semaphore,
-    _attrs: PhantomData<Attrs>,
 }
 
-impl<Eth, P, Provider, EvmConfig, Attrs> DebugApiExtInner<Eth, P, Provider, EvmConfig, Attrs>
+impl<Eth, P, Provider, EvmConfig> DebugApiExtInner<Eth, P, Provider, EvmConfig>
 where
     Eth: FullEthApi + Send + Sync + 'static,
     ErrorObject<'static>: From<Eth::Error>,
     P: OpProofsStore + Clone + 'static,
-    Provider: NodePrimitivesProvider<Primitives: OpPayloadPrimitives>,
+    Provider: NodePrimitivesProvider<Primitives = OpPrimitives>,
 {
     fn new(
         provider: Provider,
@@ -138,24 +140,20 @@ where
             evm_config,
             task_spawner,
             semaphore: Semaphore::new(3),
-            _attrs: PhantomData,
         }
     }
 }
 
-impl<Eth, P, Provider, EvmConfig, Attrs> DebugApiExt<Eth, P, Provider, EvmConfig, Attrs>
+impl<Eth, P, Provider, EvmConfig> DebugApiExt<Eth, P, Provider, EvmConfig>
 where
     Eth: FullEthApi + Send + Sync + 'static,
     ErrorObject<'static>: From<Eth::Error>,
     P: OpProofsStore + Clone + 'static,
     Provider: BlockReaderIdExt
-        + NodePrimitivesProvider<Primitives: OpPayloadPrimitives>
-        + HeaderProvider<Header = <Provider::Primitives as NodePrimitives>::BlockHeader>,
+        + NodePrimitivesProvider<Primitives = OpPrimitives>
+        + HeaderProvider<Header = OpHeader>,
 {
-    fn parent_header(
-        &self,
-        parent_block_hash: B256,
-    ) -> ProviderResult<SealedHeader<Provider::Header>> {
+    fn parent_header(&self, parent_block_hash: B256) -> ProviderResult<SealedHeader<OpHeader>> {
         self.inner
             .provider
             .sealed_header_by_hash(parent_block_hash)?
@@ -164,33 +162,32 @@ where
 }
 
 #[async_trait]
-impl<Eth, P, Provider, EvmConfig, Attrs, N> DebugApiOverrideServer<Attrs::RpcPayloadAttributes>
-    for DebugApiExt<Eth, P, Provider, EvmConfig, Attrs>
+impl<Eth, P, Provider, EvmConfig> DebugApiOverrideServer<OpPayloadAttributes>
+    for DebugApiExt<Eth, P, Provider, EvmConfig>
 where
     Eth: FullEthApi + Send + Sync + 'static,
     ErrorObject<'static>: From<Eth::Error>,
     P: OpProofsStore + Clone + 'static,
-    Attrs: OpAttributes<Transaction = TxTy<EvmConfig::Primitives>>,
-    N: OpPayloadPrimitives,
     EvmConfig: ConfigureEvm<
-            Primitives = N,
-            NextBlockEnvCtx: BuildNextEnv<Attrs, N::BlockHeader, Provider::ChainSpec>,
+            Primitives = OpPrimitives,
+            NextBlockEnvCtx: BuildNextEnv<
+                OpPayloadBuilderAttributes,
+                OpHeader,
+                Provider::ChainSpec,
+            >,
         > + 'static,
-    Provider: BlockReaderIdExt<Header = N::BlockHeader>
+    Provider: BlockReaderIdExt<Header = OpHeader>
         + StateProviderFactory
-        + ChainSpecProvider<ChainSpec: BaseUpgrades>
-        + NodePrimitivesProvider<Primitives = N>
-        + HeaderProvider<Header = N::BlockHeader>
+        + ChainSpecProvider<ChainSpec: EthChainSpec<Header = OpHeader> + BaseUpgrades>
+        + NodePrimitivesProvider<Primitives = OpPrimitives>
+        + HeaderProvider<Header = OpHeader>
         + Clone
         + 'static,
-    base_alloy_consensus::OpPooledTransaction:
-        TryFrom<<N as OpPayloadPrimitives>::_TX, Error: core::error::Error>,
-    <N as OpPayloadPrimitives>::_TX: From<base_alloy_consensus::OpPooledTransaction>,
 {
     async fn execute_payload(
         &self,
         parent_block_hash: B256,
-        attributes: Attrs::RpcPayloadAttributes,
+        attributes: OpPayloadAttributes,
     ) -> RpcResult<ExecutionWitness> {
         DebugApiExtMetrics::record_operation_async(DebugApis::DebugExecutePayload, async {
             let _permit = self.inner.semaphore.acquire().await;
@@ -202,8 +199,9 @@ where
             self.inner.task_spawner.spawn_blocking_task(Box::pin(async move {
                 let result = async {
                     let parent_hash = parent_header.hash();
-                    let attributes = Attrs::try_new(parent_hash, attributes, 3)
-                        .map_err(PayloadBuilderError::other)?;
+                    let attributes =
+                        OpPayloadBuilderAttributes::try_new(parent_hash, attributes, 3)
+                            .map_err(PayloadBuilderError::other)?;
 
                     let config =
                         PayloadConfig { parent_header: Arc::new(parent_header), attributes };
@@ -225,7 +223,7 @@ where
                     let builder = OpBuilder::new(|_| {
                         NoopPayloadTransactions::<
                             BasePooledTransaction<
-                                <N as OpPayloadPrimitives>::_TX,
+                                OpTransactionSigned,
                                 base_alloy_consensus::OpPooledTransaction,
                             >,
                         >::default()

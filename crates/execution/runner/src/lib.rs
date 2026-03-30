@@ -7,6 +7,9 @@
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 
+use reth_primitives_traits as _;
+use serde as _;
+
 mod builder;
 pub use builder::{BaseRpcContext, NodeHooks};
 

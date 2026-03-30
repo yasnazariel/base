@@ -14,14 +14,14 @@ pub mod builder;
 pub use builder::OpPayloadBuilder;
 pub mod error;
 pub mod payload;
+use base_alloy_consensus::OpBlock;
 use base_alloy_rpc_types_engine::OpExecutionData;
 pub use payload::{
     OpBuiltPayload, OpPayloadAttributes, OpPayloadBuilderAttributes, payload_id_optimism,
 };
 mod traits;
-use base_execution_primitives::OpPrimitives;
-use reth_payload_primitives::{BuiltPayload, PayloadTypes};
-use reth_primitives_traits::{Block, NodePrimitives, SealedBlock};
+use reth_payload_primitives::PayloadTypes;
+use reth_primitives_traits::{Block as _, SealedBlock};
 pub use traits::*;
 pub mod validator;
 pub use validator::OpExecutionPayloadValidator;
@@ -31,22 +31,15 @@ pub mod config;
 /// ZST that aggregates Base [`PayloadTypes`].
 #[derive(Debug, Default, Clone, serde::Deserialize, serde::Serialize)]
 #[non_exhaustive]
-pub struct OpPayloadTypes<N: NodePrimitives = OpPrimitives>(core::marker::PhantomData<N>);
+pub struct OpPayloadTypes;
 
-impl<N: NodePrimitives> PayloadTypes for OpPayloadTypes<N>
-where
-    OpBuiltPayload<N>: BuiltPayload,
-{
+impl PayloadTypes for OpPayloadTypes {
     type ExecutionData = OpExecutionData;
-    type BuiltPayload = OpBuiltPayload<N>;
+    type BuiltPayload = OpBuiltPayload;
     type PayloadAttributes = OpPayloadAttributes;
-    type PayloadBuilderAttributes = OpPayloadBuilderAttributes<N::SignedTx>;
+    type PayloadBuilderAttributes = OpPayloadBuilderAttributes;
 
-    fn block_to_payload(
-        block: SealedBlock<
-            <<Self::BuiltPayload as BuiltPayload>::Primitives as NodePrimitives>::Block,
-        >,
-    ) -> Self::ExecutionData {
+    fn block_to_payload(block: SealedBlock<OpBlock>) -> Self::ExecutionData {
         OpExecutionData::from_block_unchecked(
             block.hash(),
             &block.into_block().into_ethereum_block(),

@@ -11,6 +11,7 @@
 // Used in submodule transaction::signed and receipt.
 use alloy_primitives as _;
 use base_alloy_consensus::{OpBlock, OpReceipt};
+use reth_primitives_traits::{RecoveredBlock, SealedBlock, SealedHeader};
 
 pub mod transaction;
 pub use transaction::*;
@@ -19,8 +20,20 @@ mod receipt;
 
 pub use receipt::DepositReceipt;
 
+/// Base-specific header type.
+pub type OpHeader = alloy_consensus::Header;
+
 /// Base-specific block body type.
 pub type OpBlockBody = <OpBlock as reth_primitives_traits::Block>::Body;
+
+/// Base-specific sealed header type.
+pub type OpSealedHeader = SealedHeader<OpHeader>;
+
+/// Base-specific sealed block type.
+pub type OpSealedBlock = SealedBlock<OpBlock>;
+
+/// Base-specific recovered block type.
+pub type OpRecoveredBlock = RecoveredBlock<OpBlock>;
 
 /// Primitive types for Base Node.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -29,7 +42,7 @@ pub struct OpPrimitives;
 
 impl reth_primitives_traits::NodePrimitives for OpPrimitives {
     type Block = OpBlock;
-    type BlockHeader = alloy_consensus::Header;
+    type BlockHeader = OpHeader;
     type BlockBody = OpBlockBody;
     type SignedTx = OpTransactionSigned;
     type Receipt = OpReceipt;

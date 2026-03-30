@@ -560,14 +560,13 @@ mod tests {
     }
 
     #[derive(Debug, Clone)]
-    struct MockBuilder<N> {
+    struct MockBuilder {
         events: Arc<Mutex<Vec<BlockEvent>>>,
-        _marker: std::marker::PhantomData<N>,
     }
 
-    impl<N> MockBuilder<N> {
+    impl MockBuilder {
         fn new() -> Self {
-            Self { events: Arc::new(Mutex::new(vec![])), _marker: std::marker::PhantomData }
+            Self { events: Arc::new(Mutex::new(vec![])) }
         }
 
         fn new_event(&self, event: BlockEvent) {
@@ -618,11 +617,8 @@ mod tests {
     }
 
     #[async_trait::async_trait]
-    impl<N> PayloadBuilder for MockBuilder<N>
-    where
-        N: OpPayloadPrimitives,
-    {
-        type Attributes = OpPayloadBuilderAttributes<N::SignedTx>;
+    impl PayloadBuilder for MockBuilder {
+        type Attributes = OpPayloadBuilderAttributes;
         type BuiltPayload = MockPayload;
 
         async fn try_build(
@@ -673,7 +669,7 @@ mod tests {
         let client = MockEthProvider::default();
         let executor = TokioTaskExecutor::default();
         let config = BasicPayloadJobGeneratorConfig::default();
-        let builder = MockBuilder::<OpPrimitives>::new();
+        let builder = MockBuilder::new();
 
         let (start, count) = (1, 10);
         let blocks = random_block_range(

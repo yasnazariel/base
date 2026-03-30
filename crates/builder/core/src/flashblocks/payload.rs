@@ -122,7 +122,7 @@ where
     Pool: Clone + Send + Sync,
     Client: Clone + Send + Sync,
 {
-    type Attributes = OpPayloadBuilderAttributes<OpTransactionSigned>;
+    type Attributes = OpPayloadBuilderAttributes;
     type BuiltPayload = OpBuiltPayload;
 
     fn try_build(
@@ -154,9 +154,7 @@ where
 {
     fn get_op_payload_builder_ctx(
         &self,
-        config: reth_basic_payload_builder::PayloadConfig<
-            OpPayloadBuilderAttributes<base_alloy_consensus::OpTxEnvelope>,
-        >,
+        config: reth_basic_payload_builder::PayloadConfig<OpPayloadBuilderAttributes>,
         cancel: CancellationToken,
         extra: FlashblocksExtraCtx,
     ) -> eyre::Result<OpPayloadBuilderCtx> {
@@ -214,7 +212,7 @@ where
     /// a result indicating success with the payload or an error in case of failure.
     async fn build_payload(
         &self,
-        args: BuildArguments<OpPayloadBuilderAttributes<OpTransactionSigned>, OpBuiltPayload>,
+        args: BuildArguments<OpPayloadBuilderAttributes, OpBuiltPayload>,
         best_payload: BlockCell<OpBuiltPayload>,
     ) -> Result<(), PayloadBuilderError> {
         let block_build_start_time = Instant::now();
@@ -874,7 +872,7 @@ where
     Pool: PoolBounds,
     Client: ClientBounds,
 {
-    type Attributes = OpPayloadBuilderAttributes<OpTransactionSigned>;
+    type Attributes = OpPayloadBuilderAttributes;
     type BuiltPayload = OpBuiltPayload;
 
     async fn try_build(
