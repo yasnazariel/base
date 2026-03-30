@@ -325,7 +325,7 @@ mod integration {
 
     #[test]
     fn aa_tx_type_distinct() {
-        assert_eq!(AA_TX_TYPE_ID, 0x05);
+        assert_eq!(AA_TX_TYPE_ID, 0x7B);
         assert_ne!(AA_TX_TYPE_ID, 0x00);
         assert_ne!(AA_TX_TYPE_ID, 0x01);
         assert_ne!(AA_TX_TYPE_ID, 0x02);

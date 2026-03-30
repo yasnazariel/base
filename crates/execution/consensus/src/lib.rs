@@ -119,7 +119,7 @@ where
 
         // Reject blocks containing EIP-8130 AA transactions before BASE_V1.
         if !self.chain_spec.is_base_v1_active_at_timestamp(block.timestamp()) {
-            const EIP8130_TX_TYPE: u8 = 0x05;
+            const EIP8130_TX_TYPE: u8 = 0x7B;
             if block.body().transactions().iter().any(|tx| tx.ty() == EIP8130_TX_TYPE) {
                 return Err(ConsensusError::Other(format!(
                     "block {} contains EIP-8130 transaction before BASE_V1 activation",

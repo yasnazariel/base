@@ -1,11 +1,11 @@
 //! EIP-8130 constants and verifier type identifiers.
 
 /// The EIP-2718 transaction type byte for AA transactions.
-pub const AA_TX_TYPE_ID: u8 = 0x05;
+pub const AA_TX_TYPE_ID: u8 = 0x7B;
 
 /// Payer signature domain separator byte. Ensures cryptographic domain separation
 /// so a valid sender signature cannot be replayed as a payer signature.
-pub const AA_PAYER_TYPE: u8 = 0x06;
+pub const AA_PAYER_TYPE: u8 = 0x7C;
 
 /// Base intrinsic gas cost for an AA transaction (replaces the standard 21 000).
 pub const AA_BASE_COST: u64 = 15_000;

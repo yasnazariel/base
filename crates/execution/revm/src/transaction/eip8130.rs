@@ -159,6 +159,14 @@ pub struct Eip8130Parts {
     /// `ConfigChangeEntry` in `account_changes`. The handler validates
     /// these before applying `pre_writes`.
     pub authorizer_validations: Vec<Eip8130AuthorizerValidation>,
+    /// System log events for account creation. Emitted during validation
+    /// after `pre_writes` and `code_placements` are applied.
+    /// Contains `OwnerAuthorized` for each initial owner, then `AccountCreated`.
+    pub account_creation_logs: Vec<Eip8130ConfigLog>,
+    /// System log events for config changes. Emitted during execution
+    /// after `config_writes` and `sequence_updates` are applied.
+    /// Contains `OwnerAuthorized`/`OwnerRevoked` per operation, then `ChangeApplied`.
+    pub config_change_logs: Vec<Eip8130ConfigLog>,
     /// `true` when `sender_auth` was empty (e.g. during `eth_estimateGas`).
     /// The handler uses this to add calldata overhead during gas estimation.
     pub sender_auth_empty: bool,
@@ -230,6 +238,109 @@ pub fn decode_phase_statuses(output: &[u8]) -> Vec<bool> {
 /// `keccak256("Eip8130PhaseStatuses(bytes)")`
 pub fn phase_statuses_log_topic() -> B256 {
     keccak256(b"Eip8130PhaseStatuses(bytes)")
+}
+
+// ── AccountConfiguration contract event topics ───────────────────
+
+/// `keccak256("OwnerAuthorized(address,bytes32,address,uint8)")`
+pub fn owner_authorized_log_topic() -> B256 {
+    keccak256(b"OwnerAuthorized(address,bytes32,address,uint8)")
+}
+
+/// `keccak256("OwnerRevoked(address,bytes32)")`
+pub fn owner_revoked_log_topic() -> B256 {
+    keccak256(b"OwnerRevoked(address,bytes32)")
+}
+
+/// `keccak256("AccountCreated(address,bytes32,bytes32)")`
+pub fn account_created_log_topic() -> B256 {
+    keccak256(b"AccountCreated(address,bytes32,bytes32)")
+}
+
+/// Pads an [`Address`] into a 32-byte indexed topic (left-padded with zeros).
+fn address_to_topic(addr: Address) -> B256 {
+    let mut topic = B256::ZERO;
+    topic.0[12..32].copy_from_slice(addr.as_slice());
+    topic
+}
+
+/// An `AccountConfiguration` contract event to be injected as a system log.
+///
+/// The handler applies config changes via direct `sstore` writes, bypassing
+/// the Solidity contract. These events are the equivalent Solidity events
+/// that wallets and indexers expect to see in receipts.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum Eip8130ConfigLog {
+    /// `OwnerAuthorized(address indexed account, bytes32 indexed ownerId, address verifier, uint8 scope)`
+    OwnerAuthorized {
+        /// The account whose owner table is being modified.
+        account: Address,
+        /// Verifier-derived identifier for the owner.
+        owner_id: B256,
+        /// Verifier contract that authenticates this owner.
+        verifier: Address,
+        /// Permission bitmask (0x00 = unrestricted).
+        scope: u8,
+    },
+    /// `OwnerRevoked(address indexed account, bytes32 indexed ownerId)`
+    OwnerRevoked {
+        /// The account whose owner table is being modified.
+        account: Address,
+        /// Verifier-derived identifier for the revoked owner.
+        owner_id: B256,
+    },
+    /// `AccountCreated(address indexed account, bytes32 userSalt, bytes32 codeHash)`
+    AccountCreated {
+        /// The newly deployed account address.
+        account: Address,
+        /// User-chosen salt for CREATE2 derivation.
+        user_salt: B256,
+        /// `keccak256(bytecode)` of the deployed runtime code.
+        code_hash: B256,
+    },
+}
+
+/// Converts an [`Eip8130ConfigLog`] into a revm [`Log`] emitted from
+/// `emitter` (the AccountConfiguration contract address).
+pub fn config_log_to_system_log(emitter: Address, event: &Eip8130ConfigLog) -> Log {
+    match event {
+        Eip8130ConfigLog::OwnerAuthorized { account, owner_id, verifier, scope } => {
+            let mut data = Vec::with_capacity(64);
+            let mut verifier_word = [0u8; 32];
+            verifier_word[12..32].copy_from_slice(verifier.as_slice());
+            data.extend_from_slice(&verifier_word);
+            let mut scope_word = [0u8; 32];
+            scope_word[31] = *scope;
+            data.extend_from_slice(&scope_word);
+            Log {
+                address: emitter,
+                data: LogData::new_unchecked(
+                    vec![owner_authorized_log_topic(), address_to_topic(*account), *owner_id],
+                    Bytes::from(data),
+                ),
+            }
+        }
+        Eip8130ConfigLog::OwnerRevoked { account, owner_id } => Log {
+            address: emitter,
+            data: LogData::new_unchecked(
+                vec![owner_revoked_log_topic(), address_to_topic(*account), *owner_id],
+                Bytes::new(),
+            ),
+        },
+        Eip8130ConfigLog::AccountCreated { account, user_salt, code_hash } => {
+            let mut data = Vec::with_capacity(64);
+            data.extend_from_slice(user_salt.as_slice());
+            data.extend_from_slice(code_hash.as_slice());
+            Log {
+                address: emitter,
+                data: LogData::new_unchecked(
+                    vec![account_created_log_topic(), address_to_topic(*account)],
+                    Bytes::from(data),
+                ),
+            }
+        }
+    }
 }
 
 /// Creates a system log carrying per-phase execution statuses.
@@ -336,5 +447,67 @@ mod tests {
         assert!(parts.auto_delegation_code.is_empty());
         assert!(parts.pre_writes.is_empty());
         assert!(parts.call_phases.is_empty());
+        assert!(parts.account_creation_logs.is_empty());
+        assert!(parts.config_change_logs.is_empty());
     }
+
+    #[test]
+    fn owner_authorized_log_encoding() {
+        let emitter = Address::repeat_byte(0xAC);
+        let account = Address::repeat_byte(0x01);
+        let owner_id = B256::repeat_byte(0x02);
+        let verifier = Address::repeat_byte(0x03);
+        let scope = 0x0A;
+
+        let event = Eip8130ConfigLog::OwnerAuthorized { account, owner_id, verifier, scope };
+        let log = config_log_to_system_log(emitter, &event);
+
+        assert_eq!(log.address, emitter);
+        assert_eq!(log.topics().len(), 3);
+        assert_eq!(log.topics()[0], owner_authorized_log_topic());
+        assert_eq!(log.topics()[1], address_to_topic(account));
+        assert_eq!(log.topics()[2], owner_id);
+
+        assert_eq!(log.data.data.len(), 64);
+        assert_eq!(&log.data.data[12..32], verifier.as_slice());
+        assert_eq!(log.data.data[63], scope);
+    }
+
+    #[test]
+    fn owner_revoked_log_encoding() {
+        let emitter = Address::repeat_byte(0xAC);
+        let account = Address::repeat_byte(0x01);
+        let owner_id = B256::repeat_byte(0x02);
+
+        let event = Eip8130ConfigLog::OwnerRevoked { account, owner_id };
+        let log = config_log_to_system_log(emitter, &event);
+
+        assert_eq!(log.address, emitter);
+        assert_eq!(log.topics().len(), 3);
+        assert_eq!(log.topics()[0], owner_revoked_log_topic());
+        assert_eq!(log.topics()[1], address_to_topic(account));
+        assert_eq!(log.topics()[2], owner_id);
+        assert!(log.data.data.is_empty());
+    }
+
+    #[test]
+    fn account_created_log_encoding() {
+        let emitter = Address::repeat_byte(0xAC);
+        let account = Address::repeat_byte(0x01);
+        let user_salt = B256::repeat_byte(0xAA);
+        let code_hash = B256::repeat_byte(0xBB);
+
+        let event = Eip8130ConfigLog::AccountCreated { account, user_salt, code_hash };
+        let log = config_log_to_system_log(emitter, &event);
+
+        assert_eq!(log.address, emitter);
+        assert_eq!(log.topics().len(), 2);
+        assert_eq!(log.topics()[0], account_created_log_topic());
+        assert_eq!(log.topics()[1], address_to_topic(account));
+
+        assert_eq!(log.data.data.len(), 64);
+        assert_eq!(&log.data.data[..32], user_salt.as_slice());
+        assert_eq!(&log.data.data[32..64], code_hash.as_slice());
+    }
+
 }

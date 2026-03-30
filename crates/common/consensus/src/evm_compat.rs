@@ -5,21 +5,22 @@
 
 use alloy_eips::{Encodable2718, Typed2718};
 use alloy_evm::{FromRecoveredTx, FromTxWithEncoded};
-use alloy_primitives::{Address, B256, Bytes, U256};
+use alloy_primitives::{Address, B256, Bytes, U256, keccak256};
 use base_revm::{
     DepositTransactionParts, Eip8130AuthorizerValidation, Eip8130Call, Eip8130CodePlacement,
-    Eip8130ConfigOp, Eip8130Parts, Eip8130SequenceUpdate, Eip8130StorageWrite, Eip8130VerifyCall,
-    OpTransaction,
+    Eip8130ConfigLog, Eip8130ConfigOp, Eip8130Parts, Eip8130SequenceUpdate, Eip8130StorageWrite,
+    Eip8130VerifyCall, OpTransaction,
 };
 use revm::context::TxEnv;
 
 use crate::{
-    ACCOUNT_CONFIG_ADDRESS, AccountChangeEntry, CUSTOM_VERIFIER_GAS_CAP, OpTxEnvelope, OwnerScope,
-    TxDeposit, TxEip8130, VERIFIER_CUSTOM, VerifierGasCosts, account_change_units,
-    auto_delegation_code, config_change_digest, config_change_sequence, config_change_writes,
-    delegate_inner_verifier_type, derive_account_address, encode_verify_call,
-    intrinsic_gas_with_costs, owner_registration_writes, payer_auth_cost, payer_signature_hash,
-    payer_verification_gas, sender_signature_hash, total_verification_gas,
+    ACCOUNT_CONFIG_ADDRESS, AccountChangeEntry, CUSTOM_VERIFIER_GAS_CAP, OP_AUTHORIZE_OWNER,
+    OP_REVOKE_OWNER, OpTxEnvelope, OwnerScope, TxDeposit, TxEip8130, VERIFIER_CUSTOM,
+    VerifierGasCosts, account_change_units, auto_delegation_code, config_change_digest,
+    config_change_sequence, config_change_writes, delegate_inner_verifier_type,
+    derive_account_address, encode_verify_call, intrinsic_gas_with_costs,
+    owner_registration_writes, payer_auth_cost, payer_signature_hash, payer_verification_gas,
+    sender_signature_hash, total_verification_gas,
 };
 #[cfg(feature = "native-verifier")]
 use crate::{
@@ -253,6 +254,8 @@ pub fn build_eip8130_parts_with_costs(
     let mut config_writes = Vec::new();
     let mut sequence_updates = Vec::new();
     let mut code_placements = Vec::new();
+    let mut account_creation_logs = Vec::new();
+    let mut config_change_logs = Vec::new();
     for entry in &tx.account_changes {
         match entry {
             AccountChangeEntry::Create(create) => {
@@ -271,6 +274,20 @@ pub fn build_eip8130_parts_with_costs(
                 }
                 code_placements
                     .push(Eip8130CodePlacement { address: account, code: create.bytecode.clone() });
+
+                for owner in &create.initial_owners {
+                    account_creation_logs.push(Eip8130ConfigLog::OwnerAuthorized {
+                        account,
+                        owner_id: owner.owner_id,
+                        verifier: owner.verifier,
+                        scope: owner.scope,
+                    });
+                }
+                account_creation_logs.push(Eip8130ConfigLog::AccountCreated {
+                    account,
+                    user_salt: create.user_salt,
+                    code_hash: keccak256(&create.bytecode),
+                });
             }
             AccountChangeEntry::ConfigChange(cc) => {
                 for w in config_change_writes(sender, cc) {
@@ -286,6 +303,26 @@ pub fn build_eip8130_parts_with_costs(
                     is_multichain: seq.is_multichain,
                     new_value: seq.new_value,
                 });
+
+                for op in &cc.operations {
+                    match op.op_type {
+                        OP_AUTHORIZE_OWNER => {
+                            config_change_logs.push(Eip8130ConfigLog::OwnerAuthorized {
+                                account: sender,
+                                owner_id: op.owner_id,
+                                verifier: op.verifier,
+                                scope: op.scope,
+                            });
+                        }
+                        OP_REVOKE_OWNER => {
+                            config_change_logs.push(Eip8130ConfigLog::OwnerRevoked {
+                                account: sender,
+                                owner_id: op.owner_id,
+                            });
+                        }
+                        _ => {}
+                    }
+                }
             }
         }
     }
@@ -369,6 +406,8 @@ pub fn build_eip8130_parts_with_costs(
         sender_verify_call,
         payer_verify_call,
         authorizer_validations,
+        account_creation_logs,
+        config_change_logs,
         sender_auth_empty,
         payer_auth_empty,
     }
@@ -388,7 +427,7 @@ impl FromRecoveredTx<OpTxEnvelope> for TxEnv {
             OpTxEnvelope::Eip8130(tx) => {
                 let inner = tx.inner();
                 // NOTE: authorization_list is intentionally not copied to TxEnv for
-                // AA (type 0x05) transactions. The AA handler applies auto-delegation
+                // AA (type 0x7B) transactions. The AA handler applies auto-delegation
                 // directly and does not invoke revm's standard EIP-7702 processing.
                 //
                 // `gas_limit` in TxEip8130 is execution-only. Revm expects the

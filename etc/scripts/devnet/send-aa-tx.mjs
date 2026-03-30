@@ -1,5 +1,5 @@
 /**
- * Sends EIP-8130 (type 0x05) AA transactions against a local devnet.
+ * Sends EIP-8130 (type 0x7B) AA transactions against a local devnet.
  *
  * Usage:
  *   node send-aa-tx.mjs [mode] [options]
@@ -14,7 +14,7 @@
  *   receipt-test Verify receipt fields (status, payer, phaseStatuses) across scenarios
  *   deploy       Creates a new smart account via account_changes (CREATE entry)
  *   nonce-rpc    Verify base_getEip8130Nonce RPC matches storage reads + increments
- *   estimate-gas Verify eth_estimateGas / eth_call work with type 0x05 AA requests
+ *   estimate-gas Verify eth_estimateGas / eth_call work with type 0x7B AA requests
  *
  * Options:
  *   --probe <addr>    OwnerIdProbe contract address
@@ -51,8 +51,8 @@ import { fileURLToPath } from 'url';
 // ─────────────────────────────────────────────────
 // Constants
 // ─────────────────────────────────────────────────
-const AA_TX_TYPE = 0x05;
-const AA_PAYER_TYPE = 0x06;
+const AA_TX_TYPE = 0x7B;
+const AA_PAYER_TYPE = 0x7C;
 const L2_CHAIN_ID = 84538453n;
 
 const NONCE_MANAGER_ADDRESS = '0x000000000000000000000000000000000000Aa02';
@@ -1138,9 +1138,9 @@ async function runEstimateGas() {
 
   const probeCalldata = encodeFunctionData({ abi: PROBE_ABI, functionName: 'probe' });
 
-  // Build a type 0x05 transaction request with the new AA fields
+  // Build a type 0x7B transaction request with the new AA fields
   const txRequest = {
-    type: '0x05',
+    type: '0x7b',
     from: senderAddr,
     nonce: numberToHex(nonce),
     nonceKey: '0x0',

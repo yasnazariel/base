@@ -58,7 +58,7 @@ impl<Block: BlockEnvironment> TryIntoTxEnv<OpRevm<TxEnv>, Block> for OpTransacti
             base.gas_price = aa_tx.max_fee_per_gas;
             base.gas_priority_fee = Some(aa_tx.max_priority_fee_per_gas);
             // NOTE: authorization_list is intentionally not copied to TxEnv for
-            // AA (type 0x05) transactions. The AA handler applies auto-delegation
+            // AA (type 0x7B) transactions. The AA handler applies auto-delegation
             // directly and does not invoke revm's standard EIP-7702 processing.
             return Ok(OpRevm {
                 base,

@@ -205,7 +205,7 @@ impl BasePrecompiles {
 }
 
 /// EIP-8130 transaction type byte.
-const EIP8130_TX_TYPE: u8 = 0x05;
+const EIP8130_TX_TYPE: u8 = 0x7B;
 
 /// NonceManager system precompile address.
 pub const NONCE_MANAGER_ADDRESS: Address =

@@ -19,7 +19,7 @@ pub struct OpTransactionReceipt {
     /// L1 block info of the transaction.
     #[serde(flatten)]
     pub l1_block_info: L1BlockInfo,
-    /// EIP-8130 Account Abstraction fields. Only present for AA (type 0x05) receipts.
+    /// EIP-8130 Account Abstraction fields. Only present for AA (type 0x7B) receipts.
     #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
     pub eip8130_fields: Option<Eip8130ReceiptFields>,
 }

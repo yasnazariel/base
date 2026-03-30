@@ -372,7 +372,7 @@ mod tests {
     #[test]
     fn can_deserialize_aa_tx() {
         use base_alloy_consensus::OpEip8130Transaction;
-        let rpc_tx = r#"{"type":"0x5","chainId":"0x509f455","from":"0x70997970c51812dc3a010c7d01b50e0d17dc79c8","nonceKey":"0x0","nonceSequence":"0x0","expiry":"0x0","maxPriorityFeePerGas":"0xf4240","maxFeePerGas":"0x3b9aca00","gas":"0xc350","authorizationList":[],"accountChanges":[],"calls":[[]],"payer":"0x0000000000000000000000000000000000000000","senderAuth":"0x01b20cd35322123007a2085319f0aa7154dc47c9dc4d6f713d00b6a87dbcafafa02885b9d7326ceeab6033b8ae512e51a774c70cdd9605c3d0fe6a355ddc4381981b","payerAuth":"0x","hash":"0x45a9e1761ba8a09a61fcd724b2d3558b5c08cbab45ecd4f552aa016a24bb50a2","blockHash":"0xf8b3c8f0cb5a88e3eef36d1d9103ceb0b6a1fbfbb9cd5a3a4116cae693ce54ed","blockNumber":"0x17","transactionIndex":"0x1","gasPrice":"0x3b9aca00"}"#;
+        let rpc_tx = r#"{"type":"0x7b","chainId":"0x509f455","from":"0x70997970c51812dc3a010c7d01b50e0d17dc79c8","nonceKey":"0x0","nonceSequence":"0x0","expiry":"0x0","maxPriorityFeePerGas":"0xf4240","maxFeePerGas":"0x3b9aca00","gas":"0xc350","authorizationList":[],"accountChanges":[],"calls":[[]],"payer":"0x0000000000000000000000000000000000000000","senderAuth":"0x01b20cd35322123007a2085319f0aa7154dc47c9dc4d6f713d00b6a87dbcafafa02885b9d7326ceeab6033b8ae512e51a774c70cdd9605c3d0fe6a355ddc4381981b","payerAuth":"0x","hash":"0x45a9e1761ba8a09a61fcd724b2d3558b5c08cbab45ecd4f552aa016a24bb50a2","blockHash":"0xf8b3c8f0cb5a88e3eef36d1d9103ceb0b6a1fbfbb9cd5a3a4116cae693ce54ed","blockNumber":"0x17","transactionIndex":"0x1","gasPrice":"0x3b9aca00"}"#;
 
         let result = serde_json::from_str::<Transaction>(rpc_tx);
         match &result {

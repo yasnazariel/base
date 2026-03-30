@@ -31,13 +31,14 @@ use revm::{
 use crate::{
     Eip8130Parts, Eip8130PhaseResult, Eip8130TxContext, L1BlockInfo, NONCE_MANAGER_ADDRESS,
     OpContextTr, OpHaltReason, OpSpecId, TX_CONTEXT_ADDRESS, clear_eip8130_tx_context,
+    config_log_to_system_log,
     constants::{BASE_FEE_RECIPIENT, L1_FEE_RECIPIENT, OPERATOR_FEE_RECIPIENT},
     encode_phase_statuses, phase_statuses_system_log, set_eip8130_tx_context,
     transaction::{DEPOSIT_TRANSACTION_TYPE, OpTransactionError, OpTxTr},
 };
 
 /// EIP-8130 AA transaction type byte.
-const EIP8130_TX_TYPE: u8 = 0x05;
+const EIP8130_TX_TYPE: u8 = 0x7B;
 
 /// Estimated calldata gas for a K1 auth blob missing during gas estimation.
 ///
@@ -825,6 +826,11 @@ where
                 drop(acc);
             }
 
+            // --- Emit AccountConfiguration events for account creation ---
+            for event in &eip8130.account_creation_logs {
+                journal.log(config_log_to_system_log(ACCOUNT_CONFIG_ADDRESS, event));
+            }
+
             return Ok(());
         }
 
@@ -1041,6 +1047,13 @@ where
                 let new_packed = upd.apply(current);
                 evm.ctx().journal_mut().sstore(ACCOUNT_CONFIG_ADDRESS, upd.slot, new_packed)?;
             }
+        }
+
+        // --- Emit AccountConfiguration events for config changes ---
+        for event in &eip8130.config_change_logs {
+            evm.ctx()
+                .journal_mut()
+                .log(config_log_to_system_log(ACCOUNT_CONFIG_ADDRESS, event));
         }
 
         // Refund unused verification gas budget back to Gas.
@@ -1808,12 +1821,12 @@ mod tests {
         let mut tx = OpTransaction::builder()
             .base(
                 TxEnv::builder()
-                    .tx_type(Some(0x05))
+                    .tx_type(Some(0x7B))
                     .caller(sender)
                     .gas_limit(gas_limit)
                     .kind(TxKind::Call(sender)),
             )
-            .enveloped_tx(Some(bytes!("05FACADE")))
+            .enveloped_tx(Some(bytes!("7BFACADE")))
             .build_fill();
         tx.eip8130 = eip8130;
 
@@ -2031,12 +2044,12 @@ mod tests {
         let mut tx = OpTransaction::builder()
             .base(
                 TxEnv::builder()
-                    .tx_type(Some(0x05))
+                    .tx_type(Some(0x7B))
                     .caller(sender)
                     .gas_limit(gas_limit)
                     .kind(TxKind::Call(sender)),
             )
-            .enveloped_tx(Some(bytes!("05FACADE")))
+            .enveloped_tx(Some(bytes!("7BFACADE")))
             .build_fill();
         tx.base.nonce = nonce_seq;
         tx.eip8130 = Eip8130Parts {
@@ -2103,12 +2116,12 @@ mod tests {
         let mut tx = OpTransaction::builder()
             .base(
                 TxEnv::builder()
-                    .tx_type(Some(0x05))
+                    .tx_type(Some(0x7B))
                     .caller(sender)
                     .gas_limit(200_000)
                     .kind(TxKind::Call(sender)),
             )
-            .enveloped_tx(Some(bytes!("05FACADE")))
+            .enveloped_tx(Some(bytes!("7BFACADE")))
             .build_fill();
         tx.base.nonce = 5; // state has 3, tx says 5 → NonceTooHigh
         tx.eip8130 = Eip8130Parts {
@@ -2152,12 +2165,12 @@ mod tests {
         let mut tx = OpTransaction::builder()
             .base(
                 TxEnv::builder()
-                    .tx_type(Some(0x05))
+                    .tx_type(Some(0x7B))
                     .caller(sender)
                     .gas_limit(200_000)
                     .kind(TxKind::Call(sender)),
             )
-            .enveloped_tx(Some(bytes!("05FACADE")))
+            .enveloped_tx(Some(bytes!("7BFACADE")))
             .build_fill();
         tx.eip8130 = Eip8130Parts {
             sender,
@@ -2203,12 +2216,12 @@ mod tests {
         let mut tx = OpTransaction::builder()
             .base(
                 TxEnv::builder()
-                    .tx_type(Some(0x05))
+                    .tx_type(Some(0x7B))
                     .caller(sender)
                     .gas_limit(500_000)
                     .kind(TxKind::Call(sender)),
             )
-            .enveloped_tx(Some(bytes!("05FACADE")))
+            .enveloped_tx(Some(bytes!("7BFACADE")))
             .build_fill();
         tx.eip8130 = Eip8130Parts {
             sender,
@@ -2259,12 +2272,12 @@ mod tests {
         let mut tx = OpTransaction::builder()
             .base(
                 TxEnv::builder()
-                    .tx_type(Some(0x05))
+                    .tx_type(Some(0x7B))
                     .caller(sender)
                     .gas_limit(500_000)
                     .kind(TxKind::Call(sender)),
             )
-            .enveloped_tx(Some(bytes!("05FACADE")))
+            .enveloped_tx(Some(bytes!("7BFACADE")))
             .build_fill();
         tx.eip8130 = Eip8130Parts {
             sender,
@@ -2315,12 +2328,12 @@ mod tests {
         let mut tx = OpTransaction::builder()
             .base(
                 TxEnv::builder()
-                    .tx_type(Some(0x05))
+                    .tx_type(Some(0x7B))
                     .caller(sender)
                     .gas_limit(200_000)
                     .kind(TxKind::Call(sender)),
             )
-            .enveloped_tx(Some(bytes!("05FACADE")))
+            .enveloped_tx(Some(bytes!("7BFACADE")))
             .build_fill();
         tx.eip8130 = Eip8130Parts {
             sender,
@@ -2374,12 +2387,12 @@ mod tests {
         let mut tx = OpTransaction::builder()
             .base(
                 TxEnv::builder()
-                    .tx_type(Some(0x05))
+                    .tx_type(Some(0x7B))
                     .caller(sender)
                     .gas_limit(200_000)
                     .kind(TxKind::Call(sender)),
             )
-            .enveloped_tx(Some(bytes!("05FACADE")))
+            .enveloped_tx(Some(bytes!("7BFACADE")))
             .build_fill();
         tx.eip8130 = Eip8130Parts {
             sender,
@@ -2440,12 +2453,12 @@ mod tests {
         let mut tx = OpTransaction::builder()
             .base(
                 TxEnv::builder()
-                    .tx_type(Some(0x05))
+                    .tx_type(Some(0x7B))
                     .caller(sender)
                     .gas_limit(300_000)
                     .kind(TxKind::Call(sender)),
             )
-            .enveloped_tx(Some(bytes!("05FACADE")))
+            .enveloped_tx(Some(bytes!("7BFACADE")))
             .build_fill();
         tx.eip8130 = Eip8130Parts {
             sender,
@@ -2568,12 +2581,12 @@ mod tests {
         let mut tx = OpTransaction::builder()
             .base(
                 TxEnv::builder()
-                    .tx_type(Some(0x05))
+                    .tx_type(Some(0x7B))
                     .caller(sender)
                     .gas_limit(200_000)
                     .kind(TxKind::Call(sender)),
             )
-            .enveloped_tx(Some(bytes!("05FACADE")))
+            .enveloped_tx(Some(bytes!("7BFACADE")))
             .build_fill();
         tx.eip8130 = Eip8130Parts {
             sender,
@@ -2655,12 +2668,12 @@ mod tests {
         let mut tx = OpTransaction::builder()
             .base(
                 TxEnv::builder()
-                    .tx_type(Some(0x05))
+                    .tx_type(Some(0x7B))
                     .caller(sender)
                     .gas_limit(200_000)
                     .kind(TxKind::Call(sender)),
             )
-            .enveloped_tx(Some(bytes!("05FACADE")))
+            .enveloped_tx(Some(bytes!("7BFACADE")))
             .build_fill();
         tx.eip8130 = Eip8130Parts {
             sender,
@@ -2734,12 +2747,12 @@ mod tests {
         let mut tx = OpTransaction::builder()
             .base(
                 TxEnv::builder()
-                    .tx_type(Some(0x05))
+                    .tx_type(Some(0x7B))
                     .caller(sender)
                     .gas_limit(200_000)
                     .kind(TxKind::Call(sender)),
             )
-            .enveloped_tx(Some(bytes!("05FACADE")))
+            .enveloped_tx(Some(bytes!("7BFACADE")))
             .build_fill();
         tx.eip8130 = Eip8130Parts {
             sender,

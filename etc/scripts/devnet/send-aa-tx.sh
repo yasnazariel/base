@@ -31,7 +31,7 @@ echo "Current L2 block: $BLOCK"
 BALANCE=$(cast balance "$SENDER_ADDR" --rpc-url "$L2_RPC")
 echo "Sender balance: $BALANCE"
 
-# Build the raw AA transaction (type 0x05)
+# Build the raw AA transaction (type 0x7B)
 #
 # EIP-8130 RLP field order:
 # [chain_id, from, nonce_key, nonce_sequence, expiry,
@@ -52,7 +52,7 @@ echo ""
 echo "--- Building AA transaction ---"
 
 # We'll use a small node script to construct the RLP-encoded AA tx
-# since cast doesn't natively support type 0x05 yet.
+# since cast doesn't natively support type 0x7B yet.
 
 # First check if node is available
 if ! command -v node &>/dev/null; then
@@ -65,8 +65,8 @@ TMPDIR=$(mktemp -d)
 cat > "$TMPDIR/send-aa.mjs" << 'SCRIPT'
 import { createPublicClient, createWalletClient, http, toHex, toRlp, keccak256, concat, hexToBytes, numberToHex, privateKeyToAccount } from 'viem';
 
-const AA_TX_TYPE_ID = 0x05;
-const AA_PAYER_TYPE = 0x06;
+const AA_TX_TYPE_ID = 0x7B;
+const AA_PAYER_TYPE = 0x7C;
 const L2_CHAIN_ID = BigInt(process.env.L2_CHAIN_ID || '84538453');
 const rpcUrl = process.env.L2_RPC || 'http://localhost:7545';
 const privKey = process.env.SENDER_KEY;
@@ -96,7 +96,7 @@ const tx = {
 };
 
 // Compute sender signature hash:
-// keccak256(0x05 || rlp([chainId, from, nonceKey, nonceSequence, expiry,
+// keccak256(0x7B || rlp([chainId, from, nonceKey, nonceSequence, expiry,
 //   maxPriorityFeePerGas, maxFeePerGas, gasLimit,
 //   authorizationList, accountChanges, calls, payer]))
 const senderPayload = concat([
@@ -124,7 +124,7 @@ console.log(`Sender signature hash: ${senderHash}`);
 const signature = await account.signMessage({ message: { raw: hexToBytes(senderHash) } });
 console.log(`Signature: ${signature}`);
 
-// Full EIP-2718 encoding: 0x05 || rlp([...fields, senderAuth, payerAuth])
+// Full EIP-2718 encoding: 0x7B || rlp([...fields, senderAuth, payerAuth])
 const encoded = concat([
   toHex(AA_TX_TYPE_ID, { size: 1 }),
   toRlp([

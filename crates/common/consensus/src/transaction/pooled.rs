@@ -34,8 +34,8 @@ pub enum OpPooledTransaction {
     /// A [`TxEip7702`] transaction tagged with type 4.
     #[envelope(ty = 4)]
     Eip7702(Signed<TxEip7702>),
-    /// A [`TxEip8130`] transaction tagged with type 0x05 (EIP-8130).
-    #[envelope(ty = 5)]
+    /// A [`TxEip8130`] transaction tagged with type 0x7B (EIP-8130).
+    #[envelope(ty = 123)]
     Eip8130(Sealed<TxEip8130>),
 }
 

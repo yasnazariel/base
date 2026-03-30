@@ -236,12 +236,12 @@ mod tests {
         let mut tx = OpTransaction::builder()
             .base(
                 TxEnv::builder()
-                    .tx_type(Some(0x05))
+                    .tx_type(Some(0x7B))
                     .caller(sender)
                     .gas_limit(100_000)
                     .kind(TxKind::Call(sender)),
             )
-            .enveloped_tx(Some(bytes!("05FACADE")))
+            .enveloped_tx(Some(bytes!("7BFACADE")))
             .build_fill();
         tx.eip8130 = Eip8130Parts {
             sender,
@@ -301,12 +301,12 @@ mod tests {
         let mut tx = OpTransaction::builder()
             .base(
                 TxEnv::builder()
-                    .tx_type(Some(0x05))
+                    .tx_type(Some(0x7B))
                     .caller(sender)
                     .gas_limit(300_000)
                     .kind(TxKind::Call(sender)),
             )
-            .enveloped_tx(Some(bytes!("05FACADE")))
+            .enveloped_tx(Some(bytes!("7BFACADE")))
             .build_fill();
         tx.eip8130 = Eip8130Parts {
             sender,

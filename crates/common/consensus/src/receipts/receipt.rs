@@ -35,7 +35,7 @@ pub enum OpReceipt<T = Log> {
     #[cfg_attr(feature = "serde", serde(rename = "0x4", alias = "0x04"))]
     Eip7702(Receipt<T>),
     /// EIP-8130 AA receipt
-    #[cfg_attr(feature = "serde", serde(rename = "0x5", alias = "0x05"))]
+    #[cfg_attr(feature = "serde", serde(rename = "0x7b", alias = "0x7B"))]
     Eip8130(Receipt<T>),
     /// Deposit receipt
     #[cfg_attr(feature = "serde", serde(rename = "0x7e", alias = "0x7E"))]
