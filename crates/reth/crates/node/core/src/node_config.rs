@@ -30,7 +30,7 @@ use tracing::{error, info};
 use crate::{
     args::{
         DatabaseArgs, DatadirArgs, DebugArgs, DevArgs, EngineArgs, MetricArgs, NetworkArgs,
-        PayloadBuilderArgs, PruningArgs, RpcServerArgs, StaticFilesArgs, StorageArgs, TxPoolArgs,
+        PayloadBuilderArgs, PruningArgs, RpcServerArgs, StaticFilesArgs, TxPoolArgs,
     },
     dirs::{ChainPath, DataDirPath},
     utils::get_single_header,
@@ -147,8 +147,6 @@ pub struct NodeConfig<ChainSpec> {
     /// All static files related arguments
     pub static_files: StaticFilesArgs,
 
-    /// All storage related arguments with --storage prefix
-    pub storage: StorageArgs,
 }
 
 impl NodeConfig<ChainSpec> {
@@ -179,7 +177,6 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
             datadir: DatadirArgs::default(),
             engine: EngineArgs::default(),
             static_files: StaticFilesArgs::default(),
-            storage: StorageArgs::default(),
         }
     }
 
@@ -249,7 +246,6 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
             pruning,
             engine,
             static_files,
-            storage,
             ..
         } = self;
         NodeConfig {
@@ -268,7 +264,6 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
             pruning,
             engine,
             static_files,
-            storage,
         }
     }
 
@@ -337,12 +332,6 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
         self
     }
 
-    /// Set the storage args for the node
-    pub const fn with_storage(mut self, storage: StorageArgs) -> Self {
-        self.storage = storage;
-        self
-    }
-
     /// Returns pruning configuration.
     pub fn prune_config(&self) -> Option<PruneConfig>
     where
@@ -351,13 +340,9 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
         self.pruning.prune_config(&self.chain)
     }
 
-    /// Returns the effective storage settings derived from `--storage.v2`.
-    ///
-    /// The base storage mode is determined by `--storage.v2`:
-    /// - When `--storage.v2` is set: uses [`StorageSettings::v2()`] defaults
-    /// - Otherwise: uses [`StorageSettings::base()`] defaults
+    /// Returns the canonical storage settings for this node.
     pub const fn storage_settings(&self) -> StorageSettings {
-        if self.storage.v2 { StorageSettings::v2() } else { StorageSettings::base() }
+        StorageSettings::v2()
     }
 
     /// Returns the max block that the node should run to, looking it up from the network if
@@ -553,7 +538,6 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
             pruning: self.pruning,
             engine: self.engine,
             static_files: self.static_files,
-            storage: self.storage,
         }
     }
 }
@@ -582,7 +566,6 @@ impl<ChainSpec> Clone for NodeConfig<ChainSpec> {
             datadir: self.datadir.clone(),
             engine: self.engine.clone(),
             static_files: self.static_files,
-            storage: self.storage,
         }
     }
 }

@@ -5,43 +5,24 @@ use serde::{Deserialize, Serialize};
 
 /// Storage configuration settings for this node.
 ///
-/// Controls whether this node uses v2 storage layout (static files + `RocksDB` routing)
-/// or v1/legacy layout (everything in MDBX).
+/// Storage configuration settings for this node.
 ///
-/// These should be set during `init_genesis` or `init_db` depending on whether we want dictate
-/// behaviour of new or old nodes respectively.
+/// This is retained for compatibility with call sites that still thread storage settings through
+/// APIs, but currently always resolves to the canonical v2 layout.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Compact, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "arbitrary"), derive(arbitrary::Arbitrary))]
 #[add_arbitrary_tests(compact)]
 pub struct StorageSettings {
     /// Whether this node uses v2 storage layout.
     ///
-    /// When `true`, enables all v2 storage features:
-    /// - Receipts and transaction senders in static files
-    /// - History indices in `RocksDB` (accounts, storages, transaction hashes)
-    /// - Account and storage changesets in static files
-    /// - Hashed state tables as canonical state representation
-    ///
-    /// When `false`, uses v1/legacy layout (everything in MDBX).
+    /// Canonical builds always set this to `true`.
     pub storage_v2: bool,
 }
 
 impl StorageSettings {
-    /// Returns the default base `StorageSettings`.
-    ///
-    /// When the `edge` feature is enabled, returns [`Self::v2()`] so that CI and
-    /// edge builds automatically use v2 storage defaults. Otherwise returns
-    /// [`Self::v1()`]. The `--storage.v2` CLI flag can also opt into v2 at runtime
-    /// regardless of feature flags.
+    /// Returns canonical storage settings.
     pub const fn base() -> Self {
-        #[cfg(feature = "edge")]
-        {
-            Self::v2()
-        }
-        #[cfg(not(feature = "edge"))]
-        {
-            Self::v1()
-        }
+        Self::v2()
     }
 
     /// Creates `StorageSettings` for v2 nodes with all storage features enabled:
@@ -55,11 +36,11 @@ impl StorageSettings {
         Self { storage_v2: true }
     }
 
-    /// Creates `StorageSettings` for v1/legacy nodes.
+    /// Creates legacy `StorageSettings`.
     ///
-    /// This keeps all data in MDBX, matching the original storage layout.
+    /// Legacy mode is no longer supported; this returns canonical v2 settings.
     pub const fn v1() -> Self {
-        Self { storage_v2: false }
+        Self::v2()
     }
 
     /// Returns `true` if this node uses v2 storage layout.

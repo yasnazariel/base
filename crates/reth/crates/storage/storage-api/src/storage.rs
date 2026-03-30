@@ -2,7 +2,9 @@ use alloc::{
     collections::{BTreeMap, BTreeSet},
     vec::Vec,
 };
-use core::ops::{RangeBounds, RangeInclusive};
+use core::ops::RangeInclusive;
+#[cfg(feature = "db-api")]
+use core::ops::RangeBounds;
 
 use alloy_primitives::{Address, B256, BlockNumber, U256};
 use reth_primitives_traits::{StorageEntry, StorageSlotKey};

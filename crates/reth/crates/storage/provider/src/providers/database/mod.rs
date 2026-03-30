@@ -106,32 +106,13 @@ impl<N: ProviderNodeTypes> ProviderFactory<N> {
         rocksdb_provider: RocksDBProvider,
         runtime: reth_tasks::Runtime,
     ) -> ProviderResult<Self> {
-        // Load storage settings from database at init time. Creates a temporary provider
-        // to read persisted settings, falling back to legacy defaults if none exist.
-        //
-        // Both factory and all providers it creates should share these cached settings.
-        let legacy_settings = StorageSettings::v1();
-        let storage_settings = DatabaseProvider::<_, N>::new(
-            db.tx()?,
-            chain_spec.clone(),
-            static_file_provider.clone(),
-            Default::default(),
-            Default::default(),
-            Arc::new(RwLock::new(legacy_settings)),
-            rocksdb_provider.clone(),
-            ChangesetCache::new(),
-            runtime.clone(),
-        )
-        .storage_settings()?
-        .unwrap_or(legacy_settings);
-
         Ok(Self {
             db,
             chain_spec,
             static_file_provider,
             prune_modes: PruneModes::default(),
             storage: Default::default(),
-            storage_settings: Arc::new(RwLock::new(storage_settings)),
+            storage_settings: Arc::new(RwLock::new(StorageSettings::v2())),
             rocksdb_provider,
             changeset_cache: ChangesetCache::new(),
             runtime,

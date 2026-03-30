@@ -72,9 +72,5 @@ pub use engine::{DefaultEngineValues, EngineArgs};
 mod static_files;
 pub use static_files::{MINIMAL_BLOCKS_PER_FILE, StaticFilesArgs};
 
-/// `StorageArgs` for configuring storage settings.
-mod storage;
-pub use storage::StorageArgs;
-
 mod error;
 pub mod types;

@@ -19,7 +19,6 @@ mod diff;
 mod get;
 mod list;
 mod repair_trie;
-mod settings;
 mod state;
 mod static_file_header;
 mod stats;
@@ -67,8 +66,6 @@ pub enum Subcommands {
     Version,
     /// Returns the full database path
     Path,
-    /// Manage storage settings
-    Settings(settings::Command),
     /// Gets storage size information for an account
     AccountStorage(account_storage::Command),
     /// Gets account state and storage at a specific block
@@ -200,11 +197,6 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + EthereumHardforks>> Command<C>
             }
             Subcommands::Path => {
                 println!("{}", db_path.display());
-            }
-            Subcommands::Settings(command) => {
-                db_exec!(self.env, tool, N, command.access_rights(), {
-                    command.execute(&tool)?;
-                });
             }
             Subcommands::AccountStorage(command) => {
                 db_exec!(self.env, tool, N, AccessRights::RO, {

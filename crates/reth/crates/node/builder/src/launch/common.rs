@@ -65,7 +65,7 @@ use reth_node_metrics::{
 use reth_provider::{
     BlockHashReader, BlockNumReader, ProviderError, ProviderFactory, ProviderResult,
     RocksDBProviderFactory, StageCheckpointReader, StaticFileProviderBuilder,
-    StaticFileProviderFactory,
+    StaticFileProviderFactory, StorageSettings,
     providers::{NodeTypesForProvider, ProviderNodeTypes, RocksDBProvider, StaticFileProvider},
 };
 use reth_prune::{PruneModes, PrunerBuilder};
@@ -637,13 +637,13 @@ where
 
     /// Convenience function to [`Self::init_genesis`]
     pub fn with_genesis(self) -> Result<Self, InitStorageError> {
-        init_genesis_with_settings(self.provider_factory(), self.node_config().storage_settings())?;
+        init_genesis_with_settings(self.provider_factory(), StorageSettings::v2())?;
         Ok(self)
     }
 
     /// Write the genesis block and state if it has not already been written
     pub fn init_genesis(&self) -> Result<B256, InitStorageError> {
-        init_genesis_with_settings(self.provider_factory(), self.node_config().storage_settings())
+        init_genesis_with_settings(self.provider_factory(), StorageSettings::v2())
     }
 
     /// Creates a new `WithMeteredProvider` container and attaches it to the

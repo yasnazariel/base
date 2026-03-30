@@ -19,7 +19,7 @@ use reth_node_builder::{
     Node, NodeComponents, NodeComponentsBuilder, NodeTypes, NodeTypesWithDBAdapter,
 };
 use reth_node_core::{
-    args::{DatabaseArgs, DatadirArgs, StaticFilesArgs, StorageArgs},
+    args::{DatabaseArgs, DatadirArgs, StaticFilesArgs},
     dirs::{ChainPath, DataDirPath},
 };
 pub use reth_primitives_traits::header::HeaderMut;
@@ -67,21 +67,9 @@ pub struct EnvironmentArgs<C: ChainSpecParser> {
     #[command(flatten)]
     pub static_files: StaticFilesArgs,
 
-    /// Storage mode configuration (v2 vs v1/legacy)
-    #[command(flatten)]
-    pub storage: StorageArgs,
 }
 
 impl<C: ChainSpecParser> EnvironmentArgs<C> {
-    /// Returns the effective storage settings derived from `--storage.v2`.
-    ///
-    /// The base storage mode is determined by `--storage.v2`:
-    /// - When `--storage.v2` is set: uses [`StorageSettings::v2()`] defaults
-    /// - Otherwise: uses [`StorageSettings::base()`] defaults
-    pub fn storage_settings(&self) -> StorageSettings {
-        if self.storage.v2 { StorageSettings::v2() } else { StorageSettings::base() }
-    }
-
     /// Initializes environment according to [`AccessRights`] and returns an instance of
     /// [`Environment`].
     ///
@@ -147,7 +135,7 @@ impl<C: ChainSpecParser> EnvironmentArgs<C> {
             self.create_provider_factory(&config, db, sfp, rocksdb_provider, access, runtime)?;
         if access.is_read_write() {
             debug!(target: "reth::cli", chain=%self.chain.chain(), genesis=?self.chain.genesis_hash(), "Initializing genesis");
-            init_genesis_with_settings(&provider_factory, self.storage_settings())?;
+            init_genesis_with_settings(&provider_factory, StorageSettings::v2())?;
         }
 
         Ok(Environment { config, provider_factory, data_dir })

@@ -25,10 +25,10 @@ use reth_primitives_traits::{
 use reth_provider::{
     BlockHashReader, BlockNumReader, BundleStateInit, ChainSpecProvider, DBProvider,
     DatabaseProviderFactory, EitherWriter, ExecutionOutcome, HashingWriter, HeaderProvider,
-    HistoryWriter, MetadataProvider, MetadataWriter, NodePrimitivesProvider, OriginalValuesKnown,
-    ProviderError, RevertsInit, RocksDBProviderFactory, StageCheckpointReader,
-    StageCheckpointWriter, StateWriteConfig, StateWriter, StaticFileProviderFactory,
-    StorageSettings, StorageSettingsCache, TrieWriter, errors::provider::ProviderResult,
+    HistoryWriter, NodePrimitivesProvider, OriginalValuesKnown, ProviderError, RevertsInit,
+    RocksDBProviderFactory, StageCheckpointReader, StageCheckpointWriter, StateWriteConfig,
+    StateWriter, StaticFileProviderFactory, StorageSettings, StorageSettingsCache, TrieWriter,
+    errors::provider::ProviderResult,
     providers::StaticFileWriter,
 };
 use reth_stages_types::{StageCheckpoint, StageId};
@@ -39,7 +39,7 @@ use reth_trie::{
 };
 use reth_trie_db::DatabaseStateRoot;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, info, trace};
 
 /// Default soft limit for number of bytes to read from state dump file, before inserting into
 /// database.
@@ -102,7 +102,6 @@ where
         + ChainSpecProvider
         + StageCheckpointReader
         + BlockNumReader
-        + MetadataProvider
         + StorageSettingsCache,
     PF::ProviderRW: StaticFileProviderFactory<Primitives = PF::Primitives>
         + StageCheckpointWriter
@@ -111,7 +110,6 @@ where
         + HashingWriter
         + StateWriter
         + TrieWriter
-        + MetadataWriter
         + ChainSpecProvider
         + StorageSettingsCache
         + RocksDBProviderFactory
@@ -119,13 +117,13 @@ where
         + AsRef<PF::ProviderRW>,
     PF::ChainSpec: EthChainSpec<Header = <PF::Primitives as NodePrimitives>::BlockHeader>,
 {
-    init_genesis_with_settings(factory, StorageSettings::base())
+    init_genesis_with_settings(factory, StorageSettings::v2())
 }
 
 /// Write the genesis block if it has not already been written with [`StorageSettings`].
 pub fn init_genesis_with_settings<PF>(
     factory: &PF,
-    genesis_storage_settings: StorageSettings,
+    _genesis_storage_settings: StorageSettings,
 ) -> Result<B256, InitStorageError>
 where
     PF: DatabaseProviderFactory
@@ -133,7 +131,6 @@ where
         + ChainSpecProvider
         + StageCheckpointReader
         + BlockNumReader
-        + MetadataProvider
         + StorageSettingsCache,
     PF::ProviderRW: StaticFileProviderFactory<Primitives = PF::Primitives>
         + StageCheckpointWriter
@@ -142,7 +139,6 @@ where
         + HashingWriter
         + StateWriter
         + TrieWriter
-        + MetadataWriter
         + ChainSpecProvider
         + StorageSettingsCache
         + RocksDBProviderFactory
@@ -171,16 +167,6 @@ where
                     return Err(InitStorageError::UninitializedDatabase);
                 }
 
-                let stored = factory.storage_settings()?.unwrap_or_else(StorageSettings::v1);
-                if stored != genesis_storage_settings {
-                    warn!(
-                        target: "reth::storage",
-                        ?stored,
-                        requested = ?genesis_storage_settings,
-                        "Storage settings mismatch detected"
-                    );
-                }
-
                 debug!("Genesis already written, skipping.");
                 return Ok(hash);
             }
@@ -198,16 +184,10 @@ where
 
     debug!("Writing genesis block.");
 
-    // Make sure to set storage settings before anything writes
-    factory.set_storage_settings_cache(genesis_storage_settings);
-
     let alloc = &genesis.alloc;
 
     // use transaction to insert genesis header
     let provider_rw = factory.database_provider_rw()?;
-
-    // Behaviour reserved only for new nodes should be set in the storage settings.
-    provider_rw.write_storage_settings(genesis_storage_settings)?;
 
     // For non-zero genesis blocks, set expected_block_start BEFORE insert_genesis_state.
     // When block_range is None, next_block_number() uses expected_block_start. By default,
@@ -215,18 +195,14 @@ where
     // not the genesis block number. This would cause increment_block(N) to fail.
     let static_file_provider = provider_rw.static_file_provider();
     if genesis_block_number > 0 {
-        if genesis_storage_settings.storage_v2 {
-            static_file_provider
-                .get_writer(genesis_block_number, StaticFileSegment::AccountChangeSets)?
-                .user_header_mut()
-                .set_expected_block_start(genesis_block_number);
-        }
-        if genesis_storage_settings.storage_v2 {
-            static_file_provider
-                .get_writer(genesis_block_number, StaticFileSegment::StorageChangeSets)?
-                .user_header_mut()
-                .set_expected_block_start(genesis_block_number);
-        }
+        static_file_provider
+            .get_writer(genesis_block_number, StaticFileSegment::AccountChangeSets)?
+            .user_header_mut()
+            .set_expected_block_start(genesis_block_number);
+        static_file_provider
+            .get_writer(genesis_block_number, StaticFileSegment::StorageChangeSets)?
+            .user_header_mut()
+            .set_expected_block_start(genesis_block_number);
     }
 
     insert_genesis_hashes(&provider_rw, alloc.iter())?;
@@ -260,12 +236,10 @@ where
         .user_header_mut()
         .set_block_range(genesis_block_number, genesis_block_number);
 
-    if genesis_storage_settings.storage_v2 {
-        static_file_provider
-            .get_writer(genesis_block_number, StaticFileSegment::TransactionSenders)?
-            .user_header_mut()
-            .set_block_range(genesis_block_number, genesis_block_number);
-    }
+    static_file_provider
+        .get_writer(genesis_block_number, StaticFileSegment::TransactionSenders)?
+        .user_header_mut()
+        .set_block_range(genesis_block_number, genesis_block_number);
 
     // `commit_unwind`` will first commit the DB and then the static file provider, which is
     // necessary on `init_genesis`.
