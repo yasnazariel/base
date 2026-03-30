@@ -13,32 +13,60 @@ workspace = true
 
 [dependencies]
 # reth
+reth-evm = { workspace = true, optional = true }
 reth-primitives-traits.workspace = true
 reth-storage-errors.workspace = true
 reth-storage-api.workspace = true
 reth-trie = { workspace = true, optional = true }
 
 # alloy
+alloy-evm = { workspace = true, optional = true }
 alloy-primitives.workspace = true
+
+# base
+base-alloy-flz = { workspace = true, default-features = false }
+base-consensus-genesis.workspace = true
 
 # revm
 revm.workspace = true
 
+# misc
+auto_impl.workspace = true
+serde = { workspace = true, features = ["derive", "rc"], optional = true }
+
 [dev-dependencies]
-reth-trie.workspace = true
-reth-ethereum-forks.workspace = true
 alloy-consensus.workspace = true
+alloy-sol-types = { workspace = true, default-features = false }
+reth-ethereum-forks.workspace = true
+reth-trie.workspace = true
+rstest.workspace = true
+serde = { workspace = true, features = ["derive", "rc"] }
+serde_json = { workspace = true, default-features = false, features = ["alloc", "preserve_order"] }
 
 [features]
 default = [ "std" ]
 std = [
 	"alloy-consensus/std",
+	"alloy-evm?/std",
 	"alloy-primitives/std",
+	"alloy-sol-types/std",
+	"base-alloy-flz/std",
+	"base-consensus-genesis/std",
 	"reth-ethereum-forks/std",
+	"reth-evm?/std",
 	"reth-primitives-traits/std",
 	"reth-storage-api/std",
 	"reth-storage-errors/std",
 	"revm/std",
+	"serde?/std",
+]
+dev = [
+	"memory_limit",
+	"optional_balance_check",
+	"optional_block_gas_limit",
+	"optional_eip3541",
+	"optional_eip3607",
+	"optional_no_base_fee",
 ]
 witness = [ "dep:reth-trie" ]
 test-utils = [
@@ -49,18 +77,33 @@ test-utils = [
 serde = [
 	"alloy-consensus/serde",
 	"alloy-primitives/serde",
+	"base-consensus-genesis/serde",
+	"dep:serde",
 	"reth-ethereum-forks/serde",
 	"reth-primitives-traits/serde",
 	"reth-storage-api/serde",
 	"reth-trie?/serde",
 	"revm/serde",
 ]
+alloy = [ "dep:alloy-evm" ]
+reth = [ "alloy", "dep:reth-evm" ]
+bn = [ "revm/bn" ]
+blst = [ "revm/blst" ]
+c-kzg = [ "revm/c-kzg" ]
 portable = [ "revm/portable" ]
+secp256k1 = [ "revm/secp256k1" ]
 optional-balance-check = [ "revm/optional_balance_check" ]
+optional_balance_check = [ "optional-balance-check" ]
 optional-block-gas-limit = [ "revm/optional_block_gas_limit" ]
+optional_block_gas_limit = [ "optional-block-gas-limit" ]
 optional-eip3541 = [ "revm/optional_eip3541" ]
+optional_eip3541 = [ "optional-eip3541" ]
 optional-eip3607 = [ "revm/optional_eip3607" ]
+optional_eip3607 = [ "optional-eip3607" ]
+optional-fee-charge = [ "revm/optional_fee_charge" ]
+optional_fee_charge = [ "optional-fee-charge" ]
 optional-no-base-fee = [ "revm/optional_no_base_fee" ]
+optional_no_base_fee = [ "optional-no-base-fee" ]
 optional-checks = [
 	"optional-balance-check",
 	"optional-block-gas-limit",

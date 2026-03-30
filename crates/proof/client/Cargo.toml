@@ -16,7 +16,7 @@ tracing.workspace = true
 alloy-evm.workspace = true
 base-proof.workspace = true
 thiserror.workspace = true
-base-revm.workspace = true
+reth-revm.workspace = true
 base-protocol.workspace = true
 alloy-consensus.workspace = true
 base-alloy-evm.workspace = true
@@ -45,7 +45,7 @@ std = [
 	"base-proof-preimage/std",
 	"base-proof/std",
 	"base-protocol/std",
-	"base-revm/std",
+	"reth-revm/std",
 	"spin/std",
 	"thiserror/std",
 	"tracing/std",

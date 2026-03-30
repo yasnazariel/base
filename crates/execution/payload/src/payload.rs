@@ -20,8 +20,8 @@ use base_alloy_rpc_types_engine::{
     BlobsBundleV2, OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4,
     OpExecutionPayloadEnvelopeV5, OpExecutionPayloadV4,
 };
-use base_execution_evm::OpNextBlockEnvAttributes;
 use reth_chainspec::EthChainSpec;
+use reth_evm_ethereum::OpNextBlockEnvAttributes;
 use reth_payload_builder::{EthPayloadBuilderAttributes, PayloadBuilderError};
 use reth_payload_primitives::{
     BuildNextEnv, BuiltPayload, BuiltPayloadExecutedBlock, PayloadBuilderAttributes,

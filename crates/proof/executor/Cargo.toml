@@ -32,7 +32,7 @@ base-alloy-rpc-types-engine = { workspace = true, features = ["serde", "k256"] }
 
 # revm
 revm.workspace = true
-base-revm.workspace = true
+reth-revm.workspace = true
 
 # alloy-evm
 alloy-evm.workspace = true
@@ -76,7 +76,7 @@ std = [
 	"base-consensus-registry?/std",
 	"base-proof-mpt/std",
 	"base-protocol/std",
-	"base-revm/std",
+	"reth-revm/std",
 	"getrandom/std",
 	"revm/std",
 	"serde?/std",

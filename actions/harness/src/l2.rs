@@ -14,11 +14,11 @@ use base_alloy_chains::BaseUpgrade;
 use base_alloy_consensus::{OpBlock, OpTxEnvelope};
 use base_alloy_rpc_types_engine::{OpExecutionPayload, OpNetworkPayloadEnvelope, PayloadHash};
 use base_consensus_genesis::{L1ChainConfig, RollupConfig, SystemConfig};
-use base_execution_evm::OpEvmConfig;
 use base_protocol::{BlockInfo, L1BlockInfoTx, L2BlockInfo, OpAttributesWithParent};
-use base_revm::OpTransaction;
+use reth_revm::OpTransaction;
 use reth_chainspec::ChainSpecBuilder;
 use reth_evm::{ConfigureEvm, Evm as _, FromRecoveredTx};
+use reth_evm_ethereum::OpEvmConfig;
 use revm::{
     DatabaseCommit,
     context::{TxEnv, result::ResultAndState},

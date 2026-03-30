@@ -1,4 +1,4 @@
 //! Ethereum EVM support
 
 #[doc(inline)]
-pub use reth_evm_ethereum::{EthEvm, EthEvmConfig};
+pub use reth_evm_ethereum::{EthEvm, EthEvmConfig, OpEvmConfig};

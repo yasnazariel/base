@@ -13,7 +13,7 @@ use base_proof::{
 };
 use base_proof_executor::TrieDBProvider;
 use base_proof_preimage::{CommsClient, HintWriterClient, PreimageKey, PreimageOracleClient};
-use base_revm::OpSpecId;
+use reth_revm::OpSpecId;
 
 use crate::{FaultProofDriver, FaultProofProgramError};
 

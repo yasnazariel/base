@@ -14,7 +14,7 @@ workspace = true
 revm.workspace = true
 alloy-evm.workspace = true
 base-proof.workspace = true
-base-revm.workspace = true
+reth-revm.workspace = true
 base-alloy-evm.workspace = true
 alloy-primitives.workspace = true
 base-proof-preimage.workspace = true
@@ -33,6 +33,6 @@ std = [
 	"base-alloy-evm/std",
 	"base-proof-preimage/std",
 	"base-proof/std",
-	"base-revm/std",
+	"reth-revm/std",
 	"revm/std",
 ]

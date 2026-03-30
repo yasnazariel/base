@@ -6,7 +6,6 @@ use base_alloy_chains::BaseUpgrades;
 use base_alloy_consensus::OpPooledTransaction;
 use base_alloy_rpc_types_engine::OpExecutionData;
 use base_execution_consensus::OpBeaconConsensus;
-use base_execution_evm::{OpEvmConfig, OpRethReceiptBuilder};
 use base_execution_payload_builder::{
     OpPayloadBuilderAttributes, OpPayloadPrimitives,
     builder::OpPayloadTransactions,
@@ -25,6 +24,7 @@ use base_txpool::{
 };
 use reth_chainspec::{ChainSpec, ChainSpecProvider, EthChainSpec, Hardforks};
 use reth_evm::ConfigureEvm;
+use reth_evm_ethereum::{OpEvmConfig, OpRethReceiptBuilder};
 use reth_network::{
     NetworkConfig, NetworkHandle, NetworkManager, NetworkPrimitives, PeersInfo,
     types::BasicNetworkPrimitives,

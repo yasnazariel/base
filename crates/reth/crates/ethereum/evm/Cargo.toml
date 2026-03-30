@@ -12,14 +12,24 @@ workspace = true
 
 [dependencies]
 # Reth
+reth-execution-errors.workspace = true
 reth-execution-types.workspace = true
 reth-chainspec.workspace = true
 reth-ethereum-forks.workspace = true
 reth-primitives-traits.workspace = true
 reth-ethereum-primitives.workspace = true
+reth-primitives.workspace = true
 revm.workspace = true
 reth-evm.workspace = true
 reth-storage-errors.workspace = true
+
+# Base
+base-alloy-chains.workspace = true
+base-alloy-consensus = { workspace = true, features = ["evm"] }
+base-alloy-evm = { workspace = true, features = ["reth"] }
+base-alloy-rpc-types-engine = { workspace = true, features = ["reth"] }
+base-execution-consensus.workspace = true
+reth-revm = { workspace = true, features = ["reth"] }
 
 # Alloy
 alloy-primitives.workspace = true
@@ -31,6 +41,7 @@ alloy-rpc-types-engine.workspace = true
 # Misc
 parking_lot = { workspace = true, optional = true }
 derive_more = { workspace = true, optional = true }
+thiserror.workspace = true
 
 [dev-dependencies]
 reth-testing-utils.workspace = true
@@ -47,16 +58,24 @@ std = [
 	"alloy-genesis/std",
 	"alloy-primitives/std",
 	"alloy-rpc-types-engine/std",
+	"base-alloy-consensus/std",
+	"base-alloy-evm/std",
+	"base-alloy-rpc-types-engine/std",
+	"base-execution-consensus/std",
+	"reth-revm/std",
 	"derive_more?/std",
 	"reth-chainspec/std",
 	"reth-ethereum-forks/std",
 	"reth-ethereum-primitives/std",
 	"reth-evm/std",
+	"reth-execution-errors/std",
 	"reth-execution-types/std",
+	"reth-primitives/std",
 	"reth-primitives-traits/std",
 	"reth-storage-errors/std",
 	"revm/std",
 	"secp256k1/std",
+	"thiserror/std",
 ]
 test-utils = [
 	"dep:derive_more",
@@ -67,3 +86,5 @@ test-utils = [
 	"reth-primitives-traits/test-utils",
 	"std",
 ]
+portable = [ "reth-revm/portable", "revm/portable" ]
+rpc = [ "alloy-evm/rpc", "reth-primitives/reth-codec", "reth-primitives/serde", "std" ]

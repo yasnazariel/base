@@ -89,7 +89,7 @@ reth-payload-util.workspace = true
 reth-node-builder.workspace = true
 reth-network-peers.workspace = true
 reth-tracing-otlp.workspace = true
-base-execution-evm.workspace = true
+reth-evm-ethereum.workspace = true
 reth-node-ethereum.workspace = true
 base-execution-forks.workspace = true
 reth-cli-commands.workspace = true
@@ -110,7 +110,6 @@ base-execution-rpc = { workspace = true, features = ["client"] }
 
 # revm
 revm.workspace = true
-base-revm.workspace = true
 
 # alloy
 alloy-evm.workspace = true

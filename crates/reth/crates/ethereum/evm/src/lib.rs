@@ -1,4 +1,4 @@
-//! EVM config for vanilla ethereum.
+//! EVM config for ethereum and Base.
 //!
 //! # Revm features
 //!
@@ -59,6 +59,41 @@ pub use build::EthBlockAssembler;
 
 mod receipt;
 pub use receipt::RethReceiptBuilder;
+
+mod op;
+pub use op::{OpEvmConfig, OpExecutorProvider};
+
+mod op_build;
+pub use op_build::OpBlockAssembler;
+
+mod op_config;
+pub use op_config::{
+    OpNextBlockEnvAttributes, revm_spec as op_revm_spec, revm_spec_by_timestamp_after_bedrock,
+};
+
+mod op_error;
+pub use op_error::{L1BlockInfoError, OpBlockExecutionError};
+
+mod op_l1;
+pub use op_l1::{
+    RethL1BlockInfo, extract_l1_info, extract_l1_info_from_tx, parse_l1_info,
+    parse_l1_info_tx_bedrock, parse_l1_info_tx_ecotone, parse_l1_info_tx_isthmus,
+    parse_l1_info_tx_jovian,
+};
+
+mod op_receipt;
+pub use base_alloy_evm::{
+    OpAlloyReceiptBuilder, OpBlockExecutionCtx, OpBlockExecutor, OpBlockExecutorFactory,
+    OpEvm as OpAlloyEvm, OpEvmFactory, OpReceiptBuilder, OpTxEnv, OpTxResult,
+    ensure_create2_deployer,
+};
+pub use reth_revm::{
+    BasePrecompiles, DEPOSIT_TRANSACTION_TYPE, DefaultOp, DefaultOpEvm, DepositTransactionParts,
+    IsTxError, L1_BLOCK_CONTRACT, L1BlockInfo, OpBuildError, OpBuilder, OpContext, OpContextTr,
+    OpError, OpEvm as OpRevmEvm, OpHaltReason, OpHandler, OpSpecId, OpTransaction,
+    OpTransactionBuilder, OpTransactionError, OpTxTr, RollupConfigExt, bls12_381, bn254_pair,
+};
+pub use op_receipt::OpRethReceiptBuilder;
 
 #[cfg(feature = "test-utils")]
 mod test_utils;

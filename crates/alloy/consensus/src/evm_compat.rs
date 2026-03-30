@@ -6,7 +6,7 @@
 use alloy_eips::{Encodable2718, Typed2718};
 use alloy_evm::{FromRecoveredTx, FromTxWithEncoded};
 use alloy_primitives::{Address, Bytes};
-use base_revm::{DepositTransactionParts, OpTransaction};
+use reth_revm::{DepositTransactionParts, OpTransaction};
 use revm::context::TxEnv;
 
 use crate::{OpTxEnvelope, TxDeposit};

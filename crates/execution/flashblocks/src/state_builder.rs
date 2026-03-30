@@ -18,7 +18,7 @@ use base_alloy_evm::ensure_create2_deployer;
 use base_alloy_flz::tx_estimated_size_fjord as estimate_tx_compressed_size;
 use base_alloy_rpc_types::{OpTransactionReceipt, Transaction};
 use base_execution_rpc::OpReceiptBuilder as OpRpcReceiptBuilder;
-use base_revm::{L1_BLOCK_CONTRACT, L1BlockInfo, OpHaltReason};
+use reth_revm::{L1_BLOCK_CONTRACT, L1BlockInfo, OpHaltReason};
 use reth_chainspec::{ChainSpec, EthereumHardforks};
 use reth_evm::{Evm, FromRecoveredTx};
 use reth_primitives::OpPrimitives;
@@ -399,10 +399,10 @@ mod tests {
     use base_alloy_flashblocks::{
         ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, Flashblock, Metadata,
     };
-    use base_execution_evm::OpEvmConfig;
-    use base_revm::L1BlockInfo;
+    use reth_revm::L1BlockInfo;
     use reth_chainspec::ChainSpecBuilder;
     use reth_evm::ConfigureEvm;
+    use reth_evm_ethereum::OpEvmConfig;
     use reth_revm::State;
     use revm::{
         database::InMemoryDB,

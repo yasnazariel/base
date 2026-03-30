@@ -1,12 +1,12 @@
 use std::{fmt, sync::Arc};
 
 use base_execution_consensus::OpBeaconConsensus;
-use base_execution_evm::OpExecutorProvider;
 use base_node_core::OpNode;
 use eyre::{Result, eyre};
 use reth_chainspec::ChainSpec;
 use reth_cli_commands::launcher::Launcher;
 use reth_cli_runner::CliRunner;
+use reth_evm_ethereum::OpEvmConfig;
 use reth_node_core::args::{OtlpInitStatus, OtlpLogsStatus};
 use reth_node_metrics::recorder::install_prometheus_recorder;
 use reth_rpc_server_types::RpcModuleValidator;
@@ -74,10 +74,7 @@ where
         install_prometheus_recorder();
 
         let components = |spec: Arc<ChainSpec>| {
-            (
-                OpExecutorProvider::optimism(Arc::clone(&spec)),
-                Arc::new(OpBeaconConsensus::new(spec)),
-            )
+            (OpEvmConfig::optimism(Arc::clone(&spec)), Arc::new(OpBeaconConsensus::new(spec)))
         };
 
         match self.cli.command {

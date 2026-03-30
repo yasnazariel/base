@@ -20,10 +20,9 @@ use alloy_primitives::B256;
 use base_alloy_consensus::{OpBlock, OpReceipt, OpTxType};
 use base_alloy_evm::{OpBlockExecutor, OpBlockExecutorFactory, OpEvm, OpEvmFactory, OpTxResult};
 use base_alloy_rpc_types_engine::OpExecutionData;
-use base_execution_evm::OpRethReceiptBuilder;
 use base_flashblocks::FlashblocksState;
 use base_node_core::OpEngineTypes;
-use base_revm::OpHaltReason;
+use reth_revm::OpHaltReason;
 use reth_chain_state::{DeferredTrieData, ExecutedBlock, LazyOverlay};
 use reth_chainspec::ChainSpec;
 use reth_consensus::{ConsensusError, FullConsensus, ReceiptRootBloom};
@@ -45,6 +44,7 @@ use reth_evm::{
     ConfigureEvm, EvmEnvFor, ExecutionCtxFor, SpecFor, block::BlockExecutor,
     execute::ExecutableTxFor,
 };
+use reth_evm_ethereum::OpRethReceiptBuilder;
 use reth_node_api::{AddOnsContext, BlockTy, FullNodeComponents, FullNodeTypes, NodeTypes};
 use reth_node_builder::{
     invalid_block_hook::InvalidBlockHookExt,

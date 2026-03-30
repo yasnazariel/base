@@ -12,7 +12,7 @@ use revm::{
     interpreter::{InterpreterResult, interpreter::EthInterpreter},
 };
 
-use crate::{OpSpecId, precompiles::BasePrecompiles};
+use crate::{OpSpecId, op_precompiles::BasePrecompiles};
 
 /// Base EVM extends the [`Evm`] type with Base-specific types and logic.
 #[derive(Debug, Clone)]

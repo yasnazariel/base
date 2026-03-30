@@ -8,7 +8,10 @@ use revm::{
     state::EvmState,
 };
 
-use crate::{L1BlockInfo, OpSpecId, evm::OpEvm, precompiles::BasePrecompiles, transaction::OpTxTr};
+use crate::{
+    L1BlockInfo, OpSpecId, op_evm::OpEvm, op_precompiles::BasePrecompiles,
+    op_transaction::OpTxTr,
+};
 
 /// Type alias for default `OpEvm`
 pub type DefaultOpEvm<CTX, INSP = ()> =

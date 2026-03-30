@@ -16,7 +16,7 @@ use reth_revm as _;
 use revm as _;
 
 pub mod evm;
-pub use evm::EthEvmConfig;
+pub use evm::{EthEvmConfig, OpEvmConfig};
 pub use reth_ethereum_consensus as consensus;
 pub mod node;
 pub use node::*;

@@ -7,8 +7,7 @@ pub use alloy_primitives::{Address, B256, TxKind, U256};
 pub use alloy_sol_types::SolCall;
 use base_access_lists::FBALBuilderDb;
 pub use base_access_lists::FlashblockAccessList;
-use base_execution_evm::OpEvmConfig;
-pub use base_revm::OpTransaction;
+pub use reth_revm::OpTransaction;
 pub use base_test_utils::{
     AccessListContract, ContractFactory, DEVNET_CHAIN_ID, Logic, Logic2, Proxy, SimpleStorage,
     build_test_genesis,
@@ -16,6 +15,7 @@ pub use base_test_utils::{
 pub use eyre::Result;
 use reth_chainspec::ChainSpec;
 use reth_evm::{ConfigureEvm, Evm};
+use reth_evm_ethereum::OpEvmConfig;
 use revm::{DatabaseCommit, context::result::ResultAndState, database::InMemoryDB};
 pub use revm::{
     context::TxEnv,

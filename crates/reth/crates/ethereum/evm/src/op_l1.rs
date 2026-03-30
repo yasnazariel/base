@@ -3,11 +3,12 @@
 use alloy_consensus::Transaction;
 use alloy_primitives::{U16, U256, hex};
 use base_alloy_chains::BaseUpgrades;
-use base_revm::{L1BlockInfo, OpSpecId};
 use reth_execution_errors::BlockExecutionError;
 use reth_primitives_traits::BlockBody;
 
-use crate::{OpBlockExecutionError, error::L1BlockInfoError};
+use crate::{
+    L1BlockInfo, L1BlockInfoError, OpBlockExecutionError, revm_spec_by_timestamp_after_bedrock,
+};
 
 /// The function selector of the "setL1BlockValuesEcotone" function in the `L1Block` contract.
 const L1_BLOCK_ECOTONE_SELECTOR: [u8; 4] = hex!("440a5e20");
@@ -291,32 +292,6 @@ pub fn parse_l1_info_tx_jovian(data: &[u8]) -> Result<L1BlockInfo, OpBlockExecut
     })
 }
 
-/// Returns the [`OpSpecId`] at the given timestamp using the [`BaseUpgrades`] trait from
-/// `base-execution-forks`.
-fn op_spec_id(chain_spec: &impl BaseUpgrades, timestamp: u64) -> OpSpecId {
-    if chain_spec.is_base_v1_active_at_timestamp(timestamp) {
-        OpSpecId::BASE_V1
-    } else if chain_spec.is_jovian_active_at_timestamp(timestamp) {
-        OpSpecId::JOVIAN
-    } else if chain_spec.is_isthmus_active_at_timestamp(timestamp) {
-        OpSpecId::ISTHMUS
-    } else if chain_spec.is_holocene_active_at_timestamp(timestamp) {
-        OpSpecId::HOLOCENE
-    } else if chain_spec.is_granite_active_at_timestamp(timestamp) {
-        OpSpecId::GRANITE
-    } else if chain_spec.is_fjord_active_at_timestamp(timestamp) {
-        OpSpecId::FJORD
-    } else if chain_spec.is_ecotone_active_at_timestamp(timestamp) {
-        OpSpecId::ECOTONE
-    } else if chain_spec.is_canyon_active_at_timestamp(timestamp) {
-        OpSpecId::CANYON
-    } else if chain_spec.is_regolith_active_at_timestamp(timestamp) {
-        OpSpecId::REGOLITH
-    } else {
-        OpSpecId::BEDROCK
-    }
-}
-
 /// An extension trait for [`L1BlockInfo`] that allows us to calculate the L1 cost of a transaction
 /// based off of the chain spec's activated hardfork.
 pub trait RethL1BlockInfo {
@@ -361,7 +336,7 @@ impl RethL1BlockInfo for L1BlockInfo {
             return Ok(U256::ZERO);
         }
 
-        let spec_id = op_spec_id(&chain_spec, timestamp);
+        let spec_id = revm_spec_by_timestamp_after_bedrock(chain_spec, timestamp);
         Ok(self.calculate_tx_l1_cost(input, spec_id))
     }
 
@@ -371,7 +346,7 @@ impl RethL1BlockInfo for L1BlockInfo {
         timestamp: u64,
         input: &[u8],
     ) -> Result<U256, BlockExecutionError> {
-        let spec_id = op_spec_id(&chain_spec, timestamp);
+        let spec_id = revm_spec_by_timestamp_after_bedrock(chain_spec, timestamp);
         Ok(self.data_gas(input, spec_id))
     }
 }

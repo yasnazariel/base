@@ -16,7 +16,7 @@ use alloy_primitives::Address;
 use base_alloy_chains::BaseUpgrades;
 use base_alloy_consensus::OpDepositReceipt;
 use base_alloy_flz::tx_estimated_size_fjord as estimate_tx_compressed_size;
-use base_revm::{DEPOSIT_TRANSACTION_TYPE, L1_BLOCK_CONTRACT, L1BlockInfo};
+use reth_revm::{DEPOSIT_TRANSACTION_TYPE, L1_BLOCK_CONTRACT, L1BlockInfo};
 use revm::{
     Database as _, DatabaseCommit,
     context::{Block, result::ResultAndState},
@@ -358,7 +358,7 @@ mod tests {
     use alloy_primitives::{Address, Signature, U256, uint};
     use base_alloy_chains::{BaseChainUpgrades, BaseUpgrade};
     use base_alloy_consensus::OpTxEnvelope;
-    use base_revm::{
+    use reth_revm::{
         BASE_FEE_SCALAR_OFFSET, DefaultOp, ECOTONE_L1_BLOB_BASE_FEE_SLOT,
         ECOTONE_L1_FEE_SCALARS_SLOT, L1_BASE_FEE_SLOT, L1_BLOCK_CONTRACT, L1BlockInfo,
         OPERATOR_FEE_SCALARS_SLOT, OpBuilder, OpSpecId,

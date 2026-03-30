@@ -19,19 +19,3 @@ pub struct OpNextBlockEnvAttributes {
     /// Encoded EIP-1559 parameters to include into block's `extra_data` field.
     pub extra_data: Bytes,
 }
-
-#[cfg(feature = "rpc")]
-impl<H: alloy_consensus::BlockHeader> reth_rpc_eth_api::helpers::pending_block::BuildPendingEnv<H>
-    for OpNextBlockEnvAttributes
-{
-    fn build_pending_env(parent: &crate::SealedHeader<H>) -> Self {
-        Self {
-            timestamp: parent.timestamp().saturating_add(12),
-            suggested_fee_recipient: parent.beneficiary(),
-            prev_randao: B256::random(),
-            gas_limit: parent.gas_limit(),
-            parent_beacon_block_root: parent.parent_beacon_block_root(),
-            extra_data: parent.extra_data().clone(),
-        }
-    }
-}

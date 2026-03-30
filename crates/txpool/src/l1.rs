@@ -1,7 +1,7 @@
 use alloy_consensus::Transaction;
 use alloy_primitives::{U16, U256, hex};
 use base_alloy_chains::BaseUpgrades;
-use base_revm::{L1BlockInfo, OpSpecId};
+use reth_revm::{L1BlockInfo, OpSpecId};
 
 /// The function selector of `setL1BlockValuesEcotone`.
 const L1_BLOCK_ECOTONE_SELECTOR: [u8; 4] = hex!("440a5e20");

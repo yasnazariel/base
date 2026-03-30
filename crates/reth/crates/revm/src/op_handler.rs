@@ -26,8 +26,8 @@ use revm::{
 
 use crate::{
     L1BlockInfo, OpContextTr, OpHaltReason, OpSpecId,
-    constants::{BASE_FEE_RECIPIENT, L1_FEE_RECIPIENT, OPERATOR_FEE_RECIPIENT},
-    transaction::{DEPOSIT_TRANSACTION_TYPE, OpTransactionError, OpTxTr},
+    op_constants::{BASE_FEE_RECIPIENT, L1_FEE_RECIPIENT, OPERATOR_FEE_RECIPIENT},
+    op_transaction::{DEPOSIT_TRANSACTION_TYPE, OpTransactionError, OpTxTr},
 };
 
 /// Base handler extends the [`Handler`] with Base-specific logic.

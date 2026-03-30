@@ -8,8 +8,8 @@ use alloy_eips::{eip7685::EMPTY_REQUESTS_HASH, merge::BEACON_NONCE};
 use alloy_evm::block::BlockExecutorFactory;
 use alloy_primitives::logs_bloom;
 use base_alloy_chains::BaseUpgrades;
-use base_alloy_evm::OpBlockExecutionCtx;
 use base_execution_consensus::{calculate_receipt_root_no_memo_optimism, isthmus};
+use reth_chainspec::ChainSpec;
 use reth_evm::execute::{BlockAssembler, BlockAssemblerInput};
 use reth_execution_errors::BlockExecutionError;
 use reth_execution_types::BlockExecutionResult;
@@ -17,20 +17,22 @@ use reth_primitives::DepositReceipt;
 use reth_primitives_traits::{Receipt, SignedTransaction};
 use revm::context::Block as _;
 
+use crate::OpBlockExecutionCtx;
+
 /// Block builder for Base.
 #[derive(Debug)]
-pub struct OpBlockAssembler<ChainSpec> {
+pub struct OpBlockAssembler {
     chain_spec: Arc<ChainSpec>,
 }
 
-impl<ChainSpec> OpBlockAssembler<ChainSpec> {
+impl OpBlockAssembler {
     /// Creates a new [`OpBlockAssembler`].
     pub const fn new(chain_spec: Arc<ChainSpec>) -> Self {
         Self { chain_spec }
     }
 }
 
-impl<ChainSpec: BaseUpgrades> OpBlockAssembler<ChainSpec> {
+impl OpBlockAssembler {
     /// Builds a block for `input` without any bounds on header `H`.
     pub fn assemble_block<
         F: for<'a> BlockExecutorFactory<
@@ -131,15 +133,14 @@ impl<ChainSpec: BaseUpgrades> OpBlockAssembler<ChainSpec> {
     }
 }
 
-impl<ChainSpec> Clone for OpBlockAssembler<ChainSpec> {
+impl Clone for OpBlockAssembler {
     fn clone(&self) -> Self {
         Self { chain_spec: Arc::clone(&self.chain_spec) }
     }
 }
 
-impl<F, ChainSpec> BlockAssembler<F> for OpBlockAssembler<ChainSpec>
+impl<F> BlockAssembler<F> for OpBlockAssembler
 where
-    ChainSpec: BaseUpgrades,
     F: for<'a> BlockExecutorFactory<
             ExecutionCtx<'a> = OpBlockExecutionCtx,
             Transaction: SignedTransaction,

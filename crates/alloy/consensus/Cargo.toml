@@ -37,7 +37,7 @@ serde = { workspace = true, features = ["derive"], optional = true }
 
 # evm
 revm = { workspace = true, optional = true }
-base-revm = { workspace = true, optional = true }
+reth-revm = { workspace = true, optional = true }
 alloy-evm = { workspace = true, optional = true }
 
 # reth
@@ -68,7 +68,7 @@ std = [
 	"alloy-rlp/std",
 	"alloy-rpc-types-eth?/std",
 	"alloy-serde?/std",
-	"base-revm?/std",
+	"reth-revm?/std",
 	"reth-zstd-compressors?/std",
 	"revm?/std",
 	"serde?/std",
@@ -97,7 +97,7 @@ serde = [
 	"alloy-eips/serde",
 	"alloy-primitives/serde",
 	"alloy-rpc-types-eth?/serde",
-	"base-revm?/serde",
+	"reth-revm?/serde",
 	"bytes?/serde",
 	"dep:alloy-serde",
 	"dep:serde",
@@ -107,7 +107,7 @@ serde = [
 	"revm?/serde",
 ]
 serde-bincode-compat = [ "alloy-consensus/serde-bincode-compat", "serde_with" ]
-evm = [ "dep:alloy-evm", "dep:base-revm", "dep:revm" ]
+evm = [ "dep:alloy-evm", "dep:reth-revm", "dep:revm" ]
 reth = [
 	"dep:bytes",
 	"dep:modular-bitfield",

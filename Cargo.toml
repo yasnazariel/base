@@ -266,7 +266,6 @@ base-consensus-providers = { path = "crates/consensus/providers-alloy", default-
 # Execution
 base-node-core = { path = "crates/execution/node" }
 base-execution-cli = { path = "crates/execution/cli" }
-base-execution-evm = { path = "crates/execution/evm" }
 base-execution-rpc = { path = "crates/execution/rpc" }
 base-node-runner = { path = "crates/execution/runner" }
 base-execution-exex = { path = "crates/execution/exex" }
@@ -278,8 +277,6 @@ base-execution-forks = { path = "crates/execution/hardforks" }
 base-execution-storage = { path = "crates/execution/storage" }
 base-execution-consensus = { path = "crates/execution/consensus" }
 base-execution-payload-builder = { path = "crates/execution/payload" }
-base-revm = { path = "crates/execution/revm", default-features = false }
-
 # Txpool
 base-txpool = { path = "crates/txpool" }
 

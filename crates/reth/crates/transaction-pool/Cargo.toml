@@ -34,7 +34,7 @@ base-alloy-chains.workspace = true
 base-alloy-consensus.workspace = true
 base-alloy-flz.workspace = true
 base-metrics.workspace = true
-base-revm.workspace = true
+reth-revm.workspace = true
 
 # ethereum
 alloy-eips = { workspace = true, features = ["kzg"] }

@@ -4,14 +4,14 @@ use std::sync::OnceLock;
 
 use alloy_primitives::{Bytes, address};
 use base_alloy_evm::{OpBlockExecutorFactory, OpEvm, OpEvmFactory};
-use base_execution_evm::{OpEvmConfig, OpRethReceiptBuilder};
 use base_node_core::{OpExecutorBuilder, OpNode, OpNodeTypes, args::RollupArgs};
-use base_revm::{
+use reth_revm::{
     BasePrecompiles, OpContext, OpHaltReason, OpSpecId, OpTransaction, OpTransactionError,
 };
 use reth_chainspec::{BASE_MAINNET, BASE_SEPOLIA};
 use reth_db::test_utils::create_test_rw_db;
 use reth_evm::{Database, Evm, EvmEnv, EvmFactory, precompiles::PrecompilesMap};
+use reth_evm_ethereum::{OpEvmConfig, OpRethReceiptBuilder};
 use reth_node_api::{FullNodeComponents, NodeTypesWithDBAdapter};
 use reth_node_builder::{
     BuilderContext, FullNodeTypes, Node, NodeBuilder, NodeConfig, components::ExecutorBuilder,

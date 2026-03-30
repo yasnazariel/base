@@ -11,7 +11,7 @@ use base_proof::{
 };
 use base_proof_driver::Driver;
 use base_proof_preimage::{HintWriterClient, PreimageOracleClient};
-use base_revm::OpSpecId;
+use reth_revm::OpSpecId;
 use spin::RwLock;
 
 use crate::{Epilogue, FaultProofProgramError};

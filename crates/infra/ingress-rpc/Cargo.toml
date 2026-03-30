@@ -12,11 +12,11 @@ workspace = true
 
 [dependencies]
 url.workspace = true
-base-revm.workspace = true
+reth-revm.workspace = true
 base-bundles.workspace = true
 async-trait.workspace = true
 alloy-signer-local.workspace = true
-base-execution-evm.workspace = true
+reth-evm-ethereum.workspace = true
 base-alloy-network.workspace = true
 audit-archiver-lib.workspace = true
 reth-rpc-eth-types.workspace = true

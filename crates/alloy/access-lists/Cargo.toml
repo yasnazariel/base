@@ -33,10 +33,10 @@ base-test-utils.workspace = true
 # reth
 reth-evm.workspace = true
 reth-chainspec.workspace = true
-base-execution-evm.workspace = true
+reth-evm-ethereum.workspace = true
 
 # revm
-base-revm.workspace = true
+reth-revm.workspace = true
 
 # alloy
 alloy-contract.workspace = true

@@ -46,7 +46,7 @@ reth-primitives = { workspace = true, features = [
 	"serde-bincode-compat",
 	"reth-codec",
 ] }
-base-execution-evm = { workspace = true, features = ["std", "rpc"] }
+reth-evm-ethereum = { workspace = true, features = ["std", "rpc"] }
 base-execution-consensus = { workspace = true, features = ["std"] }
 
 # revm with required Base features
@@ -57,7 +57,7 @@ revm = { workspace = true, features = [
 	"c-kzg",
 	"memory_limit",
 ] }
-base-revm.workspace = true
+reth-revm.workspace = true
 
 # ethereum
 alloy-consensus.workspace = true

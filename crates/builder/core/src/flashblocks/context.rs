@@ -10,15 +10,15 @@ use base_access_lists::FBALBuilderDb;
 use base_alloy_chains::BaseUpgrades;
 use base_alloy_consensus::{OpDepositReceipt, OpReceipt, OpTxType};
 use base_alloy_evm::OpReceiptBuilder;
-use base_execution_evm::{OpEvmConfig, OpNextBlockEnvAttributes};
 use base_execution_payload_builder::{OpPayloadBuilderAttributes, error::OpPayloadBuilderError};
-use base_revm::{L1BlockInfo, OpSpecId};
+use reth_revm::{L1BlockInfo, OpSpecId};
 use base_txpool::{BundleTransaction, estimated_da_size::DataAvailabilitySized};
 use reth_basic_payload_builder::PayloadConfig;
 use reth_chainspec::{ChainSpec, EthChainSpec, EthereumHardforks};
 use reth_evm::{
     ConfigureEvm, Evm, EvmEnv, EvmError, InvalidTxError, eth::receipt_builder::ReceiptBuilderCtx,
 };
+use reth_evm_ethereum::{OpEvmConfig, OpNextBlockEnvAttributes};
 use reth_node_api::PayloadBuilderError;
 use reth_payload_builder::PayloadId;
 use reth_payload_primitives::PayloadBuilderAttributes;

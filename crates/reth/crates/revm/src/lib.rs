@@ -21,6 +21,41 @@ pub mod cancelled;
 /// Contains glue code for integrating reth database into revm's [Database].
 pub mod database;
 
+mod op_api;
+pub use op_api::{DefaultOp, DefaultOpEvm, OpBuilder, OpContext, OpContextTr, OpError};
+
+mod op_constants;
+pub use op_constants::*;
+
+mod op_evm;
+pub use op_evm::OpEvm;
+
+mod op_handler;
+pub use op_handler::{IsTxError, OpHandler};
+
+mod op_l1block;
+pub use op_l1block::L1BlockInfo;
+
+mod op_precompiles;
+pub use op_precompiles::{BasePrecompiles, bls12_381, bn254_pair};
+
+mod op_result;
+pub use op_result::OpHaltReason;
+
+mod op_rollup_config;
+pub use op_rollup_config::RollupConfigExt;
+
+mod op_spec;
+pub use op_spec::*;
+
+mod op_transaction;
+pub use op_transaction::{
+    DEPOSIT_TRANSACTION_TYPE, DepositTransactionParts, OpBuildError, OpTransaction,
+    OpTransactionBuilder, OpTransactionError, OpTxTr,
+};
+
+mod op_compat;
+
 pub use revm::{database as db, inspector};
 
 /// Common test helpers
