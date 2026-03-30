@@ -70,7 +70,6 @@ alloy-rpc-types-eth.workspace = true
 alloy-signer.workspace = true
 alloy-sol-types.workspace = true
 alloy-contract.workspace = true
-alloy-rpc-types-beacon = { workspace = true, features = ["ssz"] }
 alloy-consensus.workspace = true
 
 futures.workspace = true

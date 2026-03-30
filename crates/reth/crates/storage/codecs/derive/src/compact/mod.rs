@@ -4,16 +4,16 @@ use quote::{format_ident, quote};
 use syn::{Data, DeriveInput, Generics};
 
 mod generator;
-use generator::*;
+use generator::{parse_reth_codecs_path, generate_from_to};
 
 mod enums;
-use enums::*;
+use enums::EnumHandler;
 
 mod flags;
-use flags::*;
+use flags::generate_flag_struct;
 
 mod structs;
-use structs::*;
+use structs::StructHandler;
 
 use crate::ZstdConfig;
 

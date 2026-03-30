@@ -18,12 +18,12 @@ use tracing::debug;
 
 use crate::{NetworkStackId, enr::discv4_id_to_multiaddr_id, filter::MustNotIncludeKeys};
 
-/// The default address for discv5 via UDP is IPv4.
+/// The default address for discv5 via UDP is `IPv4`.
 ///
 /// Default is 0.0.0.0, all interfaces. See [`discv5::ListenConfig`] default.
 pub const DEFAULT_DISCOVERY_V5_ADDR: Ipv4Addr = Ipv4Addr::UNSPECIFIED;
 
-/// The default IPv6 address for discv5 via UDP.
+/// The default `IPv6` address for discv5 via UDP.
 ///
 /// Default is ::, all interfaces.
 pub const DEFAULT_DISCOVERY_V5_ADDR_IPV6: Ipv6Addr = Ipv6Addr::UNSPECIFIED;
@@ -329,8 +329,8 @@ impl Config {
         }
     }
 
-    /// Returns the discovery (UDP) socket contained in the [`discv5::Config`]. Returns the IPv6
-    /// socket, if both IPv4 and v6 are configured. This socket will be advertised to peers in the
+    /// Returns the discovery (UDP) socket contained in the [`discv5::Config`]. Returns the `IPv6`
+    /// socket, if both `IPv4` and v6 are configured. This socket will be advertised to peers in the
     /// local [`Enr`](discv5::enr::Enr).
     pub fn discovery_socket(&self) -> SocketAddr {
         match self.discv5_config.listen_config {
@@ -347,7 +347,7 @@ impl Config {
     }
 }
 
-/// Returns the IPv4 discovery socket if one is configured.
+/// Returns the `IPv4` discovery socket if one is configured.
 pub const fn ipv4(listen_config: &ListenConfig) -> Option<SocketAddrV4> {
     match listen_config {
         ListenConfig::Ipv4 { ip, port }
@@ -358,7 +358,7 @@ pub const fn ipv4(listen_config: &ListenConfig) -> Option<SocketAddrV4> {
     }
 }
 
-/// Returns the IPv6 discovery socket if one is configured.
+/// Returns the `IPv6` discovery socket if one is configured.
 pub const fn ipv6(listen_config: &ListenConfig) -> Option<SocketAddrV6> {
     match listen_config {
         ListenConfig::Ipv4 { .. } => None,

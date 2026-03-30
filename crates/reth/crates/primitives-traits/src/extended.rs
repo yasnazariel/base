@@ -278,7 +278,7 @@ impl<Eip4844, Tx> From<EthereumTxEnvelope<Eip4844>> for Extended<EthereumTxEnvel
 
 #[cfg(feature = "serde-bincode-compat")]
 mod serde_bincode_compat {
-    use super::*;
+    use super::Extended;
     use crate::serde_bincode_compat::SerdeBincodeCompat;
 
     #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

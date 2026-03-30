@@ -12,7 +12,6 @@
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-pub mod bundle;
 pub mod core;
 pub mod ext;
 pub mod filter;
@@ -25,9 +24,6 @@ pub mod types;
 pub use core::EthApiClient;
 pub use core::{EthApiServer, FullEthApiServer};
 
-#[cfg(feature = "client")]
-pub use bundle::{EthBundleApiClient, EthCallBundleApiClient};
-pub use bundle::{EthBundleApiServer, EthCallBundleApiServer};
 #[cfg(feature = "client")]
 pub use ext::L2EthApiExtClient;
 pub use ext::L2EthApiExtServer;

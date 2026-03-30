@@ -19,7 +19,7 @@ use reth_libmdbx::{CommitLatency, RW, Transaction, TransactionKind, WriteFlags, 
 use reth_storage_errors::db::{DatabaseWriteError, DatabaseWriteOperation};
 use reth_tracing::tracing::{debug, instrument, trace, warn};
 
-use super::{cursor::Cursor, utils::*};
+use super::{cursor::Cursor, utils::decode_one};
 use crate::{
     DatabaseError,
     metrics::{DatabaseEnvMetrics, Operation, TransactionMode, TransactionOutcome},

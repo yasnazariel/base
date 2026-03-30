@@ -6,7 +6,7 @@ use std::{
 
 use derive_more::Deref;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use tracing::*;
+use tracing::{debug, Callsite, Subscriber};
 use zstd::bulk::Compressor;
 pub use zstd::{bulk::Decompressor, dict::DecoderDictionary};
 
@@ -241,7 +241,7 @@ impl Compression for Zstd {
 }
 
 mod dictionaries_serde {
-    use super::*;
+    use super::{Serializer, Arc, ZstdDictionaries, Deserializer, RawDictionary, Deserialize};
 
     pub(crate) fn serialize<S>(
         dictionaries: &Option<Arc<ZstdDictionaries<'static>>>,

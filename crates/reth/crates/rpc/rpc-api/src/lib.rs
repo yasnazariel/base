@@ -15,20 +15,15 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 mod admin;
-mod anvil;
 mod debug;
 mod engine;
-mod hardhat;
-mod mev;
 mod miner;
 mod net;
-mod otterscan;
 mod reth;
 mod rpc;
 mod testing;
 mod trace;
 mod txpool;
-mod validation;
 mod web3;
 
 /// re-export of all server traits
@@ -38,24 +33,20 @@ pub use testing::{TESTING_BUILD_BLOCK_V1, TestingBuildBlockRequestV1};
 /// Aggregates all server traits.
 pub mod servers {
     pub use reth_rpc_eth_api::{
-        self as eth, EthApiServer, EthBundleApiServer, EthCallBundleApiServer, EthFilterApiServer,
-        EthPubSubApiServer, L2EthApiExtServer,
+        self as eth, EthApiServer, EthFilterApiServer, EthPubSubApiServer, L2EthApiExtServer,
     };
 
     pub use crate::{
         admin::AdminApiServer,
         debug::{DebugApiServer, DebugExecutionWitnessApiServer},
         engine::{EngineApiServer, EngineEthApiServer, IntoEngineApiRpcModule},
-        mev::{MevFullApiServer, MevSimApiServer},
         miner::MinerApiServer,
         net::NetApiServer,
-        otterscan::OtterscanServer,
         reth::RethApiServer,
         rpc::RpcApiServer,
         testing::TestingApiServer,
         trace::TraceApiServer,
         txpool::TxPoolApiServer,
-        validation::BlockSubmissionValidationApiServer,
         web3::Web3ApiServer,
     };
 }
@@ -67,27 +58,19 @@ pub use clients::*;
 /// Aggregates all client traits.
 #[cfg(feature = "client")]
 pub mod clients {
-    pub use reth_rpc_eth_api::{
-        EthApiClient, EthBundleApiClient, EthCallBundleApiClient, EthFilterApiClient,
-        L2EthApiExtServer,
-    };
+    pub use reth_rpc_eth_api::{EthApiClient, EthFilterApiClient, L2EthApiExtServer};
 
     pub use crate::{
         admin::AdminApiClient,
-        anvil::AnvilApiClient,
         debug::{DebugApiClient, DebugExecutionWitnessApiClient},
         engine::{EngineApiClient, EngineEthApiClient},
-        hardhat::HardhatApiClient,
-        mev::{MevFullApiClient, MevSimApiClient},
         miner::MinerApiClient,
         net::NetApiClient,
-        otterscan::OtterscanClient,
         reth::RethApiClient,
         rpc::RpcApiServer,
         testing::TestingApiClient,
         trace::TraceApiClient,
         txpool::TxPoolApiClient,
-        validation::BlockSubmissionValidationApiClient,
         web3::Web3ApiClient,
     };
 }

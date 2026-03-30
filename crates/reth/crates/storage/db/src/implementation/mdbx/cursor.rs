@@ -13,7 +13,7 @@ use reth_db_api::{
 use reth_libmdbx::{Error as MDBXError, RO, RW, TransactionKind, WriteFlags};
 use reth_storage_errors::db::{DatabaseErrorInfo, DatabaseWriteError, DatabaseWriteOperation};
 
-use super::utils::*;
+use super::utils::{decoder, decode_one, decode_value};
 use crate::{
     DatabaseError,
     metrics::{DatabaseEnvMetrics, Operation},

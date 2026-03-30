@@ -490,7 +490,7 @@ mod tests {
         let consensus_err: ConsensusError = arc_err.into();
 
         // Verify the error message is preserved through transparent attribute
-        let error_message = format!("{}", consensus_err);
+        let error_message = format!("{consensus_err}");
         assert_eq!(error_message, "Custom L2 consensus error");
     }
 }

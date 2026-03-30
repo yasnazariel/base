@@ -315,14 +315,8 @@ pub enum RethRpcModule {
     Rpc,
     /// `reth_` module
     Reth,
-    /// `ots_` module
-    Ots,
-    /// `flashbots_` module
-    Flashbots,
     /// `miner_` module
     Miner,
-    /// `mev_` module
-    Mev,
     /// `testing_` module
     Testing,
     /// Custom RPC module not part of the standard set
@@ -345,10 +339,7 @@ impl RethRpcModule {
         Self::Web3,
         Self::Rpc,
         Self::Reth,
-        Self::Ots,
-        Self::Flashbots,
         Self::Miner,
-        Self::Mev,
         Self::Testing,
     ];
 
@@ -405,10 +396,7 @@ impl AsRef<str> for RethRpcModule {
             Self::Web3 => "web3",
             Self::Rpc => "rpc",
             Self::Reth => "reth",
-            Self::Ots => "ots",
-            Self::Flashbots => "flashbots",
             Self::Miner => "miner",
-            Self::Mev => "mev",
             Self::Testing => "testing",
         }
     }
@@ -428,10 +416,7 @@ impl FromStr for RethRpcModule {
             "web3" => Self::Web3,
             "rpc" => Self::Rpc,
             "reth" => Self::Reth,
-            "ots" => Self::Ots,
-            "flashbots" => Self::Flashbots,
             "miner" => Self::Miner,
-            "mev" => Self::Mev,
             "testing" => Self::Testing,
             // Any unknown module becomes Other
             other => Self::Other(other.to_string()),
@@ -508,13 +493,13 @@ impl RpcModuleValidator for DefaultRpcModuleValidator {
     fn parse_selection(s: &str) -> Result<RpcModuleSelection, String> {
         // First try standard parsing
         let selection = RpcModuleSelection::from_str(s)
-            .map_err(|e| format!("Failed to parse RPC modules: {}", e))?;
+            .map_err(|e| format!("Failed to parse RPC modules: {e}"))?;
 
         // Validate each module in the selection
         if let RpcModuleSelection::Selection(modules) = &selection {
             for module in modules {
                 if let RethRpcModule::Other(name) = module {
-                    return Err(format!("Unknown RPC module: '{}'", name));
+                    return Err(format!("Unknown RPC module: '{name}'"));
                 }
             }
         }
@@ -531,7 +516,7 @@ pub struct LenientRpcModuleValidator;
 
 impl RpcModuleValidator for LenientRpcModuleValidator {
     fn parse_selection(s: &str) -> Result<RpcModuleSelection, String> {
-        RpcModuleSelection::from_str(s).map_err(|e| format!("Failed to parse RPC modules: {}", e))
+        RpcModuleSelection::from_str(s).map_err(|e| format!("Failed to parse RPC modules: {e}"))
     }
 }
 

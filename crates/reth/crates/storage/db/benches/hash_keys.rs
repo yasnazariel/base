@@ -21,7 +21,7 @@ use reth_db_api::{
 use reth_fs_util as fs;
 
 mod utils;
-use utils::*;
+use utils::BENCH_DB_PATH;
 
 criterion_group! {
     name = benches;

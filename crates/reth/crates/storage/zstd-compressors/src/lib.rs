@@ -28,7 +28,7 @@ pub use locals::*;
 mod locals {
     use core::cell::RefCell;
 
-    use super::*;
+    use super::{Compressor, TRANSACTION_DICTIONARY, ReusableDecompressor, Decompressor, RECEIPT_DICTIONARY};
 
     // We use `thread_local` compressors and decompressors because dictionaries can be quite big,
     // and zstd-rs recommends to use one context/compressor per thread

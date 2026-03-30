@@ -8,7 +8,7 @@ use reth_ethereum_primitives::{Receipt, TransactionSigned, TxType};
 use reth_primitives_traits::{Account, Bytecode, StorageEntry};
 use reth_prune_types::{PruneCheckpoint, PruneSegment};
 use reth_stages_types::StageCheckpoint;
-use reth_trie_common::{StorageTrieEntry, StoredNibbles, StoredNibblesSubKey, *};
+use reth_trie_common::{StorageTrieEntry, StoredNibbles, StoredNibblesSubKey, BranchNodeCompact};
 use serde::{Deserialize, Serialize};
 
 use crate::{

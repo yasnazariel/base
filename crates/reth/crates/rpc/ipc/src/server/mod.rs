@@ -610,13 +610,13 @@ impl Default for Builder<Identity, Identity> {
 }
 
 impl<HttpMiddleware, RpcMiddleware> Builder<HttpMiddleware, RpcMiddleware> {
-    /// Set the maximum size of a request body in bytes. Default is 10 MiB.
+    /// Set the maximum size of a request body in bytes. Default is 10 `MiB`.
     pub const fn max_request_body_size(mut self, size: u32) -> Self {
         self.settings.max_request_body_size = size;
         self
     }
 
-    /// Set the maximum size of a response body in bytes. Default is 10 MiB.
+    /// Set the maximum size of a response body in bytes. Default is 10 `MiB`.
     pub const fn max_response_body_size(mut self, size: u32) -> Self {
         self.settings.max_response_body_size = size;
         self

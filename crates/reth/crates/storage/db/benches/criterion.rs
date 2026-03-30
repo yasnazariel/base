@@ -10,13 +10,13 @@ use reth_db_api::{
     cursor::{DbCursorRO, DbCursorRW, DbDupCursorRO, DbDupCursorRW},
     database::Database,
     table::{Compress, Decode, Decompress, DupSort, Encode, Table},
-    tables::*,
+    tables::{CanonicalHeaders, HeaderNumbers, Headers, BlockBodyIndices, BlockOmmers, TransactionHashNumbers, Transactions, PlainStorageState, PlainAccountState},
     transaction::{DbTx, DbTxMut},
 };
 use reth_fs_util as fs;
 
 mod utils;
-use utils::*;
+use utils::{load_vectors, BENCH_DB_PATH, RANDOM_INDEXES, set_up_db};
 
 criterion_group! {
     name = benches;

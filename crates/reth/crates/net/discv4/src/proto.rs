@@ -247,7 +247,7 @@ impl alloy_rlp::Decodable for PingNodeEndpoint {
 /// Represents the `from`, `to` fields in the packets
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, RlpEncodable, RlpDecodable)]
 pub struct NodeEndpoint {
-    /// The IP address of the network endpoint. It can be either IPv4 or IPv6.
+    /// The IP address of the network endpoint. It can be either `IPv4` or `IPv6`.
     pub address: IpAddr,
     /// The UDP port used for communication in the discovery protocol.
     pub udp_port: u16,

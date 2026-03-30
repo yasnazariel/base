@@ -729,7 +729,7 @@ pub enum TrieType {
     State,
     /// Storage trie type.
     Storage,
-    /// Custom trie type. Can be used in ExEx.
+    /// Custom trie type. Can be used in `ExEx`.
     Custom(&'static str),
 }
 

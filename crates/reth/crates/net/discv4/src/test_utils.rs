@@ -274,7 +274,7 @@ pub fn rng_record(rng: &mut impl RngCore) -> NodeRecord {
     NodeRecord { address, tcp_port, udp_port, id: B512::random() }
 }
 
-/// Generates a random IPv6 [`NodeRecord`] using the provided random number generator.
+/// Generates a random `IPv6` [`NodeRecord`] using the provided random number generator.
 pub fn rng_ipv6_record(rng: &mut impl RngCore) -> NodeRecord {
     let mut ip = [0u8; 16];
     rng.fill_bytes(&mut ip);
@@ -283,7 +283,7 @@ pub fn rng_ipv6_record(rng: &mut impl RngCore) -> NodeRecord {
     NodeRecord { address, tcp_port: rng.r#gen(), udp_port: rng.r#gen(), id: B512::random() }
 }
 
-/// Generates a random IPv4 [`NodeRecord`] using the provided random number generator.
+/// Generates a random `IPv4` [`NodeRecord`] using the provided random number generator.
 pub fn rng_ipv4_record(rng: &mut impl RngCore) -> NodeRecord {
     let mut ip = [0u8; 4];
     rng.fill_bytes(&mut ip);

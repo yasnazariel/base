@@ -52,17 +52,14 @@ pub use reth_ipc::server::{
 use reth_network_api::{NetworkInfo, Peers, noop::NoopNetwork};
 use reth_primitives_traits::{NodePrimitives, TxTy};
 use reth_rpc::{
-    AdminApi, DebugApi, EngineEthApi, EthApi, EthApiBuilder, EthBundle, MinerApi, NetApi,
-    OtterscanApi, RPCApi, RethApi, TraceApi, TxPoolApi, Web3Api,
+    AdminApi, DebugApi, EngineEthApi, EthApi, EthApiBuilder, MinerApi, NetApi, RPCApi, RethApi,
+    TraceApi, TxPoolApi, Web3Api,
 };
 use reth_rpc_api::servers::*;
 use reth_rpc_eth_api::{
     EthApiServer, EthApiTypes, FullEthApiServer, FullEthApiTypes, RpcBlock, RpcConvert,
     RpcConverter, RpcHeader, RpcNodeCore, RpcReceipt, RpcTransaction, RpcTxReq,
-    helpers::{
-        Call, EthApiSpec, EthTransactions, LoadPendingBlock, TraceExt,
-        pending_block::PendingEnvBuilder,
-    },
+    helpers::{EthApiSpec, EthTransactions, TraceExt, pending_block::PendingEnvBuilder},
     node::RpcNodeCoreAdapter,
 };
 use reth_rpc_eth_types::{EthConfig, EthSubscriptionIdProvider, receipt::EthReceiptConverter};
@@ -106,7 +103,6 @@ pub use metrics::{MeteredBatchRequestsFuture, MeteredRequestFuture, RpcRequestMe
 use reth_chain_state::{
     CanonStateSubscriptions, ForkChoiceSubscriptions, PersistedBlockSubscriptions,
 };
-use reth_rpc::eth::sim_bundle::EthSimBundle;
 
 use crate::middleware::RethRpcMiddleware;
 
@@ -686,20 +682,6 @@ where
         self
     }
 
-    /// Register Otterscan Namespace
-    ///
-    /// # Panics
-    ///
-    /// If called outside of the tokio runtime. See also [`Self::eth_api`]
-    pub fn register_ots(&mut self) -> &mut Self
-    where
-        EthApi: TraceExt + EthTransactions<Primitives = N>,
-    {
-        let otterscan_api = self.otterscan_api();
-        self.modules.insert(RethRpcModule::Ots, otterscan_api.into_rpc().into());
-        self
-    }
-
     /// Register Debug Namespace
     ///
     /// # Panics
@@ -756,16 +738,6 @@ where
         self.modules.insert(RethRpcModule::Reth, rethapi.into_rpc().into());
         self
     }
-
-    /// Instantiates `OtterscanApi`
-    ///
-    /// # Panics
-    ///
-    /// If called outside of the tokio runtime. See also [`Self::eth_api`]
-    pub fn otterscan_api(&self) -> OtterscanApi<EthApi> {
-        let eth_api = self.eth_api().clone();
-        OtterscanApi::new(eth_api)
-    }
 }
 
 impl<N, Provider, Pool, Network, EthApi, EvmConfig, Consensus>
@@ -794,19 +766,6 @@ where
             self.blocking_pool_guard.clone(),
             self.eth_config.clone(),
         )
-    }
-
-    /// Instantiates [`EthBundle`] Api
-    ///
-    /// # Panics
-    ///
-    /// If called outside of the tokio runtime. See also [`Self::eth_api`]
-    pub fn bundle_api(&self) -> EthBundle<EthApi>
-    where
-        EthApi: EthTransactions + LoadPendingBlock + Call,
-    {
-        let eth_api = self.eth_api().clone();
-        EthBundle::new(eth_api, self.blocking_pool_guard.clone())
     }
 
     /// Instantiates `DebugApi`
@@ -956,16 +915,6 @@ where
                             let mut module = eth_api.clone().into_rpc();
                             module.merge(eth_filter.clone().into_rpc()).expect("No conflicts");
                             module.merge(eth_pubsub.clone().into_rpc()).expect("No conflicts");
-                            module
-                                .merge(
-                                    EthBundle::new(
-                                        eth_api.clone(),
-                                        self.blocking_pool_guard.clone(),
-                                    )
-                                    .into_rpc(),
-                                )
-                                .expect("No conflicts");
-
                             module.into()
                         }
                         RethRpcModule::Net => {
@@ -993,24 +942,16 @@ where
                         )
                         .into_rpc()
                         .into(),
-                        RethRpcModule::Ots => OtterscanApi::new(eth_api.clone()).into_rpc().into(),
                         RethRpcModule::Reth => {
                             RethApi::new(self.provider.clone(), self.executor.clone())
                                 .into_rpc()
                                 .into()
                         }
                         RethRpcModule::Miner => MinerApi::default().into_rpc().into(),
-                        RethRpcModule::Mev => {
-                            EthSimBundle::new(eth_api.clone(), self.blocking_pool_guard.clone())
-                                .into_rpc()
-                                .into()
-                        }
                         // these are implementation specific and need to be handled during
                         // initialization and should be registered via extend_rpc_modules in the
                         // nodebuilder rpc addon stack
-                        RethRpcModule::Flashbots
-                        | RethRpcModule::Testing
-                        | RethRpcModule::Other(_) => Default::default(),
+                        RethRpcModule::Testing | RethRpcModule::Other(_) => Default::default(),
                     })
                     .clone()
             })
@@ -2279,7 +2220,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_eth_call_bundle_selection() {
+    fn parse_rpc_module_selection_subset() {
         let selection = "eth,admin,debug".parse::<RpcModuleSelection>().unwrap();
         assert_eq!(
             selection,
@@ -2361,7 +2302,6 @@ mod tests {
                 "trace" =>  RethRpcModule::Trace,
                 "web3" =>  RethRpcModule::Web3,
                 "rpc" => RethRpcModule::Rpc,
-                "ots" => RethRpcModule::Ots,
                 "reth" => RethRpcModule::Reth,
             );
     }

@@ -25,7 +25,7 @@ mod value;
 pub use value::*;
 
 mod node;
-use node::*;
+use node::{ProofTrieBranch, ProofTrieBranchChild, trim_nibbles_prefix};
 
 mod target;
 pub use target::*;
@@ -996,8 +996,7 @@ where
             debug_assert_eq!(
                 cached_state_mask | next_child_nibbles,
                 cached_state_mask,
-                "curr_branch has state_mask bits set which aren't set on cached_branch. curr_branch:{:?}",
-                curr_state_mask,
+                "curr_branch has state_mask bits set which aren't set on cached_branch. curr_branch:{curr_state_mask:?}",
             );
 
             // If there are no further children to construct for this branch then pop it off both
@@ -1896,8 +1895,8 @@ mod tests {
         );
         let mut sorted_addresses = addresses.to_vec();
         sorted_addresses.sort();
-        let mut targets: Vec<ProofV2Target> =
-            sorted_addresses.iter().copied().map(ProofV2Target::new).collect();
+        let mut targets: Vec<Target> =
+            sorted_addresses.iter().copied().map(Target::new).collect();
 
         let result = proof_calculator.proof(&mut value_encoder, &mut targets).unwrap();
 

@@ -35,11 +35,11 @@ use reth_node_builder::{
 use reth_payload_primitives::PayloadTypes;
 use reth_provider::{EthStorage, providers::ProviderFactoryBuilder};
 use reth_rpc::{
-    TestingApi, ValidationApi,
+    TestingApi,
     eth::core::{EthApiFor, EthRpcConverterFor},
 };
-use reth_rpc_api::servers::{BlockSubmissionValidationApiServer, TestingApiServer};
-use reth_rpc_builder::{config::RethRpcServerConfig, middleware::RethRpcMiddleware};
+use reth_rpc_api::servers::TestingApiServer;
+use reth_rpc_builder::middleware::RethRpcMiddleware;
 use reth_rpc_eth_api::{
     RpcConvert, RpcTypes, SignableTxRequest,
     helpers::{
@@ -280,15 +280,6 @@ where
         self,
         ctx: reth_node_api::AddOnsContext<'_, N>,
     ) -> eyre::Result<Self::Handle> {
-        let validation_api = ValidationApi::<_, _, <N::Types as NodeTypes>::Payload>::new(
-            ctx.node.provider().clone(),
-            Arc::new(ctx.node.consensus().clone()),
-            ctx.node.evm_config().clone(),
-            ctx.config.rpc.flashbots_config(),
-            Box::new(ctx.node.task_executor().clone()),
-            Arc::new(EthereumEngineValidator::new(ctx.config.chain.clone())),
-        );
-
         let eth_config =
             EthConfigHandler::new(ctx.node.provider().clone(), ctx.node.evm_config().clone());
 
@@ -296,11 +287,6 @@ where
 
         self.inner
             .launch_add_ons_with(ctx, move |container| {
-                container.modules.merge_if_module_configured(
-                    RethRpcModule::Flashbots,
-                    validation_api.into_rpc(),
-                )?;
-
                 container
                     .modules
                     .merge_if_module_configured(RethRpcModule::Eth, eth_config.into_rpc())?;

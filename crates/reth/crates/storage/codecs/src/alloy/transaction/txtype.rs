@@ -9,7 +9,7 @@ impl crate::Compact for TxType {
     where
         B: bytes::BufMut + AsMut<[u8]>,
     {
-        use crate::txtype::*;
+        use crate::txtype::{COMPACT_IDENTIFIER_LEGACY, COMPACT_IDENTIFIER_EIP2930, COMPACT_IDENTIFIER_EIP1559, COMPACT_EXTENDED_IDENTIFIER_FLAG};
 
         match self {
             Self::Legacy => COMPACT_IDENTIFIER_LEGACY,

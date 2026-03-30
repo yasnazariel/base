@@ -168,7 +168,7 @@ impl reth_codecs::Compact for Bytecode {
     fn from_compact(mut buf: &[u8], _: usize) -> (Self, &[u8]) {
         use byteorder::ReadBytesExt;
         use bytes::Buf;
-        use compact_ids::*;
+        use compact_ids::{LEGACY_RAW_BYTECODE_ID, REMOVED_BYTECODE_ID, LEGACY_ANALYZED_BYTECODE_ID, EIP7702_BYTECODE_ID};
 
         let len = buf.read_u32::<byteorder::BigEndian>().expect("could not read bytecode length")
             as usize;

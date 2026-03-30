@@ -10,7 +10,7 @@ use ffi::{
 use crate::{
     TableObject, Transaction,
     error::{Error, Result, mdbx_result},
-    flags::*,
+    flags::WriteFlags,
     mdbx_try_optional,
     transaction::{RW, TransactionKind},
 };

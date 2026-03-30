@@ -22,7 +22,7 @@ use crate::{
 };
 
 mod private {
-    use super::*;
+    use super::{RO, RW};
 
     pub trait Sealed {}
 

@@ -242,7 +242,7 @@ impl OtlpProtocol {
             Self::Http => {
                 if !url.path().ends_with(http_path) {
                     let path = url.path().trim_end_matches('/');
-                    url.set_path(&format!("{}{}", path, http_path));
+                    url.set_path(&format!("{path}{http_path}"));
                 }
             }
             Self::Grpc => {
