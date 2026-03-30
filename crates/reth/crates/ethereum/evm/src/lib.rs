@@ -54,16 +54,6 @@ use alloy_evm::eth::spec::EthExecutorSpec;
 pub use config::{revm_spec, revm_spec_by_timestamp_and_block_number};
 use reth_ethereum_forks::Hardforks;
 
-/// Helper type with backwards compatible methods to obtain Ethereum executor
-/// providers.
-#[doc(hidden)]
-pub mod execute {
-    use crate::EthEvmConfig;
-
-    #[deprecated(note = "Use `EthEvmConfig` instead")]
-    pub type EthExecutorProvider = EthEvmConfig;
-}
-
 mod build;
 pub use build::EthBlockAssembler;
 

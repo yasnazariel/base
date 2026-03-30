@@ -17,8 +17,6 @@ use revm as _;
 
 pub mod evm;
 pub use evm::EthEvmConfig;
-#[allow(deprecated)]
-pub use evm::EthExecutorProvider;
 pub use reth_ethereum_consensus as consensus;
 pub mod node;
 pub use node::*;

@@ -1203,7 +1203,7 @@ impl From<Recovered<PooledTransactionVariant>> for MockTransaction {
     fn from(tx: Recovered<PooledTransactionVariant>) -> Self {
         let (tx, signer) = tx.into_parts();
         Recovered::<TransactionSigned>::new_unchecked(tx.into(), signer).try_into().expect(
-            "Failed to convert from PooledTransactionsElementEcRecovered to MockTransaction",
+            "Failed to convert recovered pooled transaction to MockTransaction",
         )
     }
 }

@@ -19,10 +19,6 @@ use crate::{
     BeaconOnNewPayloadError, ExecutionPayload, ForkchoiceStatus, error::BeaconForkChoiceUpdateError,
 };
 
-/// Type alias for backwards compat
-#[deprecated(note = "Use ConsensusEngineHandle instead")]
-pub type BeaconConsensusEngineHandle<Payload> = ConsensusEngineHandle<Payload>;
-
 /// Represents the outcome of forkchoice update.
 ///
 /// This is a future that resolves to [`ForkChoiceUpdateResult`]

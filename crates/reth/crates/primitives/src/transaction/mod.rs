@@ -2,8 +2,6 @@
 
 pub use alloy_consensus::transaction::PooledTransaction;
 use once_cell as _;
-#[expect(deprecated)]
-pub use pooled::PooledTransactionsElementEcRecovered;
 pub use reth_primitives_traits::{
     FillTxEnv, WithEncoded,
     sync::{LazyLock, OnceLock},
@@ -17,19 +15,12 @@ pub use reth_primitives_traits::{
 pub use signature::{recover_signer, recover_signer_unchecked};
 pub use tx_type::TxType;
 
-use crate::Recovered;
-
 /// Handling transaction signature operations, including signature recovery,
 /// applying chain IDs, and EIP-2 validation.
 pub mod signature;
 pub mod util;
 
-mod pooled;
 mod tx_type;
 
 /// Signed transaction.
 pub use reth_ethereum_primitives::{Transaction, TransactionSigned};
-
-/// Type alias kept for backward compatibility.
-#[deprecated(note = "Use `Recovered` instead")]
-pub type TransactionSignedEcRecovered<T = TransactionSigned> = Recovered<T>;

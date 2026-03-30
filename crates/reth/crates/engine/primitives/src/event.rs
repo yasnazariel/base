@@ -15,10 +15,6 @@ use reth_primitives_traits::{NodePrimitives, SealedBlock, SealedHeader};
 
 use crate::ForkchoiceStatus;
 
-/// Type alias for backwards compat
-#[deprecated(note = "Use ConsensusEngineEvent instead")]
-pub type BeaconConsensusEngineEvent<N> = ConsensusEngineEvent<N>;
-
 /// Events emitted by the consensus engine.
 #[derive(Clone, Debug)]
 pub enum ConsensusEngineEvent<N: NodePrimitives = EthPrimitives> {
