@@ -204,7 +204,12 @@ pub struct P2PArgs {
     pub redial_period: u64,
 
     /// An optional list of bootnode ENRs or node records to start the node with.
-    #[arg(long = "p2p.bootnodes", value_delimiter = ',', env = "BASE_NODE_P2P_BOOTNODES")]
+    #[arg(
+        id = "consensus_bootnodes",
+        long = "p2p.bootnodes",
+        value_delimiter = ',',
+        env = "BASE_NODE_P2P_BOOTNODES"
+    )]
     pub bootnodes: Vec<String>,
 
     /// Optionally enable topic scoring.

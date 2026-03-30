@@ -63,6 +63,8 @@ pub struct RollupNodeBuilder {
     pub l2_trust_rpc: bool,
     /// Engine builder configuration.
     pub engine_config: EngineConfig,
+    /// Optional pre-built L2 provider.
+    pub l2_provider: Option<RootProvider<Base>>,
     /// The [`NetworkConfig`].
     pub p2p_config: NetworkConfig,
     /// An RPC Configuration.
@@ -99,6 +101,7 @@ impl RollupNodeBuilder {
             l1_config_builder,
             l2_trust_rpc,
             engine_config,
+            l2_provider: None,
             p2p_config,
             rpc_config,
             sequencer_config: None,
@@ -111,6 +114,11 @@ impl RollupNodeBuilder {
     /// Sets the [`EngineConfig`] on the [`RollupNodeBuilder`].
     pub fn with_engine_config(self, engine_config: EngineConfig) -> Self {
         Self { engine_config, ..self }
+    }
+
+    /// Sets a pre-built L2 provider on the [`RollupNodeBuilder`].
+    pub fn with_l2_provider(self, l2_provider: RootProvider<Base>) -> Self {
+        Self { l2_provider: Some(l2_provider), ..self }
     }
 
     /// Sets the [`RpcBuilder`] on the [`RollupNodeBuilder`].
@@ -159,40 +167,54 @@ impl RollupNodeBuilder {
     /// - The P2P config is not set.
     /// - The rollup boost args are not set.
     pub fn build(self) -> RollupNode {
-        let mut l1_beacon = OnlineBeaconClient::new_http(self.l1_config_builder.beacon.to_string());
-        if let Some(l1_slot_duration) = self.l1_config_builder.slot_duration_override {
+        let Self {
+            config,
+            l1_config_builder,
+            l2_trust_rpc,
+            engine_config,
+            l2_provider,
+            p2p_config,
+            rpc_config,
+            sequencer_config,
+            derivation_delegate_config,
+            finalized_poll_interval,
+            safedb_path,
+        } = self;
+
+        let mut l1_beacon = OnlineBeaconClient::new_http(l1_config_builder.beacon.to_string());
+        if let Some(l1_slot_duration) = l1_config_builder.slot_duration_override {
             l1_beacon = l1_beacon.with_l1_slot_duration_override(l1_slot_duration);
         }
 
-        let finalized_poll_interval = self
-            .finalized_poll_interval
-            .unwrap_or_else(|| L1Config::default_finalized_poll_interval(self.config.l1_chain_id));
+        let finalized_poll_interval = finalized_poll_interval
+            .unwrap_or_else(|| L1Config::default_finalized_poll_interval(config.l1_chain_id));
 
         let l1_config = L1Config {
-            chain_config: Arc::new(self.l1_config_builder.chain_config),
-            trust_rpc: self.l1_config_builder.trust_rpc,
+            chain_config: Arc::new(l1_config_builder.chain_config),
+            trust_rpc: l1_config_builder.trust_rpc,
             beacon_client: l1_beacon,
-            engine_provider: RootProvider::new_http(self.l1_config_builder.rpc_url.clone()),
+            engine_provider: RootProvider::new_http(l1_config_builder.rpc_url.clone()),
             finalized_poll_interval,
         };
 
-        let jwt_secret = self.engine_config.l2_jwt_secret;
-        let hyper_client = Client::builder(TokioExecutor::new()).build_http::<Full<Bytes>>();
+        let l2_provider = l2_provider.unwrap_or_else(|| {
+            let jwt_secret = engine_config.l2_jwt_secret;
+            let hyper_client = Client::builder(TokioExecutor::new()).build_http::<Full<Bytes>>();
 
-        let auth_layer = AuthLayer::new(jwt_secret);
-        let service = ServiceBuilder::new().layer(auth_layer).service(hyper_client);
+            let auth_layer = AuthLayer::new(jwt_secret);
+            let service = ServiceBuilder::new().layer(auth_layer).service(hyper_client);
 
-        let layer_transport = HyperClient::with_service(service);
-        let http_hyper = Http::with_client(layer_transport, self.engine_config.l2_url.clone());
-        let rpc_client = RpcClient::new(http_hyper, false);
-        let l2_provider = RootProvider::<Base>::new(rpc_client);
+            let layer_transport = HyperClient::with_service(service);
+            let http_hyper = Http::with_client(layer_transport, engine_config.l2_url.clone());
+            let rpc_client = RpcClient::new(http_hyper, false);
+            RootProvider::<Base>::new(rpc_client)
+        });
 
-        let rollup_config = Arc::new(self.config);
+        let rollup_config = Arc::new(config);
 
-        let p2p_config = self.p2p_config;
-        let sequencer_config = self.sequencer_config.unwrap_or_default();
+        let sequencer_config = sequencer_config.unwrap_or_default();
 
-        let derivation_delegate_provider = self.derivation_delegate_config.as_ref().map(|config| {
+        let derivation_delegate_provider = derivation_delegate_config.as_ref().map(|config| {
             DerivationDelegateClient::new(config.l2_cl_url.clone()).expect(
                 "Failed to create Derivation Delegate provider despite config being present",
             )
@@ -202,13 +224,13 @@ impl RollupNodeBuilder {
             config: rollup_config,
             l1_config,
             l2_provider,
-            l2_trust_rpc: self.l2_trust_rpc,
-            engine_config: self.engine_config,
-            rpc_builder: self.rpc_config,
+            l2_trust_rpc,
+            engine_config,
+            rpc_builder: rpc_config,
             p2p_config,
             sequencer_config,
             derivation_delegate_provider,
-            safedb_path: self.safedb_path,
+            safedb_path,
         }
     }
 }

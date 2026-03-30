@@ -6,6 +6,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 L1_RPC="${1:-$L1_RPC_URL}"
 L2_BUILDER_OP_RPC="${2:-$L2_BUILDER_OP_RPC_URL}"
 L2_CLIENT_OP_RPC="${3:-$L2_CLIENT_OP_RPC_URL}"
+L2_CLIENT_COMBINED_OP_RPC="${4:-$L2_CLIENT_COMBINED_OP_RPC_URL}"
 
 # Fetch L1 block number
 L1_BLOCK=$(cast block-number --rpc-url $L1_RPC 2>/dev/null || echo "N/A")
@@ -22,17 +23,24 @@ CLIENT_STATUS=$(curl -s $L2_CLIENT_OP_RPC -X POST -H "Content-Type: application/
 CLIENT_UNSAFE=$(echo $CLIENT_STATUS | jq -r '.result.unsafe_l2.number // "N/A"')
 CLIENT_SAFE=$(echo $CLIENT_STATUS | jq -r '.result.safe_l2.number // "N/A"')
 
+# Fetch L2 combined client sync status
+CLIENT_COMBINED_STATUS=$(curl -s $L2_CLIENT_COMBINED_OP_RPC -X POST -H "Content-Type: application/json" \
+    --data '{"jsonrpc":"2.0","method":"optimism_syncStatus","params":[],"id":1}' 2>/dev/null)
+CLIENT_COMBINED_UNSAFE=$(echo $CLIENT_COMBINED_STATUS | jq -r '.result.unsafe_l2.number // "N/A"')
+CLIENT_COMBINED_SAFE=$(echo $CLIENT_COMBINED_STATUS | jq -r '.result.safe_l2.number // "N/A"')
+
 # Print table
 printf "\n"
-printf "%-12s | %-10s | %-10s\n" "Component" "Unsafe" "Safe"
-printf "%-12s-+-%-10s-+-%-10s\n" "------------" "----------" "----------"
-printf "%-12s | %-10s | %-10s\n" "L1" "$L1_BLOCK" "-"
-printf "%-12s | %-10s | %-10s\n" "L2 Builder" "$BUILDER_UNSAFE" "$BUILDER_SAFE"
-printf "%-12s | %-10s | %-10s\n" "L2 Client" "$CLIENT_UNSAFE" "$CLIENT_SAFE"
+printf "%-18s | %-10s | %-10s\n" "Component" "Unsafe" "Safe"
+printf "%-18s-+-%-10s-+-%-10s\n" "------------------" "----------" "----------"
+printf "%-18s | %-10s | %-10s\n" "L1" "$L1_BLOCK" "-"
+printf "%-18s | %-10s | %-10s\n" "L2 Builder" "$BUILDER_UNSAFE" "$BUILDER_SAFE"
+printf "%-18s | %-10s | %-10s\n" "Client: current" "$CLIENT_UNSAFE" "$CLIENT_SAFE"
+printf "%-18s | %-10s | %-10s\n" "Client: combined" "$CLIENT_COMBINED_UNSAFE" "$CLIENT_COMBINED_SAFE"
 
 # Check ingress health
 INGRESS_HEALTH_URL="http://localhost:${L2_INGRESS_HEALTH_PORT:-8081}/health"
 INGRESS_STATUS=$(curl -sf "$INGRESS_HEALTH_URL" >/dev/null 2>&1 && echo "healthy" || echo "not running")
-printf "%-12s | %-10s | %-10s\n" "L2 Ingress" "$INGRESS_STATUS" "-"
+printf "%-18s | %-10s | %-10s\n" "L2 Ingress" "$INGRESS_STATUS" "-"
 
 printf "\n"

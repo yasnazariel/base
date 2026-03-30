@@ -2864,6 +2864,50 @@ dependencies = [
 ]
 
 [[package]]
+name = "base-bin"
+version = "0.0.0"
+dependencies = [
+ "alloy-genesis",
+ "alloy-primitives",
+ "alloy-rpc-types-engine",
+ "base-alloy-chains",
+ "base-bundle-extension",
+ "base-cli-utils",
+ "base-client-cli",
+ "base-consensus-genesis",
+ "base-consensus-node",
+ "base-consensus-peers",
+ "base-consensus-registry",
+ "base-consensus-rpc",
+ "base-execution-chainspec",
+ "base-flashblocks",
+ "base-flashblocks-node",
+ "base-metering",
+ "base-node-core",
+ "base-node-runner",
+ "base-reth-cli",
+ "base-txpool-rpc",
+ "base-txpool-tracing",
+ "clap",
+ "eyre",
+ "reth-cli-util",
+ "reth-db",
+ "reth-network-peers",
+ "reth-node-builder",
+ "reth-node-core",
+ "reth-rpc-server-types",
+ "reth-tasks",
+ "rstest",
+ "serde",
+ "serde_json",
+ "serial_test",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "base-blobs"
 version = "0.0.0"
 dependencies = [

@@ -129,10 +129,6 @@ where
 /// The builder for the [`OpEngineClient`].
 #[derive(Debug, Clone)]
 pub struct EngineClientBuilder {
-    /// The L2 Engine API endpoint URL.
-    pub l2: Url,
-    /// The L2 JWT secret.
-    pub l2_jwt: JwtSecret,
     /// The L1 RPC URL.
     pub l1_rpc: Url,
     /// The [`RollupConfig`] for determining Engine API versions based on hardfork activations.
@@ -140,16 +136,34 @@ pub struct EngineClientBuilder {
 }
 
 impl EngineClientBuilder {
+    /// Creates a new builder for the shared rollup and L1 inputs.
+    pub const fn new(l1_rpc: Url, cfg: Arc<RollupConfig>) -> Self {
+        Self { l1_rpc, cfg }
+    }
+
     /// Creates a new [`OpEngineClient`] with authenticated HTTP connections.
     ///
     /// Sets up JWT-authenticated connections to the Engine API endpoint along with an
     /// unauthenticated connection to the L1 chain.
-    pub fn build(self) -> OpEngineClient<RootProvider, RootProvider<Base>> {
-        let engine = OpEngineClient::<RootProvider, RootProvider<Base>>::rpc_client::<Base>(
-            self.l2,
-            self.l2_jwt,
-        );
+    pub fn build(
+        self,
+        l2: Url,
+        l2_jwt: JwtSecret,
+    ) -> OpEngineClient<RootProvider, RootProvider<Base>> {
+        let engine =
+            OpEngineClient::<RootProvider, RootProvider<Base>>::rpc_client::<Base>(l2, l2_jwt);
 
+        self.build_with_engine_provider(engine)
+    }
+
+    /// Creates a new [`OpEngineClient`] with a pre-built L2 provider.
+    pub fn build_with_engine_provider<L2Provider>(
+        self,
+        engine: L2Provider,
+    ) -> OpEngineClient<RootProvider, L2Provider>
+    where
+        L2Provider: Provider<Base>,
+    {
         let l1_provider = RootProvider::new_http(self.l1_rpc);
 
         OpEngineClient { engine, l1_provider, cfg: self.cfg }

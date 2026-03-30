@@ -147,6 +147,7 @@ services:
       - ../../.devnet/l2/builder-cl:/data/l2-builder-cl
       - ../../.devnet/l2/client:/data/l2-client
       - ../../.devnet/l2/client-cl:/data/l2-client-cl
+      - ../../.devnet/l2/client-combined:/data/l2-client-combined
     environment:
       - L1_RPC_URL=http://l1-el:${L1_HTTP_PORT}
       - L1_CHAIN_ID=${L1_CHAIN_ID}
@@ -345,11 +346,11 @@ services:
       setup-l2:
         condition: service_completed_successfully
     ports:
-      - "${L2_CLIENT_HTTP_PORT}:${L2_CLIENT_HTTP_PORT}"     # HTTP RPC
-      - "${L2_CLIENT_WS_PORT}:${L2_CLIENT_WS_PORT}"         # WebSocket
-      - "${L2_CLIENT_AUTH_PORT}:${L2_CLIENT_AUTH_PORT}"     # Auth RPC (Engine API)
-      - "${L2_CLIENT_P2P_PORT}:${L2_CLIENT_P2P_PORT}"       # P2P
-      - "${L2_CLIENT_METRICS_PORT}:${L2_CLIENT_METRICS_PORT}"  # Metrics
+      - "${L2_CLIENT_HTTP_PORT}:${L2_CLIENT_HTTP_PORT}"          # HTTP RPC
+      - "${L2_CLIENT_WS_PORT}:${L2_CLIENT_WS_PORT}"              # WebSocket
+      - "${L2_CLIENT_AUTH_PORT}:${L2_CLIENT_AUTH_PORT}"          # Auth RPC (Engine API)
+      - "${L2_CLIENT_P2P_PORT}:${L2_CLIENT_P2P_PORT}"            # P2P
+      - "${L2_CLIENT_METRICS_PORT}:${L2_CLIENT_METRICS_PORT}"    # Metrics
     volumes:
       - ../../.devnet/l2/client:/data
       - ../../.devnet/l1/configs:/genesis:ro
@@ -359,8 +360,8 @@ services:
     entrypoint: /app/base-client
     command:
       - node
-      - --chain=/genesis/l2/genesis.json
       - --datadir=/data
+      - --chain=/genesis/l2/genesis.json
       - --tracing-otlp=http://jaeger:4318
       - --tracing-otlp.filter=debug,providers::state::overlay=off,trie=off
       - --http
@@ -416,10 +417,10 @@ services:
       base-builder-cl:
         condition: service_healthy
     ports:
-      - "${L2_CLIENT_CL_RPC_PORT}:${L2_CLIENT_CL_RPC_PORT}"     # RPC
-      - "${L2_CLIENT_CL_P2P_PORT}:${L2_CLIENT_CL_P2P_PORT}"     # P2P TCP
-      - "${L2_CLIENT_CL_P2P_PORT}:${L2_CLIENT_CL_P2P_PORT}/udp" # P2P UDP
-      - "${L2_CLIENT_CL_METRICS_PORT}:${L2_CLIENT_CL_METRICS_PORT}"  # Metrics
+      - "${L2_CLIENT_CL_RPC_PORT}:${L2_CLIENT_CL_RPC_PORT}"        # RPC
+      - "${L2_CLIENT_CL_P2P_PORT}:${L2_CLIENT_CL_P2P_PORT}"        # P2P TCP
+      - "${L2_CLIENT_CL_P2P_PORT}:${L2_CLIENT_CL_P2P_PORT}/udp"    # P2P UDP
+      - "${L2_CLIENT_CL_METRICS_PORT}:${L2_CLIENT_CL_METRICS_PORT}" # Metrics
     volumes:
       - ../../.devnet/l2/client-cl:/data
       - ../../.devnet/l1/configs:/genesis:ro
@@ -464,6 +465,67 @@ services:
       - Off
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:${L2_CLIENT_CL_RPC_PORT}/healthz"]
+      interval: 250ms
+      timeout: 1s
+      retries: 240
+      start_period: 250ms
+    restart: unless-stopped
+
+  base-client-combined:
+    image: base:local
+    build:
+      <<: *rust-service-build
+      target: base
+    container_name: base-client-combined
+    depends_on:
+      setup-l2:
+        condition: service_completed_successfully
+      base-builder-cl:
+        condition: service_healthy
+    ports:
+      - "${L2_CLIENT_COMBINED_HTTP_PORT}:${L2_CLIENT_COMBINED_HTTP_PORT}"         # HTTP RPC
+      - "${L2_CLIENT_COMBINED_CL_RPC_PORT}:${L2_CLIENT_COMBINED_CL_RPC_PORT}"     # Rollup RPC
+      - "${L2_CLIENT_COMBINED_METRICS_PORT}:${L2_CLIENT_COMBINED_METRICS_PORT}"   # Metrics
+    volumes:
+      - ../../.devnet/l2/client-combined:/data
+      - ../../.devnet/l1/configs:/genesis:ro
+      - ../../.devnet/l2/configs:/genesis/l2:ro
+    environment:
+      - OTEL_SERVICE_NAME=base-client-combined
+    entrypoint: /app/base
+    command:
+      - node
+      - --datadir=/data
+      - --http=0.0.0.0:${L2_CLIENT_COMBINED_HTTP_PORT}
+      - --op-rpc=0.0.0.0:${L2_CLIENT_COMBINED_CL_RPC_PORT}
+      - --metrics=0.0.0.0:${L2_CLIENT_COMBINED_METRICS_PORT}
+      - --flashblocks-url=ws://base-builder:${L2_BUILDER_FLASHBLOCKS_PORT}
+      - --sequencer-rpc-url=http://base-builder:${L2_BUILDER_HTTP_PORT}
+      - --trusted-peers=enode://${BUILDER_ENODE_ID}@base-builder:${L2_BUILDER_P2P_PORT}
+      - --bootnodes=enode://${BUILDER_ENODE_ID}@base-builder-cl:${L2_BUILDER_CL_P2P_PORT}
+      - --p2p.listen.tcp=${L2_CLIENT_COMBINED_CL_P2P_PORT}
+      - --p2p.listen.udp=${L2_CLIENT_COMBINED_CL_P2P_PORT}
+      - --p2p.advertise.ip=base-client-combined
+      - --p2p.scoring=Off
+      - --l1-rpc-url=http://l1-el:${L1_HTTP_PORT}
+      - --l1-beacon-url=http://l1-cl:${L1_CL_HTTP_PORT}
+      - --l1-slot-duration=4
+      - --l2-genesis=/genesis/l2/genesis.json
+      - --rollup-config=/genesis/l2/rollup.json
+      - --l1-config=/genesis/el/chain-config.json
+      - -vvv
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "curl",
+          "-sf",
+          "-H",
+          "Content-Type: application/json",
+          "--data",
+          "{\"jsonrpc\":\"2.0\",\"method\":\"web3_clientVersion\",\"params\":[],\"id\":1}",
+          "http://localhost:${L2_CLIENT_COMBINED_HTTP_PORT}",
+        ]
       interval: 250ms
       timeout: 1s
       retries: 240

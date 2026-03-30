@@ -32,12 +32,16 @@ pub struct EngineConfig {
 impl EngineConfig {
     /// Builds and returns the [`OpEngineClient`].
     pub fn build_engine_client(self) -> OpEngineClient<RootProvider, RootProvider<Base>> {
-        EngineClientBuilder {
-            l2: self.l2_url.clone(),
-            l2_jwt: self.l2_jwt_secret,
-            l1_rpc: self.l1_url.clone(),
-            cfg: Arc::clone(&self.config),
-        }
-        .build()
+        EngineClientBuilder::new(self.l1_url.clone(), Arc::clone(&self.config))
+            .build(self.l2_url.clone(), self.l2_jwt_secret)
+    }
+
+    /// Builds and returns the [`OpEngineClient`] using a pre-built L2 provider.
+    pub fn build_engine_client_with_l2_provider(
+        self,
+        l2_provider: RootProvider<Base>,
+    ) -> OpEngineClient<RootProvider, RootProvider<Base>> {
+        EngineClientBuilder::new(self.l1_url.clone(), Arc::clone(&self.config))
+            .build_with_engine_provider(l2_provider)
     }
 }

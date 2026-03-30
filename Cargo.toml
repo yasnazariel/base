@@ -11,6 +11,7 @@ exclude = [".github/"]
 resolver = "2"
 members = [
   "bin/audit-archiver",
+  "bin/base",
   "bin/basectl",
   "bin/based",
   "bin/batcher",
