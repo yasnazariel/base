@@ -502,6 +502,8 @@ services:
       - --flashblocks-url=ws://base-builder:${L2_BUILDER_FLASHBLOCKS_PORT}
       - --sequencer-rpc-url=http://base-builder:${L2_BUILDER_HTTP_PORT}
       - --trusted-peers=enode://${BUILDER_ENODE_ID}@base-builder:${L2_BUILDER_P2P_PORT}
+      - --el-p2p.listen.tcp=${L2_CLIENT_COMBINED_EL_P2P_PORT}
+      - --el-p2p.listen.udp=${L2_CLIENT_COMBINED_EL_P2P_PORT}
       - --bootnodes=enode://${BUILDER_ENODE_ID}@base-builder-cl:${L2_BUILDER_CL_P2P_PORT}
       - --p2p.listen.tcp=${L2_CLIENT_COMBINED_CL_P2P_PORT}
       - --p2p.listen.udp=${L2_CLIENT_COMBINED_CL_P2P_PORT}
@@ -509,10 +511,12 @@ services:
       - --p2p.scoring=Off
       - --l1-rpc-url=http://l1-el:${L1_HTTP_PORT}
       - --l1-beacon-url=http://l1-cl:${L1_CL_HTTP_PORT}
-      - --l1-slot-duration=4
+      - --l1-slot-duration=${L1_SLOT_DURATION:-4}
       - --l2-genesis=/genesis/l2/genesis.json
       - --rollup-config=/genesis/l2/rollup.json
       - --l1-config=/genesis/el/chain-config.json
+      - --tracing-otlp=http://jaeger:4318
+      - --tracing-otlp.filter=debug,providers::state::overlay=off,trie=off
       - -vvv
     healthcheck:
       test:

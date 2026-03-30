@@ -33,7 +33,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     cargo build --profile $PROFILE --package base-reth-node --bin base-reth-node && \
     cp /app/target/$([ "$PROFILE" = "dev" ] && echo debug || echo "$PROFILE")/base-reth-node /app/base-client
 
-FROM source AS base-builder
+FROM source AS base-bin-builder
 ARG PROFILE=release
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
@@ -108,7 +108,7 @@ COPY --from=client-builder /app/base-client ./base-client
 ENTRYPOINT ["./base-client"]
 
 FROM runtime-base AS base
-COPY --from=base-builder /app/base ./base
+COPY --from=base-bin-builder /app/base ./base
 ENTRYPOINT ["./base"]
 
 FROM runtime-base AS builder

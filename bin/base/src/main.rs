@@ -7,6 +7,7 @@ mod cli;
 mod node;
 
 use reth_cli_util::allocator::{Allocator, new_allocator};
+use reth_tracing as _;
 
 #[global_allocator]
 static ALLOC: Allocator = new_allocator();
@@ -16,5 +17,8 @@ fn main() {
     base_reth_cli::init_reth!();
 
     let cli = base_cli_utils::parse_cli!(cli::Cli, |cmd: clap::Command| cmd.name("base"));
-    cli.run().unwrap();
+    if let Err(err) = cli.run() {
+        eprintln!("Error: {err:?}");
+        std::process::exit(1);
+    }
 }

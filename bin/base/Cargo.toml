@@ -26,6 +26,7 @@ base-txpool-rpc.workspace = true
 base-flashblocks.workspace = true
 base-node-runner.workspace = true
 base-alloy-chains.workspace = true
+base-alloy-network.workspace = true
 base-consensus-rpc.workspace = true
 base-txpool-tracing.workspace = true
 base-consensus-peers.workspace = true
@@ -40,14 +41,17 @@ base-consensus-node = { workspace = true, features = ["metrics"] }
 alloy-genesis.workspace = true
 alloy-primitives.workspace = true
 alloy-rpc-types-engine.workspace = true
+alloy-provider = { workspace = true, features = ["ipc"] }
 
 # reth
 reth-db.workspace = true
 reth-tasks.workspace = true
+reth-tracing = { workspace = true, features = ["otlp"] }
 reth-cli-util.workspace = true
 reth-node-core.workspace = true
 reth-node-builder.workspace = true
 reth-network-peers.workspace = true
+reth-tracing-otlp.workspace = true
 reth-rpc-server-types.workspace = true
 
 # cli
@@ -59,12 +63,10 @@ serde_json.workspace = true
 # misc
 eyre.workspace = true
 tokio.workspace = true
+tokio-util.workspace = true
 tempfile.workspace = true
 tracing = { workspace = true, features = ["std"] }
-
-[dev-dependencies]
-rstest.workspace = true
-serial_test.workspace = true
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
 [features]
 default = [ "jemalloc" ]

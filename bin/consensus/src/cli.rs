@@ -10,8 +10,8 @@ use base_client_cli::{
     L1ClientArgs, L1ConfigFile, L2ClientArgs, L2ConfigFile, P2PArgs, RpcArgs, SequencerArgs,
 };
 use base_consensus_node::{
-    DelegateL2Client, EngineConfig, FollowNode, L1Config, L1ConfigBuilder, NodeMode,
-    RollupNodeBuilder,
+    DelegateL2Client, EngineConfig, EngineRpcAddress, FollowNode, L1Config, L1ConfigBuilder,
+    NodeMode, RollupNodeBuilder,
 };
 use base_consensus_providers::OnlineBeaconClient;
 use base_consensus_registry::Registry;
@@ -172,7 +172,7 @@ impl Follow {
 
         let engine_config = EngineConfig {
             config: Arc::clone(&rollup_config),
-            l2_url: self.l2_client_args.l2_engine_rpc.clone(),
+            l2_rpc: EngineRpcAddress::Http(self.l2_client_args.l2_engine_rpc.clone()),
             l2_jwt_secret: jwt_secret,
             l1_url: self.l1_rpc_args.l1_eth_rpc.clone(),
             mode: NodeMode::Validator,
@@ -379,7 +379,7 @@ impl Node {
 
         let engine_config = EngineConfig {
             config: Arc::new(cfg.clone()),
-            l2_url: self.l2_client_args.l2_engine_rpc.clone(),
+            l2_rpc: EngineRpcAddress::Http(self.l2_client_args.l2_engine_rpc.clone()),
             l2_jwt_secret: jwt_secret,
             l1_url: self.l1_rpc_args.l1_eth_rpc.clone(),
             mode: self.node_mode,

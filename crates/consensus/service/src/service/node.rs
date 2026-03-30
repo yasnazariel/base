@@ -264,9 +264,19 @@ impl RollupNode {
     /// finalizes `safe` blocks that it has derived when L1 finalized block updates are
     /// received.
     pub async fn start(&self) -> Result<(), String> {
+        self.start_with_shutdown(CancellationToken::new()).await
+    }
+
+    /// Starts the rollup node service with an externally supplied shutdown token.
+    ///
+    /// Cancelling `shutdown` triggers cooperative shutdown across the rollup node's internal
+    /// actors and lets callers coordinate this service with other long-running tasks in the same
+    /// process.
+    pub async fn start_with_shutdown(&self, shutdown: CancellationToken) -> Result<(), String> {
         let pipeline = self.create_pipeline().await;
-        let engine_client = Arc::new(self.engine_config().build_engine_client());
-        self.start_inner(engine_client, pipeline).await
+        let engine_client =
+            Arc::new(self.engine_config().build_engine_client().await.map_err(|e| e.to_string())?);
+        self.start_inner(engine_client, pipeline, shutdown).await
     }
 
     /// Starts the rollup node service with a pre-built derivation pipeline.
@@ -283,8 +293,9 @@ impl RollupNode {
         DerivationActor<QueuedDerivationEngineClient, P>:
             NodeActor<StartData = (), Error = DerivationError>,
     {
-        let engine_client = Arc::new(self.engine_config().build_engine_client());
-        self.start_inner(engine_client, pipeline).await
+        let engine_client =
+            Arc::new(self.engine_config().build_engine_client().await.map_err(|e| e.to_string())?);
+        self.start_inner(engine_client, pipeline, CancellationToken::new()).await
     }
 
     /// Starts the rollup node with a pre-built engine client.
@@ -297,18 +308,21 @@ impl RollupNode {
         engine_client: Arc<E>,
     ) -> Result<(), String> {
         let pipeline = self.create_pipeline().await;
-        self.start_inner(engine_client, pipeline).await
+        self.start_inner(engine_client, pipeline, CancellationToken::new()).await
     }
 
-    async fn start_inner<E, P>(&self, engine_client: Arc<E>, pipeline: P) -> Result<(), String>
+    async fn start_inner<E, P>(
+        &self,
+        engine_client: Arc<E>,
+        pipeline: P,
+        cancellation: CancellationToken,
+    ) -> Result<(), String>
     where
         E: EngineClient + 'static,
         P: Pipeline + SignalReceiver + Send + Sync + 'static,
         DerivationActor<QueuedDerivationEngineClient, P>:
             NodeActor<StartData = (), Error = DerivationError>,
     {
-        let cancellation = CancellationToken::new();
-
         // Build the safe head DB pair. Both actors share the same underlying DB via Arc.
         //
         // In delegate mode the local derivation actor is replaced by a `DelegateDerivationActor`

@@ -16,7 +16,8 @@ use base_builder_core::test_utils::get_available_port;
 use base_consensus_disc::LocalNode;
 use base_consensus_genesis::{L1ChainConfig, RollupConfig};
 use base_consensus_node::{
-    EngineConfig, L1ConfigBuilder, NetworkConfig, NodeMode, RollupNodeBuilder, SequencerConfig,
+    EngineConfig, EngineRpcAddress, L1ConfigBuilder, NetworkConfig, NodeMode, RollupNodeBuilder,
+    SequencerConfig,
 };
 use base_consensus_peers::{PeerScoreLevel, SecretKeyLoader};
 use base_consensus_rpc::{AdminApiClient, OpP2PApiClient, RollupNodeApiClient, RpcBuilder};
@@ -143,7 +144,7 @@ impl InProcessConsensus {
 
         let engine_config = EngineConfig {
             config: Arc::new(rollup_config.clone()),
-            l2_url: config.l2_engine_url,
+            l2_rpc: EngineRpcAddress::Http(config.l2_engine_url),
             l2_jwt_secret: config.jwt_secret,
             l1_url: config.l1_rpc_url,
             mode: config.mode,

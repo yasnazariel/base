@@ -116,7 +116,7 @@ impl RollupNodeBuilder {
         Self { engine_config, ..self }
     }
 
-    /// Sets a pre-built L2 provider on the [`RollupNodeBuilder`].
+    /// Sets a pre-built L2 provider on the builder.
     pub fn with_l2_provider(self, l2_provider: RootProvider<Base>) -> Self {
         Self { l2_provider: Some(l2_provider), ..self }
     }
@@ -193,11 +193,16 @@ impl RollupNodeBuilder {
             chain_config: Arc::new(l1_config_builder.chain_config),
             trust_rpc: l1_config_builder.trust_rpc,
             beacon_client: l1_beacon,
-            engine_provider: RootProvider::new_http(l1_config_builder.rpc_url.clone()),
+            engine_provider: RootProvider::new_http(l1_config_builder.rpc_url),
             finalized_poll_interval,
         };
 
         let l2_provider = l2_provider.unwrap_or_else(|| {
+            let url = engine_config
+                .l2_rpc
+                .http_url()
+                .expect("IPC transport requires a pre-built l2_provider via with_l2_provider()")
+                .clone();
             let jwt_secret = engine_config.l2_jwt_secret;
             let hyper_client = Client::builder(TokioExecutor::new()).build_http::<Full<Bytes>>();
 
@@ -205,7 +210,7 @@ impl RollupNodeBuilder {
             let service = ServiceBuilder::new().layer(auth_layer).service(hyper_client);
 
             let layer_transport = HyperClient::with_service(service);
-            let http_hyper = Http::with_client(layer_transport, engine_config.l2_url.clone());
+            let http_hyper = Http::with_client(layer_transport, url);
             let rpc_client = RpcClient::new(http_hyper, false);
             RootProvider::<Base>::new(rpc_client)
         });

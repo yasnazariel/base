@@ -7,7 +7,7 @@ mod client;
 pub use client::{EngineDerivationClient, QueuedEngineDerivationClient};
 
 mod config;
-pub use config::EngineConfig;
+pub use config::{EngineConfig, EngineRpcAddress};
 
 mod error;
 pub use error::EngineError;

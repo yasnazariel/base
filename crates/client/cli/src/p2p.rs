@@ -204,6 +204,9 @@ pub struct P2PArgs {
     pub redial_period: u64,
 
     /// An optional list of bootnode ENRs or node records to start the node with.
+    ///
+    /// The explicit clap `id` avoids colliding with reth's top-level `--bootnodes` in binaries
+    /// that compose both EL and CL argument sets.
     #[arg(
         id = "consensus_bootnodes",
         long = "p2p.bootnodes",

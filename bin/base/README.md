@@ -12,7 +12,8 @@ HTTP-only when `--http` is provided; the embedded consensus service and auth IPC
 Prometheus metrics are exposed only when `--metrics` is provided.
 The rollup RPC for `optimism_*` methods is exposed only when `--op-rpc` is provided.
 For file-based chains not present in the registry, `--unsafe-block-signer` can be used to provide
-the initial consensus signer explicitly.
+the initial consensus signer explicitly. When `--http` is enabled, CORS is set to `*` by default;
+use a reverse proxy to restrict origins for internet-facing deployments.
 
 Use a named preset for stable public networks:
 
@@ -31,6 +32,9 @@ base node \
   --rollup-config /path/to/rollup.json \
   --l1-config /path/to/l1.json \
   --unsafe-block-signer 0x... \
+  --trusted-peers enode://...@execution-peer.example.org:30303 \
+  --el-p2p.listen.tcp 30303 \
+  --el-p2p.listen.udp 30303 \
   --bootnodes enode://...@bootnode.example.org:9000 \
   --l1-rpc-url http://... \
   --l1-beacon-url http://...

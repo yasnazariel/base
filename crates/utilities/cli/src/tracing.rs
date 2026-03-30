@@ -90,18 +90,32 @@ impl LogConfig {
     ///
     /// This sets the global default subscriber. Should only be called once.
     pub fn init_tracing_subscriber_with_filter(&self, filter: EnvFilter) -> eyre::Result<()> {
-        let registry = tracing_subscriber::registry().with(filter);
+        self.init_tracing_subscriber_with_layers(filter, Vec::new())
+    }
 
-        // Build stdout layer
-        let stdout_layer = self.stdout_logs.as_ref().map(build_stdout_layer);
+    /// Initialize the tracing subscriber with a custom filter and optional extra layers.
+    ///
+    /// Extra layers are applied alongside the stdout and file layers.
+    pub fn init_tracing_subscriber_with_layers(
+        &self,
+        filter: EnvFilter,
+        extra: Vec<Box<dyn Layer<tracing_subscriber::Registry> + Send + Sync>>,
+    ) -> eyre::Result<()> {
+        let mut layers: Vec<Box<dyn Layer<tracing_subscriber::Registry> + Send + Sync>> =
+            Vec::new();
 
-        // Build file layer
-        let file_layer = self.file_logs.as_ref().map(build_file_layer);
+        if let Some(stdout) = self.stdout_logs.as_ref() {
+            layers.push(build_stdout_layer(stdout));
+        }
+        if let Some(file) = self.file_logs.as_ref() {
+            layers.push(build_file_layer(file));
+        }
+        layers.extend(extra);
 
-        // Combine and init
-        registry
-            .with(stdout_layer)
-            .with(file_layer)
+        // Apply all layers in a single `.with()` call so they all see `Registry` as `S`.
+        tracing_subscriber::registry()
+            .with(layers)
+            .with(filter)
             .try_init()
             .map_err(|e| eyre::eyre!("Failed to initialize tracing subscriber: {}", e))
     }

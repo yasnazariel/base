@@ -2869,8 +2869,10 @@ version = "0.0.0"
 dependencies = [
  "alloy-genesis",
  "alloy-primitives",
+ "alloy-provider",
  "alloy-rpc-types-engine",
  "base-alloy-chains",
+ "base-alloy-network",
  "base-bundle-extension",
  "base-cli-utils",
  "base-client-cli",
@@ -2897,13 +2899,15 @@ dependencies = [
  "reth-node-core",
  "reth-rpc-server-types",
  "reth-tasks",
- "rstest",
+ "reth-tracing",
+ "reth-tracing-otlp",
  "serde",
  "serde_json",
- "serial_test",
  "tempfile",
  "tokio",
+ "tokio-util",
  "tracing",
+ "tracing-subscriber 0.3.23",
  "url",
 ]
 

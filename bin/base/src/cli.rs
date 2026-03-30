@@ -1,7 +1,7 @@
 //! Curated CLI for the unified Base validator binary.
 
 use std::{
-    fs::File,
+    fs::{self, File},
     net::{IpAddr, SocketAddr, ToSocketAddrs},
     path::{Path, PathBuf},
     sync::Arc,
@@ -12,7 +12,7 @@ use alloy_primitives::Address;
 use base_alloy_chains::BaseChainConfig;
 use base_cli_utils::LogConfig;
 use base_client_cli::P2PArgs;
-use base_consensus_genesis::{ChainConfig as FileChainConfig, L1ChainConfig, RollupConfig};
+use base_consensus_genesis::{L1ChainConfig, Roles, RollupConfig};
 use base_consensus_peers::PeerScoreLevel;
 use base_consensus_registry::Registry;
 use base_consensus_rpc::RpcBuilder;
@@ -23,7 +23,9 @@ use base_node_core::args::RollupArgs;
 use clap::{Parser, ValueEnum};
 use eyre::{Context, OptionExt};
 use reth_network_peers::TrustedPeer;
+use reth_tracing_otlp::OtlpProtocol;
 use tracing::warn;
+use tracing_subscriber::Layer as _;
 use url::Url;
 
 pub(crate) const DEFAULT_METERING_GAS_LIMIT: u64 = 30_000_000;
@@ -195,6 +197,14 @@ pub(crate) struct NodeArgs {
     )]
     pub(crate) trusted_peers: Vec<TrustedPeer>,
 
+    /// Optional fixed TCP port for the embedded execution P2P stack.
+    #[arg(long = "el-p2p.listen.tcp", env = "BASE_EL_P2P_LISTEN_TCP_PORT", value_name = "PORT")]
+    pub(crate) el_p2p_listen_tcp_port: Option<u16>,
+
+    /// Optional fixed UDP port for the embedded execution discovery stack.
+    #[arg(long = "el-p2p.listen.udp", env = "BASE_EL_P2P_LISTEN_UDP_PORT", value_name = "PORT")]
+    pub(crate) el_p2p_listen_udp_port: Option<u16>,
+
     /// Optional fixed TCP port for the embedded consensus P2P stack.
     #[arg(long = "p2p.listen.tcp", env = "BASE_P2P_LISTEN_TCP_PORT", value_name = "PORT")]
     pub(crate) p2p_listen_tcp_port: Option<u16>,
@@ -214,11 +224,101 @@ pub(crate) struct NodeArgs {
     /// Logging configuration.
     #[command(flatten)]
     pub(crate) logging: LogArgs,
+
+    /// OTLP tracing endpoint URL (e.g. `http://localhost:4318/v1/traces`).
+    #[arg(
+        long = "tracing-otlp",
+        env = "BASE_OTLP_ENDPOINT",
+        global = true,
+        value_name = "URL",
+        help_heading = "Tracing"
+    )]
+    pub(crate) otlp_endpoint: Option<Url>,
+
+    /// Filter directive for the OTLP tracer (same syntax as `RUST_LOG`).
+    #[arg(
+        long = "tracing-otlp.filter",
+        env = "BASE_OTLP_FILTER",
+        global = true,
+        value_name = "FILTER",
+        default_value = "debug",
+        help_heading = "Tracing"
+    )]
+    pub(crate) otlp_filter: tracing_subscriber::EnvFilter,
+
+    /// OTLP transport protocol.
+    #[arg(
+        long = "tracing-otlp-protocol",
+        env = "BASE_OTLP_PROTOCOL",
+        global = true,
+        value_name = "PROTOCOL",
+        default_value = "http",
+        help_heading = "Tracing"
+    )]
+    pub(crate) otlp_protocol: OtlpProtocol,
+
+    /// OTLP trace sampling ratio (0.0 to 1.0).
+    #[arg(
+        long = "tracing-otlp.sample-ratio",
+        env = "BASE_OTLP_SAMPLE_RATIO",
+        global = true,
+        value_name = "RATIO",
+        help_heading = "Tracing"
+    )]
+    pub(crate) otlp_sample_ratio: Option<f64>,
 }
 
 impl NodeArgs {
     pub(crate) fn init_logging(&self) -> eyre::Result<()> {
-        LogConfig::from(self.logging.clone()).init_tracing_subscriber()
+        let log_config = LogConfig::from(self.logging.clone());
+
+        let filter = tracing_subscriber::EnvFilter::builder()
+            .with_default_directive(log_config.global_level.into())
+            .from_env_lossy()
+            .add_directive("discv5=error".parse().expect("valid directive"));
+
+        let extra = self.build_otlp_layer();
+
+        log_config.init_tracing_subscriber_with_layers(filter, extra)?;
+
+        Ok(())
+    }
+
+    fn build_otlp_layer(
+        &self,
+    ) -> Vec<Box<dyn tracing_subscriber::Layer<tracing_subscriber::Registry> + Send + Sync>> {
+        let mut layers: Vec<
+            Box<dyn tracing_subscriber::Layer<tracing_subscriber::Registry> + Send + Sync>,
+        > = Vec::new();
+
+        if let Some(endpoint) = &self.otlp_endpoint {
+            let service_name =
+                std::env::var("OTEL_SERVICE_NAME").unwrap_or_else(|_| "base".to_string());
+
+            let config = reth_tracing_otlp::OtlpConfig::new(
+                service_name,
+                endpoint.clone(),
+                self.otlp_protocol,
+                self.otlp_sample_ratio,
+            );
+            match config.and_then(|c| {
+                let ep = c.endpoint().clone();
+                reth_tracing_otlp::span_layer(c)
+                    .map(|layer| (layer, ep))
+                    .map_err(|e| eyre::eyre!(e))
+            }) {
+                Ok((layer, ep)) => {
+                    let filtered = layer.with_filter(self.otlp_filter.clone()).boxed();
+                    eprintln!("Started OTLP tracing export to {ep}");
+                    layers.push(filtered);
+                }
+                Err(e) => {
+                    eprintln!("Failed to initialize OTLP tracing: {e}");
+                }
+            }
+        }
+
+        layers
     }
 
     pub(crate) fn resolve(&self) -> eyre::Result<ResolvedNodeConfig> {
@@ -233,24 +333,31 @@ impl NodeArgs {
         resolved: &ResolvedNodeConfig,
         data_dir: &Path,
     ) -> eyre::Result<P2PArgs> {
-        let mut p2p = P2PArgs::default();
-        p2p.priv_path = Some(data_dir.join("consensus-p2p.key"));
-        p2p.listen_tcp_port = self.p2p_listen_tcp_port.unwrap_or(0);
-        p2p.listen_udp_port = self.p2p_listen_udp_port.or(self.p2p_listen_tcp_port).unwrap_or(0);
+        let defaults = P2PArgs::default();
+        let mut p2p = P2PArgs {
+            priv_path: Some(data_dir.join("consensus-p2p.key")),
+            listen_tcp_port: self.p2p_listen_tcp_port.unwrap_or(defaults.listen_tcp_port),
+            listen_udp_port: self
+                .p2p_listen_udp_port
+                .or(self.p2p_listen_tcp_port)
+                .unwrap_or(defaults.listen_udp_port),
+            bootnodes: resolved.consensus_bootnodes.clone(),
+            unsafe_block_signer: resolved.unsafe_block_signer,
+            ..defaults
+        };
         if let Some(advertise_ip) = self.p2p_advertise_ip.as_deref() {
             p2p.advertise_ip = Some(resolve_host(advertise_ip)?);
         }
         if let Some(scoring) = self.p2p_scoring {
             p2p.scoring = scoring;
         }
-        p2p.bootnodes = resolved.consensus_bootnodes.clone();
-        p2p.unsafe_block_signer = resolved.unsafe_block_signer;
         Ok(p2p)
     }
 
     pub(crate) fn rollup_args(&self) -> RollupArgs {
         RollupArgs {
             sequencer: self.sequencer_rpc_url.as_ref().map(ToString::to_string),
+            disable_txpool_gossip: self.sequencer_rpc_url.is_some(),
             ..RollupArgs::default()
         }
     }
@@ -299,10 +406,10 @@ impl NodeArgs {
         let chain_cfg = network.chain_config();
         let rollup_config = Registry::rollup_config(chain_cfg.chain_id)
             .cloned()
-            .ok_or_eyre(format!("missing rollup config for {}", network))?;
+            .ok_or_eyre(format!("missing rollup config for {network}"))?;
         let l1_config = Registry::l1_config(chain_cfg.l1_chain_id)
             .cloned()
-            .ok_or_eyre(format!("missing L1 config for {}", network))?;
+            .ok_or_eyre(format!("missing L1 config for {network}"))?;
 
         Ok(ResolvedNodeConfig {
             chain_spec: network.chain_spec(),
@@ -349,8 +456,7 @@ impl NodeArgs {
 
         let chain_spec = Arc::new(OpChainSpec::from_genesis(read_genesis(l2_genesis_path)?));
         let rollup_config = read_rollup_config(rollup_config_path)?;
-        let l1_config = read_l1_config(l1_config_path)?;
-        let file_unsafe_block_signer = read_file_unsafe_block_signer(l1_config_path)?;
+        let (l1_config, file_unsafe_block_signer) = read_l1_config(l1_config_path)?;
 
         eyre::ensure!(
             rollup_config.l2_chain_id.id() == chain_spec.inner.chain.id(),
@@ -380,7 +486,7 @@ impl NodeArgs {
         })
     }
 
-    fn file_mode_requested(&self) -> bool {
+    const fn file_mode_requested(&self) -> bool {
         self.l2_genesis.is_some() || self.rollup_config.is_some() || self.l1_config.is_some()
     }
 }
@@ -409,20 +515,31 @@ fn resolve_host(host: &str) -> eyre::Result<IpAddr> {
         .ok_or_else(|| eyre::eyre!("DNS resolution for {host} returned no addresses"))
 }
 
-fn read_file_unsafe_block_signer(path: &Path) -> eyre::Result<Option<Address>> {
-    let file = File::open(path)
-        .wrap_err_with(|| format!("failed to open L1 config {}", path.display()))?;
-    match serde_json::from_reader::<_, FileChainConfig>(file) {
-        Ok(config) => Ok(config.roles.and_then(|r| r.unsafe_block_signer)),
-        Err(e) => {
+#[derive(Debug, serde::Deserialize)]
+struct L1ConfigRolesEnvelope {
+    #[serde(rename = "Roles", alias = "roles")]
+    roles: Option<Roles>,
+}
+
+fn read_l1_config(path: &Path) -> eyre::Result<(L1ChainConfig, Option<Address>)> {
+    let bytes =
+        fs::read(path).wrap_err_with(|| format!("failed to read L1 config {}", path.display()))?;
+    let l1_config = serde_json::from_slice(&bytes)
+        .wrap_err_with(|| format!("failed to parse L1 config {}", path.display()))?;
+
+    let file_unsafe_block_signer = match serde_json::from_slice::<L1ConfigRolesEnvelope>(&bytes) {
+        Ok(config) => config.roles.and_then(|roles| roles.unsafe_block_signer),
+        Err(error) => {
             warn!(
                 path = %path.display(),
-                error = %e,
-                "L1 config did not parse as FileChainConfig; unsafe_block_signer not extracted"
+                error = %error,
+                "L1 config roles did not parse; unsafe_block_signer not extracted"
             );
-            Ok(None)
+            None
         }
-    }
+    };
+
+    Ok((l1_config, file_unsafe_block_signer))
 }
 
 fn read_genesis(path: &Path) -> eyre::Result<Genesis> {
@@ -439,20 +556,14 @@ fn read_rollup_config(path: &Path) -> eyre::Result<RollupConfig> {
         .wrap_err_with(|| format!("failed to parse rollup config {}", path.display()))
 }
 
-fn read_l1_config(path: &Path) -> eyre::Result<L1ChainConfig> {
-    let file = File::open(path)
-        .wrap_err_with(|| format!("failed to open L1 config {}", path.display()))?;
-    serde_json::from_reader(file)
-        .wrap_err_with(|| format!("failed to parse L1 config {}", path.display()))
-}
-
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use clap::Parser;
+    use tempfile::NamedTempFile;
 
     use super::*;
 
-    fn test_node_args() -> NodeArgs {
+    pub(crate) fn test_node_args() -> NodeArgs {
         NodeArgs {
             network: None,
             l2_genesis: None,
@@ -470,11 +581,17 @@ mod tests {
             unsafe_block_signer: None,
             bootnodes: Vec::new(),
             trusted_peers: Vec::new(),
+            el_p2p_listen_tcp_port: None,
+            el_p2p_listen_udp_port: None,
             p2p_listen_tcp_port: None,
             p2p_listen_udp_port: None,
             p2p_advertise_ip: None,
             p2p_scoring: None,
             logging: LogArgs::default(),
+            otlp_endpoint: None,
+            otlp_filter: tracing_subscriber::EnvFilter::from_default_env(),
+            otlp_protocol: OtlpProtocol::Http,
+            otlp_sample_ratio: None,
         }
     }
 
@@ -494,6 +611,7 @@ mod tests {
         assert_eq!(args.http, None);
         assert_eq!(args.metrics, None);
         assert_eq!(args.op_rpc, None);
+        assert_eq!(args.el_p2p_listen_tcp_port, None);
         assert_eq!(args.p2p_listen_tcp_port, None);
         assert_eq!(args.p2p_advertise_ip, None);
         assert!(args.trusted_peers.is_empty());
@@ -583,6 +701,26 @@ mod tests {
     }
 
     #[test]
+    fn parses_execution_p2p_ports() {
+        let cli = Cli::parse_from([
+            "base",
+            "node",
+            "--el-p2p.listen.tcp",
+            "7303",
+            "--el-p2p.listen.udp",
+            "7304",
+            "--l1-rpc-url",
+            "http://localhost:8545",
+            "--l1-beacon-url",
+            "http://localhost:5052",
+        ]);
+
+        let Command::Node(args) = cli.command;
+        assert_eq!(args.el_p2p_listen_tcp_port, Some(7303));
+        assert_eq!(args.el_p2p_listen_udp_port, Some(7304));
+    }
+
+    #[test]
     fn consensus_p2p_args_apply_explicit_overrides() {
         let args = NodeArgs {
             p2p_listen_tcp_port: Some(8003),
@@ -609,6 +747,25 @@ mod tests {
     }
 
     #[test]
+    fn consensus_p2p_args_preserve_default_ports_when_not_specified() {
+        let args = NodeArgs { p2p_advertise_ip: Some("127.0.0.1".to_string()), ..test_node_args() };
+        let resolved = ResolvedNodeConfig {
+            chain_spec: BASE_MAINNET.clone(),
+            rollup_config: Registry::rollup_config(8453).unwrap().clone(),
+            l1_config: Registry::l1_config(1).unwrap().clone(),
+            consensus_bootnodes: vec![],
+            unsafe_block_signer: Registry::unsafe_block_signer(8453),
+            source: NetworkSource::Files,
+        };
+
+        let p2p = args.consensus_p2p_args(&resolved, Path::new("/tmp")).unwrap();
+        let defaults = P2PArgs::default();
+        assert_eq!(p2p.listen_tcp_port, defaults.listen_tcp_port);
+        assert_eq!(p2p.listen_udp_port, defaults.listen_udp_port);
+        assert_eq!(p2p.advertise_ip, Some("127.0.0.1".parse().unwrap()));
+    }
+
+    #[test]
     fn resolve_unsafe_block_signer_prefers_cli_over_file_and_registry() {
         let file_signer: Address = "0xa95B83e39AA78B00F12fe431865B563793D97AF5".parse().unwrap();
         let cli_signer: Address = "0x19CC7073150D9f5888f09E0e9016d2a39667df14".parse().unwrap();
@@ -626,5 +783,53 @@ mod tests {
         let file_signer: Address = "0xa95B83e39AA78B00F12fe431865B563793D97AF5".parse().unwrap();
 
         assert_eq!(resolve_unsafe_block_signer(None, Some(file_signer), 8453), Some(file_signer));
+    }
+
+    #[test]
+    fn rollup_args_disable_txpool_gossip_when_sequencer_rpc_is_configured() {
+        let args = NodeArgs {
+            sequencer_rpc_url: Some(Url::parse("http://localhost:9545").unwrap()),
+            ..test_node_args()
+        };
+
+        let rollup_args = args.rollup_args();
+
+        assert!(rollup_args.disable_txpool_gossip);
+        assert_eq!(rollup_args.sequencer, Some("http://localhost:9545/".to_string()));
+    }
+
+    #[test]
+    fn read_l1_config_extracts_unsafe_block_signer_from_same_bytes() {
+        let signer: Address = "0xa95B83e39AA78B00F12fe431865B563793D97AF5".parse().unwrap();
+        let config = L1ChainConfig { chain_id: 1, ..L1ChainConfig::default() };
+
+        let mut json = serde_json::to_value(&config).unwrap();
+        json.as_object_mut().unwrap().insert(
+            "Roles".to_string(),
+            serde_json::json!({
+                "UnsafeBlockSigner": format!("{signer:#x}")
+            }),
+        );
+
+        let file = NamedTempFile::new().unwrap();
+        fs::write(file.path(), serde_json::to_vec(&json).unwrap()).unwrap();
+
+        let (parsed, extracted) = read_l1_config(file.path()).unwrap();
+
+        assert_eq!(parsed.chain_id, config.chain_id);
+        assert_eq!(extracted, Some(signer));
+    }
+
+    #[test]
+    fn read_l1_config_returns_none_without_roles() {
+        let config = L1ChainConfig { chain_id: 11_155_111, ..L1ChainConfig::default() };
+
+        let file = NamedTempFile::new().unwrap();
+        fs::write(file.path(), serde_json::to_vec(&config).unwrap()).unwrap();
+
+        let (parsed, extracted) = read_l1_config(file.path()).unwrap();
+
+        assert_eq!(parsed.chain_id, config.chain_id);
+        assert_eq!(extracted, None);
     }
 }

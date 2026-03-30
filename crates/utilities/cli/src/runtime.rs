@@ -55,6 +55,24 @@ impl RuntimeManager {
         })
     }
 
+    /// Run a fallible future with a signal-driven [`CancellationToken`].
+    ///
+    /// This creates a new runtime, installs the standard SIGINT/SIGTERM handler, and passes the
+    /// cancellation token into `f` so the future can coordinate a graceful shutdown instead of
+    /// being dropped as soon as a signal arrives.
+    pub fn run_with_signal_token<F, Fut>(f: F) -> eyre::Result<()>
+    where
+        F: FnOnce(CancellationToken) -> Fut,
+        Fut: Future<Output = eyre::Result<()>>,
+    {
+        let rt = Self::tokio_runtime().map_err(|e| eyre::eyre!(e))?;
+        rt.block_on(async move {
+            let cancellation = CancellationToken::new();
+            let _signal_handler = Self::install_signal_handler(cancellation.clone());
+            f(cancellation).await
+        })
+    }
+
     /// Run a fallible future until ctrl-c is pressed.
     pub fn run_until_ctrl_c<F>(fut: F) -> eyre::Result<()>
     where
@@ -71,5 +89,30 @@ impl RuntimeManager {
                 res = fut => res,
             }
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
+
+    use super::RuntimeManager;
+
+    #[test]
+    fn run_with_signal_token_executes_future() {
+        let ran = Arc::new(AtomicBool::new(false));
+        let ran_inner = Arc::clone(&ran);
+
+        RuntimeManager::run_with_signal_token(move |cancellation| async move {
+            assert!(!cancellation.is_cancelled());
+            ran_inner.store(true, Ordering::SeqCst);
+            Ok(())
+        })
+        .unwrap();
+
+        assert!(ran.load(Ordering::SeqCst));
     }
 }
