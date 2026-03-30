@@ -2,7 +2,7 @@
 //! forwarding pipeline on the Base node builder.
 
 use base_node_runner::{BaseNodeExtension, FromExtensionConfig, NodeHooks};
-use base_txpool::{SpawnedConsumer, SpawnedForwarder};
+use reth_transaction_pool::{SpawnedConsumer, SpawnedForwarder};
 use tracing::info;
 
 use crate::TxForwardingConfig;

@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use base_txpool::{
+use reth_transaction_pool::{
     ConsumerConfig as TxpoolConsumerConfig, ForwarderConfig as TxpoolForwarderConfig,
 };
 use url::Url;
@@ -70,13 +70,13 @@ impl TxForwardingConfig {
         self
     }
 
-    /// Converts to the consumer config used by `base-txpool`.
+    /// Converts to the consumer config used by `reth-transaction-pool`.
     pub fn to_consumer_config(&self) -> TxpoolConsumerConfig {
         TxpoolConsumerConfig::default()
             .with_resend_after(Duration::from_millis(self.resend_after_ms))
     }
 
-    /// Converts to the forwarder config used by `base-txpool`.
+    /// Converts to the forwarder config used by `reth-transaction-pool`.
     pub fn to_forwarder_config(&self) -> TxpoolForwarderConfig {
         TxpoolForwarderConfig::default()
             .with_builder_urls(self.builder_urls.clone())

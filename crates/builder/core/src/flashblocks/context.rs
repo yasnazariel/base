@@ -11,8 +11,6 @@ use base_alloy_chains::BaseUpgrades;
 use base_alloy_consensus::{OpDepositReceipt, OpReceipt, OpTxType};
 use base_alloy_evm::OpReceiptBuilder;
 use base_execution_payload_builder::{OpPayloadBuilderAttributes, error::OpPayloadBuilderError};
-use reth_revm::{L1BlockInfo, OpSpecId};
-use base_txpool::{BundleTransaction, estimated_da_size::DataAvailabilitySized};
 use reth_basic_payload_builder::PayloadConfig;
 use reth_chainspec::{ChainSpec, EthChainSpec, EthereumHardforks};
 use reth_evm::{
@@ -24,8 +22,11 @@ use reth_payload_builder::PayloadId;
 use reth_payload_primitives::PayloadBuilderAttributes;
 use reth_primitives::SealedHeader;
 use reth_primitives_traits::{InMemorySize, SignedTransaction};
-use reth_revm::{State, context::Block};
-use reth_transaction_pool::{BestTransactionsAttributes, PoolTransaction};
+use reth_revm::{L1BlockInfo, OpSpecId, State, context::Block};
+use reth_transaction_pool::{
+    BestTransactionsAttributes, BundleTransaction, PoolTransaction,
+    estimated_da_size::DataAvailabilitySized,
+};
 use revm::{DatabaseCommit, context::result::ResultAndState, interpreter::as_u64_saturated};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, trace, warn};

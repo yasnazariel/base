@@ -16,9 +16,8 @@ use base_alloy_evm::OpTxResult;
 use base_alloy_flashblocks::Flashblock;
 use base_alloy_network::Base;
 use base_alloy_rpc_types::{OpTransactionReceipt, Transaction};
-use reth_revm::OpHaltReason;
 use reth_evm::eth::EthTxResult;
-use reth_revm::db::BundleState;
+use reth_revm::{OpHaltReason, db::BundleState};
 use reth_rpc_convert::RpcTransaction;
 use reth_rpc_eth_api::{RpcBlock, RpcReceipt};
 use revm::{

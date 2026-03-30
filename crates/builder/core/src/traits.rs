@@ -2,13 +2,12 @@
 
 use alloy_consensus::Header;
 use base_node_core::OpEngineTypes;
-use base_txpool::{BundleTransaction, OpPooledTx};
 use reth_chainspec::ChainSpec;
 use reth_node_api::{FullNodeTypes, NodeTypes};
 use reth_payload_util::PayloadTransactions;
 use reth_primitives::{OpPrimitives, OpTransactionSigned};
 use reth_provider::{BlockReaderIdExt, ChainSpecProvider, StateProviderFactory};
-use reth_transaction_pool::{TransactionPool, TransactionPoolExt};
+use reth_transaction_pool::{BundleTransaction, OpPooledTx, TransactionPool, TransactionPoolExt};
 
 pub trait NodeBounds:
     FullNodeTypes<

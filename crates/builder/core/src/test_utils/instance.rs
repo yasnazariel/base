@@ -16,7 +16,6 @@ use base_alloy_network::Base;
 use base_execution_rpc::OpEthApiBuilder;
 use base_node_core::{OpEngineValidatorBuilder, args::RollupArgs, node::OpPoolBuilder};
 use base_node_runner::{BaseNode, test_utils::init_silenced_tracing};
-use base_txpool::BasePooledTransaction;
 use futures::{FutureExt, StreamExt};
 use nanoid::nanoid;
 use parking_lot::Mutex;
@@ -27,7 +26,7 @@ use reth_node_core::{
     exit::NodeExitFuture,
 };
 use reth_tasks::{Runtime, RuntimeBuilder, RuntimeConfig};
-use reth_transaction_pool::{AllTransactionsEvents, TransactionPool};
+use reth_transaction_pool::{AllTransactionsEvents, BasePooledTransaction, TransactionPool};
 use tokio::{sync::oneshot, task::JoinHandle};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tokio_util::sync::CancellationToken;

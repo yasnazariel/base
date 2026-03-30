@@ -1,7 +1,7 @@
 //! Builder API RPC extension for registering the `base_insertValidatedTransaction` endpoint.
 
 use base_node_runner::{BaseNodeExtension, BaseRpcContext, FromExtensionConfig, NodeHooks};
-use base_txpool::{BuilderApiImpl, BuilderApiServer};
+use reth_transaction_pool::{BuilderApiImpl, BuilderApiServer};
 
 /// Extension that registers the Builder API RPC module (`base_insertValidatedTransaction`).
 #[derive(Debug, Default)]

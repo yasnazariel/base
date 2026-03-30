@@ -9,9 +9,9 @@ use ExecutionMeteringLimitExceeded::{
 };
 use alloy_primitives::{Address, U256};
 use base_alloy_consensus::OpReceipt;
-use reth_revm::OpTransactionError;
 use derive_more::Display;
 use reth_primitives::OpTransactionSigned;
+use reth_revm::OpTransactionError;
 use thiserror::Error;
 
 use crate::flashblocks::FlashblocksExecutionInfo;

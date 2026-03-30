@@ -6,9 +6,9 @@ use std::sync::{
 };
 
 use base_node_runner::{BaseNodeExtension, BaseRpcContext, FromExtensionConfig, NodeHooks};
-use base_txpool::{SendBundleApiImpl, SendBundleApiServer, maintain_bundle_transactions};
 use reth_chain_state::CanonStateSubscriptions;
 use reth_provider::BlockNumReader;
+use reth_transaction_pool::{SendBundleApiImpl, SendBundleApiServer, maintain_bundle_transactions};
 use tokio_stream::wrappers::BroadcastStream;
 use tracing::info;
 

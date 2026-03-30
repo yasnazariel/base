@@ -15,12 +15,12 @@ use alloy_signer::SignerSync;
 use alloy_signer_local::PrivateKeySigner;
 use base_alloy_rpc_types::OpTransactionRequest;
 use base_tx_forwarding::TxForwardingConfig;
-use base_txpool::ValidatedTransaction;
 use devnet::{
     DevnetBuilder,
     config::{ANVIL_ACCOUNT_1, ANVIL_ACCOUNT_2, ANVIL_ACCOUNT_3, ANVIL_ACCOUNT_4},
 };
 use eyre::{Result, WrapErr};
+use reth_transaction_pool::ValidatedTransaction;
 use tokio::time::{sleep, timeout};
 
 const L1_CHAIN_ID: u64 = 1337;

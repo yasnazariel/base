@@ -1,9 +1,9 @@
 use alloy_consensus::{Transaction, transaction::Recovered};
 use alloy_eips::Encodable2718;
 use alloy_primitives::U256;
-use reth_revm::{L1BlockInfo, OpSpecId};
 use derive_more::Display;
 use reth_primitives_traits::Account;
+use reth_revm::{L1BlockInfo, OpSpecId};
 
 /// Errors that can occur when validating a transaction.
 #[derive(Debug, PartialEq, Eq, Display)]

@@ -62,43 +62,8 @@ members = [
   "crates/infra/mempool-rebroadcaster",
   "crates/infra/websocket-proxy",
   "crates/infra/load-tests",
-  "crates/alloy/*",
+  "crates/core/*",
   "crates/execution/*",
-  "crates/txpool",
-  "crates/reth/crates/chain-state",
-  "crates/reth/crates/chainspec",
-  "crates/reth/crates/config",
-  "crates/reth/crates/e2e-test-utils",
-  "crates/reth/crates/errors",
-  "crates/reth/crates/etl",
-  "crates/reth/crates/fs-util",
-  "crates/reth/crates/metrics",
-  "crates/reth/crates/primitives",
-  "crates/reth/crates/primitives-traits",
-  "crates/reth/crates/revm",
-  "crates/reth/crates/tasks",
-  "crates/reth/crates/tokio-util",
-  "crates/reth/crates/tracing",
-  "crates/reth/crates/tracing-otlp",
-  "crates/reth/crates/transaction-pool",
-  "crates/reth/crates/cli/*",
-  "crates/reth/crates/consensus/*",
-  "crates/reth/crates/engine/*",
-  "crates/reth/crates/ethereum/*",
-  "crates/reth/crates/evm/*",
-  "crates/reth/crates/exex/*",
-  "crates/reth/crates/net/*",
-  "crates/reth/crates/node/*",
-  "crates/reth/crates/payload/*",
-  "crates/reth/crates/prune/*",
-  "crates/reth/crates/rpc/*",
-  "crates/reth/crates/stages/*",
-  "crates/reth/crates/static-file/*",
-  "crates/reth/crates/storage/*",
-  "crates/reth/crates/storage/libmdbx-rs",
-  "crates/reth/crates/storage/libmdbx-rs/mdbx-sys",
-  "crates/reth/crates/trie/*",
-  "crates/reth/testing/testing-utils",
   "etc/tools/*",
   "devnet",
   "actions/harness",
@@ -219,19 +184,32 @@ incremental = false
 
 [workspace.dependencies]
 # Base Primitives
-base-bundles = { path = "crates/alloy/bundles" }
-base-alloy-signer = { path = "crates/alloy/signer" }
-base-alloy-network = { path = "crates/alloy/network" }
-base-alloy-provider = { path = "crates/alloy/provider" }
-base-alloy-chains = { path = "crates/alloy/chains" }
-base-alloy-rpc-types = { path = "crates/alloy/rpc-types" }
-base-access-lists = { path = "crates/alloy/access-lists" }
-base-alloy-flashblocks = { path = "crates/alloy/flashblocks" }
-base-alloy-rpc-jsonrpsee = { path = "crates/alloy/rpc-jsonrpsee" }
-base-alloy-evm = { path = "crates/alloy/evm", default-features = false }
-base-alloy-flz = { path = "crates/alloy/flz", default-features = false }
-base-alloy-consensus = { path = "crates/alloy/consensus", default-features = false }
-base-alloy-rpc-types-engine = { path = "crates/alloy/rpc-types-engine", default-features = false }
+base-bundles = { path = "crates/execution/bundles" }
+
+base-alloy-signer = { path = "crates/core/signer" }
+
+base-alloy-network = { path = "crates/execution/network-base" }
+
+base-alloy-provider = { path = "crates/execution/provider-base" }
+
+base-alloy-chains = { path = "crates/core/chains" }
+
+base-alloy-rpc-types = { path = "crates/execution/rpc-types" }
+
+base-access-lists = { path = "crates/execution/access-lists" }
+
+base-alloy-flashblocks = { path = "crates/core/flashblocks" }
+
+base-alloy-rpc-jsonrpsee = { path = "crates/core/rpc-jsonrpsee" }
+
+base-alloy-evm = { path = "crates/execution/evm-base", default-features = false }
+
+base-alloy-flz = { path = "crates/core/flz", default-features = false }
+
+base-alloy-consensus = { path = "crates/execution/consensus-alloy", default-features = false }
+
+base-alloy-rpc-types-engine = { path = "crates/execution/rpc-types-engine", default-features = false }
+
 
 # Builder
 base-builder-core = { path = "crates/builder/core" }
@@ -264,21 +242,33 @@ base-consensus-upgrades = { path = "crates/consensus/upgrades", default-features
 base-consensus-providers = { path = "crates/consensus/providers-alloy", default-features = false }
 
 # Execution
-base-node-core = { path = "crates/execution/node" }
-base-execution-cli = { path = "crates/execution/cli" }
-base-execution-rpc = { path = "crates/execution/rpc" }
-base-node-runner = { path = "crates/execution/runner" }
-base-execution-exex = { path = "crates/execution/exex" }
-base-execution-trie = { path = "crates/execution/trie" }
+base-node-core = { path = "crates/execution/node-core-base" }
+
+base-execution-cli = { path = "crates/execution/cli-base" }
+
+base-execution-rpc = { path = "crates/execution/rpc-base" }
+
+base-node-runner = { path = "crates/execution/node-runner" }
+
+base-execution-exex = { path = "crates/execution/exex-base" }
+
+base-execution-trie = { path = "crates/execution/trie-base" }
+
 base-txpool-rpc = { path = "crates/execution/txpool-rpc" }
-base-engine-tree = { path = "crates/execution/engine-tree" }
+
+base-engine-tree = { path = "crates/execution/engine-tree-base" }
+
 base-flashblocks = { path = "crates/execution/flashblocks" }
-base-execution-forks = { path = "crates/execution/hardforks" }
+
+base-execution-forks = { path = "crates/core/forks" }
+
 base-execution-storage = { path = "crates/execution/storage" }
-base-execution-consensus = { path = "crates/execution/consensus" }
-base-execution-payload-builder = { path = "crates/execution/payload" }
+
+base-execution-consensus = { path = "crates/execution/consensus-base" }
+
+base-execution-payload-builder = { path = "crates/execution/payload-builder-base" }
+
 # Txpool
-base-txpool = { path = "crates/txpool" }
 
 # Infra
 based = { path = "crates/infra/based" }
@@ -375,73 +365,135 @@ alloy-rpc-types-engine = { version = "1.6.3", default-features = false }
 alloy-network-primitives = { version = "1.6.3", default-features = false }
 
 # reth
-reth-db = { path = "crates/reth/crates/storage/db" }
-reth-cli = { path = "crates/reth/crates/cli/cli" }
-reth-ipc = { path = "crates/reth/crates/rpc/ipc" }
-reth-evm = { path = "crates/reth/crates/evm/evm" }
-reth-rpc = { path = "crates/reth/crates/rpc/rpc" }
-reth-revm = { path = "crates/reth/crates/revm" }
-reth-trie = { path = "crates/reth/crates/trie/trie" }
-reth-exex = { path = "crates/reth/crates/exex/exex" }
-reth-tasks = { path = "crates/reth/crates/tasks" }
-reth-errors = { path = "crates/reth/crates/errors" }
-reth-codecs = { path = "crates/reth/crates/storage/codecs" }
-reth-db-api = { path = "crates/reth/crates/storage/db-api" }
-reth-metrics = { path = "crates/reth/crates/metrics" }
-reth-trie-db = { path = "crates/reth/crates/trie/db" }
-reth-rpc-api = { path = "crates/reth/crates/rpc/rpc-api" }
-reth-network = { path = "crates/reth/crates/net/network" }
-reth-tracing = { path = "crates/reth/crates/tracing" }
-reth-provider = { path = "crates/reth/crates/storage/provider" }
-reth-cli-util = { path = "crates/reth/crates/cli/util" }
-reth-node-api = { path = "crates/reth/crates/node/api" }
-reth-db-common = { path = "crates/reth/crates/storage/db-common" }
-reth-rpc-layer = { path = "crates/reth/crates/rpc/rpc-layer" }
-reth-node-core = { path = "crates/reth/crates/node/core" }
-reth-consensus = { path = "crates/reth/crates/consensus/consensus" }
-reth-chainspec = { path = "crates/reth/crates/chainspec" }
-reth-primitives = { path = "crates/reth/crates/primitives" }
-reth-cli-runner = { path = "crates/reth/crates/cli/runner" }
-reth-tokio-util = { path = "crates/reth/crates/tokio-util" }
-reth-rpc-convert = { path = "crates/reth/crates/rpc/rpc-convert" }
-reth-rpc-builder = { path = "crates/reth/crates/rpc/rpc-builder" }
-reth-storage-api = { path = "crates/reth/crates/storage/storage-api" }
-reth-rpc-eth-api = { path = "crates/reth/crates/rpc/rpc-eth-api" }
-reth-engine-tree = { path = "crates/reth/crates/engine/tree" }
-reth-chain-state = { path = "crates/reth/crates/chain-state" }
-reth-trie-common = { path = "crates/reth/crates/trie/common" }
-reth-payload-util = { path = "crates/reth/crates/payload/util" }
-reth-node-builder = { path = "crates/reth/crates/node/builder" }
-reth-node-metrics = { path = "crates/reth/crates/node/metrics" }
-reth-cli-commands = { path = "crates/reth/crates/cli/commands" }
-reth-evm-ethereum = { path = "crates/reth/crates/ethereum/evm" }
-reth-tracing-otlp = { path = "crates/reth/crates/tracing-otlp" }
-reth-testing-utils = { path = "crates/reth/testing/testing-utils" }
-reth-rpc-eth-types = { path = "crates/reth/crates/rpc/rpc-eth-types" }
-reth-trie-parallel = { path = "crates/reth/crates/trie/parallel" }
-reth-network-peers = { path = "crates/reth/crates/net/peers" }
-reth-node-ethereum = { path = "crates/reth/crates/ethereum/node" }
-reth-rpc-engine-api = { path = "crates/reth/crates/rpc/rpc-engine-api" }
-reth-e2e-test-utils = { path = "crates/reth/crates/e2e-test-utils" }
-reth-payload-builder = { path = "crates/reth/crates/payload/builder" }
-reth-execution-types = { path = "crates/reth/crates/evm/execution-types" }
-reth-exex-test-utils = { path = "crates/reth/crates/exex/test-utils" }
-reth-rpc-server-types = { path = "crates/reth/crates/rpc/rpc-server-types" }
-reth-transaction-pool = { path = "crates/reth/crates/transaction-pool" }
-reth-execution-errors = { path = "crates/reth/crates/evm/execution-errors" }
-reth-payload-validator = { path = "crates/reth/crates/payload/validator" }
-reth-primitives-traits = { path = "crates/reth/crates/primitives-traits" }
-reth-engine-primitives = { path = "crates/reth/crates/engine/primitives" }
-reth-payload-primitives = { path = "crates/reth/crates/payload/primitives" }
-reth-ethereum-primitives = { path = "crates/reth/crates/ethereum/primitives" }
-reth-basic-payload-builder = { path = "crates/reth/crates/payload/basic" }
-reth-payload-builder-primitives = { path = "crates/reth/crates/payload/builder-primitives" }
-reth-prune-types = { path = "crates/reth/crates/prune/types", default-features = false }
-reth-stages-types = { path = "crates/reth/crates/stages/types", default-features = false }
-reth-storage-errors = { path = "crates/reth/crates/storage/errors", default-features = false }
-reth-ethereum-forks = { path = "crates/reth/crates/ethereum/hardforks", default-features = false }
-reth-consensus-common = { path = "crates/reth/crates/consensus/common", default-features = false }
-reth-zstd-compressors = { path = "crates/reth/crates/storage/zstd-compressors", default-features = false }
+reth-db = { path = "crates/execution/db" }
+
+reth-cli = { path = "crates/execution/cli-base/cli" }
+reth-ipc = { path = "crates/execution/ipc" }
+
+reth-evm = { path = "crates/execution/evm" }
+
+reth-rpc = { path = "crates/execution/rpc-base/rpc" }
+reth-revm = { path = "crates/execution/revm" }
+
+reth-trie = { path = "crates/execution/trie-base/trie" }
+reth-exex = { path = "crates/execution/exex-base/exex" }
+reth-tasks = { path = "crates/execution/tasks" }
+
+reth-errors = { path = "crates/core/errors" }
+
+reth-codecs = { path = "crates/core/codecs" }
+
+reth-db-api = { path = "crates/core/db-api" }
+
+reth-metrics = { path = "crates/execution/metrics" }
+
+reth-trie-db = { path = "crates/execution/trie-db" }
+
+reth-rpc-api = { path = "crates/execution/rpc-api" }
+
+reth-network = { path = "crates/execution/network" }
+
+reth-tracing = { path = "crates/execution/tracing" }
+
+reth-provider = { path = "crates/execution/provider" }
+
+reth-cli-util = { path = "crates/execution/cli-util" }
+
+reth-node-api = { path = "crates/execution/node-api" }
+
+reth-db-common = { path = "crates/execution/db-common" }
+
+reth-rpc-layer = { path = "crates/execution/rpc-layer" }
+
+reth-node-core = { path = "crates/execution/node-core" }
+
+reth-consensus = { path = "crates/core/consensus" }
+
+reth-chainspec = { path = "crates/core/chainspec" }
+
+reth-primitives = { path = "crates/execution/primitives" }
+
+reth-cli-runner = { path = "crates/execution/cli-runner" }
+
+reth-tokio-util = { path = "crates/execution/tokio-util" }
+
+reth-rpc-convert = { path = "crates/execution/rpc-convert" }
+
+reth-rpc-builder = { path = "crates/execution/rpc-builder" }
+
+reth-storage-api = { path = "crates/core/storage-api" }
+
+reth-rpc-eth-api = { path = "crates/execution/rpc-eth-api" }
+
+reth-engine-tree = { path = "crates/execution/engine-tree-base/tree" }
+reth-chain-state = { path = "crates/execution/chain-state" }
+
+reth-trie-common = { path = "crates/core/trie-common" }
+
+reth-payload-util = { path = "crates/execution/payload-util" }
+
+reth-node-builder = { path = "crates/execution/node-builder" }
+
+reth-node-metrics = { path = "crates/execution/node-metrics" }
+
+reth-cli-commands = { path = "crates/execution/cli-commands" }
+
+reth-evm-ethereum = { path = "crates/execution/evm-ethereum" }
+
+reth-tracing-otlp = { path = "crates/execution/tracing-otlp" }
+
+reth-testing-utils = { path = "crates/execution/testing-utils" }
+
+reth-rpc-eth-types = { path = "crates/execution/rpc-eth-types" }
+
+reth-trie-parallel = { path = "crates/execution/trie-parallel" }
+
+reth-network-peers = { path = "crates/core/network-peers" }
+
+reth-node-ethereum = { path = "crates/execution/node-ethereum" }
+
+reth-rpc-engine-api = { path = "crates/execution/rpc-engine-api" }
+
+reth-e2e-test-utils = { path = "crates/execution/e2e-test-utils" }
+
+reth-payload-builder = { path = "crates/execution/payload-builder" }
+
+reth-execution-types = { path = "crates/core/execution-types" }
+
+reth-exex-test-utils = { path = "crates/execution/exex-test-utils" }
+
+reth-rpc-server-types = { path = "crates/execution/rpc-server-types" }
+
+reth-transaction-pool = { path = "crates/execution/transaction-pool" }
+
+reth-execution-errors = { path = "crates/core/execution-errors" }
+
+reth-payload-validator = { path = "crates/execution/payload-validator" }
+
+reth-primitives-traits = { path = "crates/core/primitives-traits" }
+
+reth-engine-primitives = { path = "crates/execution/engine-primitives" }
+
+reth-payload-primitives = { path = "crates/execution/payload-primitives" }
+
+reth-ethereum-primitives = { path = "crates/core/ethereum-primitives" }
+
+reth-basic-payload-builder = { path = "crates/execution/basic-payload-builder" }
+
+reth-payload-builder-primitives = { path = "crates/execution/payload-builder-primitives" }
+
+reth-prune-types = { path = "crates/core/prune-types", default-features = false }
+
+reth-stages-types = { path = "crates/core/stages-types", default-features = false }
+
+reth-storage-errors = { path = "crates/core/storage-errors", default-features = false }
+
+reth-ethereum-forks = { path = "crates/core/ethereum-forks", default-features = false }
+
+reth-consensus-common = { path = "crates/core/consensus-common", default-features = false }
+
+reth-zstd-compressors = { path = "crates/core/zstd-compressors", default-features = false }
+
 
 # tokio
 tokio = { version = "1.48.0", default-features = false }
@@ -713,48 +765,90 @@ pin-project = "1.0.12"
 plain_hasher = "0.2"
 pretty_assertions = "1.4"
 proptest-derive = "0.7"
-reth-codecs-derive = { path = "crates/reth/crates/storage/codecs/derive" }
-reth-config = { path = "crates/reth/crates/config", default-features = false }
-reth-db-models = { path = "crates/reth/crates/storage/db-models", default-features = false }
-reth-discv4 = { path = "crates/reth/crates/net/discv4" }
-reth-discv5 = { path = "crates/reth/crates/net/discv5" }
-reth-dns-discovery = { path = "crates/reth/crates/net/dns" }
-reth-downloaders = { path = "crates/reth/crates/net/downloaders" }
-reth-ecies = { path = "crates/reth/crates/net/ecies" }
-reth-engine-local = { path = "crates/reth/crates/engine/local" }
-reth-engine-service = { path = "crates/reth/crates/engine/service" }
-reth-engine-util = { path = "crates/reth/crates/engine/util" }
-reth-eth-wire = { path = "crates/reth/crates/net/eth-wire" }
-reth-eth-wire-types = { path = "crates/reth/crates/net/eth-wire-types" }
-reth-ethereum = { path = "crates/reth/crates/ethereum/reth" }
-reth-ethereum-cli = { path = "crates/reth/crates/ethereum/cli", default-features = false }
-reth-ethereum-consensus = { path = "crates/reth/crates/ethereum/consensus", default-features = false }
-reth-ethereum-engine-primitives = { path = "crates/reth/crates/ethereum/engine-primitives", default-features = false }
-reth-ethereum-payload-builder = { path = "crates/reth/crates/ethereum/payload" }
-reth-etl = { path = "crates/reth/crates/etl" }
-reth-exex-types = { path = "crates/reth/crates/exex/types" }
-reth-fs-util = { path = "crates/reth/crates/fs-util" }
-reth-invalid-block-hooks = { path = "crates/reth/crates/engine/invalid-block-hooks" }
-reth-libmdbx = { path = "crates/reth/crates/storage/libmdbx-rs" }
-reth-mdbx-sys = { path = "crates/reth/crates/storage/libmdbx-rs/mdbx-sys" }
-reth-net-banlist = { path = "crates/reth/crates/net/banlist" }
-reth-net-nat = { path = "crates/reth/crates/net/nat" }
-reth-network-api = { path = "crates/reth/crates/net/network-api" }
-reth-network-p2p = { path = "crates/reth/crates/net/p2p" }
-reth-network-types = { path = "crates/reth/crates/net/network-types" }
-reth-nippy-jar = { path = "crates/reth/crates/storage/nippy-jar" }
-reth-node-ethstats = { path = "crates/reth/crates/node/ethstats" }
-reth-node-events = { path = "crates/reth/crates/node/events" }
-reth-node-types = { path = "crates/reth/crates/node/types" }
-reth-prune = { path = "crates/reth/crates/prune/prune" }
-reth-rpc-api-testing-util = { path = "crates/reth/crates/rpc/rpc-testing-util" }
-reth-rpc-e2e-tests = { path = "crates/reth/crates/rpc/rpc-e2e-tests" }
-reth-stages = { path = "crates/reth/crates/stages/stages" }
-reth-stages-api = { path = "crates/reth/crates/stages/api" }
-reth-static-file = { path = "crates/reth/crates/static-file/static-file" }
-reth-static-file-types = { path = "crates/reth/crates/static-file/types", default-features = false }
-reth-storage-rpc-provider = { path = "crates/reth/crates/storage/rpc-provider" }
-reth-trie-sparse = { path = "crates/reth/crates/trie/sparse", default-features = false }
+reth-codecs-derive = { path = "crates/core/codecs-derive" }
+
+reth-config = { path = "crates/execution/config", default-features = false }
+
+reth-db-models = { path = "crates/core/db-models", default-features = false }
+
+reth-discv4 = { path = "crates/execution/discv4" }
+
+reth-discv5 = { path = "crates/execution/discv5" }
+
+reth-dns-discovery = { path = "crates/execution/dns-discovery" }
+
+reth-downloaders = { path = "crates/execution/downloaders" }
+
+reth-ecies = { path = "crates/execution/ecies" }
+
+reth-engine-local = { path = "crates/execution/engine-local" }
+
+reth-engine-service = { path = "crates/execution/engine-service" }
+
+reth-engine-util = { path = "crates/execution/engine-util" }
+
+reth-eth-wire = { path = "crates/execution/eth-wire" }
+
+reth-eth-wire-types = { path = "crates/execution/eth-wire-types" }
+
+reth-ethereum = { path = "crates/execution/ethereum" }
+
+reth-ethereum-cli = { path = "crates/execution/ethereum-cli", default-features = false }
+
+reth-ethereum-consensus = { path = "crates/execution/ethereum-consensus", default-features = false }
+
+reth-ethereum-engine-primitives = { path = "crates/execution/ethereum-engine-primitives", default-features = false }
+
+reth-ethereum-payload-builder = { path = "crates/execution/ethereum-payload-builder" }
+
+reth-etl = { path = "crates/execution/etl" }
+
+reth-exex-types = { path = "crates/execution/exex-types" }
+
+reth-fs-util = { path = "crates/core/fs-util" }
+
+reth-invalid-block-hooks = { path = "crates/execution/invalid-block-hooks" }
+
+reth-libmdbx = { path = "crates/execution/libmdbx" }
+
+reth-mdbx-sys = { path = "crates/execution/mdbx-sys" }
+
+reth-net-banlist = { path = "crates/execution/net-banlist" }
+
+reth-net-nat = { path = "crates/execution/net-nat" }
+
+reth-network-api = { path = "crates/execution/network-api" }
+
+reth-network-p2p = { path = "crates/execution/network-p2p" }
+
+reth-network-types = { path = "crates/execution/network-types" }
+
+reth-nippy-jar = { path = "crates/core/nippy-jar" }
+
+reth-node-ethstats = { path = "crates/execution/node-ethstats" }
+
+reth-node-events = { path = "crates/execution/node-events" }
+
+reth-node-types = { path = "crates/execution/node-types" }
+
+reth-prune = { path = "crates/execution/prune" }
+
+reth-rpc-api-testing-util = { path = "crates/execution/rpc-api-testing-util" }
+
+reth-rpc-e2e-tests = { path = "crates/execution/rpc-e2e-tests" }
+
+reth-stages = { path = "crates/execution/stages" }
+
+reth-stages-api = { path = "crates/execution/stages-api" }
+
+reth-static-file = { path = "crates/execution/static-file" }
+
+reth-static-file-types = { path = "crates/core/static-file-types", default-features = false }
+
+reth-storage-rpc-provider = { path = "crates/execution/storage-rpc-provider" }
+
+reth-trie-sparse = { path = "crates/execution/trie-sparse", default-features = false }
+
 revm-database-interface = { version = "9.0.0", default-features = false }
 revm-inspectors = "0.34.2"
 revm-interpreter = { version = "32.0.0", default-features = false }

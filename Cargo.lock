@@ -2924,7 +2924,6 @@ dependencies = [
  "base-metrics",
  "base-node-core",
  "base-node-runner",
- "base-txpool",
  "chrono",
  "clap",
  "clap_builder",
@@ -3044,9 +3043,9 @@ name = "base-bundle-extension"
 version = "0.0.0"
 dependencies = [
  "base-node-runner",
- "base-txpool",
  "reth-chain-state",
  "reth-provider",
+ "reth-transaction-pool",
  "tokio",
  "tokio-stream",
  "tracing",
@@ -3744,7 +3743,6 @@ dependencies = [
  "base-alloy-consensus",
  "base-alloy-rpc-types-engine",
  "base-protocol",
- "base-txpool",
  "derive_more",
  "either",
  "reth-basic-payload-builder",
@@ -3796,7 +3794,6 @@ dependencies = [
  "base-execution-payload-builder",
  "base-execution-trie",
  "base-metrics",
- "base-txpool",
  "derive_more",
  "eyre",
  "futures",
@@ -4149,7 +4146,6 @@ dependencies = [
  "base-execution-trie",
  "base-node-core",
  "base-protocol",
- "base-txpool",
  "clap",
  "eyre",
  "futures",
@@ -4211,7 +4207,6 @@ dependencies = [
  "base-execution-storage",
  "base-node-core",
  "base-test-utils",
- "base-txpool",
  "chrono",
  "eyre",
  "futures",
@@ -4897,7 +4892,7 @@ name = "base-tx-forwarding"
 version = "0.0.0"
 dependencies = [
  "base-node-runner",
- "base-txpool",
+ "reth-transaction-pool",
  "tracing",
  "url",
 ]
@@ -4933,13 +4928,6 @@ dependencies = [
  "tokio",
  "tracing",
  "url",
-]
-
-[[package]]
-name = "base-txpool"
-version = "0.0.0"
-dependencies = [
- "reth-transaction-pool",
 ]
 
 [[package]]
@@ -7129,7 +7117,6 @@ dependencies = [
  "base-protocol",
  "base-runtime",
  "base-tx-forwarding",
- "base-txpool",
  "base-txpool-rpc",
  "base-txpool-tracing",
  "eyre",
@@ -7146,6 +7133,7 @@ dependencies = [
  "reth-node-core",
  "reth-provider",
  "reth-tasks",
+ "reth-transaction-pool",
  "serde",
  "serde_json",
  "tempfile",

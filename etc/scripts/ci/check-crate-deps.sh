@@ -11,9 +11,10 @@ DISALLOWED_DEPS=(
   "utilities:infra"
   "builder:infra"
   "consensus:infra"
+  "core:execution"
 )
 
-# Allowed exceptions: "dep_name" entries here are excluded from all rules.
+# Allowed exceptions for legacy rules.
 # These are foundational consensus protocol crates that are local path deps under crates/consensus/.
 ALLOWED_DEPS=(
   "base-consensus-genesis"
@@ -21,9 +22,20 @@ ALLOWED_DEPS=(
   "base-consensus-engine"
 )
 
-# Build a jq filter string for allowed deps
-ALLOWED_FILTER=$(printf '"%s",' "${ALLOWED_DEPS[@]}")
-ALLOWED_FILTER="[${ALLOWED_FILTER%,}]"
+build_allowed_filter() {
+  local rule="$1"
+
+  case "$rule" in
+    core:execution)
+      printf '[]'
+      ;;
+    *)
+      local allowed_filter
+      allowed_filter=$(printf '"%s",' "${ALLOWED_DEPS[@]}")
+      printf '[%s]' "${allowed_filter%,}"
+      ;;
+  esac
+}
 
 # Fetch cargo metadata once, ensuring Cargo.lock is in sync
 METADATA=$(cargo metadata --format-version 1 --no-deps --locked)
@@ -33,6 +45,7 @@ FOUND_VIOLATIONS=false
 for rule in "${DISALLOWED_DEPS[@]}"; do
   SOURCE="${rule%%:*}"
   TARGET="${rule##*:}"
+  ALLOWED_FILTER=$(build_allowed_filter "$rule")
 
   VIOLATIONS=$(echo "$METADATA" | jq -r --argjson allowed "$ALLOWED_FILTER" "
     [.packages[]
