@@ -35,6 +35,7 @@ impl DefaultPruningValues {
     /// Initialize the global pruning defaults with this configuration.
     ///
     /// Returns `Err(self)` if already initialized.
+    #[allow(clippy::result_large_err)]
     pub fn try_init(self) -> Result<(), Self> {
         PRUNING_DEFAULTS.set(self)
     }

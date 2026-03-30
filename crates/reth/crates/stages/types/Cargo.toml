@@ -34,36 +34,36 @@ bytes.workspace = true
 modular-bitfield.workspace = true
 
 [features]
-default = ["std"]
+default = [ "std" ]
 std = [
-    "alloy-primitives/std",
-    "bytes?/std",
-    "reth-trie-common/std",
-    "serde?/std",
+	"alloy-primitives/std",
+	"bytes?/std",
+	"reth-trie-common/std",
+	"serde?/std",
 ]
 reth-codec = [
-    "dep:reth-codecs",
-    "dep:bytes",
-    "dep:modular-bitfield",
-    "reth-trie-common/reth-codec",
+	"dep:bytes",
+	"dep:modular-bitfield",
+	"dep:reth-codecs",
+	"reth-trie-common/reth-codec",
 ]
 test-utils = [
-    "arbitrary",
-    "reth-codecs?/test-utils",
-    "reth-trie-common/test-utils",
+	"arbitrary",
+	"reth-codecs?/test-utils",
+	"reth-trie-common/test-utils",
 ]
 arbitrary = [
-    "std",
-    "dep:arbitrary",
-    "alloy-primitives/arbitrary",
-    "reth-codecs?/arbitrary",
-    "reth-trie-common/arbitrary",
+	"alloy-primitives/arbitrary",
+	"dep:arbitrary",
+	"reth-codecs?/arbitrary",
+	"reth-trie-common/arbitrary",
+	"std",
 ]
 serde = [
-    "dep:serde",
-    "alloy-primitives/serde",
-    "bytes?/serde",
-    "rand/serde",
-    "reth-codecs?/serde",
-    "reth-trie-common/serde",
+	"alloy-primitives/serde",
+	"bytes?/serde",
+	"dep:serde",
+	"rand/serde",
+	"reth-codecs?/serde",
+	"reth-trie-common/serde",
 ]

@@ -38,19 +38,19 @@ serde.workspace = true
 thiserror.workspace = true
 
 [features]
-default = ["std"]
+default = [ "std" ]
 std = [
-    "reth-execution-types/std",
-    "reth-ethereum-primitives/std",
-    "reth-primitives-traits/std",
-    "reth-trie-common/std",
-    "alloy-primitives/std",
-    "alloy-consensus/std",
-    "alloy-rpc-types-engine/std",
-    "alloy-eips/std",
-    "futures/std",
-    "tokio",
-    "serde/std",
-    "thiserror/std",
-    "reth-evm/std",
+	"alloy-consensus/std",
+	"alloy-eips/std",
+	"alloy-primitives/std",
+	"alloy-rpc-types-engine/std",
+	"futures/std",
+	"reth-ethereum-primitives/std",
+	"reth-evm/std",
+	"reth-execution-types/std",
+	"reth-primitives-traits/std",
+	"reth-trie-common/std",
+	"serde/std",
+	"thiserror/std",
+	"tokio",
 ]

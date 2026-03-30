@@ -1776,8 +1776,7 @@ fn dispatch_storage_proofs(
             .send(StorageWorkerJob::StorageProof { input, proof_result_sender: result_tx })
             .map_err(|_| {
                 ParallelStateRootError::Other(format!(
-                    "Failed to queue storage proof for {}: storage worker pool unavailable",
-                    hashed_address
+                    "Failed to queue storage proof for {hashed_address}: storage worker pool unavailable"
                 ))
             })?;
 

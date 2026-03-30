@@ -65,33 +65,33 @@ proptest.workspace = true
 assert_matches.workspace = true
 
 [features]
-default = ["mdbx"]
+default = [ "mdbx" ]
 mdbx = [
-    "dep:reth-libmdbx",
-    "dep:eyre",
-    "dep:page_size",
-    "reth-metrics",
-    "dep:metrics",
-    "dep:strum",
-    "dep:rustc-hash",
+	"dep:eyre",
+	"dep:metrics",
+	"dep:page_size",
+	"dep:reth-libmdbx",
+	"dep:rustc-hash",
+	"dep:strum",
+	"reth-metrics",
 ]
 test-utils = [
-    "dep:tempfile",
-    "mdbx",
-    "arbitrary",
-    "parking_lot",
-    "reth-db-api/test-utils",
-    "reth-nippy-jar/test-utils",
-    "reth-primitives-traits/test-utils",
-    "reth-prune-types/test-utils",
+	"arbitrary",
+	"dep:tempfile",
+	"mdbx",
+	"parking_lot",
+	"reth-db-api/test-utils",
+	"reth-nippy-jar/test-utils",
+	"reth-primitives-traits/test-utils",
+	"reth-prune-types/test-utils",
 ]
-bench = ["reth-db-api/bench"]
+bench = [ "reth-db-api/bench" ]
 arbitrary = [
-    "reth-db-api/arbitrary",
-    "alloy-primitives/arbitrary",
-    "alloy-consensus/arbitrary",
-    "reth-primitives-traits/arbitrary",
-    "reth-prune-types/arbitrary",
+	"alloy-consensus/arbitrary",
+	"alloy-primitives/arbitrary",
+	"reth-db-api/arbitrary",
+	"reth-primitives-traits/arbitrary",
+	"reth-prune-types/arbitrary",
 ]
 disable-lock = []
 

@@ -5,9 +5,8 @@ use std::sync::Arc;
 use alloy_consensus::BlockHeader;
 use alloy_genesis::Genesis;
 use alloy_primitives::B256;
-use base_execution_chainspec::OpChainSpecBuilder;
 use base_node_core::{OpNode, utils::optimism_payload_attributes};
-use reth_chainspec::EthChainSpec;
+use reth_chainspec::{ChainSpecBuilder, EthChainSpec};
 use reth_db::test_utils::create_test_rw_db_with_path;
 use reth_e2e_test_utils::{
     node::NodeTestContext, transaction::TransactionTestContext, wallet::Wallet,
@@ -32,7 +31,7 @@ async fn test_op_node_custom_genesis_number() {
     genesis.parent_hash = Some(B256::random());
 
     let chain_spec =
-        Arc::new(OpChainSpecBuilder::base_mainnet().genesis(genesis).ecotone_activated().build());
+        Arc::new(ChainSpecBuilder::base_mainnet().genesis(genesis).ecotone_activated().build());
 
     let wallet = Arc::new(Mutex::new(Wallet::default().with_chain_id(chain_spec.chain().into())));
 

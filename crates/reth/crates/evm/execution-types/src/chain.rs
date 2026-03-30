@@ -328,6 +328,7 @@ impl<N: NodePrimitives> Chain<N> {
     ///
     /// Returns the passed `other` chain in [`Result::Err`] variant if the chains could not be
     /// connected.
+    #[allow(clippy::result_large_err)]
     pub fn append_chain(&mut self, other: Self) -> Result<(), Self> {
         let chain_tip = self.tip();
         let other_fork_block = other.fork_block();

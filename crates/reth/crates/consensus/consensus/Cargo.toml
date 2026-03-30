@@ -24,15 +24,12 @@ auto_impl.workspace = true
 thiserror.workspace = true
 
 [features]
-default = ["std"]
+default = [ "std" ]
 std = [
-    "reth-primitives-traits/std",
-    "alloy-primitives/std",
-    "alloy-consensus/std",
-    "reth-primitives-traits/std",
-    "reth-execution-types/std",
-    "thiserror/std",
+	"alloy-consensus/std",
+	"alloy-primitives/std",
+	"reth-execution-types/std",
+	"reth-primitives-traits/std",
+	"thiserror/std",
 ]
-test-utils = [
-    "reth-primitives-traits/test-utils",
-]
+test-utils = [ "reth-primitives-traits/test-utils" ]

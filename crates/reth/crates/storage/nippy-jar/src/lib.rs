@@ -22,7 +22,7 @@ use std::{
 
 use memmap2::Mmap;
 use serde::{Deserialize, Serialize};
-use tracing::{warn, debug, Instrument, Value, Subscriber, Callsite};
+use tracing::{debug, warn};
 
 /// Compression algorithms supported by `NippyJar`.
 pub mod compression;

@@ -26,7 +26,7 @@ use alloy_evm::{
     EthEvmFactory, FromRecoveredTx, FromTxWithEncoded,
     eth::{EthBlockExecutionCtx, EthBlockExecutorFactory},
 };
-use reth_chainspec::{ChainSpec, EthChainSpec, MAINNET};
+use reth_chainspec::{BASE_MAINNET, ChainSpec, EthChainSpec};
 use reth_ethereum_primitives::{Block, EthPrimitives, TransactionSigned};
 #[cfg(feature = "std")]
 use reth_evm::{ConfigureEngineEvm, ExecutableTxIterator};
@@ -87,7 +87,7 @@ pub struct EthEvmConfig<C = ChainSpec, EvmFactory = EthEvmFactory> {
 impl EthEvmConfig {
     /// Creates a new Ethereum EVM configuration for the ethereum mainnet.
     pub fn mainnet() -> Self {
-        Self::ethereum(MAINNET.clone())
+        Self::ethereum(BASE_MAINNET.clone())
     }
 }
 

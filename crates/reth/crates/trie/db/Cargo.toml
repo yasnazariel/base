@@ -59,27 +59,27 @@ serde_json.workspace = true
 similar-asserts.workspace = true
 
 [features]
-metrics = ["reth-trie/metrics", "dep:reth-metrics", "dep:metrics"]
+metrics = [ "dep:metrics", "dep:reth-metrics", "reth-trie/metrics" ]
 serde = [
-    "similar-asserts/serde",
-    "alloy-consensus/serde",
-    "alloy-primitives/serde",
-    "parking_lot/serde",
-    "reth-stages-types/serde",
-    "reth-storage-api/serde",
-    "reth-trie/serde",
-    "reth-trie-common/serde",
-    "reth-primitives-traits/serde",
-    "revm-database/serde",
-    "revm/serde",
+	"alloy-consensus/serde",
+	"alloy-primitives/serde",
+	"parking_lot/serde",
+	"reth-primitives-traits/serde",
+	"reth-stages-types/serde",
+	"reth-storage-api/serde",
+	"reth-trie-common/serde",
+	"reth-trie/serde",
+	"revm-database/serde",
+	"revm/serde",
+	"similar-asserts/serde",
 ]
 test-utils = [
-    "reth-trie-common/test-utils",
-    "reth-primitives-traits/test-utils",
-    "reth-chainspec/test-utils",
-    "reth-db/test-utils",
-    "reth-db-api/test-utils",
-    "reth-provider/test-utils",
-    "reth-stages-types/test-utils",
-    "reth-trie/test-utils",
+	"reth-chainspec/test-utils",
+	"reth-db-api/test-utils",
+	"reth-db/test-utils",
+	"reth-primitives-traits/test-utils",
+	"reth-provider/test-utils",
+	"reth-stages-types/test-utils",
+	"reth-trie-common/test-utils",
+	"reth-trie/test-utils",
 ]

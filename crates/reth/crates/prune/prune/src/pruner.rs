@@ -334,8 +334,8 @@ where
         ProviderRW: PruneCheckpointWriter + PruneCheckpointReader + StageCheckpointReader,
     >,
 {
-    /// Run the pruner. This will only prune data up to the highest finished ExEx height, if there
-    /// are no ExExes.
+    /// Run the pruner. This will only prune data up to the highest finished `ExEx` height, if there
+    /// are no `ExExes`.
     ///
     /// Returns a [`PruneProgress`], indicating whether pruning is finished, or there is more data
     /// to prune.

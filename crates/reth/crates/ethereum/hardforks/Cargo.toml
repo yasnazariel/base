@@ -16,6 +16,7 @@ workspace = true
 alloy-hardforks.workspace = true
 alloy-eip2124.workspace = true
 alloy-primitives = { workspace = true, features = ["serde", "rlp"] }
+base-alloy-chains.workspace = true
 
 # misc
 once_cell.workspace = true
@@ -29,21 +30,21 @@ auto_impl.workspace = true
 arbitrary = { workspace = true, features = ["derive"] }
 
 [features]
-default = ["std", "serde", "rustc-hash"]
+default = [ "rustc-hash", "serde", "std" ]
 arbitrary = [
-    "dep:arbitrary",
-    "alloy-primitives/arbitrary",
-    "alloy-eip2124/arbitrary",
+	"alloy-eip2124/arbitrary",
+	"alloy-primitives/arbitrary",
+	"dep:arbitrary",
 ]
 serde = [
-    "alloy-primitives/serde",
-    "alloy-eip2124/serde",
-    "alloy-hardforks/serde",
+	"alloy-eip2124/serde",
+	"alloy-hardforks/serde",
+	"alloy-primitives/serde",
 ]
 std = [
-    "alloy-primitives/std",
-    "rustc-hash/std",
-    "alloy-eip2124/std",
-    "once_cell/std",
+	"alloy-eip2124/std",
+	"alloy-primitives/std",
+	"once_cell/std",
+	"rustc-hash/std",
 ]
-rustc-hash = ["dep:rustc-hash"]
+rustc-hash = [ "dep:rustc-hash" ]

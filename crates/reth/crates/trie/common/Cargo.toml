@@ -67,71 +67,71 @@ serde_with.workspace = true
 revm-state.workspace = true
 
 [features]
-default = ["std"]
+default = [ "std" ]
 std = [
-    "alloy-consensus/std",
-    "alloy-genesis/std",
-    "alloy-primitives/std",
-    "alloy-rlp/std",
-    "alloy-rpc-types-eth?/std",
-    "alloy-serde?/std",
-    "alloy-trie/std",
-    "arrayvec?/std",
-    "bytes?/std",
-    "derive_more/std",
-    "nybbles/std",
-    "reth-primitives-traits/std",
-    "serde?/std",
-    "serde_with?/std",
-    "serde_json/std",
-    "revm-database/std",
-    "revm-state/std",
+	"alloy-consensus/std",
+	"alloy-genesis/std",
+	"alloy-primitives/std",
+	"alloy-rlp/std",
+	"alloy-rpc-types-eth?/std",
+	"alloy-serde?/std",
+	"alloy-trie/std",
+	"arrayvec?/std",
+	"bytes?/std",
+	"derive_more/std",
+	"nybbles/std",
+	"reth-primitives-traits/std",
+	"revm-database/std",
+	"revm-state/std",
+	"serde?/std",
+	"serde_json/std",
+	"serde_with?/std",
 ]
-eip1186 = ["alloy-rpc-types-eth/serde", "dep:alloy-serde"]
+eip1186 = [ "alloy-rpc-types-eth/serde", "dep:alloy-serde" ]
 serde = [
-    "dep:serde",
-    "arrayvec?/serde",
-    "bytes?/serde",
-    "nybbles/serde",
-    "alloy-primitives/serde",
-    "alloy-consensus/serde",
-    "alloy-trie/serde",
-    "alloy-rpc-types-eth?/serde",
-    "reth-primitives-traits/serde",
-    "reth-codecs?/serde",
-    "revm-database/serde",
-    "revm-state/serde",
+	"alloy-consensus/serde",
+	"alloy-primitives/serde",
+	"alloy-rpc-types-eth?/serde",
+	"alloy-trie/serde",
+	"arrayvec?/serde",
+	"bytes?/serde",
+	"dep:serde",
+	"nybbles/serde",
+	"reth-codecs?/serde",
+	"reth-primitives-traits/serde",
+	"revm-database/serde",
+	"revm-state/serde",
 ]
-reth-codec = ["dep:reth-codecs", "dep:bytes", "dep:arrayvec"]
+reth-codec = [ "dep:arrayvec", "dep:bytes", "dep:reth-codecs" ]
 serde-bincode-compat = [
-    "serde",
-    "reth-primitives-traits/serde-bincode-compat",
-    "alloy-consensus/serde-bincode-compat",
-    "dep:serde_with",
-    "alloy-genesis/serde-bincode-compat",
-    "alloy-rpc-types-eth?/serde-bincode-compat",
+	"alloy-consensus/serde-bincode-compat",
+	"alloy-genesis/serde-bincode-compat",
+	"alloy-rpc-types-eth?/serde-bincode-compat",
+	"dep:serde_with",
+	"reth-primitives-traits/serde-bincode-compat",
+	"serde",
 ]
 test-utils = [
-    "dep:plain_hasher",
-    "dep:hash-db",
-    "arbitrary",
-    "reth-primitives-traits/test-utils",
-    "reth-codecs/test-utils",
+	"arbitrary",
+	"dep:hash-db",
+	"dep:plain_hasher",
+	"reth-codecs/test-utils",
+	"reth-primitives-traits/test-utils",
 ]
 arbitrary = [
-    "std",
-    "dep:reth-codecs",
-    "alloy-trie/arbitrary",
-    "dep:arbitrary",
-    "alloy-serde?/arbitrary",
-    "reth-primitives-traits/arbitrary",
-    "alloy-consensus/arbitrary",
-    "alloy-primitives/arbitrary",
-    "nybbles/arbitrary",
-    "reth-codecs/arbitrary",
-    "alloy-rpc-types-eth?/arbitrary",
+	"alloy-consensus/arbitrary",
+	"alloy-primitives/arbitrary",
+	"alloy-rpc-types-eth?/arbitrary",
+	"alloy-serde?/arbitrary",
+	"alloy-trie/arbitrary",
+	"dep:arbitrary",
+	"dep:reth-codecs",
+	"nybbles/arbitrary",
+	"reth-codecs/arbitrary",
+	"reth-primitives-traits/arbitrary",
+	"std",
 ]
-rayon = ["dep:rayon"]
+rayon = [ "dep:rayon" ]
 
 [[bench]]
 name = "prefix_set"

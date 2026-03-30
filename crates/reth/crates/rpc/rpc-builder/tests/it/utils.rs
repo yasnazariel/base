@@ -1,7 +1,7 @@
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
 use alloy_rpc_types_engine::{ClientCode, ClientVersionV1};
-use reth_chainspec::MAINNET;
+use reth_chainspec::BASE_MAINNET;
 use reth_consensus::noop::NoopConsensus;
 use reth_engine_primitives::ConsensusEngineHandle;
 use reth_ethereum_engine_primitives::EthEngineTypes;
@@ -45,14 +45,14 @@ pub async fn launch_auth(secret: JwtSecret) -> AuthServerHandle {
 
     let engine_api = EngineApi::new(
         NoopProvider::default(),
-        MAINNET.clone(),
+        BASE_MAINNET.clone(),
         beacon_engine_handle,
         spawn_test_payload_service().into(),
         NoopTransactionPool::default(),
         Box::<TokioTaskExecutor>::default(),
         client,
         EngineCapabilities::default(),
-        EthereumEngineValidator::new(MAINNET.clone()),
+        EthereumEngineValidator::new(BASE_MAINNET.clone()),
         false,
         NoopNetwork::default(),
     );

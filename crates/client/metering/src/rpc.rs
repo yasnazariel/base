@@ -11,12 +11,12 @@ use alloy_primitives::{B256, TxHash, U256};
 use base_alloy_consensus::OpBlock;
 use base_alloy_flz::flz_compress_len;
 use base_bundles::{Bundle, MeterBundleResponse, ParsedBundle};
-use base_execution_chainspec::OpChainSpec;
 use base_execution_evm::extract_l1_info_from_tx;
 use base_flashblocks::{FlashblocksAPI, PendingBlocksAPI};
 use base_revm::L1BlockInfo;
 use jsonrpsee::core::{RpcResult, async_trait};
 use parking_lot::RwLock;
+use reth_chainspec::ChainSpec;
 use reth_primitives_traits::SealedHeader;
 use reth_provider::{
     BlockReader, BlockReaderIdExt, ChainSpecProvider, HeaderProvider, StateProviderFactory,
@@ -55,7 +55,7 @@ impl<Provider, FB> std::fmt::Debug for MeteringApiImpl<Provider, FB> {
 impl<Provider, FB> MeteringApiImpl<Provider, FB>
 where
     Provider: StateProviderFactory
-        + ChainSpecProvider<ChainSpec = OpChainSpec>
+        + ChainSpecProvider<ChainSpec = ChainSpec>
         + BlockReaderIdExt<Header = Header>
         + BlockReader<Block = OpBlock>
         + HeaderProvider<Header = Header>
@@ -96,7 +96,7 @@ where
 impl<Provider, FB> MeteringApiServer for MeteringApiImpl<Provider, FB>
 where
     Provider: StateProviderFactory
-        + ChainSpecProvider<ChainSpec = OpChainSpec>
+        + ChainSpecProvider<ChainSpec = ChainSpec>
         + BlockReaderIdExt<Header = Header>
         + BlockReader<Block = OpBlock>
         + HeaderProvider<Header = Header>
@@ -526,7 +526,7 @@ fn compute_resource_demand(bundle: &Bundle, meter_result: &MeterBundleResponse) 
 impl<Provider, FB> MeteringApiImpl<Provider, FB>
 where
     Provider: StateProviderFactory
-        + ChainSpecProvider<ChainSpec = OpChainSpec>
+        + ChainSpecProvider<ChainSpec = ChainSpec>
         + BlockReaderIdExt<Header = Header>
         + BlockReader<Block = OpBlock>
         + HeaderProvider<Header = Header>

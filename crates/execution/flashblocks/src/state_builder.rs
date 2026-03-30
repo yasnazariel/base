@@ -17,11 +17,10 @@ use base_alloy_consensus::{OpReceipt, OpTxEnvelope};
 use base_alloy_evm::ensure_create2_deployer;
 use base_alloy_flz::tx_estimated_size_fjord as estimate_tx_compressed_size;
 use base_alloy_rpc_types::{OpTransactionReceipt, Transaction};
-use base_execution_chainspec::OpChainSpec;
 use base_execution_primitives::OpPrimitives;
 use base_execution_rpc::OpReceiptBuilder as OpRpcReceiptBuilder;
 use base_revm::{L1_BLOCK_CONTRACT, L1BlockInfo, OpHaltReason};
-use reth_chainspec::EthereumHardforks;
+use reth_chainspec::{ChainSpec, EthereumHardforks};
 use reth_evm::{Evm, FromRecoveredTx};
 use reth_rpc_convert::transaction::ConvertReceiptInput;
 use revm::{
@@ -80,8 +79,9 @@ where
     E::Tx: FromRecoveredTx<OpTxEnvelope>,
 {
     /// Creates a new pending state builder.
+    #[allow(clippy::missing_const_for_fn)]
     pub fn new(
-        chain_spec: Arc<OpChainSpec>,
+        chain_spec: Arc<ChainSpec>,
         evm: E,
         pending_block: Block<OpTxEnvelope, Header>,
         prev_pending_blocks: Option<Arc<PendingBlocks>>,
@@ -399,9 +399,9 @@ mod tests {
     use base_alloy_flashblocks::{
         ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, Flashblock, Metadata,
     };
-    use base_execution_chainspec::OpChainSpecBuilder;
     use base_execution_evm::OpEvmConfig;
     use base_revm::L1BlockInfo;
+    use reth_chainspec::ChainSpecBuilder;
     use reth_evm::ConfigureEvm;
     use reth_revm::State;
     use revm::{
@@ -433,7 +433,7 @@ mod tests {
     fn apply_pre_execution_changes_stores_beacon_root_in_eip4788_contract() {
         let db = make_db_with_beacon_roots_contract();
 
-        let chain_spec = Arc::new(OpChainSpecBuilder::base_mainnet().build());
+        let chain_spec = Arc::new(ChainSpecBuilder::base_mainnet().build());
         let evm_config = OpEvmConfig::optimism(Arc::clone(&chain_spec));
         let header = Header { timestamp: POST_ECOTONE_TIMESTAMP, number: 1, ..Default::default() };
         let evm_env = evm_config.evm_env(&header).expect("failed to build evm env");
@@ -489,7 +489,7 @@ mod tests {
         // In this regime None is valid (no beacon root contract call is made).
         let pre_ecotone_timestamp = BASE_MAINNET_ECOTONE_TIMESTAMP - 1;
 
-        let chain_spec = Arc::new(OpChainSpecBuilder::base_mainnet().build());
+        let chain_spec = Arc::new(ChainSpecBuilder::base_mainnet().build());
         let evm_config = OpEvmConfig::optimism(Arc::clone(&chain_spec));
         let header = Header { timestamp: pre_ecotone_timestamp, number: 1, ..Default::default() };
         let evm_env = evm_config.evm_env(&header).expect("failed to build evm env");
@@ -550,7 +550,7 @@ mod tests {
 
     #[test]
     fn cached_execute_transaction_preserves_execution_time_from_prev_pending_blocks() {
-        let chain_spec = Arc::new(OpChainSpecBuilder::base_mainnet().build());
+        let chain_spec = Arc::new(ChainSpecBuilder::base_mainnet().build());
         let evm_config = OpEvmConfig::optimism(Arc::clone(&chain_spec));
 
         let header = Header {
@@ -646,7 +646,7 @@ mod tests {
 
     #[test]
     fn flashblock_tx_has_nonzero_blob_gas_used_when_jovian_active() {
-        let chain_spec = Arc::new(OpChainSpecBuilder::base_mainnet().jovian_activated().build());
+        let chain_spec = Arc::new(ChainSpecBuilder::base_mainnet().jovian_activated().build());
         let mut db = InMemoryDB::default();
 
         let sender_info = AccountInfo {
@@ -701,7 +701,7 @@ mod tests {
 
     #[test]
     fn flashblock_tx_has_zero_blob_gas_used_when_jovian_inactive() {
-        let chain_spec = Arc::new(OpChainSpecBuilder::base_mainnet().build());
+        let chain_spec = Arc::new(ChainSpecBuilder::base_mainnet().build());
         let mut db = InMemoryDB::default();
 
         let sender_info = AccountInfo {
@@ -744,7 +744,7 @@ mod tests {
 
     #[test]
     fn flashblock_deposit_tx_has_zero_blob_gas_used_when_jovian_active() {
-        let chain_spec = Arc::new(OpChainSpecBuilder::base_mainnet().jovian_activated().build());
+        let chain_spec = Arc::new(ChainSpecBuilder::base_mainnet().jovian_activated().build());
         let mut db = InMemoryDB::default();
 
         let deposit_sender: Address = address!("0x1234567890123456789012345678901234567890");

@@ -43,7 +43,7 @@ tokio.workspace = true
 rustc-hash.workspace = true
 
 [features]
-rocksdb = ["reth-provider/rocksdb"]
+rocksdb = [ "reth-provider/rocksdb" ]
 
 [dev-dependencies]
 # reth

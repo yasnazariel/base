@@ -6,7 +6,7 @@ use alloy_network::TxSignerSync;
 use alloy_provider::{Provider, ProviderBuilder};
 use futures::future::JoinAll;
 use rand::{Rng, SeedableRng, rngs::StdRng, seq::IndexedRandom};
-use reth_chainspec::{ChainSpecBuilder, MAINNET};
+use reth_chainspec::{BASE_MAINNET, ChainSpecBuilder};
 use reth_e2e_test_utils::{
     setup, setup_engine, setup_engine_with_connection, transaction::TransactionTestContext,
     wallet::Wallet,
@@ -24,7 +24,7 @@ async fn can_sync() -> eyre::Result<()> {
         2,
         Arc::new(
             ChainSpecBuilder::default()
-                .chain(MAINNET.chain)
+                .chain(BASE_MAINNET.chain)
                 .genesis(serde_json::from_str(include_str!("../assets/genesis.json")).unwrap())
                 .cancun_activated()
                 .build(),
@@ -69,7 +69,7 @@ async fn e2e_test_send_transactions() -> eyre::Result<()> {
 
     let chain_spec = Arc::new(
         ChainSpecBuilder::default()
-            .chain(MAINNET.chain)
+            .chain(BASE_MAINNET.chain)
             .genesis(serde_json::from_str(include_str!("../assets/genesis.json")).unwrap())
             .cancun_activated()
             .prague_activated()
@@ -111,7 +111,7 @@ async fn test_long_reorg() -> eyre::Result<()> {
 
     let chain_spec = Arc::new(
         ChainSpecBuilder::default()
-            .chain(MAINNET.chain)
+            .chain(BASE_MAINNET.chain)
             .genesis(serde_json::from_str(include_str!("../assets/genesis.json")).unwrap())
             .cancun_activated()
             .prague_activated()
@@ -167,7 +167,7 @@ async fn test_reorg_through_backfill() -> eyre::Result<()> {
 
     let chain_spec = Arc::new(
         ChainSpecBuilder::default()
-            .chain(MAINNET.chain)
+            .chain(BASE_MAINNET.chain)
             .genesis(serde_json::from_str(include_str!("../assets/genesis.json")).unwrap())
             .cancun_activated()
             .prague_activated()
@@ -212,7 +212,7 @@ async fn test_tx_propagation() -> eyre::Result<()> {
 
     let chain_spec = Arc::new(
         ChainSpecBuilder::default()
-            .chain(MAINNET.chain)
+            .chain(BASE_MAINNET.chain)
             .genesis(serde_json::from_str(include_str!("../assets/genesis.json")).unwrap())
             .cancun_activated()
             .prague_activated()

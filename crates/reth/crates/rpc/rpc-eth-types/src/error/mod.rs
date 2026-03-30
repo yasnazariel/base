@@ -423,7 +423,7 @@ where
 
 impl From<BalError> for EthApiError {
     fn from(err: BalError) -> Self {
-        Self::EvmCustom(format!("bal error: {:?}", err))
+        Self::EvmCustom(format!("bal error: {err:?}"))
     }
 }
 

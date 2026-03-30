@@ -6,7 +6,7 @@ use std::{
 
 use futures::Stream;
 use reth_stages_api::{ControlFlow, PipelineTarget};
-use tracing::*;
+use tracing::{error, warn};
 
 use crate::backfill::{BackfillAction, BackfillEvent, BackfillSync};
 

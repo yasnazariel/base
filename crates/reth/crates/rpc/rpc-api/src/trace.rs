@@ -4,7 +4,7 @@ use alloy_rpc_types_eth::{BlockOverrides, Index, state::StateOverride};
 use alloy_rpc_types_trace::{
     filter::TraceFilter,
     opcode::{BlockOpcodeGas, TransactionOpcodeGas},
-    parity::*,
+    parity::{LocalizedTransactionTrace, TraceResults, TraceResultsWithTransactionHash, TraceType},
 };
 use jsonrpsee::{core::RpcResult, proc_macros::rpc};
 

@@ -26,7 +26,6 @@ reth-node-metrics.workspace = true
 base-execution-evm.workspace = true
 base-execution-trie.workspace = true
 base-execution-primitives.workspace = true
-base-execution-chainspec.workspace = true
 base-execution-consensus.workspace = true
 
 reth-tracing.workspace = true
@@ -47,9 +46,6 @@ base-alloy-consensus = { workspace = true, optional = true }
 
 [dev-dependencies]
 tempfile.workspace = true
-
-[build-dependencies]
-base-execution-chainspec = { workspace = true, features = ["std"] }
 
 [features]
 default = []
@@ -79,10 +75,6 @@ dev = [
 	"reth-cli-commands/arbitrary",
 ]
 
-serde = [
-	"base-alloy-consensus?/serde",
-	"base-execution-chainspec/serde",
-	"base-execution-primitives/serde",
-]
+serde = [ "base-alloy-consensus?/serde", "base-execution-primitives/serde" ]
 
 edge = [ "reth-cli-commands/edge", "reth-node-core/edge" ]

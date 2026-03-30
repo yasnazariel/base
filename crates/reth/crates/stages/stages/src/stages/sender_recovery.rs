@@ -24,7 +24,7 @@ use reth_stages_api::{
 };
 use reth_static_file_types::StaticFileSegment;
 use thiserror::Error;
-use tracing::*;
+use tracing::{debug, info};
 
 /// Maximum amount of transactions to read from disk at one time before we flush their senders to
 /// disk. Since each rayon worker will hold at most 100 transactions (`WORKER_CHUNK_SIZE`), we

@@ -25,5 +25,5 @@ reth-tracing.workspace = true
 tokio = { workspace = true, features = ["macros"] }
 
 [features]
-default = ["serde"]
-serde = ["dep:serde_with"]
+default = [ "serde" ]
+serde = [ "dep:serde_with" ]

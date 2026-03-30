@@ -2,13 +2,12 @@
 
 use std::{path::PathBuf, sync::Arc};
 
-use base_execution_chainspec::OpChainSpec;
 use base_execution_primitives::OpPrimitives;
 use base_execution_trie::{
     InitializationJob, OpProofsStorage, OpProofsStore, db::MdbxProofsStorage,
 };
 use clap::Parser;
-use reth_chainspec::ChainInfo;
+use reth_chainspec::{ChainInfo, ChainSpec};
 use reth_cli::chainspec::ChainSpecParser;
 use reth_cli_commands::common::{AccessRights, CliNodeTypes, Environment, EnvironmentArgs};
 use reth_node_core::version::version_metadata;
@@ -36,7 +35,7 @@ pub struct InitCommand<C: ChainSpecParser> {
     pub storage_path: PathBuf,
 }
 
-impl<C: ChainSpecParser<ChainSpec = OpChainSpec>> InitCommand<C> {
+impl<C: ChainSpecParser<ChainSpec = ChainSpec>> InitCommand<C> {
     /// Execute `initialize-op-proofs` command
     pub async fn execute<N: CliNodeTypes<ChainSpec = C::ChainSpec, Primitives = OpPrimitives>>(
         self,

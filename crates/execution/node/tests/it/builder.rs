@@ -4,19 +4,17 @@ use std::sync::OnceLock;
 
 use alloy_primitives::{Bytes, address};
 use base_alloy_evm::{OpBlockExecutorFactory, OpEvm, OpEvmFactory};
-use base_execution_chainspec::{BASE_MAINNET, BASE_SEPOLIA, OpChainSpec};
 use base_execution_evm::{OpEvmConfig, OpRethReceiptBuilder};
-use base_execution_primitives::OpPrimitives;
-use base_node_core::{OpExecutorBuilder, OpNode, args::RollupArgs};
+use base_node_core::{OpExecutorBuilder, OpNode, OpNodeTypes, args::RollupArgs};
 use base_revm::{
     BasePrecompiles, OpContext, OpHaltReason, OpSpecId, OpTransaction, OpTransactionError,
 };
+use reth_chainspec::{BASE_MAINNET, BASE_SEPOLIA};
 use reth_db::test_utils::create_test_rw_db;
 use reth_evm::{Database, Evm, EvmEnv, EvmFactory, precompiles::PrecompilesMap};
 use reth_node_api::{FullNodeComponents, NodeTypesWithDBAdapter};
 use reth_node_builder::{
-    BuilderContext, FullNodeTypes, Node, NodeBuilder, NodeConfig, NodeTypes,
-    components::ExecutorBuilder,
+    BuilderContext, FullNodeTypes, Node, NodeBuilder, NodeConfig, components::ExecutorBuilder,
 };
 use reth_provider::providers::BlockchainProvider;
 use revm::{
@@ -130,7 +128,7 @@ fn test_setup_custom_precompiles() {
 
     impl<Node> ExecutorBuilder<Node> for UniExecutorBuilder
     where
-        Node: FullNodeTypes<Types: NodeTypes<ChainSpec = OpChainSpec, Primitives = OpPrimitives>>,
+        Node: FullNodeTypes<Types: OpNodeTypes>,
     {
         type EVM = OpEvmConfig<OpRethReceiptBuilder, UniEvmFactory>;
 

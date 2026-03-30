@@ -2,9 +2,9 @@
 
 use std::sync::Arc;
 
-use base_execution_chainspec::OpChainSpec;
 use base_execution_primitives::OpPrimitives;
 use clap::{Parser, Subcommand};
+use reth_chainspec::ChainSpec;
 use reth_cli::chainspec::ChainSpecParser;
 use reth_cli_commands::common::CliNodeTypes;
 
@@ -19,7 +19,7 @@ pub struct Command<C: ChainSpecParser> {
     command: Subcommands<C>,
 }
 
-impl<C: ChainSpecParser<ChainSpec = OpChainSpec>> Command<C> {
+impl<C: ChainSpecParser<ChainSpec = ChainSpec>> Command<C> {
     /// Execute `op-proofs` command
     pub async fn execute<N: CliNodeTypes<ChainSpec = C::ChainSpec, Primitives = OpPrimitives>>(
         self,

@@ -199,7 +199,7 @@ where
     let block_hash = provider.block_hash(block_number)?.ok_or_else(|| {
         ProviderError::other(std::io::Error::new(
             std::io::ErrorKind::NotFound,
-            format!("block hash not found for block number {}", block_number),
+            format!("block hash not found for block number {block_number}"),
         ))
     })?;
 
@@ -469,7 +469,7 @@ impl ChangesetCache {
             let block_hash = provider.block_hash(block_number)?.ok_or_else(|| {
                 ProviderError::other(std::io::Error::new(
                     std::io::ErrorKind::NotFound,
-                    format!("block hash not found for block number {}", block_number),
+                    format!("block hash not found for block number {block_number}"),
                 ))
             })?;
 

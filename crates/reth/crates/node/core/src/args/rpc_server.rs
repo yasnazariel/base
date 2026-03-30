@@ -95,6 +95,7 @@ pub struct DefaultRpcServerArgs {
 
 impl DefaultRpcServerArgs {
     /// Initialize the global RPC server defaults with this configuration
+    #[allow(clippy::result_large_err)]
     pub fn try_init(self) -> Result<(), Self> {
         RPC_SERVER_DEFAULTS.set(self)
     }

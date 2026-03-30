@@ -1348,7 +1348,7 @@ struct EngineApiInner<Provider, PayloadT: PayloadTypes, Pool, Validator, ChainSp
 mod tests {
     use alloy_rpc_types_engine::{ClientCode, ClientVersionV1};
     use assert_matches::assert_matches;
-    use reth_chainspec::{ChainSpec, ChainSpecBuilder, MAINNET};
+    use reth_chainspec::{BASE_MAINNET, ChainSpec, ChainSpecBuilder};
     use reth_engine_primitives::BeaconEngineMessage;
     use reth_ethereum_engine_primitives::EthEngineTypes;
     use reth_ethereum_primitives::Block;
@@ -1381,7 +1381,7 @@ mod tests {
             commit: "defa64b2".to_string(),
         };
 
-        let chain_spec: Arc<ChainSpec> = MAINNET.clone();
+        let chain_spec: Arc<ChainSpec> = BASE_MAINNET.clone();
         let provider = Arc::new(MockEthProvider::default());
         let payload_store = spawn_test_payload_service();
         let (to_engine, engine_rx) = unbounded_channel();

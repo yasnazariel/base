@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use base_execution_chainspec::{OpChainSpec, SUPPORTED_CHAINS};
+use reth_chainspec::{ChainSpec, SUPPORTED_CHAINS};
 use reth_cli::chainspec::{ChainSpecParser, parse_genesis};
 
 /// Base chain specification parser.
@@ -9,7 +9,7 @@ use reth_cli::chainspec::{ChainSpecParser, parse_genesis};
 pub struct OpChainSpecParser;
 
 impl ChainSpecParser for OpChainSpecParser {
-    type ChainSpec = OpChainSpec;
+    type ChainSpec = ChainSpec;
 
     const SUPPORTED_CHAINS: &'static [&'static str] = SUPPORTED_CHAINS;
 
@@ -18,12 +18,12 @@ impl ChainSpecParser for OpChainSpecParser {
     }
 }
 
-/// Clap value parser for [`OpChainSpec`]s.
+/// Clap value parser for [`ChainSpec`]s.
 ///
 /// The value parser matches either a known chain, the path
 /// to a json file, or a json formatted string in-memory. The json needs to be a Genesis struct.
-pub fn chain_value_parser(s: &str) -> eyre::Result<Arc<OpChainSpec>, eyre::Error> {
-    if let Some(op_chain_spec) = OpChainSpec::parse_chain(s) {
+pub fn chain_value_parser(s: &str) -> eyre::Result<Arc<ChainSpec>, eyre::Error> {
+    if let Some(op_chain_spec) = ChainSpec::parse_chain(s) {
         Ok(op_chain_spec)
     } else {
         Ok(Arc::new(parse_genesis(s)?.into()))

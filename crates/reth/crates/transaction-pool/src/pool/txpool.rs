@@ -4249,7 +4249,7 @@ mod tests {
             .with_max_fee(base_fee - 10)
             .with_blob_fee(blob_fee - 10);
 
-        for tx in vec![
+        for tx in [
             tx1.clone(),
             tx2.clone(),
             tx3.clone(),

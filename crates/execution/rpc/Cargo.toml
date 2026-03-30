@@ -35,7 +35,6 @@ reth-tasks = { workspace = true, features = ["rayon"] }
 
 # op-reth
 base-txpool.workspace = true
-base-execution-chainspec.workspace = true
 base-execution-evm.workspace = true
 base-execution-trie.workspace = true
 base-execution-payload-builder.workspace = true
@@ -84,9 +83,6 @@ derive_more = { workspace = true, features = ["constructor"] }
 # metrics
 metrics = { workspace = true, optional = true }
 base-metrics.workspace = true
-
-[dev-dependencies]
-base-execution-chainspec.workspace = true
 
 [features]
 default = [ "metrics" ]

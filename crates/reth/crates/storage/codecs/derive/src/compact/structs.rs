@@ -1,4 +1,6 @@
-use super::{format_ident, quote, FieldTypes, TokenStream2, FieldList, StructFieldDescriptor, is_flag_type};
+use super::{
+    FieldList, FieldTypes, StructFieldDescriptor, TokenStream2, format_ident, is_flag_type, quote,
+};
 
 #[derive(Debug)]
 pub struct StructHandler<'a> {

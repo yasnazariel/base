@@ -888,7 +888,7 @@ mod tests {
 
             let rocksdb = db.factory.rocksdb_provider();
             let shards = rocksdb.storage_history_shards(ADDRESS, STORAGE_KEY).unwrap();
-            assert!(shards.len() >= 2, "Should have at least 2 shards for {} blocks", num_blocks);
+            assert!(shards.len() >= 2, "Should have at least 2 shards for {num_blocks} blocks");
 
             let unwind_to = NUM_OF_INDICES_IN_SHARD as u64 + 50;
             let unwind_input = UnwindInput {
@@ -910,8 +910,7 @@ mod tests {
             assert_eq!(
                 all_blocks,
                 (0..=unwind_to).collect::<Vec<_>>(),
-                "Should only have blocks 0 to {} after unwind",
-                unwind_to
+                "Should only have blocks 0 to {unwind_to} after unwind"
             );
         }
     }

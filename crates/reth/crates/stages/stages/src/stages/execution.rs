@@ -31,7 +31,7 @@ use reth_stages_api::{
 };
 use reth_static_file_types::StaticFileSegment;
 use reth_trie::KeccakKeyHasher;
-use tracing::*;
+use tracing::{debug, info, trace};
 
 use super::missing_static_data_error;
 use crate::stages::MERKLE_STAGE_DEFAULT_INCREMENTAL_THRESHOLD;

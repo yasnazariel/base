@@ -35,5 +35,5 @@ pin-project = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["sync", "rt", "rt-multi-thread", "time", "macros"] }
 
 [features]
-rayon = ["dep:rayon", "pin-project"]
+rayon = [ "dep:rayon", "pin-project" ]
 test-utils = []

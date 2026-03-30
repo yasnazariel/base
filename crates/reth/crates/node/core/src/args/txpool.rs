@@ -61,6 +61,7 @@ pub struct DefaultTxPoolValues {
 
 impl DefaultTxPoolValues {
     /// Initialize the global transaction pool defaults with this configuration
+    #[allow(clippy::result_large_err)]
     pub fn try_init(self) -> Result<(), Self> {
         TXPOOL_DEFAULTS.set(self)
     }

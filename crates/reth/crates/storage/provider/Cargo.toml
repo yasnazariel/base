@@ -87,23 +87,23 @@ rand.workspace = true
 tokio = { workspace = true, features = ["sync", "macros", "rt-multi-thread"] }
 
 [features]
-rocksdb = ["reth-storage-api/rocksdb", "dep:rocksdb"]
-edge = ["rocksdb"]
+rocksdb = [ "dep:rocksdb", "reth-storage-api/rocksdb" ]
+edge = [ "rocksdb" ]
 test-utils = [
-    "reth-db/test-utils",
-    "reth-nippy-jar/test-utils",
-    "reth-trie/test-utils",
-    "reth-chain-state/test-utils",
-    "reth-ethereum-engine-primitives",
-    "reth-ethereum-primitives/test-utils",
-    "reth-chainspec/test-utils",
-    "reth-primitives-traits/test-utils",
-    "reth-codecs/test-utils",
-    "reth-db-api/test-utils",
-    "reth-trie-db/test-utils",
-    "reth-prune-types/test-utils",
-    "reth-stages-types/test-utils",
-    "revm-state",
-    "tokio",
-    "reth-tasks/test-utils",
+	"reth-chain-state/test-utils",
+	"reth-chainspec/test-utils",
+	"reth-codecs/test-utils",
+	"reth-db-api/test-utils",
+	"reth-db/test-utils",
+	"reth-ethereum-engine-primitives",
+	"reth-ethereum-primitives/test-utils",
+	"reth-nippy-jar/test-utils",
+	"reth-primitives-traits/test-utils",
+	"reth-prune-types/test-utils",
+	"reth-stages-types/test-utils",
+	"reth-tasks/test-utils",
+	"reth-trie-db/test-utils",
+	"reth-trie/test-utils",
+	"revm-state",
+	"tokio",
 ]

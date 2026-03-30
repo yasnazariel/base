@@ -904,7 +904,7 @@ mod tests {
         HOLESKY_GENESIS_HASH, MAINNET_GENESIS_HASH, SEPOLIA_GENESIS_HASH,
     };
     use alloy_genesis::Genesis;
-    use reth_chainspec::{Chain, ChainSpec, HOLESKY, MAINNET, SEPOLIA};
+    use reth_chainspec::{BASE_MAINNET, BASE_SEPOLIA, BASE_ZERONET, Chain, ChainSpec};
     use reth_db::DatabaseEnv;
     use reth_db_api::{
         Database,
@@ -933,7 +933,8 @@ mod tests {
     #[test]
     fn success_init_genesis_mainnet() {
         let genesis_hash =
-            init_genesis(&create_test_provider_factory_with_chain_spec(MAINNET.clone())).unwrap();
+            init_genesis(&create_test_provider_factory_with_chain_spec(BASE_MAINNET.clone()))
+                .unwrap();
 
         // actual, expected
         assert_eq!(genesis_hash, MAINNET_GENESIS_HASH);
@@ -942,7 +943,8 @@ mod tests {
     #[test]
     fn success_init_genesis_sepolia() {
         let genesis_hash =
-            init_genesis(&create_test_provider_factory_with_chain_spec(SEPOLIA.clone())).unwrap();
+            init_genesis(&create_test_provider_factory_with_chain_spec(BASE_SEPOLIA.clone()))
+                .unwrap();
 
         // actual, expected
         assert_eq!(genesis_hash, SEPOLIA_GENESIS_HASH);
@@ -951,7 +953,8 @@ mod tests {
     #[test]
     fn success_init_genesis_holesky() {
         let genesis_hash =
-            init_genesis(&create_test_provider_factory_with_chain_spec(HOLESKY.clone())).unwrap();
+            init_genesis(&create_test_provider_factory_with_chain_spec(BASE_ZERONET.clone()))
+                .unwrap();
 
         // actual, expected
         assert_eq!(genesis_hash, HOLESKY_GENESIS_HASH);
@@ -959,7 +962,7 @@ mod tests {
 
     #[test]
     fn fail_init_inconsistent_db() {
-        let factory = create_test_provider_factory_with_chain_spec(SEPOLIA.clone());
+        let factory = create_test_provider_factory_with_chain_spec(BASE_SEPOLIA.clone());
         let static_file_provider = factory.static_file_provider();
         let rocksdb_provider = factory.rocksdb_provider();
         init_genesis(&factory).unwrap();
@@ -968,7 +971,7 @@ mod tests {
         let genesis_hash = init_genesis(
             &ProviderFactory::<MockNodeTypesWithDB>::new(
                 factory.into_db(),
-                MAINNET.clone(),
+                BASE_MAINNET.clone(),
                 static_file_provider,
                 rocksdb_provider,
                 reth_tasks::Runtime::test(),
@@ -1074,7 +1077,7 @@ mod tests {
 
     #[test]
     fn warn_storage_settings_mismatch() {
-        let factory = create_test_provider_factory_with_chain_spec(MAINNET.clone());
+        let factory = create_test_provider_factory_with_chain_spec(BASE_MAINNET.clone());
         init_genesis_with_settings(&factory, StorageSettings::v1()).unwrap();
 
         // Request different settings - should warn but succeed
@@ -1086,7 +1089,7 @@ mod tests {
 
     #[test]
     fn allow_same_storage_settings() {
-        let factory = create_test_provider_factory_with_chain_spec(MAINNET.clone());
+        let factory = create_test_provider_factory_with_chain_spec(BASE_MAINNET.clone());
         let settings = StorageSettings::v2();
         init_genesis_with_settings(&factory, settings).unwrap();
 

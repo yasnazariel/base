@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use eyre::Result;
-use reth_chainspec::{ChainSpecBuilder, MAINNET};
+use reth_chainspec::{BASE_MAINNET, ChainSpecBuilder};
 use reth_e2e_test_utils::testsuite::{
     TestBuilder,
     actions::{
@@ -23,7 +23,7 @@ fn default_engine_tree_setup() -> Setup<EthEngineTypes> {
     Setup::default()
         .with_chain_spec(Arc::new(
             ChainSpecBuilder::default()
-                .chain(MAINNET.chain)
+                .chain(BASE_MAINNET.chain)
                 .genesis(
                     serde_json::from_str(include_str!(
                         "../../../../e2e-test-utils/src/testsuite/assets/genesis.json"

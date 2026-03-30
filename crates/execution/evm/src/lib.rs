@@ -20,10 +20,9 @@ use base_alloy_consensus::{EIP1559ParamError, OpBlock, OpReceipt};
 use base_alloy_evm::{
     OpBlockExecutionCtx, OpBlockExecutorFactory, OpEvmFactory, OpReceiptBuilder, OpTxEnv,
 };
-use base_execution_chainspec::OpChainSpec;
 use base_execution_primitives::{OpHeader, OpPrimitives, OpTransactionSigned};
 use base_revm::{OpSpecId, OpTransaction};
-use reth_chainspec::EthChainSpec;
+use reth_chainspec::{ChainSpec, EthChainSpec};
 #[cfg(feature = "std")]
 use reth_evm::{ConfigureEngineEvm, ExecutableTxIterator};
 use reth_evm::{ConfigureEvm, EvmEnv, TransactionEnv, precompiles::PrecompilesMap};
@@ -123,9 +122,9 @@ fn op_next_evm_env(
 #[derive(Debug)]
 pub struct OpEvmConfig<R = OpRethReceiptBuilder, EvmFactory = OpEvmFactory> {
     /// Inner [`OpBlockExecutorFactory`].
-    pub executor_factory: OpBlockExecutorFactory<R, Arc<OpChainSpec>, EvmFactory>,
+    pub executor_factory: OpBlockExecutorFactory<R, Arc<ChainSpec>, EvmFactory>,
     /// Base block assembler.
-    pub block_assembler: OpBlockAssembler<OpChainSpec>,
+    pub block_assembler: OpBlockAssembler<ChainSpec>,
 }
 
 impl<R: Clone, EvmFactory: Clone> Clone for OpEvmConfig<R, EvmFactory> {
@@ -139,14 +138,14 @@ impl<R: Clone, EvmFactory: Clone> Clone for OpEvmConfig<R, EvmFactory> {
 
 impl OpEvmConfig {
     /// Creates a new [`OpEvmConfig`] with the given chain spec for Base chains.
-    pub fn optimism(chain_spec: Arc<OpChainSpec>) -> Self {
+    pub fn optimism(chain_spec: Arc<ChainSpec>) -> Self {
         Self::new(chain_spec, OpRethReceiptBuilder::default())
     }
 }
 
 impl<R> OpEvmConfig<R> {
     /// Creates a new [`OpEvmConfig`] with the given chain spec.
-    pub fn new(chain_spec: Arc<OpChainSpec>, receipt_builder: R) -> Self {
+    pub fn new(chain_spec: Arc<ChainSpec>, receipt_builder: R) -> Self {
         Self {
             block_assembler: OpBlockAssembler::new(Arc::clone(&chain_spec)),
             executor_factory: OpBlockExecutorFactory::new(
@@ -160,7 +159,7 @@ impl<R> OpEvmConfig<R> {
 
 impl<R, EvmFactory> OpEvmConfig<R, EvmFactory> {
     /// Returns the chain spec associated with this configuration.
-    pub const fn chain_spec(&self) -> &Arc<OpChainSpec> {
+    pub const fn chain_spec(&self) -> &Arc<ChainSpec> {
         self.executor_factory.spec()
     }
 }
@@ -184,8 +183,8 @@ where
     type Primitives = OpPrimitives;
     type Error = EIP1559ParamError;
     type NextBlockEnvCtx = OpNextBlockEnvAttributes;
-    type BlockExecutorFactory = OpBlockExecutorFactory<R, Arc<OpChainSpec>, EvmF>;
-    type BlockAssembler = OpBlockAssembler<OpChainSpec>;
+    type BlockExecutorFactory = OpBlockExecutorFactory<R, Arc<ChainSpec>, EvmF>;
+    type BlockAssembler = OpBlockAssembler<ChainSpec>;
 
     fn block_executor_factory(&self) -> &Self::BlockExecutorFactory {
         &self.executor_factory
@@ -320,10 +319,9 @@ mod tests {
         map::{AddressMap, B256Map, HashMap},
     };
     use base_alloy_consensus::{OpBlock, OpReceipt};
-    use base_execution_chainspec::{BASE_MAINNET, OpChainSpec, OpChainSpecBuilder};
     use base_execution_primitives::OpPrimitives;
     use base_revm::OpSpecId;
-    use reth_chainspec::ChainSpec;
+    use reth_chainspec::{BASE_MAINNET, ChainSpec, ChainSpecBuilder};
     use reth_evm::execute::ProviderError;
     use reth_execution_types::{
         AccountRevertInit, BundleStateInit, Chain, ExecutionOutcome, RevertsInit,
@@ -346,7 +344,7 @@ mod tests {
     #[test]
     fn test_evm_env_uses_base_v1_for_genesis_chain_spec() {
         let chain_spec = Arc::new(
-            OpChainSpecBuilder::default()
+            ChainSpecBuilder::default()
                 .chain(0.into())
                 .genesis(Genesis::default())
                 .base_v1_activated()
@@ -376,9 +374,7 @@ mod tests {
         // Use the `OpEvmConfig` to create the `cfg_env` and `block_env` based on the ChainSpec,
         // Header, and total difficulty
         let EvmEnv { cfg_env, .. } =
-            OpEvmConfig::optimism(Arc::new(OpChainSpec { inner: chain_spec.clone() }))
-                .evm_env(&header)
-                .unwrap();
+            OpEvmConfig::optimism(Arc::new(chain_spec.clone())).evm_env(&header).unwrap();
 
         // Assert that the chain ID in the `cfg_env` is correctly set to the chain ID of the
         // ChainSpec

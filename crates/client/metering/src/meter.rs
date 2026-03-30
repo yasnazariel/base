@@ -5,10 +5,10 @@ use std::{collections::HashMap, sync::Arc, time::Instant};
 use alloy_consensus::{BlockHeader, Transaction as _};
 use alloy_primitives::{Address, B256, U256};
 use base_bundles::{BundleExtensions, BundleTxs, ParsedBundle, TransactionResult};
-use base_execution_chainspec::OpChainSpec;
 use base_execution_evm::{OpEvmConfig, OpNextBlockEnvAttributes};
 use base_revm::L1BlockInfo;
 use eyre::{Result as EyreResult, eyre};
+use reth_chainspec::ChainSpec;
 use reth_evm::{ConfigureEvm, execute::BlockBuilder};
 use reth_primitives_traits::{Account, SealedHeader};
 use reth_revm::{database::StateProviderDatabase, db::State, primitives::KECCAK_EMPTY};
@@ -115,7 +115,7 @@ pub struct MeterBundleOutput {
 /// Returns [`MeterBundleOutput`] containing transaction results and aggregated metrics.
 pub fn meter_bundle<SP>(
     state_provider: SP,
-    chain_spec: Arc<OpChainSpec>,
+    chain_spec: Arc<ChainSpec>,
     bundle: ParsedBundle,
     header: &SealedHeader,
     parent_beacon_block_root: Option<B256>,

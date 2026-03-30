@@ -22,7 +22,7 @@ use reth_stages_api::{
     UnwindInput, UnwindOutput,
 };
 use reth_storage_errors::provider::ProviderError;
-use tracing::*;
+use tracing::{info, trace};
 
 /// The transaction lookup stage.
 ///
@@ -650,7 +650,7 @@ mod tests {
             // Execute the stage
             let rx = runner.execute(input);
             let result = rx.await.unwrap();
-            assert!(result.is_ok(), "stage execution failed: {:?}", result);
+            assert!(result.is_ok(), "stage execution failed: {result:?}");
 
             // Verify MDBX table is empty (data should be in RocksDB)
             let mdbx_count = runner.db.count_entries::<tables::TransactionHashNumbers>().unwrap();
@@ -666,7 +666,7 @@ mod tests {
                 for tx in &block.body().transactions {
                     let hash = *tx.tx_hash();
                     let result = rocksdb.get::<tables::TransactionHashNumbers>(hash).unwrap();
-                    assert!(result.is_some(), "Transaction hash {:?} not found in RocksDB", hash);
+                    assert!(result.is_some(), "Transaction hash {hash:?} not found in RocksDB");
                     rocksdb_count += 1;
                 }
             }
@@ -715,7 +715,7 @@ mod tests {
             };
             let rx = runner.execute(exec_input);
             let result = rx.await.unwrap();
-            assert!(result.is_ok(), "stage execution failed: {:?}", result);
+            assert!(result.is_ok(), "stage execution failed: {result:?}");
 
             // Verify RocksDB has the data before unwind
             let rocksdb = runner.db.factory.rocksdb_provider();
@@ -725,8 +725,7 @@ mod tests {
                     let result = rocksdb.get::<tables::TransactionHashNumbers>(hash).unwrap();
                     assert!(
                         result.is_some(),
-                        "Transaction hash {:?} should exist before unwind",
-                        hash
+                        "Transaction hash {hash:?} should exist before unwind"
                     );
                 }
             }
@@ -738,7 +737,7 @@ mod tests {
                 bad_block: None,
             };
             let unwind_result = runner.unwind(unwind_input).await;
-            assert!(unwind_result.is_ok(), "stage unwind failed: {:?}", unwind_result);
+            assert!(unwind_result.is_ok(), "stage unwind failed: {unwind_result:?}");
 
             // Verify RocksDB data is deleted after unwind
             let rocksdb = runner.db.factory.rocksdb_provider();
@@ -748,8 +747,7 @@ mod tests {
                     let result = rocksdb.get::<tables::TransactionHashNumbers>(hash).unwrap();
                     assert!(
                         result.is_none(),
-                        "Transaction hash {:?} should be deleted from RocksDB after unwind",
-                        hash
+                        "Transaction hash {hash:?} should be deleted from RocksDB after unwind"
                     );
                 }
             }

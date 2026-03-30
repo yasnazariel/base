@@ -12,7 +12,7 @@ use alloy_eips::{BlockHashOrNumber, BlockId, BlockNumberOrTag};
 use alloy_primitives::{
     Address, B256, BlockHash, BlockNumber, Bytes, StorageKey, StorageValue, TxHash, TxNumber,
 };
-use reth_chainspec::{ChainInfo, ChainSpecProvider, EthChainSpec, MAINNET};
+use reth_chainspec::{BASE_MAINNET, ChainInfo, ChainSpecProvider, EthChainSpec};
 #[cfg(feature = "db-api")]
 use reth_db_api::mock::{DatabaseMock, TxMock};
 use reth_db_models::{AccountBeforeTx, StoredBlockBodyIndices};
@@ -83,7 +83,7 @@ impl<ChainSpec> NoopProvider<ChainSpec> {
 impl NoopProvider {
     /// Create a new instance of the [`NoopProvider`] with the mainnet chain spec.
     pub fn mainnet() -> Self {
-        Self::eth(MAINNET.clone())
+        Self::eth(BASE_MAINNET.clone())
     }
 }
 

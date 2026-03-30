@@ -79,5 +79,9 @@ path = "tests/rocksdb/main.rs"
 required-features = ["rocksdb"]
 
 [features]
-rocksdb = ["reth-node-core/rocksdb", "reth-provider/rocksdb", "reth-cli-commands/rocksdb"]
-edge = ["rocksdb"]
+rocksdb = [
+	"reth-cli-commands/rocksdb",
+	"reth-node-core/rocksdb",
+	"reth-provider/rocksdb",
+]
+edge = [ "rocksdb" ]

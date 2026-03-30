@@ -164,10 +164,10 @@ pub struct NetworkArgs {
     /// transaction announcement (see `RLPx` specs). This allows a node to request a specific size
     /// response.
     ///
-    /// By default, nodes request only 128 KiB worth of transactions, but should a peer request
-    /// more, up to 2 MiB, a node will answer with more than 128 KiB.
+    /// By default, nodes request only 128 `KiB` worth of transactions, but should a peer request
+    /// more, up to 2 `MiB`, a node will answer with more than 128 `KiB`.
     ///
-    /// Default is 128 KiB.
+    /// Default is 128 `KiB`.
     #[arg(long = "pooled-tx-pack-soft-limit", value_name = "BYTES", default_value_t = DEFAULT_SOFT_LIMIT_BYTE_SIZE_POOLED_TRANSACTIONS_RESP_ON_PACK_GET_POOLED_TRANSACTIONS_REQ, verbatim_doc_comment)]
     pub soft_limit_byte_size_pooled_transactions_response_on_pack_request: usize,
 
@@ -534,24 +534,24 @@ pub struct DiscoveryArgs {
     #[arg(id = "discovery.port", long = "discovery.port", value_name = "DISCOVERY_PORT", default_value_t = DEFAULT_DISCOVERY_PORT)]
     pub port: u16,
 
-    /// The UDP IPv4 address to use for devp2p peer discovery version 5. Overwritten by `RLPx`
-    /// address, if it's also IPv4.
+    /// The UDP `IPv4` address to use for devp2p peer discovery version 5. Overwritten by `RLPx`
+    /// address, if it's also `IPv4`.
     #[arg(id = "discovery.v5.addr", long = "discovery.v5.addr", value_name = "DISCOVERY_V5_ADDR", default_value = None)]
     pub discv5_addr: Option<Ipv4Addr>,
 
-    /// The UDP IPv6 address to use for devp2p peer discovery version 5. Overwritten by `RLPx`
-    /// address, if it's also IPv6.
+    /// The UDP `IPv6` address to use for devp2p peer discovery version 5. Overwritten by `RLPx`
+    /// address, if it's also `IPv6`.
     #[arg(id = "discovery.v5.addr.ipv6", long = "discovery.v5.addr.ipv6", value_name = "DISCOVERY_V5_ADDR_IPV6", default_value = None)]
     pub discv5_addr_ipv6: Option<Ipv6Addr>,
 
-    /// The UDP IPv4 port to use for devp2p peer discovery version 5. Not used unless `--addr` is
-    /// IPv4, or `--discovery.v5.addr` is set.
+    /// The UDP `IPv4` port to use for devp2p peer discovery version 5. Not used unless `--addr` is
+    /// `IPv4`, or `--discovery.v5.addr` is set.
     #[arg(id = "discovery.v5.port", long = "discovery.v5.port", value_name = "DISCOVERY_V5_PORT",
     default_value_t = DEFAULT_DISCOVERY_V5_PORT)]
     pub discv5_port: u16,
 
-    /// The UDP IPv6 port to use for devp2p peer discovery version 5. Not used unless `--addr` is
-    /// IPv6, or `--discovery.addr.ipv6` is set.
+    /// The UDP `IPv6` port to use for devp2p peer discovery version 5. Not used unless `--addr` is
+    /// `IPv6`, or `--discovery.addr.ipv6` is set.
     #[arg(id = "discovery.v5.port.ipv6", long = "discovery.v5.port.ipv6", value_name = "DISCOVERY_V5_PORT_IPV6",
     default_value = None, default_value_t = DEFAULT_DISCOVERY_V5_PORT)]
     pub discv5_port_ipv6: u16,
@@ -707,12 +707,12 @@ impl Default for DiscoveryArgs {
 /// Parse a block number=hash pair or just a hash into `BlockNumHash`
 fn parse_block_num_hash(s: &str) -> Result<BlockNumHash, String> {
     if let Some((num_str, hash_str)) = s.split_once('=') {
-        let number = num_str.parse().map_err(|_| format!("Invalid block number: {}", num_str))?;
-        let hash = B256::from_str(hash_str).map_err(|_| format!("Invalid hash: {}", hash_str))?;
+        let number = num_str.parse().map_err(|_| format!("Invalid block number: {num_str}"))?;
+        let hash = B256::from_str(hash_str).map_err(|_| format!("Invalid hash: {hash_str}"))?;
         Ok(BlockNumHash::new(number, hash))
     } else {
         // For backward compatibility, treat as hash-only with number 0
-        let hash = B256::from_str(s).map_err(|_| format!("Invalid hash: {}", s))?;
+        let hash = B256::from_str(s).map_err(|_| format!("Invalid hash: {s}"))?;
         Ok(BlockNumHash::new(0, hash))
     }
 }
@@ -725,7 +725,7 @@ mod tests {
     };
 
     use clap::Parser;
-    use reth_chainspec::MAINNET;
+    use reth_chainspec::BASE_MAINNET;
     use reth_config::Config;
     use reth_network_peers::NodeRecord;
     use secp256k1::SecretKey;
@@ -1096,12 +1096,12 @@ mod tests {
         let secret_key = SecretKey::from_byte_array(&[1u8; 32]).unwrap();
         let builder = args.network_config::<reth_network::EthNetworkPrimitives>(
             &Config::default(),
-            MAINNET.clone(),
+            BASE_MAINNET.clone(),
             secret_key,
             peers_file.clone(),
         );
 
-        let net_cfg = builder.build_with_noop_provider(MAINNET.clone());
+        let net_cfg = builder.build_with_noop_provider(BASE_MAINNET.clone());
 
         // Assert basic_nodes contains our node
         let node: NodeRecord = enode.parse().unwrap();

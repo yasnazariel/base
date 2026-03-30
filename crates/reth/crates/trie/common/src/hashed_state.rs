@@ -1641,8 +1641,7 @@ mod tests {
             let expected_count = chunking_length.div_ceil(size);
             assert_eq!(
                 chunk_count, expected_count,
-                "chunking_length: {}, size: {}",
-                chunking_length, size
+                "chunking_length: {chunking_length}, size: {size}"
             );
         }
     }

@@ -40,7 +40,7 @@ use tokio::sync::{
     mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel},
     oneshot,
 };
-use tracing::*;
+use tracing::{debug, error, instrument, trace, warn};
 
 use crate::{
     backfill::{BackfillAction, BackfillSyncState},

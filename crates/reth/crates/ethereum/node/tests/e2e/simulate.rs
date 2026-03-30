@@ -7,7 +7,7 @@ use alloy_rpc_types_eth::{
     simulate::{SimBlock, SimulatePayload, SimulatedBlock},
     state::StateOverridesBuilder,
 };
-use reth_chainspec::{ChainSpecBuilder, MAINNET};
+use reth_chainspec::{BASE_MAINNET, ChainSpecBuilder};
 use reth_e2e_test_utils::setup_engine;
 use reth_node_ethereum::EthereumNode;
 
@@ -25,7 +25,7 @@ async fn test_simulate_v1_with_max_fee_per_blob_gas_only() -> eyre::Result<()> {
 
     let chain_spec = Arc::new(
         ChainSpecBuilder::default()
-            .chain(MAINNET.chain)
+            .chain(BASE_MAINNET.chain)
             .genesis(serde_json::from_str(include_str!("../assets/genesis.json")).unwrap())
             .cancun_activated()
             .build(),

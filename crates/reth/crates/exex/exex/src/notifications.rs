@@ -257,12 +257,12 @@ where
 }
 
 /// A stream of [`ExExNotification`]s. The stream will only emit notifications for blocks that are
-/// committed or reverted after the given head. The head is the ExEx's latest view of the host
+/// committed or reverted after the given head. The head is the `ExEx`'s latest view of the host
 /// chain.
 ///
 /// Notifications will be sent starting from the head, not inclusive. For example, if
 /// `exex_head.number == 10`, then the first notification will be with `block.number == 11`. An
-/// `exex_head.number` of 10 indicates that the ExEx has processed up to block 10, and is ready to
+/// `exex_head.number` of 10 indicates that the `ExEx` has processed up to block 10, and is ready to
 /// process block 11.
 #[derive(Debug)]
 pub struct ExExNotificationsWithHead<P, E>
@@ -278,10 +278,10 @@ where
     /// The exex head at launch
     initial_exex_head: ExExHead,
 
-    /// If true, then we need to check if the ExEx head is on the canonical chain and if not,
+    /// If true, then we need to check if the `ExEx` head is on the canonical chain and if not,
     /// revert its head.
     pending_check_canonical: bool,
-    /// If true, then we need to check if the ExEx head is behind the node head and if so, backfill
+    /// If true, then we need to check if the `ExEx` head is behind the node head and if so, backfill
     /// the missing blocks.
     pending_check_backfill: bool,
     /// The backfill job to run before consuming any notifications.
@@ -323,7 +323,7 @@ where
     /// By default, the backfill job uses [`BackfillJobFactory`] defaults (up to 500,000 blocks
     /// per batch, bounded by 30s execution time).
     ///
-    /// If your ExEx is memory-constrained, consider setting a lower `max_blocks` value to
+    /// If your `ExEx` is memory-constrained, consider setting a lower `max_blocks` value to
     /// reduce the size of each backfill notification.
     pub const fn with_backfill_thresholds(mut self, thresholds: ExecutionStageThresholds) -> Self {
         self.backfill_thresholds = Some(thresholds);
@@ -336,10 +336,10 @@ where
     P: BlockReader + HeaderProvider + StateProviderFactory + Clone + Unpin + 'static,
     E: ConfigureEvm<Primitives: NodePrimitives<Block = P::Block>> + Clone + Unpin + 'static,
 {
-    /// Checks if the ExEx head is on the canonical chain.
+    /// Checks if the `ExEx` head is on the canonical chain.
     ///
     /// If the head block is not found in the database or it's ahead of the node head, it means
-    /// we're not on the canonical chain and we need to revert the notification with the ExEx
+    /// we're not on the canonical chain and we need to revert the notification with the `ExEx`
     /// head block.
     fn check_canonical(&mut self) -> eyre::Result<Option<ExExNotification<E::Primitives>>> {
         if self.provider.is_known(self.initial_exex_head.block.hash)?
@@ -382,15 +382,15 @@ where
         Ok(Some(notification.into_inverted()))
     }
 
-    /// Compares the node head against the ExEx head, and backfills if needed.
+    /// Compares the node head against the `ExEx` head, and backfills if needed.
     ///
-    /// CAUTION: This method assumes that the ExEx head is <= the node head, and that it's on the
+    /// CAUTION: This method assumes that the `ExEx` head is <= the node head, and that it's on the
     /// canonical chain.
     ///
     /// Possible situations are:
-    /// - ExEx is behind the node head (`exex_head.number < node_head.number`). Backfill from the
+    /// - `ExEx` is behind the node head (`exex_head.number < node_head.number`). Backfill from the
     ///   node database.
-    /// - ExEx is at the same block number as the node head (`exex_head.number ==
+    /// - `ExEx` is at the same block number as the node head (`exex_head.number ==
     ///   node_head.number`). Nothing to do.
     fn check_backfill(&mut self) -> eyre::Result<()> {
         let mut backfill_job_factory =

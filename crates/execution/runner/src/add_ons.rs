@@ -182,7 +182,7 @@ where
                 NextBlockEnvCtx: BuildNextEnv<
                     OpPayloadBuilderAttributes,
                     OpHeader,
-                    base_execution_chainspec::OpChainSpec,
+                    reth_chainspec::ChainSpec,
                 >,
             >,
             Pool: TransactionPool<Transaction: OpPooledTx<Consensus = OpTransactionSigned>>,
@@ -260,7 +260,7 @@ where
                 NextBlockEnvCtx: BuildNextEnv<
                     OpPayloadBuilderAttributes,
                     OpHeader,
-                    base_execution_chainspec::OpChainSpec,
+                    reth_chainspec::ChainSpec,
                 >,
             >,
         >,

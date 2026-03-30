@@ -26,18 +26,18 @@ alloy-consensus.workspace = true
 tracing.workspace = true
 
 [features]
-default = ["std"]
+default = [ "std" ]
 std = [
-    "alloy-consensus/std",
-    "alloy-eips/std",
-    "alloy-primitives/std",
-    "reth-chainspec/std",
-    "reth-consensus/std",
-    "reth-consensus-common/std",
-    "reth-ethereum-primitives/std",
-    "reth-execution-types/std",
-    "reth-primitives-traits/std",
-    "tracing/std",
+	"alloy-consensus/std",
+	"alloy-eips/std",
+	"alloy-primitives/std",
+	"reth-chainspec/std",
+	"reth-consensus-common/std",
+	"reth-consensus/std",
+	"reth-ethereum-primitives/std",
+	"reth-execution-types/std",
+	"reth-primitives-traits/std",
+	"tracing/std",
 ]
 
 [dev-dependencies]

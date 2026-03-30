@@ -277,6 +277,7 @@ where
     /// Checks tx type support, nonce bounds, size limits, gas limits, fee constraints, chain ID,
     /// intrinsic gas, and blob tx pre-checks. Returns the unmodified transaction on success so it
     /// can be passed to [`validate_stateful`](Self::validate_stateful).
+    #[allow(clippy::result_large_err)]
     pub fn validate_stateless(
         &self,
         origin: TransactionOrigin,
@@ -600,6 +601,7 @@ where
     }
 
     /// Validates that the sender’s account has valid or no bytecode.
+    #[allow(clippy::result_large_err)]
     pub fn validate_sender_bytecode(
         &self,
         transaction: &Tx,

@@ -11,8 +11,8 @@ use alloy_eips::Encodable2718;
 use alloy_primitives::{B256, Bloom, Bytes};
 use alloy_trie::EMPTY_ROOT_HASH;
 use base_alloy_chains::BaseUpgrades;
-pub use base_execution_chainspec::decode_holocene_base_fee;
 use base_execution_primitives::DepositReceipt;
+pub use reth_chainspec::decode_holocene_base_fee;
 use reth_consensus::ConsensusError;
 use reth_execution_types::BlockExecutionResult;
 use reth_primitives_traits::{BlockBody, GotExpected, receipt::gas_spent_by_transactions};
@@ -215,8 +215,7 @@ mod tests {
     use alloy_primitives::{Bytes, b256, hex};
     use base_alloy_chains::BaseUpgrade;
     use base_alloy_consensus::{OpReceipt, OpTxEnvelope};
-    use base_execution_chainspec::{BASE_SEPOLIA, OpChainSpec};
-    use reth_chainspec::{BaseFeeParams, EthChainSpec, ForkCondition};
+    use reth_chainspec::{BASE_SEPOLIA, BaseFeeParams, ChainSpec, EthChainSpec, ForkCondition};
 
     use super::*;
 
@@ -225,19 +224,19 @@ mod tests {
     const JOVIAN_TIMESTAMP: u64 = 1800000000;
     const BLOCK_TIME_SECONDS: u64 = 2;
 
-    fn holocene_chainspec() -> Arc<OpChainSpec> {
+    fn holocene_chainspec() -> Arc<ChainSpec> {
         let mut chainspec = BASE_SEPOLIA.as_ref().clone();
         chainspec.set_fork(BaseUpgrade::Holocene, ForkCondition::Timestamp(HOLOCENE_TIMESTAMP));
         Arc::new(chainspec)
     }
 
-    fn isthmus_chainspec() -> OpChainSpec {
+    fn isthmus_chainspec() -> ChainSpec {
         let mut chainspec = BASE_SEPOLIA.as_ref().clone();
         chainspec.set_fork(BaseUpgrade::Isthmus, ForkCondition::Timestamp(ISTHMUS_TIMESTAMP));
         chainspec
     }
 
-    fn jovian_chainspec() -> OpChainSpec {
+    fn jovian_chainspec() -> ChainSpec {
         let mut chainspec = BASE_SEPOLIA.as_ref().clone();
         chainspec.set_fork(BaseUpgrade::Jovian, ForkCondition::Timestamp(JOVIAN_TIMESTAMP));
         chainspec
@@ -252,8 +251,7 @@ mod tests {
             gas_limit: 144000000,
             ..Default::default()
         };
-        let base_fee =
-            base_execution_chainspec::OpChainSpec::next_block_base_fee(&op_chain_spec, &parent, 0);
+        let base_fee = reth_chainspec::ChainSpec::next_block_base_fee(&op_chain_spec, &parent, 0);
         assert_eq!(
             base_fee.unwrap(),
             op_chain_spec.next_block_base_fee(&parent, 0).unwrap_or_default()
@@ -271,7 +269,7 @@ mod tests {
             extra_data: Bytes::from_static(&[0, 0, 0, 0, 0, 0, 0, 0, 0]),
             ..Default::default()
         };
-        let base_fee = base_execution_chainspec::OpChainSpec::next_block_base_fee(
+        let base_fee = reth_chainspec::ChainSpec::next_block_base_fee(
             &op_chain_spec,
             &parent,
             HOLOCENE_TIMESTAMP + 5,
@@ -293,7 +291,7 @@ mod tests {
             ..Default::default()
         };
 
-        let base_fee = base_execution_chainspec::OpChainSpec::next_block_base_fee(
+        let base_fee = reth_chainspec::ChainSpec::next_block_base_fee(
             &holocene_chainspec(),
             &parent,
             HOLOCENE_TIMESTAMP + 5,
@@ -318,12 +316,9 @@ mod tests {
             ..Default::default()
         };
 
-        let base_fee = base_execution_chainspec::OpChainSpec::next_block_base_fee(
-            &*BASE_SEPOLIA,
-            &parent,
-            1735315546,
-        )
-        .unwrap();
+        let base_fee =
+            reth_chainspec::ChainSpec::next_block_base_fee(&*BASE_SEPOLIA, &parent, 1735315546)
+                .unwrap();
         assert_eq!(base_fee, 507);
     }
 
@@ -347,11 +342,8 @@ mod tests {
             ..Default::default()
         };
 
-        let base_fee = base_execution_chainspec::OpChainSpec::next_block_base_fee(
-            &*BASE_SEPOLIA,
-            &parent,
-            1735315546,
-        );
+        let base_fee =
+            reth_chainspec::ChainSpec::next_block_base_fee(&*BASE_SEPOLIA, &parent, 1735315546);
         assert_eq!(base_fee, None);
     }
 
@@ -376,7 +368,7 @@ mod tests {
             extra_data,
             ..Default::default()
         };
-        let base_fee = base_execution_chainspec::OpChainSpec::next_block_base_fee(
+        let base_fee = reth_chainspec::ChainSpec::next_block_base_fee(
             &op_chain_spec,
             &parent,
             JOVIAN_TIMESTAMP + BLOCK_TIME_SECONDS,
@@ -407,7 +399,7 @@ mod tests {
             extra_data,
             ..Default::default()
         };
-        let base_fee = base_execution_chainspec::OpChainSpec::next_block_base_fee(
+        let base_fee = reth_chainspec::ChainSpec::next_block_base_fee(
             &op_chain_spec,
             &parent,
             JOVIAN_TIMESTAMP + BLOCK_TIME_SECONDS,
@@ -439,7 +431,7 @@ mod tests {
             extra_data: extra_data.clone(),
             ..Default::default()
         };
-        let base_fee = base_execution_chainspec::OpChainSpec::next_block_base_fee(
+        let base_fee = reth_chainspec::ChainSpec::next_block_base_fee(
             &op_chain_spec,
             &parent,
             JOVIAN_TIMESTAMP + BLOCK_TIME_SECONDS,
@@ -455,7 +447,7 @@ mod tests {
             extra_data,
             ..Default::default()
         };
-        let base_fee = base_execution_chainspec::OpChainSpec::next_block_base_fee(
+        let base_fee = reth_chainspec::ChainSpec::next_block_base_fee(
             &op_chain_spec,
             &parent,
             JOVIAN_TIMESTAMP + 2 * BLOCK_TIME_SECONDS,
@@ -485,7 +477,7 @@ mod tests {
             extra_data,
             ..Default::default()
         };
-        let base_fee = base_execution_chainspec::OpChainSpec::next_block_base_fee(
+        let base_fee = reth_chainspec::ChainSpec::next_block_base_fee(
             &op_chain_spec,
             &parent,
             JOVIAN_TIMESTAMP + BLOCK_TIME_SECONDS,
@@ -494,7 +486,6 @@ mod tests {
         assert_eq!(
             base_fee,
             op_chain_spec
-                .inner
                 .next_block_base_fee(&parent, JOVIAN_TIMESTAMP + BLOCK_TIME_SECONDS)
                 .unwrap()
         );

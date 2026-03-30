@@ -29,7 +29,7 @@ use reth_stages_api::{
 };
 use reth_static_file_types::StaticFileSegment;
 use tokio::sync::watch;
-use tracing::*;
+use tracing::{debug, error, info};
 
 /// The headers stage.
 ///
@@ -254,7 +254,7 @@ where
                             header_number,
                             Bytes::from(
                                 bincode::serde::encode_to_vec(
-                                    &serde_bincode_compat::SealedHeader::from(&header),
+                                    serde_bincode_compat::SealedHeader::from(&header),
                                     bincode::config::legacy(),
                                 )
                                 .map_err(|err| StageError::Fatal(Box::new(err)))?,

@@ -934,7 +934,7 @@ impl<N: NetworkPrimitives> Drop for QueuedOutgoingMessages<N> {
 #[cfg(test)]
 mod tests {
     use alloy_eips::eip2124::ForkFilter;
-    use reth_chainspec::MAINNET;
+    use reth_chainspec::BASE_MAINNET;
     use reth_ecies::stream::ECIESStream;
     use reth_eth_wire::{
         EthNetworkPrimitives, EthStream, GetBlockBodies, HelloMessageWithProtocols, P2PStream,
@@ -1107,7 +1107,7 @@ mod tests {
                 secret_key,
                 local_peer_id,
                 status: StatusBuilder::default().build(),
-                fork_filter: MAINNET
+                fork_filter: BASE_MAINNET
                     .hardfork_fork_filter(EthereumHardfork::Frontier)
                     .expect("The Frontier fork filter should exist on mainnet"),
             }

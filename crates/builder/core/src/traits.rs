@@ -1,10 +1,10 @@
 //! Trait bounds for Base builder components.
 
 use alloy_consensus::Header;
-use base_execution_chainspec::OpChainSpec;
 use base_execution_primitives::{OpPrimitives, OpTransactionSigned};
 use base_node_core::OpEngineTypes;
 use base_txpool::{BundleTransaction, OpPooledTx};
+use reth_chainspec::ChainSpec;
 use reth_node_api::{FullNodeTypes, NodeTypes};
 use reth_payload_util::PayloadTransactions;
 use reth_provider::{BlockReaderIdExt, ChainSpecProvider, StateProviderFactory};
@@ -12,18 +12,14 @@ use reth_transaction_pool::{TransactionPool, TransactionPoolExt};
 
 pub trait NodeBounds:
     FullNodeTypes<
-    Types: NodeTypes<Payload = OpEngineTypes, ChainSpec = OpChainSpec, Primitives = OpPrimitives>,
+    Types: NodeTypes<Payload = OpEngineTypes, ChainSpec = ChainSpec, Primitives = OpPrimitives>,
 >
 {
 }
 
 impl<T> NodeBounds for T where
     T: FullNodeTypes<
-        Types: NodeTypes<
-            Payload = OpEngineTypes,
-            ChainSpec = OpChainSpec,
-            Primitives = OpPrimitives,
-        >,
+        Types: NodeTypes<Payload = OpEngineTypes, ChainSpec = ChainSpec, Primitives = OpPrimitives>,
     >
 {
 }
@@ -51,7 +47,7 @@ where
 
 pub trait ClientBounds:
     StateProviderFactory
-    + ChainSpecProvider<ChainSpec = OpChainSpec>
+    + ChainSpecProvider<ChainSpec = ChainSpec>
     + BlockReaderIdExt<Header = Header>
     + Clone
 {
@@ -59,7 +55,7 @@ pub trait ClientBounds:
 
 impl<T> ClientBounds for T where
     T: StateProviderFactory
-        + ChainSpecProvider<ChainSpec = OpChainSpec>
+        + ChainSpecProvider<ChainSpec = ChainSpec>
         + BlockReaderIdExt<Header = Header>
         + Clone
 {

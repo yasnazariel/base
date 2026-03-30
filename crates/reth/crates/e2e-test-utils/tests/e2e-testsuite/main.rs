@@ -5,7 +5,7 @@ use std::sync::Arc;
 use alloy_primitives::{Address, B256};
 use alloy_rpc_types_engine::PayloadAttributes;
 use eyre::Result;
-use reth_chainspec::{ChainSpecBuilder, MAINNET};
+use reth_chainspec::{BASE_MAINNET, ChainSpecBuilder};
 use reth_e2e_test_utils::{
     E2ETestSetupBuilder,
     test_rlp_utils::{generate_test_blocks, write_blocks_to_rlp},
@@ -32,7 +32,7 @@ async fn test_apply_with_import() -> Result<()> {
     // Create test chain spec
     let chain_spec = Arc::new(
         ChainSpecBuilder::default()
-            .chain(MAINNET.chain)
+            .chain(BASE_MAINNET.chain)
             .genesis(
                 serde_json::from_str(include_str!(
                     "../../../../crates/e2e-test-utils/src/testsuite/assets/genesis.json"
@@ -135,7 +135,7 @@ async fn test_testsuite_assert_mine_block() -> Result<()> {
     let setup = Setup::default()
         .with_chain_spec(Arc::new(
             ChainSpecBuilder::default()
-                .chain(MAINNET.chain)
+                .chain(BASE_MAINNET.chain)
                 .genesis(
                     serde_json::from_str(include_str!(
                         "../../../../crates/e2e-test-utils/src/testsuite/assets/genesis.json"
@@ -177,7 +177,7 @@ async fn test_testsuite_produce_blocks() -> Result<()> {
     let setup = Setup::default()
         .with_chain_spec(Arc::new(
             ChainSpecBuilder::default()
-                .chain(MAINNET.chain)
+                .chain(BASE_MAINNET.chain)
                 .genesis(
                     serde_json::from_str(include_str!(
                         "../../../../crates/e2e-test-utils/src/testsuite/assets/genesis.json"
@@ -206,7 +206,7 @@ async fn test_testsuite_create_fork() -> Result<()> {
     let setup = Setup::default()
         .with_chain_spec(Arc::new(
             ChainSpecBuilder::default()
-                .chain(MAINNET.chain)
+                .chain(BASE_MAINNET.chain)
                 .genesis(
                     serde_json::from_str(include_str!(
                         "../../../../crates/e2e-test-utils/src/testsuite/assets/genesis.json"
@@ -236,7 +236,7 @@ async fn test_testsuite_reorg_with_tagging() -> Result<()> {
     let setup = Setup::default()
         .with_chain_spec(Arc::new(
             ChainSpecBuilder::default()
-                .chain(MAINNET.chain)
+                .chain(BASE_MAINNET.chain)
                 .genesis(
                     serde_json::from_str(include_str!(
                         "../../../../crates/e2e-test-utils/src/testsuite/assets/genesis.json"
@@ -268,7 +268,7 @@ async fn test_testsuite_deep_reorg() -> Result<()> {
     let setup = Setup::default()
         .with_chain_spec(Arc::new(
             ChainSpecBuilder::default()
-                .chain(MAINNET.chain)
+                .chain(BASE_MAINNET.chain)
                 .genesis(
                     serde_json::from_str(include_str!(
                         "../../../../crates/e2e-test-utils/src/testsuite/assets/genesis.json"
@@ -318,7 +318,7 @@ async fn test_testsuite_multinode_block_production() -> Result<()> {
     let setup = Setup::default()
         .with_chain_spec(Arc::new(
             ChainSpecBuilder::default()
-                .chain(MAINNET.chain)
+                .chain(BASE_MAINNET.chain)
                 .genesis(
                     serde_json::from_str(include_str!(
                         "../../../../crates/e2e-test-utils/src/testsuite/assets/genesis.json"
@@ -360,7 +360,7 @@ async fn test_setup_builder_with_custom_tree_config() -> Result<()> {
 
     let chain_spec = Arc::new(
         ChainSpecBuilder::default()
-            .chain(MAINNET.chain)
+            .chain(BASE_MAINNET.chain)
             .genesis(
                 serde_json::from_str(include_str!(
                     "../../../../crates/e2e-test-utils/src/testsuite/assets/genesis.json"

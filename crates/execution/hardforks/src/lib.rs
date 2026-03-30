@@ -8,10 +8,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 
-extern crate alloc;
-
-mod chain;
-pub use chain::{
+pub use reth_ethereum_forks::{
     BASE_DEVNET_0_SEPOLIA_DEV_0_HARDFORKS, BASE_MAINNET_HARDFORKS, BASE_SEPOLIA_HARDFORKS,
     BASE_ZERONET_HARDFORKS, BaseChainUpgradesExt, DEV_HARDFORKS,
 };

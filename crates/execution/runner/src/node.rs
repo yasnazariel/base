@@ -1,7 +1,6 @@
 //! Base Node types config.
 
 use base_engine_tree::BaseEngineValidatorBuilder;
-use base_execution_chainspec::OpChainSpec;
 use base_execution_payload_builder::config::{OpDAConfig, OpGasLimitConfig};
 use base_execution_primitives::OpPrimitives;
 use base_execution_rpc::eth::OpEthApiBuilder;
@@ -12,6 +11,7 @@ use base_node_core::{
     args::RollupArgs,
     node::{OpPayloadBuilder, OpPoolBuilder},
 };
+use reth_chainspec::ChainSpec;
 use reth_node_builder::{
     Node, NodeAdapter, NodeComponentsBuilder,
     components::{BasicPayloadServiceBuilder, ComponentsBuilder},
@@ -101,7 +101,7 @@ impl BaseNode {
     /// [`ReadOnlyConfig`](reth_provider::providers::ReadOnlyConfig).
     ///
     /// ```no_run
-    /// use base_execution_chainspec::BASE_MAINNET;
+    /// use reth_chainspec::BASE_MAINNET;
     /// use base_node_runner::BaseNode;
     ///
     /// let factory =
@@ -112,14 +112,14 @@ impl BaseNode {
     ///
     /// ```no_run
     /// use reth_db::open_db_read_only;
-    /// use base_execution_chainspec::OpChainSpecBuilder;
+    /// use reth_chainspec::ChainSpecBuilder;
     /// use base_node_runner::BaseNode;
     /// use reth_provider::providers::{RocksDBProvider, StaticFileProvider};
     /// use std::sync::Arc;
     ///
     /// let factory = BaseNode::provider_factory_builder()
     ///     .db(Arc::new(open_db_read_only("db", Default::default()).unwrap()))
-    ///     .chainspec(OpChainSpecBuilder::base_mainnet().build().into())
+    ///     .chainspec(ChainSpecBuilder::base_mainnet().build().into())
     ///     .static_file(StaticFileProvider::read_only("db/static_files", false).unwrap())
     ///     .rocksdb_provider(RocksDBProvider::new("db/rocksdb").unwrap())
     ///     .build_provider_factory();
@@ -131,7 +131,7 @@ impl BaseNode {
 
 impl<N> Node<N> for BaseNode
 where
-    N: FullNodeTypes<Types: OpNodeTypes<ChainSpec = OpChainSpec>>,
+    N: FullNodeTypes<Types: OpNodeTypes<ChainSpec = ChainSpec>>,
 {
     type ComponentsBuilder = ComponentsBuilder<
         N,
@@ -161,7 +161,7 @@ where
 
 impl NodeTypes for BaseNode {
     type Primitives = OpPrimitives;
-    type ChainSpec = OpChainSpec;
+    type ChainSpec = ChainSpec;
     type Storage = OpStorage;
     type Payload = OpEngineTypes;
 }

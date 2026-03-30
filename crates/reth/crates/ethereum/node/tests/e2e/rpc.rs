@@ -3,13 +3,13 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use alloy_eips::{eip2718::Encodable2718, eip7910::EthConfig};
+use alloy_eips::eip7910::EthConfig;
 use alloy_genesis::Genesis;
-use alloy_primitives::{Address, B256, U256};
-use alloy_provider::{Provider, ProviderBuilder, SendableTx, network::EthereumWallet};
+use alloy_primitives::{Address, U256};
+use alloy_provider::{Provider, ProviderBuilder, network::EthereumWallet};
 use alloy_rpc_types_eth::TransactionRequest;
 use rand::{Rng, SeedableRng, rngs::StdRng};
-use reth_chainspec::{ChainSpecBuilder, EthChainSpec, MAINNET};
+use reth_chainspec::{BASE_MAINNET, ChainSpecBuilder, EthChainSpec};
 use reth_e2e_test_utils::setup_engine;
 use reth_network::types::NatResolver;
 use reth_node_builder::{NodeBuilder, NodeHandle};
@@ -18,7 +18,6 @@ use reth_node_core::{
     node_config::NodeConfig,
 };
 use reth_node_ethereum::EthereumNode;
-use reth_payload_primitives::BuiltPayload;
 use reth_rpc_api::servers::AdminApiServer;
 use reth_tasks::Runtime;
 
@@ -48,7 +47,7 @@ async fn test_fee_history() -> eyre::Result<()> {
 
     let chain_spec = Arc::new(
         ChainSpecBuilder::default()
-            .chain(MAINNET.chain)
+            .chain(BASE_MAINNET.chain)
             .genesis(serde_json::from_str(include_str!("../assets/genesis.json")).unwrap())
             .cancun_activated()
             .build(),
@@ -138,7 +137,7 @@ async fn test_eth_config() -> eyre::Result<()> {
 
     let chain_spec = Arc::new(
         ChainSpecBuilder::default()
-            .chain(MAINNET.chain)
+            .chain(BASE_MAINNET.chain)
             .genesis(serde_json::from_str(include_str!("../assets/genesis.json")).unwrap())
             .cancun_activated()
             .with_prague_at(prague_timestamp)
@@ -181,7 +180,7 @@ async fn test_admin_external_ip() -> eyre::Result<()> {
     // Chain spec with test allocs
     let genesis: Genesis = serde_json::from_str(include_str!("../assets/genesis.json")).unwrap();
     let chain_spec =
-        Arc::new(ChainSpecBuilder::default().chain(MAINNET.chain).genesis(genesis).build());
+        Arc::new(ChainSpecBuilder::default().chain(BASE_MAINNET.chain).genesis(genesis).build());
 
     let external_ip = "10.64.128.71".parse().unwrap();
     // Node setup

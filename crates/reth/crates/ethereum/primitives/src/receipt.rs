@@ -453,7 +453,7 @@ mod compact {
         Compact,
     };
 
-    use super::{Debug, Receipt, TxReceipt, BufMut, Vec};
+    use super::{Debug, Receipt, Vec};
 
     impl Receipt {
         #[doc = "Used bytes by [`ReceiptFlags`]"]
@@ -468,7 +468,7 @@ mod compact {
 
     #[allow(non_snake_case, unused_parens)]
     mod flags {
-        use super::{Debug, bitfield, B2, B1, B4, Specifier, Buf};
+        use super::{B1, B2, B4, Buf, Debug, bitfield};
 
         #[doc = "Fieldset that facilitates compacting the parent type. Used bytes: 1 | Unused bits: 0"]
         #[bitfield]

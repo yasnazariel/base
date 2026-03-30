@@ -49,7 +49,7 @@ pub mod test_utils {
     use reth_fs_util;
     use tempfile::TempDir;
 
-    use super::{DatabaseError, DatabaseEnv, init_db, open_db_read_only};
+    use super::{DatabaseEnv, DatabaseError, init_db, open_db_read_only};
     use crate::mdbx::DatabaseArguments;
 
     /// Error during database open

@@ -17,7 +17,9 @@ use alloy_evm::block::StateChangeSource;
 use alloy_primitives::B256;
 use crossbeam_channel::{Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
 use metrics::{Counter, Histogram};
-use multiproof::{SparseTrieUpdate, *};
+use multiproof::{
+    MultiProofMessage, MultiProofTask, MultiProofTaskMetrics, SparseTrieUpdate, StateHookSender,
+};
 use parking_lot::RwLock;
 use prewarm::PrewarmMetrics;
 use rayon::prelude::*;
@@ -1095,7 +1097,7 @@ mod tests {
     use crate::tree::{
         StateProviderBuilder, TreeConfig,
         cached_state::{CachedStateMetrics, ExecutionCache, SavedCache},
-        payload_processor::{PayloadProcessor, evm_state_to_hashed_post_state},
+        payload_processor::{PayloadProcessor, multiproof::evm_state_to_hashed_post_state},
         precompile_cache::PrecompileCacheMap,
     };
 

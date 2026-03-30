@@ -9,7 +9,7 @@ use alloy_primitives::B256;
 use alloy_rpc_types_eth::{Transaction, TransactionReceipt};
 use eyre::Result;
 use jsonrpsee::core::client::ClientT;
-use reth_chainspec::{ChainSpec, ChainSpecBuilder, MAINNET};
+use reth_chainspec::{BASE_MAINNET, ChainSpec, ChainSpecBuilder};
 use reth_db::tables;
 use reth_e2e_test_utils::{E2ETestSetupBuilder, transaction::TransactionTestContext, wallet};
 use reth_node_ethereum::EthereumNode;
@@ -74,7 +74,7 @@ async fn poll_tx_in_rocksdb<P: RocksDBProviderFactory>(provider: &P, tx_hash: B2
 fn test_chain_spec() -> Arc<ChainSpec> {
     Arc::new(
         ChainSpecBuilder::default()
-            .chain(MAINNET.chain)
+            .chain(BASE_MAINNET.chain)
             .genesis(
                 serde_json::from_str(include_str!("../../src/testsuite/assets/genesis.json"))
                     .expect("failed to parse genesis.json"),

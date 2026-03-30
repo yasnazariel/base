@@ -4,8 +4,11 @@ mod utils;
 use std::{hint::black_box, ptr};
 
 use criterion::{Criterion, criterion_group, criterion_main};
-use reth_libmdbx::{ffi::*, *};
-use utils::*;
+use reth_libmdbx::{
+    Cursor, ObjectLength, Result, TransactionKind,
+    ffi::{MDBX_NEXT, MDBX_cursor, MDBX_val, mdbx_cursor_close, mdbx_cursor_get, mdbx_cursor_open},
+};
+use utils::setup_bench_db;
 
 /// Benchmark of iterator sequential read performance.
 fn bench_get_seq_iter(c: &mut Criterion) {

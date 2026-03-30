@@ -66,8 +66,8 @@ impl core::fmt::Display for DisplayFork {
 // # Examples
 //
 // ```
-// # use reth_chainspec::MAINNET;
-// println!("{}", MAINNET.display_hardforks());
+// # use reth_chainspec::BASE_MAINNET;
+// println!("{}", BASE_MAINNET.display_hardforks());
 // ```
 //
 /// A container for pretty-printing a list of hardforks.

@@ -23,7 +23,7 @@ use reth_stages_api::{
     StageError, StageId, UnwindInput, UnwindOutput,
 };
 use reth_storage_errors::provider::ProviderResult;
-use tracing::*;
+use tracing::info;
 
 /// Maximum number of channels that can exist in memory.
 const MAXIMUM_CHANNELS: usize = 10_000;

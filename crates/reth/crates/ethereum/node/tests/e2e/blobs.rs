@@ -5,7 +5,7 @@ use std::{
 
 use alloy_eips::Decodable2718;
 use alloy_genesis::Genesis;
-use reth_chainspec::{ChainSpecBuilder, MAINNET};
+use reth_chainspec::{BASE_MAINNET, ChainSpecBuilder};
 use reth_e2e_test_utils::{
     node::NodeTestContext, transaction::TransactionTestContext, wallet::Wallet,
 };
@@ -27,7 +27,7 @@ async fn can_handle_blobs() -> eyre::Result<()> {
     let genesis: Genesis = serde_json::from_str(include_str!("../assets/genesis.json")).unwrap();
     let chain_spec = Arc::new(
         ChainSpecBuilder::default()
-            .chain(MAINNET.chain)
+            .chain(BASE_MAINNET.chain)
             .genesis(genesis)
             .cancun_activated()
             .build(),
@@ -97,7 +97,11 @@ async fn can_send_legacy_sidecar_post_activation() -> eyre::Result<()> {
 
     let genesis: Genesis = serde_json::from_str(include_str!("../assets/genesis.json")).unwrap();
     let chain_spec = Arc::new(
-        ChainSpecBuilder::default().chain(MAINNET.chain).genesis(genesis).osaka_activated().build(),
+        ChainSpecBuilder::default()
+            .chain(BASE_MAINNET.chain)
+            .genesis(genesis)
+            .osaka_activated()
+            .build(),
     );
     let genesis_hash = chain_spec.genesis_hash();
     let node_config = NodeConfig::test().with_chain(chain_spec).with_unused_ports().with_rpc(
@@ -155,7 +159,7 @@ async fn blob_conversion_at_osaka() -> eyre::Result<()> {
     let genesis: Genesis = serde_json::from_str(include_str!("../assets/genesis.json")).unwrap();
     let chain_spec = Arc::new(
         ChainSpecBuilder::default()
-            .chain(MAINNET.chain)
+            .chain(BASE_MAINNET.chain)
             .genesis(genesis)
             .prague_activated()
             .with_osaka_at(osaka_timestamp)

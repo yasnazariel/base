@@ -214,7 +214,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    use alloy_consensus::Header;
     use alloy_primitives::B256;
     use reth_chainspec::{ChainSpec, ChainSpecBuilder};
     use reth_consensus_common::validation::validate_against_parent_gas_limit;
@@ -235,10 +234,7 @@ mod tests {
         let parent = header_with_gas_limit(GAS_LIMIT_BOUND_DIVISOR * 10);
         let child = header_with_gas_limit((parent.gas_limit + 5) as u64);
 
-        assert!(
-            validate_against_parent_gas_limit(&child, &parent, &ChainSpec::<Header>::default())
-                .is_ok()
-        );
+        assert!(validate_against_parent_gas_limit(&child, &parent, &ChainSpec::default()).is_ok());
     }
 
     #[test]
@@ -247,7 +243,7 @@ mod tests {
         let child = header_with_gas_limit(MINIMUM_GAS_LIMIT - 1);
 
         assert!(matches!(
-            validate_against_parent_gas_limit(&child, &parent, &ChainSpec::<Header>::default()).unwrap_err(),
+            validate_against_parent_gas_limit(&child, &parent, &ChainSpec::default()).unwrap_err(),
             ConsensusError::GasLimitInvalidMinimum { child_gas_limit }
                 if child_gas_limit == child.gas_limit as u64
         ));
@@ -261,7 +257,7 @@ mod tests {
         );
 
         assert!(matches!(
-            validate_against_parent_gas_limit(&child, &parent, &ChainSpec::<Header>::default()).unwrap_err(),
+            validate_against_parent_gas_limit(&child, &parent, &ChainSpec::default()).unwrap_err(),
             ConsensusError::GasLimitInvalidIncrease { parent_gas_limit, child_gas_limit }
                 if parent_gas_limit == parent.gas_limit && child_gas_limit == child.gas_limit
         ));
@@ -272,10 +268,7 @@ mod tests {
         let parent = header_with_gas_limit(GAS_LIMIT_BOUND_DIVISOR * 10);
         let child = header_with_gas_limit(parent.gas_limit - 5);
 
-        assert!(
-            validate_against_parent_gas_limit(&child, &parent, &ChainSpec::<Header>::default())
-                .is_ok()
-        );
+        assert!(validate_against_parent_gas_limit(&child, &parent, &ChainSpec::default()).is_ok());
     }
 
     #[test]
@@ -286,7 +279,7 @@ mod tests {
         );
 
         assert!(matches!(
-            validate_against_parent_gas_limit(&child, &parent, &ChainSpec::<Header>::default()).unwrap_err(),
+            validate_against_parent_gas_limit(&child, &parent, &ChainSpec::default()).unwrap_err(),
             ConsensusError::GasLimitInvalidDecrease { parent_gas_limit, child_gas_limit }
                 if parent_gas_limit == parent.gas_limit && child_gas_limit == child.gas_limit
         ));

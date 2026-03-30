@@ -39,14 +39,14 @@ impl<N> ProviderFactoryBuilder<N> {
     /// This is recommended when the new read-only instance is used with an active node.
     ///
     /// ```no_run
-    /// use reth_chainspec::MAINNET;
+    /// use reth_chainspec::BASE_MAINNET;
     /// use reth_provider::providers::{NodeTypesForProvider, ProviderFactoryBuilder};
     ///
     /// fn demo<N: NodeTypesForProvider<ChainSpec = reth_chainspec::ChainSpec>>(
     ///     runtime: reth_tasks::Runtime,
     /// ) {
     ///     let provider_factory = ProviderFactoryBuilder::<N>::default()
-    ///         .open_read_only(MAINNET.clone(), "datadir", runtime)
+    ///         .open_read_only(BASE_MAINNET.clone(), "datadir", runtime)
     ///         .unwrap();
     /// }
     /// ```
@@ -56,7 +56,7 @@ impl<N> ProviderFactoryBuilder<N> {
     /// This is recommended when no changes to the static files are expected (e.g. no active node)
     ///
     /// ```no_run
-    /// use reth_chainspec::MAINNET;
+    /// use reth_chainspec::BASE_MAINNET;
     /// use reth_provider::providers::{NodeTypesForProvider, ProviderFactoryBuilder, ReadOnlyConfig};
     ///
     /// fn demo<N: NodeTypesForProvider<ChainSpec = reth_chainspec::ChainSpec>>(
@@ -64,7 +64,7 @@ impl<N> ProviderFactoryBuilder<N> {
     /// ) {
     ///     let provider_factory = ProviderFactoryBuilder::<N>::default()
     ///         .open_read_only(
-    ///             MAINNET.clone(),
+    ///             BASE_MAINNET.clone(),
     ///             ReadOnlyConfig::from_datadir("datadir").no_watch(),
     ///             runtime,
     ///         )
@@ -80,7 +80,7 @@ impl<N> ProviderFactoryBuilder<N> {
     /// [`ReadOnlyConfig::disable_long_read_transaction_safety`].
     ///
     /// ```no_run
-    /// use reth_chainspec::MAINNET;
+    /// use reth_chainspec::BASE_MAINNET;
     /// use reth_provider::providers::{NodeTypesForProvider, ProviderFactoryBuilder, ReadOnlyConfig};
     ///
     /// fn demo<N: NodeTypesForProvider<ChainSpec = reth_chainspec::ChainSpec>>(
@@ -88,7 +88,7 @@ impl<N> ProviderFactoryBuilder<N> {
     /// ) {
     ///     let provider_factory = ProviderFactoryBuilder::<N>::default()
     ///         .open_read_only(
-    ///             MAINNET.clone(),
+    ///             BASE_MAINNET.clone(),
     ///             ReadOnlyConfig::from_datadir("datadir").disable_long_read_transaction_safety(),
     ///             runtime,
     ///         )

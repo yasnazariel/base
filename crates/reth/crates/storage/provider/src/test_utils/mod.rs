@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use alloy_primitives::B256;
-use reth_chainspec::{ChainSpec, MAINNET};
+use reth_chainspec::{BASE_MAINNET, ChainSpec};
 use reth_db::{DatabaseEnv, test_utils::TempDatabase};
 use reth_errors::ProviderResult;
 use reth_ethereum_engine_primitives::EthEngineTypes;
@@ -38,7 +38,7 @@ pub type MockNodeTypesWithDB<DB = Arc<TempDatabase<DatabaseEnv>>> =
 
 /// Creates test provider factory with mainnet chain spec.
 pub fn create_test_provider_factory() -> ProviderFactory<MockNodeTypesWithDB> {
-    create_test_provider_factory_with_chain_spec(MAINNET.clone())
+    create_test_provider_factory_with_chain_spec(BASE_MAINNET.clone())
 }
 
 /// Creates test provider factory with provided chain spec.

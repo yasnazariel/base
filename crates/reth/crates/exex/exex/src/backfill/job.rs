@@ -341,7 +341,7 @@ mod tests {
         Ok(())
     }
 
-    /// Verify that ExEx backfill (using `history_by_block_number`) produces identical execution
+    /// Verify that `ExEx` backfill (using `history_by_block_number`) produces identical execution
     /// results to the pipeline path (using `LatestStateProvider`).
     ///
     /// This is a regression test for an issue reported on mainnet where backfill fails around

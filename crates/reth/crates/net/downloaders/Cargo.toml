@@ -72,16 +72,16 @@ itertools.workspace = true
 
 [features]
 default = []
-file-client = ["dep:async-compression", "dep:alloy-rlp", "dep:itertools"]
+file-client = [ "dep:alloy-rlp", "dep:async-compression", "dep:itertools" ]
 test-utils = [
-    "tempfile",
-    "reth-consensus/test-utils",
-    "reth-network-p2p/test-utils",
-    "reth-testing-utils",
-    "reth-chainspec/test-utils",
-    "reth-provider/test-utils",
-    "reth-primitives-traits/test-utils",
-    "dep:reth-ethereum-primitives",
-    "reth-ethereum-primitives?/test-utils",
-    "reth-tasks/test-utils",
+	"dep:reth-ethereum-primitives",
+	"reth-chainspec/test-utils",
+	"reth-consensus/test-utils",
+	"reth-ethereum-primitives?/test-utils",
+	"reth-network-p2p/test-utils",
+	"reth-primitives-traits/test-utils",
+	"reth-provider/test-utils",
+	"reth-tasks/test-utils",
+	"reth-testing-utils",
+	"tempfile",
 ]

@@ -27,13 +27,13 @@ eyre.workspace = true
 
 [features]
 serde = [
-    "dep:serde",
-    "dep:toml",
-    "dep:humantime-serde",
-    "reth-network-types/serde",
-    "reth-prune-types/serde",
-    "reth-stages-types/serde",
-    "alloy-primitives/serde",
+	"alloy-primitives/serde",
+	"dep:humantime-serde",
+	"dep:serde",
+	"dep:toml",
+	"reth-network-types/serde",
+	"reth-prune-types/serde",
+	"reth-stages-types/serde",
 ]
 
 [dev-dependencies]

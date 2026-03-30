@@ -1895,8 +1895,7 @@ mod tests {
         );
         let mut sorted_addresses = addresses.to_vec();
         sorted_addresses.sort();
-        let mut targets: Vec<Target> =
-            sorted_addresses.iter().copied().map(Target::new).collect();
+        let mut targets: Vec<Target> = sorted_addresses.iter().copied().map(Target::new).collect();
 
         let result = proof_calculator.proof(&mut value_encoder, &mut targets).unwrap();
 

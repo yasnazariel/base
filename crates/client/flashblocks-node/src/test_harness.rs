@@ -22,7 +22,6 @@ use base_alloy_consensus::{OpBlock, OpDepositReceipt, OpReceipt};
 use base_alloy_flashblocks::{
     ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, Flashblock, Metadata,
 };
-use base_execution_chainspec::OpChainSpec;
 use base_execution_primitives::OpTransactionSigned;
 use base_flashblocks::{
     EthApiExt, EthApiOverrideServer, EthPubSub, EthPubSubApiServer, FlashblocksAPI,
@@ -39,7 +38,7 @@ use base_node_runner::{
 use derive_more::Deref;
 use eyre::Result;
 use reth_chain_state::CanonStateSubscriptions;
-use reth_chainspec::EthChainSpec;
+use reth_chainspec::{ChainSpec, EthChainSpec};
 use reth_primitives_traits::{Account as RethAccount, Block as BlockT, RecoveredBlock};
 use reth_provider::{AccountReader, BlockNumReader, BlockReader, ChainSpecProvider};
 use reth_transaction_pool::test_utils::TransactionBuilder;
@@ -241,7 +240,7 @@ impl FlashblocksLocalNode {
     async fn with_options(process_canonical: bool) -> Result<Self> {
         // Build default chain spec programmatically
         let genesis = build_test_genesis();
-        let chain_spec = Arc::new(OpChainSpec::from_genesis(genesis));
+        let chain_spec = Arc::new(ChainSpec::from_genesis(genesis));
 
         let extension = FlashblocksTestExtension::new(process_canonical);
         let parts_source = extension.clone();
@@ -300,7 +299,7 @@ impl FlashblocksHarness {
 
         // Build default chain spec programmatically
         let genesis = build_test_genesis();
-        let chain_spec = Arc::new(OpChainSpec::from_genesis(genesis));
+        let chain_spec = Arc::new(ChainSpec::from_genesis(genesis));
 
         // Create the extension and keep a reference to get parts after launch
         let extension = FlashblocksTestExtension::new(process_canonical);

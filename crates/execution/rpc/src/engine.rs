@@ -7,11 +7,10 @@ use alloy_rpc_types_engine::{
     ForkchoiceState, ForkchoiceUpdated, PayloadId, PayloadStatus,
 };
 use base_alloy_rpc_types_engine::{OpExecutionData, OpExecutionPayloadV4};
-use base_execution_chainspec::OpChainSpec;
 use derive_more::Constructor;
 use jsonrpsee::proc_macros::rpc;
 use jsonrpsee_core::{RpcResult, server::RpcModule};
-use reth_chainspec::EthereumHardforks;
+use reth_chainspec::{ChainSpec, EthereumHardforks};
 use reth_node_api::{EngineApiValidator, EngineTypes};
 use reth_rpc_api::IntoEngineApiRpcModule;
 use reth_rpc_engine_api::EngineApi;
@@ -248,7 +247,7 @@ pub trait OpEngineApi<Engine: EngineTypes> {
 /// functions in the Execution layer that are crucial for the consensus process.
 #[derive(Debug, Constructor)]
 pub struct OpEngineApi<Provider, EngineT: EngineTypes, Pool, Validator> {
-    inner: EngineApi<Provider, EngineT, Pool, Validator, OpChainSpec>,
+    inner: EngineApi<Provider, EngineT, Pool, Validator, ChainSpec>,
 }
 
 impl<Provider, PayloadT, Pool, Validator> Clone for OpEngineApi<Provider, PayloadT, Pool, Validator>
@@ -268,7 +267,7 @@ where
     EngineT: EngineTypes<ExecutionData = OpExecutionData>,
     Pool: TransactionPool + 'static,
     Validator: EngineApiValidator<EngineT>,
-    OpChainSpec: EthereumHardforks + Send + Sync + 'static,
+    ChainSpec: EthereumHardforks + Send + Sync + 'static,
 {
     async fn new_payload_v2(&self, payload: ExecutionPayloadInputV2) -> RpcResult<PayloadStatus> {
         trace!(target: "rpc::engine", "Serving engine_newPayloadV2");

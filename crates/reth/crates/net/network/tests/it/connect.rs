@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use alloy_primitives::map::HashSet;
 use futures::StreamExt;
-use reth_chainspec::{MAINNET, SEPOLIA};
+use reth_chainspec::{BASE_MAINNET, BASE_SEPOLIA};
 use reth_discv4::Discv4Config;
 use reth_eth_wire::{DisconnectReason, EthNetworkPrimitives, HeadersDirection};
 use reth_network::{
@@ -648,7 +648,7 @@ async fn new_random_peer(
         .listener_port(0)
         .disable_discovery()
         .peer_config(peers_config)
-        .build_with_noop_provider(MAINNET.clone());
+        .build_with_noop_provider(BASE_MAINNET.clone());
 
     NetworkManager::new(config).await.unwrap()
 }
@@ -720,7 +720,7 @@ async fn test_connect_peer_in_different_network_should_fail() {
         .listener_port(0)
         .disable_discovery()
         .peer_config(peers_config)
-        .build_with_noop_provider(SEPOLIA.clone());
+        .build_with_noop_provider(BASE_SEPOLIA.clone());
 
     let network = NetworkManager::new(config).await.unwrap();
     let handle = network.handle().clone();

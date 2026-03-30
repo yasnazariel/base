@@ -17,7 +17,7 @@ use reth_trie::{
     walker::TrieWalker,
 };
 use thiserror::Error;
-use tracing::*;
+use tracing::{debug, trace};
 
 #[cfg(feature = "metrics")]
 use crate::metrics::ParallelStateRootMetrics;

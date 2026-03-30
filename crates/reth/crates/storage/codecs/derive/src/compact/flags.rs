@@ -1,6 +1,9 @@
 use syn::Attribute;
 
-use super::{format_ident, quote, Ident, FieldList, TokenStream2, FieldTypes, parse_reth_codecs_path, StructFieldDescriptor, is_flag_type, get_bit_size};
+use super::{
+    FieldList, FieldTypes, Ident, StructFieldDescriptor, TokenStream2, format_ident, get_bit_size,
+    is_flag_type, parse_reth_codecs_path, quote,
+};
 
 /// Generates the flag fieldset struct that is going to be used to store the length of fields and
 /// their potential presence.

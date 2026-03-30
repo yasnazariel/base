@@ -5,7 +5,6 @@ use std::{marker::PhantomData, sync::Arc};
 use base_alloy_chains::BaseUpgrades;
 use base_alloy_consensus::OpPooledTransaction;
 use base_alloy_rpc_types_engine::OpExecutionData;
-use base_execution_chainspec::OpChainSpec;
 use base_execution_consensus::OpBeaconConsensus;
 use base_execution_evm::{OpEvmConfig, OpRethReceiptBuilder};
 use base_execution_payload_builder::{
@@ -25,7 +24,7 @@ use base_txpool::{
     BaseOrdering, BasePooledTransaction, OpPooledTx, OpTransactionPool, OpTransactionValidator,
     TimestampedTransaction,
 };
-use reth_chainspec::{ChainSpecProvider, EthChainSpec, Hardforks};
+use reth_chainspec::{ChainSpec, ChainSpecProvider, EthChainSpec, Hardforks};
 use reth_evm::ConfigureEvm;
 use reth_network::{
     NetworkConfig, NetworkHandle, NetworkManager, NetworkPrimitives, PeersInfo,
@@ -66,12 +65,12 @@ use crate::{
 
 /// Marker trait for Base node types with standard engine, chain spec, and primitives.
 pub trait OpNodeTypes:
-    NodeTypes<Payload = OpEngineTypes, ChainSpec = OpChainSpec, Primitives = OpPrimitives>
+    NodeTypes<Payload = OpEngineTypes, ChainSpec = ChainSpec, Primitives = OpPrimitives>
 {
 }
 /// Blanket impl for all node types that conform to the Base spec.
 impl<N> OpNodeTypes for N where
-    N: NodeTypes<Payload = OpEngineTypes, ChainSpec = OpChainSpec, Primitives = OpPrimitives>
+    N: NodeTypes<Payload = OpEngineTypes, ChainSpec = ChainSpec, Primitives = OpPrimitives>
 {
 }
 
@@ -79,7 +78,7 @@ impl<N> OpNodeTypes for N where
 /// data.
 pub trait OpFullNodeTypes:
     NodeTypes<
-        ChainSpec = OpChainSpec,
+        ChainSpec = ChainSpec,
         Primitives: OpPayloadPrimitives,
         Storage = OpStorage,
         Payload: EngineTypes<ExecutionData = OpExecutionData>,
@@ -89,7 +88,7 @@ pub trait OpFullNodeTypes:
 
 impl<N> OpFullNodeTypes for N where
     N: NodeTypes<
-            ChainSpec = OpChainSpec,
+            ChainSpec = ChainSpec,
             Primitives: OpPayloadPrimitives,
             Storage = OpStorage,
             Payload: EngineTypes<ExecutionData = OpExecutionData>,
@@ -195,7 +194,7 @@ impl OpNode {
     /// [`ReadOnlyConfig`](reth_provider::providers::ReadOnlyConfig).
     ///
     /// ```no_run
-    /// use base_execution_chainspec::BASE_MAINNET;
+    /// use reth_chainspec::BASE_MAINNET;
     /// use base_node_core::OpNode;
     ///
     /// fn demo(runtime: reth_tasks::Runtime) {
@@ -208,14 +207,14 @@ impl OpNode {
     /// # Open a Providerfactory with custom config
     ///
     /// ```no_run
-    /// use base_execution_chainspec::OpChainSpecBuilder;
+    /// use reth_chainspec::ChainSpecBuilder;
     /// use base_node_core::OpNode;
     /// use reth_provider::providers::ReadOnlyConfig;
     ///
     /// fn demo(runtime: reth_tasks::Runtime) {
     ///     let factory = OpNode::provider_factory_builder()
     ///         .open_read_only(
-    ///             OpChainSpecBuilder::base_mainnet().build().into(),
+    ///             ChainSpecBuilder::base_mainnet().build().into(),
     ///             ReadOnlyConfig::from_datadir("datadir").no_watch(),
     ///             runtime,
     ///         )
@@ -259,7 +258,7 @@ where
 
 impl NodeTypes for OpNode {
     type Primitives = OpPrimitives;
-    type ChainSpec = OpChainSpec;
+    type ChainSpec = ChainSpec;
     type Storage = OpStorage;
     type Payload = OpEngineTypes;
 }
@@ -454,7 +453,7 @@ where
             Types: OpNodeTypes,
             Evm: ConfigureEvm<
                 Primitives = OpPrimitives,
-                NextBlockEnvCtx: BuildNextEnv<OpPayloadBuilderAttributes, OpHeader, OpChainSpec>,
+                NextBlockEnvCtx: BuildNextEnv<OpPayloadBuilderAttributes, OpHeader, ChainSpec>,
             >,
             Pool: TransactionPool<Transaction: OpPooledTx<Consensus = OpTransactionSigned>>,
         >,
@@ -528,7 +527,7 @@ where
             Types: OpNodeTypes,
             Evm: ConfigureEvm<
                 Primitives = OpPrimitives,
-                NextBlockEnvCtx: BuildNextEnv<OpPayloadBuilderAttributes, OpHeader, OpChainSpec>,
+                NextBlockEnvCtx: BuildNextEnv<OpPayloadBuilderAttributes, OpHeader, ChainSpec>,
             >,
         >,
     <<N as FullNodeComponents>::Pool as TransactionPool>::Transaction:
@@ -894,7 +893,7 @@ where
     Node: FullNodeTypes<Provider: ChainSpecProvider<ChainSpec: BaseUpgrades>, Types: OpNodeTypes>,
     Evm: ConfigureEvm<
             Primitives = OpPrimitives,
-            NextBlockEnvCtx: BuildNextEnv<OpPayloadBuilderAttributes, OpHeader, OpChainSpec>,
+            NextBlockEnvCtx: BuildNextEnv<OpPayloadBuilderAttributes, OpHeader, ChainSpec>,
         > + 'static,
     Pool:
         TransactionPool<Transaction: OpPooledTx<Consensus = OpTransactionSigned>> + Unpin + 'static,

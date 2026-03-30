@@ -10,7 +10,9 @@ use base_execution_trie::{
     live::LiveTrieCollector,
 };
 use derive_more::Constructor;
-use reth_chainspec::{ChainSpec, ChainSpecBuilder, EthereumHardfork, MAINNET, MIN_TRANSACTION_GAS};
+use reth_chainspec::{
+    BASE_MAINNET, ChainSpec, ChainSpecBuilder, EthereumHardfork, MIN_TRANSACTION_GAS,
+};
 use reth_db::Database;
 use reth_db_common::init::init_genesis;
 use reth_ethereum_primitives::{Block, BlockBody, Receipt, Transaction, TransactionSigned};
@@ -81,14 +83,14 @@ struct TestScenario {
 fn chain_spec_with_address(address: Address) -> Arc<ChainSpec> {
     Arc::new(
         ChainSpecBuilder::default()
-            .chain(MAINNET.chain)
+            .chain(BASE_MAINNET.chain)
             .genesis(Genesis {
                 alloc: [(
                     address,
                     GenesisAccount { balance: U256::from(10 * ETH_TO_WEI), ..Default::default() },
                 )]
                 .into(),
-                ..MAINNET.genesis.clone()
+                ..BASE_MAINNET.genesis.clone()
             })
             .paris_activated()
             .build(),

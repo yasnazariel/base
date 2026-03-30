@@ -46,62 +46,59 @@ alloy-consensus = { workspace = true, features = ["serde", "arbitrary"] }
 serde_json.workspace = true
 
 [features]
-default = ["std"]
-test-utils = [
-    "reth-codecs?/test-utils",
-    "reth-primitives-traits/test-utils",
-]
+default = [ "std" ]
+test-utils = [ "reth-codecs?/test-utils", "reth-primitives-traits/test-utils" ]
 std = [
-    "alloy-consensus/std",
-    "alloy-primitives/std",
-    "alloy-rlp/std",
-    "reth-primitives-traits/std",
-    "reth-zstd-compressors?/std",
-    "serde?/std",
-    "alloy-eips/std",
-    "derive_more/std",
-    "serde_with?/std",
-    "secp256k1/std",
-    "alloy-rpc-types-eth?/std",
-    "alloy-serde?/std",
-    "serde_json/std",
+	"alloy-consensus/std",
+	"alloy-eips/std",
+	"alloy-primitives/std",
+	"alloy-rlp/std",
+	"alloy-rpc-types-eth?/std",
+	"alloy-serde?/std",
+	"derive_more/std",
+	"reth-primitives-traits/std",
+	"reth-zstd-compressors?/std",
+	"secp256k1/std",
+	"serde?/std",
+	"serde_json/std",
+	"serde_with?/std",
 ]
 reth-codec = [
-    "std",
-    "dep:reth-codecs",
-    "dep:modular-bitfield",
-    "dep:reth-zstd-compressors",
+	"dep:modular-bitfield",
+	"dep:reth-codecs",
+	"dep:reth-zstd-compressors",
+	"std",
 ]
 arbitrary = [
-    "std",
-    "dep:arbitrary",
-    "alloy-consensus/arbitrary",
-    "alloy-consensus/k256",
-    "alloy-primitives/arbitrary",
-    "reth-codecs?/arbitrary",
-    "reth-primitives-traits/arbitrary",
-    "alloy-eips/arbitrary",
-    "alloy-rpc-types-eth?/arbitrary",
-    "alloy-serde?/arbitrary",
+	"alloy-consensus/arbitrary",
+	"alloy-consensus/k256",
+	"alloy-eips/arbitrary",
+	"alloy-primitives/arbitrary",
+	"alloy-rpc-types-eth?/arbitrary",
+	"alloy-serde?/arbitrary",
+	"dep:arbitrary",
+	"reth-codecs?/arbitrary",
+	"reth-primitives-traits/arbitrary",
+	"std",
 ]
 serde-bincode-compat = [
-    "dep:serde_with",
-    "alloy-consensus/serde-bincode-compat",
-    "alloy-eips/serde-bincode-compat",
-    "reth-primitives-traits/serde-bincode-compat",
-    "alloy-rpc-types-eth?/serde-bincode-compat",
+	"alloy-consensus/serde-bincode-compat",
+	"alloy-eips/serde-bincode-compat",
+	"alloy-rpc-types-eth?/serde-bincode-compat",
+	"dep:serde_with",
+	"reth-primitives-traits/serde-bincode-compat",
 ]
 serde = [
-    "dep:serde",
-    "dep:alloy-serde",
-    "alloy-consensus/serde",
-    "alloy-eips/serde",
-    "alloy-primitives/serde",
-    "reth-codecs?/serde",
-    "reth-primitives-traits/serde",
-    "rand/serde",
-    "rand_08/serde",
-    "secp256k1/serde",
-    "alloy-rpc-types-eth?/serde",
+	"alloy-consensus/serde",
+	"alloy-eips/serde",
+	"alloy-primitives/serde",
+	"alloy-rpc-types-eth?/serde",
+	"dep:alloy-serde",
+	"dep:serde",
+	"rand/serde",
+	"rand_08/serde",
+	"reth-codecs?/serde",
+	"reth-primitives-traits/serde",
+	"secp256k1/serde",
 ]
-rpc = ["dep:alloy-rpc-types-eth"]
+rpc = [ "dep:alloy-rpc-types-eth" ]

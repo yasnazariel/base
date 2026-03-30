@@ -10,7 +10,7 @@ use alloy_consensus::BlockHeader;
 use alloy_eips::BlockHashOrNumber;
 use alloy_primitives::{B256, BlockNumber, U256};
 use eyre::eyre;
-use reth_chainspec::{ChainSpec, EthChainSpec, MAINNET};
+use reth_chainspec::{BASE_MAINNET, ChainSpec, EthChainSpec};
 use reth_config::config::PruneConfig;
 pub use reth_engine_primitives::{
     DEFAULT_MEMORY_BLOCK_BUFFER_TARGET, DEFAULT_PERSISTENCE_THRESHOLD, DEFAULT_RESERVED_CPU_CORES,
@@ -25,7 +25,7 @@ use reth_storage_api::{
 };
 use reth_storage_errors::provider::ProviderResult;
 use serde::{Serialize, de::DeserializeOwned};
-use tracing::*;
+use tracing::{error, info};
 
 use crate::{
     args::{
@@ -560,7 +560,7 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
 
 impl Default for NodeConfig<ChainSpec> {
     fn default() -> Self {
-        Self::new(MAINNET.clone())
+        Self::new(BASE_MAINNET.clone())
     }
 }
 

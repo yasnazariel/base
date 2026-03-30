@@ -147,7 +147,7 @@ where
 mod tests {
     use std::sync::Arc;
 
-    use reth_chainspec::{ChainSpecBuilder, MAINNET};
+    use reth_chainspec::{BASE_MAINNET, ChainSpecBuilder};
     use reth_engine_primitives::{BeaconEngineMessage, NoopInvalidBlockHook};
     use reth_engine_tree::{test_utils::TestPipelineBuilder, tree::BasicEngineValidator};
     use reth_ethereum_consensus::EthBeaconConsensus;
@@ -172,8 +172,8 @@ mod tests {
     fn eth_chain_orchestrator_build() {
         let chain_spec = Arc::new(
             ChainSpecBuilder::default()
-                .chain(MAINNET.chain)
-                .genesis(MAINNET.genesis.clone())
+                .chain(BASE_MAINNET.chain)
+                .genesis(BASE_MAINNET.genesis.clone())
                 .paris_activated()
                 .build(),
         );

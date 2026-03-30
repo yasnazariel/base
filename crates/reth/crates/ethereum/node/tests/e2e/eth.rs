@@ -5,7 +5,7 @@ use alloy_genesis::Genesis;
 use alloy_primitives::{Address, B256};
 use alloy_rpc_types_engine::{PayloadAttributes, PayloadStatusEnum};
 use jsonrpsee_core::client::ClientT;
-use reth_chainspec::{ChainSpecBuilder, EthChainSpec, MAINNET};
+use reth_chainspec::{BASE_MAINNET, ChainSpecBuilder, EthChainSpec};
 use reth_e2e_test_utils::{
     node::NodeTestContext, setup, setup_engine, transaction::TransactionTestContext, wallet::Wallet,
 };
@@ -27,7 +27,7 @@ async fn can_run_eth_node() -> eyre::Result<()> {
         1,
         Arc::new(
             ChainSpecBuilder::default()
-                .chain(MAINNET.chain)
+                .chain(BASE_MAINNET.chain)
                 .genesis(serde_json::from_str(include_str!("../assets/genesis.json")).unwrap())
                 .cancun_activated()
                 .build(),
@@ -65,7 +65,7 @@ async fn can_run_eth_node_with_auth_engine_api_over_ipc() -> eyre::Result<()> {
     let genesis: Genesis = serde_json::from_str(include_str!("../assets/genesis.json")).unwrap();
     let chain_spec = Arc::new(
         ChainSpecBuilder::default()
-            .chain(MAINNET.chain)
+            .chain(BASE_MAINNET.chain)
             .genesis(genesis)
             .cancun_activated()
             .build(),
@@ -112,7 +112,7 @@ async fn test_failed_run_eth_node_with_no_auth_engine_api_over_ipc_opts() -> eyr
     let genesis: Genesis = serde_json::from_str(include_str!("../assets/genesis.json")).unwrap();
     let chain_spec = Arc::new(
         ChainSpecBuilder::default()
-            .chain(MAINNET.chain)
+            .chain(BASE_MAINNET.chain)
             .genesis(genesis)
             .cancun_activated()
             .build(),
@@ -143,7 +143,7 @@ async fn test_engine_graceful_shutdown() -> eyre::Result<()> {
         1,
         Arc::new(
             ChainSpecBuilder::default()
-                .chain(MAINNET.chain)
+                .chain(BASE_MAINNET.chain)
                 .genesis(serde_json::from_str(include_str!("../assets/genesis.json")).unwrap())
                 .cancun_activated()
                 .build(),
@@ -194,7 +194,11 @@ async fn test_testing_build_block_v1_osaka() -> eyre::Result<()> {
 
     let genesis: Genesis = serde_json::from_str(include_str!("../assets/genesis.json")).unwrap();
     let chain_spec = Arc::new(
-        ChainSpecBuilder::default().chain(MAINNET.chain).genesis(genesis).osaka_activated().build(),
+        ChainSpecBuilder::default()
+            .chain(BASE_MAINNET.chain)
+            .genesis(genesis)
+            .osaka_activated()
+            .build(),
     );
     let genesis_hash = chain_spec.genesis_hash();
 
@@ -281,7 +285,7 @@ async fn test_sparse_trie_reuse_across_blocks() -> eyre::Result<()> {
         1,
         Arc::new(
             ChainSpecBuilder::default()
-                .chain(MAINNET.chain)
+                .chain(BASE_MAINNET.chain)
                 .genesis(serde_json::from_str(include_str!("../assets/genesis.json")).unwrap())
                 .cancun_activated()
                 .build(),

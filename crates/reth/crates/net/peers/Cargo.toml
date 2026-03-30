@@ -36,15 +36,15 @@ tokio = { workspace = true, features = ["net", "macros", "rt"] }
 rand_08.workspace = true
 
 [features]
-default = ["std"]
+default = [ "std" ]
 std = [
-    "alloy-primitives/std",
-    "alloy-rlp/std",
-    "secp256k1?/std",
-    "serde_with/std",
-    "thiserror/std",
-    "url/std",
-    "serde_json/std",
+	"alloy-primitives/std",
+	"alloy-rlp/std",
+	"secp256k1?/std",
+	"serde_json/std",
+	"serde_with/std",
+	"thiserror/std",
+	"url/std",
 ]
-secp256k1 = ["dep:secp256k1", "enr/secp256k1"]
-net = ["std", "dep:tokio", "tokio?/net"]
+secp256k1 = [ "dep:secp256k1", "enr/secp256k1" ]
+net = [ "dep:tokio", "std", "tokio?/net" ]

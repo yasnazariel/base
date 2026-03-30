@@ -53,7 +53,26 @@ use tracing::trace;
 use super::{
     PeerMetadata, PooledTransactions, SOFT_LIMIT_BYTE_SIZE_POOLED_TRANSACTIONS_RESPONSE,
     config::TransactionFetcherConfig,
-    constants::{SOFT_LIMIT_COUNT_HASHES_IN_GET_POOLED_TRANSACTIONS_REQUEST, tx_fetcher::*},
+    constants::{
+        SOFT_LIMIT_COUNT_HASHES_IN_GET_POOLED_TRANSACTIONS_REQUEST,
+        tx_fetcher::{
+            AVERAGE_BYTE_SIZE_TX_ENCODED, DEFAULT_BUDGET_FIND_IDLE_FALLBACK_PEER,
+            DEFAULT_BUDGET_FIND_INTERSECTION_ANNOUNCED_BY_PEER_AND_PENDING_FETCH,
+            DEFAULT_DIVISOR_MAX_COUNT_INFLIGHT_REQUESTS_ON_FIND_IDLE_PEER,
+            DEFAULT_DIVISOR_MAX_COUNT_INFLIGHT_REQUESTS_ON_FIND_INTERSECTION,
+            DEFAULT_DIVISOR_MAX_COUNT_PENDING_POOL_IMPORTS_ON_FIND_IDLE_PEER,
+            DEFAULT_DIVISOR_MAX_COUNT_PENDING_POOL_IMPORTS_ON_FIND_INTERSECTION,
+            DEFAULT_MARGINAL_COUNT_HASHES_GET_POOLED_TRANSACTIONS_REQUEST,
+            DEFAULT_MAX_CAPACITY_CACHE_INFLIGHT_AND_PENDING_FETCH,
+            DEFAULT_MAX_CAPACITY_CACHE_PENDING_FETCH, DEFAULT_MAX_COUNT_CONCURRENT_REQUESTS,
+            DEFAULT_MAX_COUNT_CONCURRENT_REQUESTS_PER_PEER, DEFAULT_MAX_COUNT_FALLBACK_PEERS,
+            DEFAULT_MAX_RETRIES,
+            DEFAULT_SOFT_LIMIT_BYTE_SIZE_POOLED_TRANSACTIONS_RESP_ON_PACK_GET_POOLED_TRANSACTIONS_REQ,
+            DEFAULT_SOFT_LIMIT_BYTE_SIZE_POOLED_TRANSACTIONS_RESPONSE_ON_FETCH_PENDING_HASHES,
+            DEFAULT_SOFT_LIMIT_COUNT_HASHES_IN_GET_POOLED_TRANSACTIONS_REQUEST_ON_FETCH_PENDING_HASHES,
+            MEDIAN_BYTE_SIZE_SMALL_LEGACY_TX_ENCODED,
+        },
+    },
 };
 use crate::{
     cache::{LruCache, LruMap},
@@ -1231,11 +1250,11 @@ pub struct TransactionFetcherInfo {
     /// Max inflight [`GetPooledTransactions`] requests per peer.
     pub max_inflight_requests_per_peer: u8,
     /// Soft limit for the byte size of the expected [`PooledTransactions`] response, upon packing
-    /// a [`GetPooledTransactions`] request with hashes (by default less than 2 MiB worth of
+    /// a [`GetPooledTransactions`] request with hashes (by default less than 2 `MiB` worth of
     /// transactions is requested).
     pub soft_limit_byte_size_pooled_transactions_response_on_pack_request: usize,
     /// Soft limit for the byte size of a [`PooledTransactions`] response, upon assembling the
-    /// response. Spec'd at 2 MiB, but can be adjusted for research purpose.
+    /// response. Spec'd at 2 `MiB`, but can be adjusted for research purpose.
     pub soft_limit_byte_size_pooled_transactions_response: usize,
     /// Max capacity of the cache of transaction hashes, for transactions that weren't yet fetched.
     /// A transaction is pending fetch if its hash didn't fit into a [`GetPooledTransactions`] yet,

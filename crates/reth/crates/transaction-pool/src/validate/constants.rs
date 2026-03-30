@@ -8,5 +8,5 @@ pub const TX_SLOT_BYTE_SIZE: usize = 32 * 1024;
 /// field has non-trivial consequences: larger transactions are significantly harder and
 /// more expensive to propagate; larger transactions also take more resources
 /// to validate whether they fit into the pool or not. Default is 4 times [`TX_SLOT_BYTE_SIZE`],
-/// which defaults to 32 KiB, so 128 KiB.
+/// which defaults to 32 `KiB`, so 128 `KiB`.
 pub const DEFAULT_MAX_TX_INPUT_BYTES: usize = 4 * TX_SLOT_BYTE_SIZE; // 128KB

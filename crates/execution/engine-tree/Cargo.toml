@@ -16,6 +16,7 @@ reth-evm.workspace = true
 reth-errors.workspace = true
 reth-revm.workspace = true
 reth-trie.workspace = true
+reth-chainspec.workspace = true
 base-revm.workspace = true
 reth-tasks.workspace = true
 reth-provider.workspace = true
@@ -31,7 +32,6 @@ base-alloy-consensus.workspace = true
 reth-engine-tree = { workspace = true }
 reth-payload-primitives.workspace = true
 reth-primitives-traits.workspace = true
-base-execution-chainspec.workspace = true
 reth-engine-primitives.workspace = true
 base-execution-primitives.workspace = true
 

@@ -4,10 +4,10 @@ use std::{collections::HashMap, fmt::Debug, sync::Arc};
 
 use base_alloy_consensus::{OpReceipt, OpTxEnvelope, OpTxType};
 use base_alloy_evm::{OpBlockExecutor, OpTxResult};
-use base_execution_chainspec::OpChainSpec;
 use base_execution_evm::OpRethReceiptBuilder;
 use base_flashblocks::{FlashblocksAPI, FlashblocksState};
 use base_revm::{OpHaltReason, OpTransaction};
+use reth_chainspec::ChainSpec;
 use reth_errors::BlockExecutionError;
 use reth_evm::{
     Evm, RecoveredTx,
@@ -113,7 +113,7 @@ impl<TxResult> CachedExecutionProvider<TxResult> for NoopCachedExecutionProvider
 /// Executor that fetches cached execution results for transactions.
 #[derive(Debug)]
 pub struct CachedExecutor<E, C> {
-    executor: OpBlockExecutor<E, OpRethReceiptBuilder, Arc<OpChainSpec>>,
+    executor: OpBlockExecutor<E, OpRethReceiptBuilder, Arc<ChainSpec>>,
     cached_execution_provider: C,
     txs: Vec<B256>,
     position_by_hash: HashMap<B256, usize>,
@@ -124,7 +124,7 @@ pub struct CachedExecutor<E, C> {
 impl<E, C> CachedExecutor<E, C> {
     /// Creates a new [`CachedExecutor`].
     pub fn new(
-        executor: OpBlockExecutor<E, OpRethReceiptBuilder, Arc<OpChainSpec>>,
+        executor: OpBlockExecutor<E, OpRethReceiptBuilder, Arc<ChainSpec>>,
         cached_execution_provider: C,
         txs: Vec<B256>,
         parent_block_hash: B256,

@@ -549,6 +549,7 @@ where
     /// Handles the error of a bad response
     ///
     /// This will re-submit the request.
+    #[allow(clippy::boxed_local)]
     fn on_headers_error(&self, err: Box<HeadersResponseError>) {
         let HeadersResponseError { request, peer_id, error } = *err;
 

@@ -208,7 +208,7 @@ mod tests {
         tree.update_root(new_root.clone());
         match tree.poll(now, timeout) {
             Some(SyncAction::Enr(hash)) => assert_eq!(hash, new_root.enr_root),
-            other => panic!("expected Enr action, got {:?}", other),
+            other => panic!("expected Enr action, got {other:?}"),
         }
     }
 
@@ -224,7 +224,7 @@ mod tests {
         tree.update_root(new_root.clone());
         match tree.poll(now, timeout) {
             Some(SyncAction::Link(hash)) => assert_eq!(hash, new_root.link_root),
-            other => panic!("expected Link action, got {:?}", other),
+            other => panic!("expected Link action, got {other:?}"),
         }
     }
 
@@ -241,11 +241,11 @@ mod tests {
         tree.update_root(new_root.clone());
         match tree.poll(now, timeout) {
             Some(SyncAction::Link(hash)) => assert_eq!(hash, new_root.link_root),
-            other => panic!("expected first Link action, got {:?}", other),
+            other => panic!("expected first Link action, got {other:?}"),
         }
         match tree.poll(now, timeout) {
             Some(SyncAction::Enr(hash)) => assert_eq!(hash, new_root.enr_root),
-            other => panic!("expected second Enr action, got {:?}", other),
+            other => panic!("expected second Enr action, got {other:?}"),
         }
     }
 }

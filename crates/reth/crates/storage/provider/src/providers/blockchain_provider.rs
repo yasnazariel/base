@@ -817,7 +817,7 @@ mod tests {
         CanonStateNotification, CanonStateSubscriptions, CanonicalInMemoryState, ExecutedBlock,
         NewCanonicalChain, test_utils::TestBlockBuilder,
     };
-    use reth_chainspec::{ChainSpec, MAINNET};
+    use reth_chainspec::{BASE_MAINNET, ChainSpec};
     use reth_db_api::models::{AccountBeforeTx, StoredBlockBodyIndices};
     use reth_errors::ProviderError;
     use reth_ethereum_primitives::{Block, Receipt};
@@ -998,7 +998,7 @@ mod tests {
     )> {
         provider_with_chain_spec_and_random_blocks(
             rng,
-            MAINNET.clone(),
+            BASE_MAINNET.clone(),
             database_blocks,
             in_memory_blocks,
             block_range_params,

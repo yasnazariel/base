@@ -50,15 +50,15 @@ rand.workspace = true
 
 [features]
 serde = [
-    "dep:serde",
-    "dep:serde_with",
-    "alloy-chains/serde",
-    "alloy-primitives/serde",
-    "enr/serde",
-    "linked_hash_set/serde",
-    "rand/serde",
-    "secp256k1/serde",
-    "hickory-resolver/serde",
-    "reth-ethereum-forks/serde",
-    "dashmap/serde",
+	"alloy-chains/serde",
+	"alloy-primitives/serde",
+	"dashmap/serde",
+	"dep:serde",
+	"dep:serde_with",
+	"enr/serde",
+	"hickory-resolver/serde",
+	"linked_hash_set/serde",
+	"rand/serde",
+	"reth-ethereum-forks/serde",
+	"secp256k1/serde",
 ]

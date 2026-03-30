@@ -840,6 +840,7 @@ mod rpc_compat {
         /// let rpc_block: alloy_rpc_types_eth::Block = get_rpc_block();
         /// let recovered = RecoveredBlock::from_rpc_block(rpc_block)?;
         /// ```
+        #[allow(clippy::result_large_err)]
         pub fn from_rpc_block<U>(
             block: alloy_rpc_types_eth::Block<U>,
         ) -> Result<Self, BlockRecoveryError<alloy_consensus::Block<T>>>

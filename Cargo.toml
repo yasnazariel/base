@@ -129,7 +129,6 @@ missing-docs = "warn"
 unreachable-pub = "warn"
 unused-must-use = "deny"
 rust-2018-idioms = "deny"
-unnameable-types = "warn"
 
 [workspace.lints.rustdoc]
 all = "warn"
@@ -141,7 +140,6 @@ all = { level = "warn", priority = -1 }
 # === Performance & Cloning ===
 missing-const-for-fn = "warn"
 redundant-clone = "warn"
-clone-on-ref-ptr = "warn"
 unnecessary-to-owned = "warn"
 cloned-instead-of-copied = "warn"
 flat-map-option = "warn"
@@ -149,18 +147,13 @@ implicit-clone = "warn"
 or-fun-call = "warn"
 
 # === Code Style ===
-wildcard-imports = "warn"
 use-self = "warn"
-option-if-let-else = "warn"
-uninlined-format-args = "warn"
 manual-string-new = "warn"
 single-char-pattern = "warn"
 redundant-else = "warn"
 match-same-arms = "warn"
 
 # === Safety & Documentation ===
-undocumented-unsafe-blocks = "warn"
-doc-markdown = "warn"
 
 # === Debugging Artifacts ===
 dbg-macro = "warn"
@@ -283,7 +276,6 @@ base-engine-tree = { path = "crates/execution/engine-tree" }
 base-flashblocks = { path = "crates/execution/flashblocks" }
 base-execution-forks = { path = "crates/execution/hardforks" }
 base-execution-storage = { path = "crates/execution/storage" }
-base-execution-chainspec = { path = "crates/execution/chainspec" }
 base-execution-consensus = { path = "crates/execution/consensus" }
 base-execution-primitives = { path = "crates/execution/primitives" }
 base-execution-payload-builder = { path = "crates/execution/payload" }

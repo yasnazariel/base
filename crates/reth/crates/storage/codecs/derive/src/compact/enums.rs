@@ -1,4 +1,4 @@
-use super::{format_ident, quote, FieldTypes, TokenStream2, FieldList, Ident};
+use super::{FieldList, FieldTypes, Ident, TokenStream2, format_ident, quote};
 
 #[derive(Debug)]
 pub struct EnumHandler<'a> {

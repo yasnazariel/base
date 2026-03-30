@@ -20,7 +20,7 @@ use reth_stages_api::{
 };
 use reth_static_file_types::StaticFileSegment;
 use reth_storage_errors::provider::ProviderResult;
-use tracing::*;
+use tracing::{debug, trace};
 
 use super::missing_static_data_error;
 

@@ -1,10 +1,10 @@
 use core::fmt::{Debug, Display};
 
-use alloy_chains::{Chain, NamedChain};
+use alloy_chains::Chain;
 use alloy_hardforks::{EthereumHardfork, ForkId, Head};
 use alloy_primitives::{B256, U256, hex};
 use alloy_rlp::{BufMut, Encodable, RlpDecodable, RlpEncodable};
-use reth_chainspec::{EthChainSpec, Hardforks, MAINNET};
+use reth_chainspec::{BASE_MAINNET, EthChainSpec, Hardforks};
 use reth_codecs_derive::add_arbitrary_tests;
 
 use crate::EthVersion;
@@ -35,16 +35,16 @@ pub struct UnifiedStatus {
 
 impl Default for UnifiedStatus {
     fn default() -> Self {
-        let mainnet_genesis = MAINNET.genesis_hash();
+        let mainnet_genesis = BASE_MAINNET.genesis_hash();
         Self {
             version: EthVersion::Eth68,
-            chain: Chain::from_named(NamedChain::Mainnet),
+            chain: Chain::base_mainnet(),
             genesis: mainnet_genesis,
-            forkid: MAINNET
+            forkid: BASE_MAINNET
                 .hardfork_fork_id(EthereumHardfork::Frontier)
                 .expect("Frontier must exist"),
             blockhash: mainnet_genesis,
-            total_difficulty: Some(U256::from(17_179_869_184u64)),
+            total_difficulty: Some(U256::ZERO),
             earliest_block: Some(0),
             latest_block: Some(0),
         }
@@ -246,14 +246,14 @@ pub struct Status {
 // <https://etherscan.io/block/0>
 impl Default for Status {
     fn default() -> Self {
-        let mainnet_genesis = MAINNET.genesis_hash();
+        let mainnet_genesis = BASE_MAINNET.genesis_hash();
         Self {
             version: EthVersion::Eth68,
-            chain: Chain::from_named(NamedChain::Mainnet),
-            total_difficulty: U256::from(17_179_869_184u64),
+            chain: Chain::base_mainnet(),
+            total_difficulty: U256::ZERO,
             blockhash: mainnet_genesis,
             genesis: mainnet_genesis,
-            forkid: MAINNET
+            forkid: BASE_MAINNET
                 .hardfork_fork_id(EthereumHardfork::Frontier)
                 .expect("The Frontier hardfork should always exist"),
         }

@@ -8,7 +8,7 @@ use std::sync::Arc;
 use alloy_consensus::{Eip658Value, Receipt, transaction::Recovered};
 use base_alloy_chains::BaseUpgrades;
 use base_alloy_consensus::{OpDepositReceipt, OpReceipt, OpTxEnvelope, OpTxType};
-use base_execution_chainspec::OpChainSpec;
+use reth_chainspec::ChainSpec;
 use reth_evm::Evm;
 use revm::{Database, context::result::ExecutionResult};
 
@@ -35,17 +35,17 @@ pub enum ReceiptBuildError {
 /// ```
 #[derive(Debug, Clone)]
 pub struct UnifiedReceiptBuilder {
-    chain_spec: Arc<OpChainSpec>,
+    chain_spec: Arc<ChainSpec>,
 }
 
 impl UnifiedReceiptBuilder {
     /// Creates a new unified receipt builder with the given chain specification.
-    pub const fn new(chain_spec: Arc<OpChainSpec>) -> Self {
+    pub const fn new(chain_spec: Arc<ChainSpec>) -> Self {
         Self { chain_spec }
     }
 
     /// Returns a reference to the chain specification.
-    pub const fn chain_spec(&self) -> &Arc<OpChainSpec> {
+    pub const fn chain_spec(&self) -> &Arc<ChainSpec> {
         &self.chain_spec
     }
 
@@ -131,9 +131,9 @@ mod tests {
     use alloy_consensus::Header;
     use alloy_primitives::{Address, Log, LogData, TxKind, address};
     use base_alloy_consensus::TxDeposit;
-    use base_execution_chainspec::OpChainSpecBuilder;
     use base_execution_evm::OpEvmConfig;
     use base_revm::OpHaltReason;
+    use reth_chainspec::ChainSpecBuilder;
     use reth_evm::ConfigureEvm;
     use revm::database::InMemoryDB;
 
@@ -188,7 +188,7 @@ mod tests {
 
     #[test]
     fn test_unified_receipt_builder_creation() {
-        let chain_spec = Arc::new(OpChainSpecBuilder::base_mainnet().build());
+        let chain_spec = Arc::new(ChainSpecBuilder::base_mainnet().build());
         let builder = UnifiedReceiptBuilder::new(Arc::clone(&chain_spec));
         assert!(Arc::ptr_eq(builder.chain_spec(), &chain_spec));
     }
@@ -246,7 +246,7 @@ mod tests {
 
     /// Helper to create an EVM instance for testing
     fn create_test_evm(
-        chain_spec: Arc<base_execution_chainspec::OpChainSpec>,
+        chain_spec: Arc<reth_chainspec::ChainSpec>,
         db: &mut InMemoryDB,
     ) -> impl Evm<HaltReason = OpHaltReason, DB = &mut InMemoryDB> + '_ {
         let evm_config = OpEvmConfig::optimism(chain_spec);
@@ -257,7 +257,7 @@ mod tests {
 
     #[test]
     fn test_build_legacy_receipt() {
-        let chain_spec = Arc::new(OpChainSpecBuilder::base_mainnet().build());
+        let chain_spec = Arc::new(ChainSpecBuilder::base_mainnet().build());
         let mut db = InMemoryDB::default();
         let mut evm = create_test_evm(Arc::clone(&chain_spec), &mut db);
 
@@ -277,7 +277,7 @@ mod tests {
 
     #[test]
     fn test_build_deposit_receipt() {
-        let chain_spec = Arc::new(OpChainSpecBuilder::base_mainnet().build());
+        let chain_spec = Arc::new(ChainSpecBuilder::base_mainnet().build());
         let mut db = InMemoryDB::default();
         let mut evm = create_test_evm(Arc::clone(&chain_spec), &mut db);
 
@@ -298,7 +298,7 @@ mod tests {
     #[test]
     fn test_build_deposit_receipt_with_canyon_active() {
         // Canyon activates deposit_receipt_version
-        let chain_spec = Arc::new(OpChainSpecBuilder::base_mainnet().build());
+        let chain_spec = Arc::new(ChainSpecBuilder::base_mainnet().build());
         let mut db = InMemoryDB::default();
         let mut evm = create_test_evm(Arc::clone(&chain_spec), &mut db);
 
@@ -321,7 +321,7 @@ mod tests {
 
     #[test]
     fn test_build_failed_transaction_receipt() {
-        let chain_spec = Arc::new(OpChainSpecBuilder::base_mainnet().build());
+        let chain_spec = Arc::new(ChainSpecBuilder::base_mainnet().build());
         let mut db = InMemoryDB::default();
         let mut evm = create_test_evm(Arc::clone(&chain_spec), &mut db);
 

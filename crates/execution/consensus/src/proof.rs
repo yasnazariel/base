@@ -82,7 +82,7 @@ mod tests {
     use alloy_consensus::{Receipt, ReceiptWithBloom, TxReceipt};
     use alloy_primitives::{Address, Bytes, Log, LogData, b256, bloom, hex};
     use base_alloy_consensus::{OpDepositReceipt, OpReceipt};
-    use base_execution_chainspec::BASE_SEPOLIA;
+    use reth_chainspec::BASE_SEPOLIA;
 
     use super::*;
 

@@ -6,8 +6,7 @@ use alloy_consensus::Header;
 use arc_swap::{ArcSwapOption, Guard};
 use base_alloy_consensus::OpBlock;
 use base_alloy_flashblocks::Flashblock;
-use base_execution_chainspec::OpChainSpec;
-use reth_chainspec::ChainSpecProvider;
+use reth_chainspec::{ChainSpec, ChainSpecProvider};
 use reth_primitives::RecoveredBlock;
 use reth_provider::{BlockReaderIdExt, StateProviderFactory};
 use tokio::sync::{
@@ -60,7 +59,7 @@ impl FlashblocksState {
     pub fn start<Client>(&self, client: Client)
     where
         Client: StateProviderFactory
-            + ChainSpecProvider<ChainSpec = OpChainSpec>
+            + ChainSpecProvider<ChainSpec = ChainSpec>
             + BlockReaderIdExt<Header = Header>
             + Clone
             + 'static,
@@ -75,7 +74,7 @@ impl FlashblocksState {
     pub fn start_with_options<Client>(&self, client: Client, simulate_state_root: bool)
     where
         Client: StateProviderFactory
-            + ChainSpecProvider<ChainSpec = OpChainSpec>
+            + ChainSpecProvider<ChainSpec = ChainSpec>
             + BlockReaderIdExt<Header = Header>
             + Clone
             + 'static,

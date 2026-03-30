@@ -31,7 +31,7 @@ eyre.workspace = true
 rolling-file.workspace = true
 
 [features]
-default = ["otlp"]
-otlp = ["reth-tracing-otlp"]
-otlp-logs = ["reth-tracing-otlp/otlp-logs"]
-tracy = ["tracing-tracy", "tracy-client"]
+default = [ "otlp" ]
+otlp = [ "reth-tracing-otlp" ]
+otlp-logs = [ "reth-tracing-otlp/otlp-logs" ]
+tracy = [ "tracing-tracy", "tracy-client" ]

@@ -17,12 +17,12 @@ pub mod commands;
 use std::{ffi::OsString, fmt, marker::PhantomData};
 
 pub use app::CliApp;
-use base_execution_chainspec::OpChainSpec;
 use base_node_core::args::RollupArgs;
 use chainspec::OpChainSpecParser;
 use clap::Parser;
 use commands::Commands;
 use futures::Future;
+use reth_chainspec::ChainSpec;
 use reth_cli_commands::launcher::FnLauncher;
 use reth_cli_runner::CliRunner;
 use reth_db::DatabaseEnv;
@@ -97,7 +97,7 @@ where
     /// [`NodeCommand`](reth_cli_commands::node::NodeCommand).
     pub fn run<L, Fut>(self, launcher: L) -> eyre::Result<()>
     where
-        L: FnOnce(WithLaunchContext<NodeBuilder<DatabaseEnv, OpChainSpec>>, Ext) -> Fut,
+        L: FnOnce(WithLaunchContext<NodeBuilder<DatabaseEnv, ChainSpec>>, Ext) -> Fut,
         Fut: Future<Output = eyre::Result<()>>,
     {
         self.with_runner(CliRunner::try_default_runtime()?, launcher)
@@ -106,7 +106,7 @@ where
     /// Execute the configured cli command with the provided [`CliRunner`].
     pub fn with_runner<L, Fut>(self, runner: CliRunner, launcher: L) -> eyre::Result<()>
     where
-        L: FnOnce(WithLaunchContext<NodeBuilder<DatabaseEnv, OpChainSpec>>, Ext) -> Fut,
+        L: FnOnce(WithLaunchContext<NodeBuilder<DatabaseEnv, ChainSpec>>, Ext) -> Fut,
         Fut: Future<Output = eyre::Result<()>>,
     {
         let mut this = self.configure();
@@ -119,9 +119,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use base_execution_chainspec::{BASE_DEV, BASE_MAINNET};
     use base_node_core::args::RollupArgs;
     use clap::Parser;
+    use reth_chainspec::{BASE_DEV, BASE_MAINNET};
     use reth_cli_commands::{NodeCommand, node::NoArgs};
 
     use crate::{Cli, chainspec::OpChainSpecParser, commands::Commands};

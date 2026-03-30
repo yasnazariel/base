@@ -121,10 +121,10 @@ where
         self.notifications.set_with_head(head);
     }
 
-    /// Sends an [`ExExEvent::FinishedHeight`] to the ExEx task manager letting it know that this
-    /// ExEx has processed the corresponding block.
+    /// Sends an [`ExExEvent::FinishedHeight`] to the `ExEx` task manager letting it know that this
+    /// `ExEx` has processed the corresponding block.
     ///
-    /// Returns an error if the channel was closed (ExEx task manager panicked).
+    /// Returns an error if the channel was closed (`ExEx` task manager panicked).
     pub fn send_finished_height(
         &self,
         height: BlockNumHash,

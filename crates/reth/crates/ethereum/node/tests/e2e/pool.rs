@@ -4,7 +4,7 @@ use alloy_consensus::{EthereumTxEnvelope, TxEip4844};
 use alloy_eips::{Encodable2718, eip1559::ETHEREUM_BLOCK_GAS_LIMIT_30M};
 use alloy_genesis::Genesis;
 use alloy_primitives::B256;
-use reth_chainspec::{ChainSpecBuilder, MAINNET};
+use reth_chainspec::{BASE_MAINNET, ChainSpecBuilder};
 use reth_e2e_test_utils::{
     node::NodeTestContext, transaction::TransactionTestContext, wallet::Wallet,
 };
@@ -39,7 +39,7 @@ async fn maintain_txpool_stale_eviction() -> eyre::Result<()> {
     let genesis: Genesis = serde_json::from_str(include_str!("../assets/genesis.json")).unwrap();
     let chain_spec = Arc::new(
         ChainSpecBuilder::default()
-            .chain(MAINNET.chain)
+            .chain(BASE_MAINNET.chain)
             .genesis(genesis)
             .cancun_activated()
             .build(),
@@ -112,7 +112,7 @@ async fn maintain_txpool_reorg() -> eyre::Result<()> {
     let genesis: Genesis = serde_json::from_str(include_str!("../assets/genesis.json")).unwrap();
     let chain_spec = Arc::new(
         ChainSpecBuilder::default()
-            .chain(MAINNET.chain)
+            .chain(BASE_MAINNET.chain)
             .genesis(genesis)
             .cancun_activated()
             .build(),
@@ -244,7 +244,7 @@ async fn maintain_txpool_commit() -> eyre::Result<()> {
     let genesis: Genesis = serde_json::from_str(include_str!("../assets/genesis.json")).unwrap();
     let chain_spec = Arc::new(
         ChainSpecBuilder::default()
-            .chain(MAINNET.chain)
+            .chain(BASE_MAINNET.chain)
             .genesis(genesis)
             .cancun_activated()
             .build(),

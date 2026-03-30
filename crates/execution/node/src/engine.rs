@@ -9,12 +9,12 @@ use base_alloy_rpc_types_engine::{
     OpExecutionData, OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4,
     OpExecutionPayloadEnvelopeV5, OpPayloadAttributes,
 };
-use base_execution_chainspec::OpChainSpec;
 use base_execution_consensus::isthmus;
 use base_execution_payload_builder::{
     OpBuiltPayload, OpExecutionPayloadValidator, OpPayloadBuilderAttributes,
 };
 use base_protocol::Predeploys;
+use reth_chainspec::ChainSpec;
 use reth_consensus::ConsensusError;
 use reth_node_api::{
     EngineApiValidator, EngineTypes, PayloadValidator,
@@ -67,7 +67,7 @@ pub struct OpEngineValidator<P> {
 
 impl<P> OpEngineValidator<P> {
     /// Instantiates a new validator.
-    pub fn new<KH: KeyHasher>(chain_spec: Arc<OpChainSpec>, provider: P) -> Self {
+    pub fn new<KH: KeyHasher>(chain_spec: Arc<ChainSpec>, provider: P) -> Self {
         let hashed_addr_l2tol1_msg_passer = KH::hash_key(Predeploys::L2_TO_L1_MESSAGE_PASSER);
         Self {
             inner: OpExecutionPayloadValidator::new(chain_spec),
@@ -93,7 +93,7 @@ where
 impl<P> OpEngineValidator<P> {
     /// Returns the chain spec used by the validator.
     #[inline]
-    pub fn chain_spec(&self) -> &OpChainSpec {
+    pub fn chain_spec(&self) -> &ChainSpec {
         self.inner.chain_spec()
     }
 }
@@ -285,7 +285,7 @@ mod tests {
     use alloy_primitives::{Address, B64, B256, b64};
     use alloy_rpc_types_engine::PayloadAttributes;
     use base_alloy_chains::BaseChainConfig;
-    use base_execution_chainspec::BASE_SEPOLIA;
+    use reth_chainspec::BASE_SEPOLIA;
     use reth_provider::noop::NoopProvider;
     use reth_trie_common::KeccakKeyHasher;
 

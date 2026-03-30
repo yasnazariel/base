@@ -61,29 +61,29 @@ proptest-arbitrary-interop.workspace = true
 
 [features]
 test-utils = [
-    "arbitrary",
-    "reth-primitives-traits/test-utils",
-    "reth-codecs/test-utils",
-    "reth-db-models/test-utils",
-    "reth-trie-common/test-utils",
-    "reth-prune-types/test-utils",
-    "reth-stages-types/test-utils",
-    "reth-ethereum-primitives/test-utils",
+	"arbitrary",
+	"reth-codecs/test-utils",
+	"reth-db-models/test-utils",
+	"reth-ethereum-primitives/test-utils",
+	"reth-primitives-traits/test-utils",
+	"reth-prune-types/test-utils",
+	"reth-stages-types/test-utils",
+	"reth-trie-common/test-utils",
 ]
 arbitrary = [
-    "reth-db-models/arbitrary",
-    "dep:arbitrary",
-    "dep:proptest",
-    "reth-primitives-traits/arbitrary",
-    "reth-trie-common/arbitrary",
-    "alloy-primitives/arbitrary",
-    "parity-scale-codec/arbitrary",
-    "reth-codecs/arbitrary",
-    "reth-prune-types/arbitrary",
-    "reth-stages-types/arbitrary",
-    "alloy-consensus/arbitrary",
-    "reth-ethereum-primitives/arbitrary",
+	"alloy-consensus/arbitrary",
+	"alloy-primitives/arbitrary",
+	"dep:arbitrary",
+	"dep:proptest",
+	"parity-scale-codec/arbitrary",
+	"reth-codecs/arbitrary",
+	"reth-db-models/arbitrary",
+	"reth-ethereum-primitives/arbitrary",
+	"reth-primitives-traits/arbitrary",
+	"reth-prune-types/arbitrary",
+	"reth-stages-types/arbitrary",
+	"reth-trie-common/arbitrary",
 ]
 bench = []
 rocksdb = []
-edge = ["rocksdb"]
+edge = [ "rocksdb" ]

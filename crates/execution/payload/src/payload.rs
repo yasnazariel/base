@@ -30,7 +30,7 @@ use reth_payload_primitives::{
 use reth_primitives_traits::{SealedBlock, SealedHeader, WithEncoded};
 
 /// Base Payload Builder Attributes
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct OpPayloadBuilderAttributes {
     /// Inner ethereum payload builder attributes
     pub payload_attributes: EthPayloadBuilderAttributes,
@@ -45,19 +45,6 @@ pub struct OpPayloadBuilderAttributes {
     pub eip_1559_params: Option<B64>,
     /// Min base fee for the generated payload (only available post-Jovian)
     pub min_base_fee: Option<u64>,
-}
-
-impl Default for OpPayloadBuilderAttributes {
-    fn default() -> Self {
-        Self {
-            payload_attributes: Default::default(),
-            no_tx_pool: Default::default(),
-            gas_limit: Default::default(),
-            eip_1559_params: Default::default(),
-            transactions: Default::default(),
-            min_base_fee: Default::default(),
-        }
-    }
 }
 
 impl OpPayloadBuilderAttributes {
@@ -468,7 +455,6 @@ mod tests {
 
     use alloy_primitives::{FixedBytes, address, b256, bytes};
     use alloy_rpc_types_engine::PayloadAttributes;
-    use base_execution_primitives::OpTransactionSigned;
     use reth_payload_primitives::EngineApiMessageVersion;
 
     use super::*;

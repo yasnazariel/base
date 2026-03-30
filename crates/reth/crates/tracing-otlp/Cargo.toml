@@ -28,19 +28,19 @@ url.workspace = true
 workspace = true
 
 [features]
-default = ["otlp"]
+default = [ "otlp" ]
 
 otlp = [
-    "opentelemetry",
-    "opentelemetry_sdk",
-    "opentelemetry-otlp",
-    "opentelemetry-semantic-conventions",
-    "tracing-opentelemetry",
+	"opentelemetry",
+	"opentelemetry-otlp",
+	"opentelemetry-semantic-conventions",
+	"opentelemetry_sdk",
+	"tracing-opentelemetry",
 ]
 
 otlp-logs = [
-    "otlp",
-    "opentelemetry-appender-tracing",
-    "opentelemetry-otlp/logs",
-    "opentelemetry_sdk/logs",
+	"opentelemetry-appender-tracing",
+	"opentelemetry-otlp/logs",
+	"opentelemetry_sdk/logs",
+	"otlp",
 ]

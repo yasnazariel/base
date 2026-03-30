@@ -7,7 +7,6 @@ use std::{any::Any, net::SocketAddr, path::PathBuf, sync::Arc};
 use alloy_primitives::hex::ToHexExt;
 use alloy_rpc_types_engine::JwtSecret;
 use base_bundle_extension::BundleExtension;
-use base_execution_chainspec::OpChainSpec;
 use base_flashblocks::FlashblocksConfig;
 use base_flashblocks_node::FlashblocksExtension;
 use base_node_core::args::RollupArgs;
@@ -16,6 +15,7 @@ use base_tx_forwarding::{TxForwardingConfig, TxForwardingExtension};
 use base_txpool_rpc::{TxPoolRpcConfig, TxPoolRpcExtension};
 use base_txpool_tracing::{TxPoolExtension, TxpoolConfig};
 use eyre::{Context, Result, eyre};
+use reth_chainspec::ChainSpec;
 use reth_db::{
     ClientVersion, DatabaseEnv, init_db, mdbx::DatabaseArguments, test_utils::tempdir_path,
 };
@@ -93,7 +93,7 @@ impl InProcessClient {
         // Parse genesis JSON to chain spec
         let genesis: alloy_genesis::Genesis = serde_json::from_slice(&config.genesis_json)
             .map_err(|e| eyre!("Failed to parse genesis JSON: {}", e))?;
-        let chain_spec = Arc::new(OpChainSpec::from_genesis(genesis));
+        let chain_spec = Arc::new(ChainSpec::from_genesis(genesis));
 
         let mut network_config = NetworkArgs {
             discovery: DiscoveryArgs { disable_discovery: true, ..DiscoveryArgs::default() },

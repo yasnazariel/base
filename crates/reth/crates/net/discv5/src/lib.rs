@@ -696,7 +696,7 @@ mod test {
 
     use ::enr::{CombinedKey, EnrKey};
     use rand_08::thread_rng;
-    use reth_chainspec::MAINNET;
+    use reth_chainspec::BASE_MAINNET;
     use reth_tracing::init_test_tracing;
     use tracing::trace;
 
@@ -916,7 +916,7 @@ mod test {
     #[test]
     fn build_enr_from_config() {
         const TCP_PORT: u16 = 30303;
-        let fork_id = MAINNET.latest_fork_id();
+        let fork_id = BASE_MAINNET.latest_fork_id();
 
         let config = Config::builder((Ipv4Addr::UNSPECIFIED, TCP_PORT).into())
             .fork(NetworkStackId::ETH, fork_id)
@@ -942,7 +942,7 @@ mod test {
         }
         init_test_tracing();
 
-        let fork_id = MAINNET.latest_fork_id();
+        let fork_id = BASE_MAINNET.latest_fork_id();
         let sk = SecretKey::new(&mut thread_rng());
 
         // Test 1: ENR with OPEL fork ID, Discv5 configured for OPEL

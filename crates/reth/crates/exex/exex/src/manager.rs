@@ -371,7 +371,7 @@ where
 {
     /// Finalizes the WAL according to the passed finalized header.
     ///
-    /// This function checks if all ExExes are on the canonical chain and finalizes the WAL if
+    /// This function checks if all `ExExes` are on the canonical chain and finalizes the WAL if
     /// necessary.
     fn finalize_wal(&self, finalized_header: SealedHeader<N::BlockHeader>) -> eyre::Result<()> {
         debug!(target: "exex::manager", header = ?finalized_header.num_hash(), "Received finalized header");
@@ -447,16 +447,16 @@ where
     type Output = eyre::Result<()>;
 
     /// Main loop of the [`ExExManager`]. The order of operations is as follows:
-    /// 1. Handle incoming ExEx events. We do it before finalizing the WAL, because it depends on
+    /// 1. Handle incoming `ExEx` events. We do it before finalizing the WAL, because it depends on
     ///    the latest state of [`ExExEvent::FinishedHeight`] events.
     /// 2. Finalize the WAL with the finalized header, if necessary.
     /// 3. Drain [`ExExManagerHandle`] notifications, push them to the internal buffer and update
     ///    the internal buffer capacity.
-    /// 5. Send notifications from the internal buffer to those ExExes that are ready to receive new
+    /// 5. Send notifications from the internal buffer to those `ExExes` that are ready to receive new
     ///    notifications.
-    /// 5. Remove notifications from the internal buffer that have been sent to **all** ExExes and
+    /// 5. Remove notifications from the internal buffer that have been sent to **all** `ExExes` and
     ///    update the internal buffer capacity.
-    /// 6. Update the channel with the lowest [`FinishedExExHeight`] among all ExExes.
+    /// 6. Update the channel with the lowest [`FinishedExExHeight`] among all `ExExes`.
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
 

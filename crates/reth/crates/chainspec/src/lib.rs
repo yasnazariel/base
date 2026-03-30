@@ -11,6 +11,9 @@
 
 extern crate alloc;
 
+mod basefee;
+pub use basefee::*;
+
 /// Chain specific constants
 mod constants;
 pub use constants::*;
@@ -31,9 +34,11 @@ use reth_primitives_traits::sync::OnceLock;
 #[cfg(any(test, feature = "test-utils"))]
 pub use spec::test_fork_ids;
 pub use spec::{
-    BaseFeeParams, BaseFeeParamsKind, ChainSpec, ChainSpecBuilder, ChainSpecProvider, DEV,
-    DepositContract, ForkBaseFeeParams, HOLESKY, HOODI, MAINNET, SEPOLIA, blob_params_to_schedule,
-    create_chain_config, mainnet_chain_config, make_genesis_header,
+    BASE_DEV, BASE_DEVNET_0_SEPOLIA_DEV_0, BASE_MAINNET, BASE_SEPOLIA, BASE_ZERONET, BaseFeeParams,
+    BaseFeeParamsKind, ChainSpec, ChainSpecBuilder, ChainSpecProvider, DepositContract,
+    ForkBaseFeeParams, OpBaseFeeInfo, OpBaseHardforkInfo, OpChainGenesisInfo, OpChainInfo,
+    OpGenesisInfo, SUPPORTED_CHAINS, blob_params_to_schedule, create_chain_config,
+    make_genesis_header,
 };
 
 /// Simple utility to create a thread-safe sync cell with a value set.

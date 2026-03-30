@@ -722,7 +722,7 @@ mod tests {
     use alloy_genesis::Genesis;
     use alloy_primitives::U256;
     use reth_chainspec::{
-        Chain, ChainSpecBuilder, EthereumHardfork, ForkCondition, ForkId, MAINNET,
+        BASE_MAINNET, Chain, ChainSpecBuilder, EthereumHardfork, ForkCondition, ForkId,
     };
     use reth_discv5::build_local_enr;
     use reth_dns_discovery::tree::LinkEntry;
@@ -749,7 +749,7 @@ mod tests {
 
     #[test]
     fn test_network_fork_filter_default() {
-        let mut chain_spec = Arc::clone(&MAINNET);
+        let mut chain_spec = Arc::clone(&BASE_MAINNET);
 
         // remove any `next` fields we would have by removing all hardforks
         Arc::make_mut(&mut chain_spec).hardforks = Default::default();

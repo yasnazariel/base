@@ -14,6 +14,7 @@ workspace = true
 [dependencies]
 # reth
 reth-evm = { workspace = true, features = ["std"] }
+reth-chainspec.workspace = true
 
 # revm
 base-revm = { workspace = true, features = ["std"] }
@@ -47,7 +48,6 @@ base-alloy-chains.workspace = true
 base-consensus-derive = { workspace = true, features = ["test-utils"] }
 base-consensus-genesis = { workspace = true, features = ["std"] }
 base-protocol = { workspace = true, features = ["std"] }
-base-execution-chainspec.workspace = true
 base-consensus-registry.workspace = true
 base-consensus-safedb.workspace = true
 base-consensus-gossip.workspace = true

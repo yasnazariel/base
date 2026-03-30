@@ -2,7 +2,9 @@
 
 use syn::{Attribute, LitStr};
 
-use super::{format_ident, quote, Ident, FieldList, TokenStream2, FieldTypes, EnumHandler, StructHandler};
+use super::{
+    EnumHandler, FieldList, FieldTypes, Ident, StructHandler, TokenStream2, format_ident, quote,
+};
 use crate::ZstdConfig;
 
 /// Generates code to implement the `Compact` trait for a data type.

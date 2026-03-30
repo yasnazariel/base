@@ -18,7 +18,7 @@ use reth_prune::PrunerBuilder;
 use reth_static_file::StaticFileProducer;
 use reth_tokio_util::{EventSender, EventStream};
 use tokio::sync::watch;
-use tracing::*;
+use tracing::{debug, error, info, info_span, trace, warn};
 
 pub use crate::pipeline::ctrl::ControlFlow;
 use crate::{PipelineTarget, StageCheckpoint, StageId};
@@ -28,7 +28,7 @@ mod progress;
 mod set;
 
 pub use builder::*;
-use progress::*;
+use progress::PipelineProgress;
 use reth_errors::RethResult;
 pub use set::*;
 

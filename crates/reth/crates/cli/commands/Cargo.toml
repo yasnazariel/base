@@ -56,7 +56,7 @@ reth-discv5.workspace = true
 
 # ethereum
 alloy-eips.workspace = true
-alloy-primitives.workspace = true
+alloy-primitives = { workspace = true, features = ["map-foldhash"] }
 alloy-rlp.workspace = true
 alloy-consensus.workspace = true
 
@@ -105,27 +105,32 @@ tempfile.workspace = true
 [features]
 default = []
 arbitrary = [
-    "dep:proptest",
-    "dep:arbitrary",
-    "dep:proptest-arbitrary-interop",
-    "reth-db-api/arbitrary",
-    "reth-eth-wire/arbitrary",
-    "reth-db/arbitrary",
-    "reth-chainspec/arbitrary",
-    "alloy-eips/arbitrary",
-    "alloy-primitives/arbitrary",
-    "reth-codecs/test-utils",
-    "reth-prune-types/test-utils",
-    "reth-stages-types/test-utils",
-    "reth-trie-common/test-utils",
-    "reth-codecs/arbitrary",
-    "reth-prune-types?/arbitrary",
-    "reth-stages-types?/arbitrary",
-    "reth-trie-common/arbitrary",
-    "alloy-consensus/arbitrary",
-    "reth-primitives-traits/arbitrary",
-    "reth-ethereum-primitives/arbitrary",
+	"alloy-consensus/arbitrary",
+	"alloy-eips/arbitrary",
+	"alloy-primitives/arbitrary",
+	"dep:arbitrary",
+	"dep:proptest",
+	"dep:proptest-arbitrary-interop",
+	"reth-chainspec/arbitrary",
+	"reth-codecs/arbitrary",
+	"reth-codecs/test-utils",
+	"reth-db-api/arbitrary",
+	"reth-db/arbitrary",
+	"reth-eth-wire/arbitrary",
+	"reth-ethereum-primitives/arbitrary",
+	"reth-primitives-traits/arbitrary",
+	"reth-prune-types/test-utils",
+	"reth-prune-types?/arbitrary",
+	"reth-stages-types/test-utils",
+	"reth-stages-types?/arbitrary",
+	"reth-trie-common/arbitrary",
+	"reth-trie-common/test-utils",
 ]
 
-rocksdb = ["reth-db-common/rocksdb", "reth-stages/rocksdb", "reth-provider/rocksdb", "reth-prune/rocksdb"]
-edge = ["rocksdb"]
+rocksdb = [
+	"reth-db-common/rocksdb",
+	"reth-provider/rocksdb",
+	"reth-prune/rocksdb",
+	"reth-stages/rocksdb",
+]
+edge = [ "rocksdb" ]

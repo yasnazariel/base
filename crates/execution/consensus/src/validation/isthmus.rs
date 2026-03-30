@@ -133,8 +133,8 @@ mod tests {
     use alloy_chains::Chain;
     use alloy_consensus::Header;
     use alloy_primitives::{B256, U256, keccak256};
-    use base_execution_chainspec::OpChainSpecBuilder;
     use base_node_core::OpNode;
+    use reth_chainspec::ChainSpecBuilder;
     use reth_db_common::init::init_genesis;
     use reth_provider::{
         StateWriter, providers::BlockchainProvider,
@@ -169,7 +169,7 @@ mod tests {
         // note: must be empty (default) chain spec to ensure storage is empty after init genesis,
         // otherwise can't use `storage_root_prehashed` to determine storage root later
         let provider_factory = create_test_provider_factory_with_node_types::<OpNode>(Arc::new(
-            OpChainSpecBuilder::default().chain(Chain::dev()).genesis(Default::default()).build(),
+            ChainSpecBuilder::default().chain(Chain::dev()).genesis(Default::default()).build(),
         ));
         let _ = init_genesis(&provider_factory).unwrap();
 

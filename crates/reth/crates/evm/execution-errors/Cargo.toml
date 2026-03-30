@@ -22,12 +22,12 @@ nybbles.workspace = true
 thiserror.workspace = true
 
 [features]
-default = ["std"]
+default = [ "std" ]
 std = [
-    "alloy-primitives/std",
-    "alloy-rlp/std",
-    "thiserror/std",
-    "nybbles/std",
-    "reth-storage-errors/std",
-    "alloy-evm/std",
+	"alloy-evm/std",
+	"alloy-primitives/std",
+	"alloy-rlp/std",
+	"nybbles/std",
+	"reth-storage-errors/std",
+	"thiserror/std",
 ]

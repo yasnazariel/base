@@ -6,7 +6,6 @@ use alloy_consensus::{SignableTransaction, Transaction, TxEip1559, transaction::
 use alloy_genesis::Genesis;
 use alloy_network::TxSignerSync;
 use alloy_primitives::{Address, ChainId, TxKind};
-use base_execution_chainspec::OpChainSpecBuilder;
 use base_execution_payload_builder::builder::OpPayloadTransactions;
 use base_node_core::{
     OpNode,
@@ -18,7 +17,7 @@ use base_node_core::{
     utils::optimism_payload_attributes,
 };
 use base_txpool::BasePooledTransaction;
-use reth_chainspec::EthChainSpec;
+use reth_chainspec::{ChainSpecBuilder, EthChainSpec};
 use reth_db::test_utils::create_test_rw_db_with_path;
 use reth_e2e_test_utils::{
     node::NodeTestContext, transaction::TransactionTestContext, wallet::Wallet,
@@ -113,7 +112,7 @@ async fn test_custom_block_priority_config() {
 
     let genesis: Genesis = serde_json::from_str(include_str!("../assets/genesis.json")).unwrap();
     let chain_spec =
-        Arc::new(OpChainSpecBuilder::base_mainnet().genesis(genesis).ecotone_activated().build());
+        Arc::new(ChainSpecBuilder::base_mainnet().genesis(genesis).ecotone_activated().build());
 
     // This wallet is going to send:
     // 1. L1 block info tx

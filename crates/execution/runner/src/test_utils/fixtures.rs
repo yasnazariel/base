@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use alloy_genesis::GenesisAccount;
 use alloy_primitives::{U256, utils::Unit};
-use base_execution_chainspec::OpChainSpec;
 use base_test_utils::{Account, build_test_genesis};
+use reth_chainspec::ChainSpec;
 use reth_db::{
     ClientVersion, DatabaseEnv, init_db,
     mdbx::{DatabaseArguments, KILOBYTE, MEGABYTE, MaxReadTransactionDuration},
@@ -23,7 +23,7 @@ use reth_provider::{
 use crate::test_utils::{GENESIS_GAS_LIMIT, TEST_ACCOUNT_BALANCE_ETH};
 
 /// Creates a test chain spec with pre-funded test accounts.
-pub fn load_chain_spec() -> Arc<OpChainSpec> {
+pub fn load_chain_spec() -> Arc<ChainSpec> {
     let test_account_balance: U256 =
         Unit::ETHER.wei().saturating_mul(U256::from(TEST_ACCOUNT_BALANCE_ETH));
 
@@ -38,7 +38,7 @@ pub fn load_chain_spec() -> Arc<OpChainSpec> {
         )
         .with_gas_limit(GENESIS_GAS_LIMIT);
 
-    Arc::new(OpChainSpec::from_genesis(genesis))
+    Arc::new(ChainSpec::from_genesis(genesis))
 }
 
 /// Creates a provider factory for tests with the given chain spec.

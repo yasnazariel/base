@@ -18,7 +18,7 @@ use alloy_rpc_types_engine::{
 };
 use assert_matches::assert_matches;
 use reth_chain_state::{BlockState, ComputedTrieData, test_utils::TestBlockBuilder};
-use reth_chainspec::{ChainSpec, HOLESKY, MAINNET};
+use reth_chainspec::{BASE_MAINNET, BASE_ZERONET, ChainSpec};
 use reth_engine_primitives::{EngineApiValidator, ForkchoiceStatus, NoopInvalidBlockHook};
 use reth_ethereum_consensus::EthBeaconConsensus;
 use reth_ethereum_engine_primitives::EthEngineTypes;
@@ -494,7 +494,7 @@ impl TestBlockFactory {
 #[test]
 fn test_tree_persist_block_batch() {
     let tree_config = TreeConfig::default();
-    let chain_spec = MAINNET.clone();
+    let chain_spec = BASE_MAINNET.clone();
     let mut test_block_builder = TestBlockBuilder::eth().with_chain_spec((*chain_spec).clone());
 
     // we need more than tree_config.persistence_threshold() +1 blocks to
@@ -534,7 +534,7 @@ fn test_tree_persist_block_batch() {
 #[tokio::test]
 async fn test_tree_persist_blocks() {
     let tree_config = TreeConfig::default();
-    let chain_spec = MAINNET.clone();
+    let chain_spec = BASE_MAINNET.clone();
     let mut test_block_builder = TestBlockBuilder::eth().with_chain_spec((*chain_spec).clone());
 
     // we need more than tree_config.persistence_threshold() +1 blocks to
@@ -564,7 +564,7 @@ async fn test_tree_persist_blocks() {
 #[tokio::test]
 async fn test_in_memory_state_trait_impl() {
     let blocks: Vec<_> = TestBlockBuilder::eth().get_executed_blocks(0..10).collect();
-    let test_harness = TestHarness::new(MAINNET.clone()).with_blocks(blocks.clone());
+    let test_harness = TestHarness::new(BASE_MAINNET.clone()).with_blocks(blocks.clone());
 
     for executed_block in blocks {
         let sealed_block = executed_block.recovered_block();
@@ -590,7 +590,7 @@ async fn test_engine_request_during_backfill() {
     let blocks: Vec<_> = TestBlockBuilder::eth()
         .get_executed_blocks(0..tree_config.persistence_threshold())
         .collect();
-    let mut test_harness = TestHarness::new(MAINNET.clone())
+    let mut test_harness = TestHarness::new(BASE_MAINNET.clone())
         .with_blocks(blocks)
         .with_backfill_state(BackfillSyncState::Active);
 
@@ -627,7 +627,7 @@ fn test_disconnected_payload() {
     let block = sealed.into_block();
     let payload = ExecutionPayloadV1::from_block_unchecked(hash, &block);
 
-    let mut test_harness = TestHarness::new(HOLESKY.clone());
+    let mut test_harness = TestHarness::new(BASE_ZERONET.clone());
 
     let outcome = test_harness
         .tree
@@ -650,7 +650,7 @@ fn test_disconnected_block() {
     let block = Block::decode(&mut data.as_ref()).unwrap();
     let sealed = block.seal_slow();
 
-    let mut test_harness = TestHarness::new(HOLESKY.clone());
+    let mut test_harness = TestHarness::new(BASE_ZERONET.clone());
 
     let outcome = test_harness.tree.insert_block(sealed.clone()).unwrap();
     assert_eq!(
@@ -673,7 +673,7 @@ async fn test_holesky_payload() {
     let payload = ExecutionPayloadV1::from_block_unchecked(hash, &block);
 
     let mut test_harness =
-        TestHarness::new(HOLESKY.clone()).with_backfill_state(BackfillSyncState::Active);
+        TestHarness::new(BASE_ZERONET.clone()).with_backfill_state(BackfillSyncState::Active);
 
     let (tx, rx) = oneshot::channel();
     let _ = test_harness
@@ -697,7 +697,7 @@ async fn test_holesky_payload() {
 #[tokio::test]
 async fn test_tree_state_on_new_head_reorg() {
     reth_tracing::init_test_tracing();
-    let chain_spec = MAINNET.clone();
+    let chain_spec = BASE_MAINNET.clone();
 
     // Set persistence_threshold to 1
     let mut test_harness = TestHarness::new(chain_spec);
@@ -817,7 +817,7 @@ async fn test_tree_state_on_new_head_reorg() {
 fn test_tree_state_on_new_head_deep_fork() {
     reth_tracing::init_test_tracing();
 
-    let chain_spec = MAINNET.clone();
+    let chain_spec = BASE_MAINNET.clone();
     let mut test_harness = TestHarness::new(chain_spec);
     let mut test_block_builder = TestBlockBuilder::eth();
 
@@ -882,7 +882,7 @@ fn test_tree_state_on_new_head_deep_fork() {
 
 #[tokio::test]
 async fn test_get_canonical_blocks_to_persist() {
-    let chain_spec = MAINNET.clone();
+    let chain_spec = BASE_MAINNET.clone();
     let mut test_harness = TestHarness::new(chain_spec);
     let mut test_block_builder = TestBlockBuilder::eth();
 
@@ -944,7 +944,7 @@ async fn test_get_canonical_blocks_to_persist() {
 
 #[tokio::test]
 async fn test_engine_tree_fcu_missing_head() {
-    let chain_spec = MAINNET.clone();
+    let chain_spec = BASE_MAINNET.clone();
     let mut test_harness = TestHarness::new(chain_spec.clone());
 
     let mut test_block_builder = TestBlockBuilder::eth().with_chain_spec((*chain_spec).clone());
@@ -972,7 +972,7 @@ async fn test_engine_tree_fcu_missing_head() {
 async fn test_engine_tree_live_sync_transition_required_blocks_requested() {
     reth_tracing::init_test_tracing();
 
-    let chain_spec = MAINNET.clone();
+    let chain_spec = BASE_MAINNET.clone();
     let mut test_harness = TestHarness::new(chain_spec.clone());
 
     let base_chain: Vec<_> = test_harness.block_builder.get_executed_blocks(0..1).collect();
@@ -1046,7 +1046,7 @@ async fn test_fcu_with_canonical_ancestor_updates_latest_block() {
     // This was causing "nonce too low" errors when discard_reorged_transactions is enabled
 
     reth_tracing::init_test_tracing();
-    let chain_spec = MAINNET.clone();
+    let chain_spec = BASE_MAINNET.clone();
 
     // Create test harness
     let mut test_harness = TestHarness::new(chain_spec.clone());
@@ -1137,7 +1137,7 @@ fn test_on_new_payload_canonical_insertion() {
     let block1 = sealed1.into_block();
     let payload1 = ExecutionPayloadV1::from_block_unchecked(hash1, &block1);
 
-    let mut test_harness = TestHarness::new(HOLESKY.clone());
+    let mut test_harness = TestHarness::new(BASE_ZERONET.clone());
 
     // Case 1: Submit payload when NOT sync target head - should be syncing (disconnected)
     let outcome1 = test_harness
@@ -1165,7 +1165,7 @@ fn test_on_new_payload_invalid_ancestor() {
     reth_tracing::init_test_tracing();
 
     // Use Holesky test data
-    let mut test_harness = TestHarness::new(HOLESKY.clone());
+    let mut test_harness = TestHarness::new(BASE_ZERONET.clone());
 
     // Read block 1 from test data
     let s1 = include_str!("../../test-data/holesky/1.rlp");
@@ -1239,7 +1239,7 @@ fn test_on_new_payload_backfill_buffering() {
 
     // Initialize test harness with backfill sync active
     let mut test_harness =
-        TestHarness::new(HOLESKY.clone()).with_backfill_state(BackfillSyncState::Active);
+        TestHarness::new(BASE_ZERONET.clone()).with_backfill_state(BackfillSyncState::Active);
 
     // Submit payload during backfill
     let outcome = test_harness
@@ -1271,7 +1271,7 @@ fn test_on_new_payload_backfill_buffering() {
 fn test_on_new_payload_malformed_payload() {
     reth_tracing::init_test_tracing();
 
-    let mut test_harness = TestHarness::new(HOLESKY.clone());
+    let mut test_harness = TestHarness::new(BASE_ZERONET.clone());
 
     // Use test data
     let s = include_str!("../../test-data/holesky/1.rlp");
@@ -1319,7 +1319,7 @@ fn test_on_new_payload_malformed_payload() {
 fn test_state_root_strategy_paths() {
     reth_tracing::init_test_tracing();
 
-    let mut test_harness = TestHarness::new(MAINNET.clone());
+    let mut test_harness = TestHarness::new(BASE_MAINNET.clone());
 
     // Test multiple scenarios to ensure different StateRootStrategy paths are taken:
     // 1. `StateRootTask` with empty prefix_sets → uses payload_processor.spawn()
@@ -1393,7 +1393,7 @@ fn test_state_root_strategy_paths() {
 fn test_validate_block_synchronous_strategy_during_persistence() {
     reth_tracing::init_test_tracing();
 
-    let mut test_harness = ValidatorTestHarness::new(MAINNET.clone());
+    let mut test_harness = ValidatorTestHarness::new(BASE_MAINNET.clone());
 
     // Set up persistence action to force `Synchronous` strategy
     use crate::tree::persistence_state::CurrentPersistenceAction;
@@ -1406,8 +1406,8 @@ fn test_validate_block_synchronous_strategy_during_persistence() {
     assert!(test_harness.is_persistence_in_progress());
 
     // Create valid block
-    let mut block_factory = TestBlockFactory::new(MAINNET.as_ref().clone());
-    let genesis_hash = MAINNET.genesis_hash();
+    let mut block_factory = TestBlockFactory::new(BASE_MAINNET.as_ref().clone());
+    let genesis_hash = BASE_MAINNET.genesis_hash();
     let valid_block = block_factory.create_valid_block(genesis_hash);
 
     // Test that Synchronous strategy executes during active persistence without panicking
@@ -1421,9 +1421,9 @@ fn test_validate_block_multiple_scenarios() {
     reth_tracing::init_test_tracing();
 
     // Test multiple scenarios to ensure comprehensive coverage
-    let mut test_harness = ValidatorTestHarness::new(MAINNET.clone());
-    let mut block_factory = TestBlockFactory::new(MAINNET.as_ref().clone());
-    let genesis_hash = MAINNET.genesis_hash();
+    let mut test_harness = ValidatorTestHarness::new(BASE_MAINNET.clone());
+    let mut block_factory = TestBlockFactory::new(BASE_MAINNET.as_ref().clone());
+    let genesis_hash = BASE_MAINNET.genesis_hash();
 
     // Scenario 1: Valid block validation (test execution, not result)
     let valid_block = block_factory.create_valid_block(genesis_hash);
@@ -1458,7 +1458,7 @@ mod check_invalid_ancestors_tests {
     fn test_find_invalid_ancestor_no_invalid() {
         reth_tracing::init_test_tracing();
 
-        let mut test_harness = TestHarness::new(HOLESKY.clone());
+        let mut test_harness = TestHarness::new(BASE_ZERONET.clone());
 
         // Create a valid block payload
         let s = include_str!("../../test-data/holesky/1.rlp");
@@ -1481,7 +1481,7 @@ mod check_invalid_ancestors_tests {
     fn test_find_invalid_ancestor_with_invalid_parent() {
         reth_tracing::init_test_tracing();
 
-        let mut test_harness = TestHarness::new(HOLESKY.clone());
+        let mut test_harness = TestHarness::new(BASE_ZERONET.clone());
 
         // Read block 1
         let s1 = include_str!("../../test-data/holesky/1.rlp");
@@ -1531,7 +1531,7 @@ mod check_invalid_ancestors_tests {
     fn test_genesis_block_handling() {
         reth_tracing::init_test_tracing();
 
-        let mut test_harness = TestHarness::new(HOLESKY.clone());
+        let mut test_harness = TestHarness::new(BASE_ZERONET.clone());
 
         // Create a genesis-like payload with parent_hash = B256::ZERO
         let mut test_block_builder = TestBlockBuilder::eth();
@@ -1555,7 +1555,7 @@ mod check_invalid_ancestors_tests {
     fn test_malformed_payload_with_invalid_ancestor() {
         reth_tracing::init_test_tracing();
 
-        let mut test_harness = TestHarness::new(HOLESKY.clone());
+        let mut test_harness = TestHarness::new(BASE_ZERONET.clone());
 
         // Mark an ancestor as invalid
         let invalid_block = Block::default().seal_slow();
@@ -1612,7 +1612,7 @@ mod payload_execution_tests {
     fn test_try_insert_payload_variants() {
         reth_tracing::init_test_tracing();
 
-        let mut test_harness = TestHarness::new(HOLESKY.clone());
+        let mut test_harness = TestHarness::new(BASE_ZERONET.clone());
 
         // Create a valid payload
         let mut test_block_builder = TestBlockBuilder::eth();
@@ -1634,7 +1634,7 @@ mod payload_execution_tests {
     fn test_buffer_payload_validation_errors() {
         reth_tracing::init_test_tracing();
 
-        let mut test_harness = TestHarness::new(HOLESKY.clone());
+        let mut test_harness = TestHarness::new(BASE_ZERONET.clone());
 
         // Create a malformed payload that will fail validation
         let malformed_payload = create_malformed_payload();
@@ -1654,7 +1654,7 @@ mod payload_execution_tests {
     fn test_buffer_payload_valid_payload() {
         reth_tracing::init_test_tracing();
 
-        let mut test_harness = TestHarness::new(HOLESKY.clone());
+        let mut test_harness = TestHarness::new(BASE_ZERONET.clone());
 
         // Create a valid payload
         let mut test_block_builder = TestBlockBuilder::eth();
@@ -1707,7 +1707,7 @@ mod forkchoice_updated_tests {
     /// Test that validates the forkchoice state pre-validation logic
     #[tokio::test]
     async fn test_validate_forkchoice_state() {
-        let chain_spec = MAINNET.clone();
+        let chain_spec = BASE_MAINNET.clone();
         let mut test_harness = TestHarness::new(chain_spec);
 
         // Test 1: Zero head block hash should return early with invalid state
@@ -1753,7 +1753,7 @@ mod forkchoice_updated_tests {
     /// Test that verifies canonical head handling
     #[tokio::test]
     async fn test_handle_canonical_head() {
-        let chain_spec = MAINNET.clone();
+        let chain_spec = BASE_MAINNET.clone();
         let mut test_harness = TestHarness::new(chain_spec);
 
         // Create test blocks
@@ -1795,7 +1795,7 @@ mod forkchoice_updated_tests {
     /// Test that verifies chain update application
     #[tokio::test]
     async fn test_apply_chain_update() {
-        let chain_spec = MAINNET.clone();
+        let chain_spec = BASE_MAINNET.clone();
         let mut test_harness = TestHarness::new(chain_spec);
 
         // Create a chain of blocks
@@ -1837,7 +1837,7 @@ mod forkchoice_updated_tests {
     /// Test that verifies missing block handling
     #[tokio::test]
     async fn test_handle_missing_block() {
-        let chain_spec = MAINNET.clone();
+        let chain_spec = BASE_MAINNET.clone();
         let test_harness = TestHarness::new(chain_spec);
 
         let state = ForkchoiceState {
@@ -1868,7 +1868,7 @@ mod forkchoice_updated_tests {
     async fn test_on_forkchoice_updated_integration() {
         reth_tracing::init_test_tracing();
 
-        let chain_spec = MAINNET.clone();
+        let chain_spec = BASE_MAINNET.clone();
         let mut test_harness = TestHarness::new(chain_spec);
 
         // Create test blocks
@@ -1925,7 +1925,7 @@ mod forkchoice_updated_tests {
     /// Test edge case: FCU with invalid ancestor
     #[tokio::test]
     async fn test_fcu_with_invalid_ancestor() {
-        let chain_spec = MAINNET.clone();
+        let chain_spec = BASE_MAINNET.clone();
         let mut test_harness = TestHarness::new(chain_spec);
 
         // Mark a block as invalid
@@ -1945,7 +1945,7 @@ mod forkchoice_updated_tests {
     /// Test `OpStack` specific behavior with canonical head
     #[tokio::test]
     async fn test_opstack_canonical_head_behavior() {
-        let chain_spec = MAINNET.clone();
+        let chain_spec = BASE_MAINNET.clone();
         let mut test_harness = TestHarness::new(chain_spec);
 
         // Set engine kind to OpStack
@@ -1974,7 +1974,7 @@ mod forkchoice_updated_tests {
 
     #[test]
     fn test_update_reorg_metrics() {
-        let chain_spec = MAINNET.clone();
+        let chain_spec = BASE_MAINNET.clone();
         let test_harness = TestHarness::new(chain_spec);
 
         let seal_header = |number: u64| {
@@ -1998,7 +1998,7 @@ mod forkchoice_updated_tests {
     /// Test that engine termination persists all blocks and signals completion.
     #[test]
     fn test_engine_termination_with_everything_persisted() {
-        let chain_spec = MAINNET.clone();
+        let chain_spec = BASE_MAINNET.clone();
         let mut test_block_builder = TestBlockBuilder::eth().with_chain_spec((*chain_spec).clone());
 
         // Create 10 blocks to persist

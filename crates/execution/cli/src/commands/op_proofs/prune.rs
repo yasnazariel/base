@@ -2,12 +2,12 @@
 
 use std::{path::PathBuf, sync::Arc};
 
-use base_execution_chainspec::OpChainSpec;
 use base_execution_primitives::OpPrimitives;
 use base_execution_trie::{
     OpProofStoragePruner, OpProofsStorage, OpProofsStore, db::MdbxProofsStorage,
 };
 use clap::Parser;
+use reth_chainspec::ChainSpec;
 use reth_cli::chainspec::ChainSpecParser;
 use reth_cli_commands::common::{AccessRights, CliNodeTypes, Environment, EnvironmentArgs};
 use reth_node_core::version::version_metadata;
@@ -46,7 +46,7 @@ pub struct PruneCommand<C: ChainSpecParser> {
     pub proofs_history_prune_batch_size: u64,
 }
 
-impl<C: ChainSpecParser<ChainSpec = OpChainSpec>> PruneCommand<C> {
+impl<C: ChainSpecParser<ChainSpec = ChainSpec>> PruneCommand<C> {
     /// Execute [`PruneCommand`].
     pub async fn execute<N: CliNodeTypes<ChainSpec = C::ChainSpec, Primitives = OpPrimitives>>(
         self,

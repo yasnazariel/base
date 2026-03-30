@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, fmt::Debug, path::Path};
 
 use alloy_primitives::{Address, B256, BlockNumber, TxHash, TxNumber, keccak256};
-use reth_chainspec::MAINNET;
+use reth_chainspec::BASE_MAINNET;
 use reth_db::{
     DatabaseEnv,
     test_utils::{
@@ -52,7 +52,7 @@ impl Default for TestStageDB {
             temp_rocksdb_dir: rocksdb_dir,
             factory: ProviderFactory::new(
                 create_test_rw_db(),
-                MAINNET.clone(),
+                BASE_MAINNET.clone(),
                 StaticFileProvider::read_write(static_dir_path).unwrap(),
                 RocksDBProvider::builder(rocksdb_dir_path).with_default_tables().build().unwrap(),
                 reth_tasks::Runtime::test(),
@@ -72,7 +72,7 @@ impl TestStageDB {
             temp_rocksdb_dir: rocksdb_dir,
             factory: ProviderFactory::new(
                 create_test_rw_db_with_path(path),
-                MAINNET.clone(),
+                BASE_MAINNET.clone(),
                 StaticFileProvider::read_write(static_dir_path).unwrap(),
                 RocksDBProvider::builder(rocksdb_dir_path).with_default_tables().build().unwrap(),
                 reth_tasks::Runtime::test(),

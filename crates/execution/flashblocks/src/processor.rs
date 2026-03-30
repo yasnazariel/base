@@ -13,10 +13,9 @@ use alloy_rpc_types_eth::state::StateOverride;
 use arc_swap::ArcSwapOption;
 use base_alloy_consensus::{EIP1559ParamError, OpBlock, OpTxEnvelope};
 use base_alloy_flashblocks::Flashblock;
-use base_execution_chainspec::OpChainSpec;
 use base_execution_evm::{OpEvmConfig, OpNextBlockEnvAttributes};
 use rayon::prelude::*;
-use reth_chainspec::ChainSpecProvider;
+use reth_chainspec::{ChainSpec, ChainSpecProvider};
 use reth_evm::ConfigureEvm;
 use reth_primitives::RecoveredBlock;
 use reth_provider::{BlockReaderIdExt, StateProviderFactory};
@@ -60,7 +59,7 @@ pub struct StateProcessor<Client> {
 impl<Client> StateProcessor<Client>
 where
     Client: StateProviderFactory
-        + ChainSpecProvider<ChainSpec = OpChainSpec>
+        + ChainSpecProvider<ChainSpec = ChainSpec>
         + BlockReaderIdExt<Header = Header>
         + Clone
         + 'static,

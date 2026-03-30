@@ -4,7 +4,7 @@ use quote::{format_ident, quote};
 use syn::{Data, DeriveInput, Generics};
 
 mod generator;
-use generator::{parse_reth_codecs_path, generate_from_to};
+use generator::{generate_from_to, parse_reth_codecs_path};
 
 mod enums;
 use enums::EnumHandler;

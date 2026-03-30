@@ -5,8 +5,11 @@ use std::{hint::black_box, ptr};
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use rand::{SeedableRng, prelude::SliceRandom, rngs::StdRng};
-use reth_libmdbx::{ObjectLength, WriteFlags, ffi::*};
-use utils::*;
+use reth_libmdbx::{
+    ObjectLength, WriteFlags,
+    ffi::{MDBX_txn, MDBX_val, mdbx_get, mdbx_put, mdbx_txn_abort, mdbx_txn_begin_ex},
+};
+use utils::{get_data, get_key, setup_bench_db};
 
 fn bench_get_rand(c: &mut Criterion) {
     let n = 100u32;

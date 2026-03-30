@@ -14,10 +14,10 @@ use base_alloy_chains::BaseUpgrade;
 use base_alloy_consensus::{OpBlock, OpTxEnvelope};
 use base_alloy_rpc_types_engine::{OpExecutionPayload, OpNetworkPayloadEnvelope, PayloadHash};
 use base_consensus_genesis::{L1ChainConfig, RollupConfig, SystemConfig};
-use base_execution_chainspec::OpChainSpecBuilder;
 use base_execution_evm::OpEvmConfig;
 use base_protocol::{BlockInfo, L1BlockInfoTx, L2BlockInfo, OpAttributesWithParent};
 use base_revm::OpTransaction;
+use reth_chainspec::ChainSpecBuilder;
 use reth_evm::{ConfigureEvm, Evm as _, FromRecoveredTx};
 use revm::{
     DatabaseCommit,
@@ -668,7 +668,7 @@ impl StatefulL2Executor {
         parent_hash: B256,
     ) -> Result<(B256, u64), L2SequencerError> {
         let mut spec_builder =
-            OpChainSpecBuilder::base_mainnet().chain(self.rollup_config.l2_chain_id);
+            ChainSpecBuilder::base_mainnet().chain(self.rollup_config.l2_chain_id);
 
         if let Some(ts) = self.rollup_config.hardforks.base.v1 {
             spec_builder = spec_builder.with_fork(BaseUpgrade::V1, ForkCondition::Timestamp(ts));

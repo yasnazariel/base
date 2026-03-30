@@ -17,7 +17,7 @@ use std::{
 
 use alloy_eips::BlockNumHash;
 use futures_util::FutureExt;
-use reth_chainspec::{ChainSpec, MAINNET};
+use reth_chainspec::{BASE_MAINNET, ChainSpec};
 use reth_consensus::test_utils::TestConsensus;
 use reth_db::{
     DatabaseEnv,
@@ -327,11 +327,11 @@ pub async fn test_exex_context_with_chain_spec(
     ))
 }
 
-/// Creates a new [`ExExContext`] with (mainnet)[`MAINNET`] chain spec.
+/// Creates a new [`ExExContext`] with (mainnet)[`BASE_MAINNET`] chain spec.
 ///
 /// For more information see [`test_exex_context_with_chain_spec`].
 pub async fn test_exex_context() -> eyre::Result<(ExExContext<Adapter>, TestExExHandle)> {
-    test_exex_context_with_chain_spec(MAINNET.clone()).await
+    test_exex_context_with_chain_spec(BASE_MAINNET.clone()).await
 }
 
 /// An extension trait for polling an Execution Extension future.

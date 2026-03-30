@@ -36,7 +36,10 @@ pub use sender_recovery::*;
 pub use tx_lookup::*;
 
 mod utils;
-use utils::*;
+use utils::{
+    collect_account_history_indices, collect_history_indices, collect_storage_history_indices,
+    missing_static_data_error,
+};
 
 #[cfg(test)]
 mod tests {

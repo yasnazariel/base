@@ -42,38 +42,38 @@ proptest.workspace = true
 proptest-arbitrary-interop.workspace = true
 
 [features]
-default = ["std"]
+default = [ "std" ]
 std = [
-    "alloy-eips/std",
-    "alloy-primitives/std",
-    "reth-primitives-traits/std",
-    "bytes?/std",
-    "serde?/std",
+	"alloy-eips/std",
+	"alloy-primitives/std",
+	"bytes?/std",
+	"reth-primitives-traits/std",
+	"serde?/std",
 ]
 serde = [
-    "dep:serde",
-    "alloy-eips/serde",
-    "alloy-primitives/serde",
-    "bytes?/serde",
-    "reth-codecs?/serde",
-    "reth-primitives-traits/serde",
+	"alloy-eips/serde",
+	"alloy-primitives/serde",
+	"bytes?/serde",
+	"dep:serde",
+	"reth-codecs?/serde",
+	"reth-primitives-traits/serde",
 ]
 test-utils = [
-    "reth-primitives-traits/test-utils",
-    "arbitrary",
-    "reth-codecs?/test-utils",
+	"arbitrary",
+	"reth-codecs?/test-utils",
+	"reth-primitives-traits/test-utils",
 ]
 arbitrary = [
-    "std",
-    "reth-primitives-traits/arbitrary",
-    "dep:arbitrary",
-    "alloy-primitives/arbitrary",
-    "alloy-eips/arbitrary",
-    "reth-codecs?/arbitrary",
+	"alloy-eips/arbitrary",
+	"alloy-primitives/arbitrary",
+	"dep:arbitrary",
+	"reth-codecs?/arbitrary",
+	"reth-primitives-traits/arbitrary",
+	"std",
 ]
 reth-codec = [
-    "dep:reth-codecs",
-    "dep:modular-bitfield",
-    "dep:bytes",
-    "reth-primitives-traits/reth-codec",
+	"dep:bytes",
+	"dep:modular-bitfield",
+	"dep:reth-codecs",
+	"reth-primitives-traits/reth-codec",
 ]

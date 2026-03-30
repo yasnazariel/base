@@ -196,7 +196,7 @@
 //! Listen for new transactions and print them:
 //!
 //! ```
-//! use reth_chainspec::MAINNET;
+//! use reth_chainspec::BASE_MAINNET;
 //! use reth_storage_api::{BlockReaderIdExt, StateProviderFactory};
 //! use reth_tasks::TokioTaskExecutor;
 //! use reth_chainspec::ChainSpecProvider;
@@ -233,7 +233,7 @@
 //! ```
 //! use futures_util::Stream;
 //! use reth_chain_state::CanonStateNotification;
-//! use reth_chainspec::{MAINNET, ChainSpecProvider, ChainSpec};
+//! use reth_chainspec::{BASE_MAINNET, ChainSpecProvider, ChainSpec};
 //! use reth_storage_api::{BlockReaderIdExt, StateProviderFactory};
 //! use reth_tasks::TokioTaskExecutor;
 //! use reth_tasks::TaskSpawner;
@@ -427,7 +427,7 @@ where
     /// # Example
     ///
     /// ```
-    /// use reth_chainspec::MAINNET;
+    /// use reth_chainspec::BASE_MAINNET;
     /// use reth_storage_api::{BlockReaderIdExt, StateProviderFactory};
     /// use reth_tasks::TokioTaskExecutor;
     /// use reth_chainspec::ChainSpecProvider;

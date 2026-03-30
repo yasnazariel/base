@@ -5,9 +5,9 @@ use std::{sync::Arc, time::Instant};
 use alloy_consensus::{BlockHeader, Header, transaction::SignerRecoverable};
 use alloy_primitives::B256;
 use base_alloy_consensus::OpBlock;
-use base_execution_chainspec::OpChainSpec;
 use base_execution_evm::{OpEvmConfig, OpNextBlockEnvAttributes};
 use eyre::{Result as EyreResult, eyre};
+use reth_chainspec::ChainSpec;
 use reth_evm::{ConfigureEvm, execute::BlockBuilder};
 use reth_primitives_traits::Block as BlockT;
 use reth_provider::{HeaderProvider, StateProviderFactory};
@@ -36,7 +36,7 @@ use crate::types::{MeterBlockResponse, MeterBlockTransactions};
 /// the `state_root_time_us` value.
 pub fn meter_block<P>(
     provider: P,
-    chain_spec: Arc<OpChainSpec>,
+    chain_spec: Arc<ChainSpec>,
     block: &OpBlock,
 ) -> EyreResult<MeterBlockResponse>
 where

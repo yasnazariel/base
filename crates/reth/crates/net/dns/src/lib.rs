@@ -413,7 +413,7 @@ mod tests {
     use alloy_chains::Chain;
     use alloy_rlp::{Decodable, Encodable};
     use enr::EnrKey;
-    use reth_chainspec::MAINNET;
+    use reth_chainspec::BASE_MAINNET;
     use reth_ethereum_forks::{EthereumHardfork, ForkHash};
     use secp256k1::rand::thread_rng;
 
@@ -428,7 +428,7 @@ mod tests {
             .ip("127.0.0.1".parse().unwrap())
             .udp4(9000)
             .tcp4(30303)
-            .add_value(b"eth", &EnrForkIdEntry::from(MAINNET.latest_fork_id()))
+            .add_value(b"eth", &EnrForkIdEntry::from(BASE_MAINNET.latest_fork_id()))
             .build(&secret_key)
             .unwrap();
 
@@ -438,7 +438,7 @@ mod tests {
         assert_eq!(node_record_update.node_record.address, "127.0.0.1".parse::<IpAddr>().unwrap());
         assert_eq!(node_record_update.node_record.tcp_port, 30303);
         assert_eq!(node_record_update.node_record.udp_port, 9000);
-        assert_eq!(node_record_update.fork_id, Some(MAINNET.latest_fork_id()));
+        assert_eq!(node_record_update.fork_id, Some(BASE_MAINNET.latest_fork_id()));
         assert_eq!(node_record_update.enr, enr);
     }
 
@@ -451,7 +451,7 @@ mod tests {
             .ip("127.0.0.1".parse().unwrap())
             .udp4(9000)
             .tcp4(30303)
-            .add_value(b"eth", &EnrForkIdEntry::from(MAINNET.latest_fork_id()))
+            .add_value(b"eth", &EnrForkIdEntry::from(BASE_MAINNET.latest_fork_id()))
             .add_value(b"opstack", &ForkId { hash: ForkHash(rand::random()), next: rand::random() })
             .build(&secret_key)
             .unwrap();
@@ -467,7 +467,7 @@ mod tests {
         assert_eq!(node_record_update.node_record.address, "127.0.0.1".parse::<IpAddr>().unwrap());
         assert_eq!(node_record_update.node_record.tcp_port, 30303);
         assert_eq!(node_record_update.node_record.udp_port, 9000);
-        assert_eq!(node_record_update.fork_id, Some(MAINNET.latest_fork_id()));
+        assert_eq!(node_record_update.fork_id, Some(BASE_MAINNET.latest_fork_id()));
         assert_eq!(node_record_update.enr, enr);
     }
 
@@ -514,7 +514,7 @@ mod tests {
         resolver.insert(link.domain.clone(), root.to_string());
 
         let mut builder = Enr::builder();
-        let fork_id = MAINNET.hardfork_fork_id(EthereumHardfork::Frontier).unwrap();
+        let fork_id = BASE_MAINNET.hardfork_fork_id(EthereumHardfork::Frontier).unwrap();
         builder
             .ip4(Ipv4Addr::LOCALHOST)
             .udp4(30303)

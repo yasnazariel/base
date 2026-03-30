@@ -5,11 +5,14 @@ use alloy_chains::Chain;
 use alloy_eips::{calc_next_block_base_fee, eip1559::BaseFeeParams, eip7840::BlobParams};
 use alloy_genesis::Genesis;
 use alloy_primitives::{B256, U256};
-use reth_ethereum_forks::EthereumHardforks;
+use base_alloy_chains::BaseUpgrades;
 use reth_network_peers::NodeRecord;
 use reth_primitives_traits::{AlloyBlockHeader, BlockHeader};
 
-use crate::{ChainSpec, DepositContract};
+use crate::{
+    ChainSpec, DepositContract, EthereumHardforks, compute_jovian_base_fee,
+    decode_holocene_base_fee,
+};
 
 /// Trait representing type configuring a chain spec.
 #[auto_impl::auto_impl(&, Arc)]
@@ -76,8 +79,8 @@ pub trait EthChainSpec: Send + Sync + Unpin + Debug {
     }
 }
 
-impl<H: BlockHeader> EthChainSpec for ChainSpec<H> {
-    type Header = H;
+impl EthChainSpec for ChainSpec {
+    type Header = alloy_consensus::Header;
 
     fn chain(&self) -> Chain {
         self.chain
@@ -130,10 +133,25 @@ impl<H: BlockHeader> EthChainSpec for ChainSpec<H> {
     }
 
     fn is_optimism(&self) -> bool {
-        false
+        true
     }
 
     fn final_paris_total_difficulty(&self) -> Option<U256> {
         self.paris_block_and_final_difficulty.map(|(_, final_difficulty)| final_difficulty)
+    }
+
+    fn next_block_base_fee(&self, parent: &Self::Header, target_timestamp: u64) -> Option<u64> {
+        if BaseUpgrades::is_jovian_active_at_timestamp(self, parent.timestamp()) {
+            compute_jovian_base_fee(self, parent, target_timestamp).ok()
+        } else if BaseUpgrades::is_holocene_active_at_timestamp(self, parent.timestamp()) {
+            decode_holocene_base_fee(self, parent, target_timestamp).ok()
+        } else {
+            Some(calc_next_block_base_fee(
+                parent.gas_used(),
+                parent.gas_limit(),
+                parent.base_fee_per_gas()?,
+                self.base_fee_params_at_timestamp(target_timestamp),
+            ))
+        }
     }
 }

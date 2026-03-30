@@ -246,7 +246,7 @@ mod tests {
     #[test]
     fn test_depth_first_ordering_tree() {
         // Test a more complex tree structure
-        let mut paths = vec![
+        let mut paths = [
             Nibbles::new(),                         // root (empty)
             Nibbles::from_nibbles([0x1]),           // 0x1
             Nibbles::from_nibbles([0x1, 0x1]),      // 0x11

@@ -1,6 +1,6 @@
 //! Type aliases for the OP node builder.
 
-use base_execution_chainspec::OpChainSpec;
+use reth_chainspec::ChainSpec;
 use reth_db::DatabaseEnv;
 use reth_node_builder::{
     FullNodeTypesAdapter, Node, NodeBuilder, NodeTypesWithDBAdapter, WithLaunchContext,
@@ -20,4 +20,4 @@ pub(crate) type OpAddOns = <BaseNode as Node<OpNodeTypes>>::AddOns;
 pub type OpProvider = BlockchainProvider<NodeTypesWithDBAdapter<BaseNode, DatabaseEnv>>;
 
 /// Convenience alias for the Base node builder type.
-pub type BaseNodeBuilder = WithLaunchContext<NodeBuilder<DatabaseEnv, OpChainSpec>>;
+pub type BaseNodeBuilder = WithLaunchContext<NodeBuilder<DatabaseEnv, ChainSpec>>;

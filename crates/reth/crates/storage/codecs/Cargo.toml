@@ -42,42 +42,36 @@ proptest-arbitrary-interop.workspace = true
 rstest.workspace = true
 
 [features]
-default = ["std", "alloy"]
+default = [ "alloy", "std" ]
 std = [
-    "alloy-primitives/std",
-    "bytes/std",
-    "alloy-consensus?/std",
-    "alloy-eips?/std",
-    "alloy-genesis?/std",
-    "alloy-trie?/std",
-    "serde/std",
-    "serde_json/std",
-    "reth-zstd-compressors?/std",
+	"alloy-consensus?/std",
+	"alloy-eips?/std",
+	"alloy-genesis?/std",
+	"alloy-primitives/std",
+	"alloy-trie?/std",
+	"bytes/std",
+	"reth-zstd-compressors?/std",
+	"serde/std",
+	"serde_json/std",
 ]
 alloy = [
-    "dep:alloy-consensus",
-    "dep:alloy-eips",
-    "dep:alloy-genesis",
-    "dep:alloy-trie",
-    "dep:reth-zstd-compressors",
+	"dep:alloy-consensus",
+	"dep:alloy-eips",
+	"dep:alloy-genesis",
+	"dep:alloy-trie",
+	"dep:reth-zstd-compressors",
 ]
-test-utils = [
-    "std",
-    "alloy",
-    "arbitrary",
-    "dep:visibility",
-    "dep:arbitrary",
-]
+test-utils = [ "alloy", "arbitrary", "dep:arbitrary", "dep:visibility", "std" ]
 serde = [
-    "alloy-consensus?/serde",
-    "alloy-eips?/serde",
-    "alloy-primitives/serde",
-    "alloy-trie?/serde",
-    "bytes/serde",
+	"alloy-consensus?/serde",
+	"alloy-eips?/serde",
+	"alloy-primitives/serde",
+	"alloy-trie?/serde",
+	"bytes/serde",
 ]
 arbitrary = [
-    "alloy-consensus?/arbitrary",
-    "alloy-eips?/arbitrary",
-    "alloy-primitives/arbitrary",
-    "alloy-trie?/arbitrary",
+	"alloy-consensus?/arbitrary",
+	"alloy-eips?/arbitrary",
+	"alloy-primitives/arbitrary",
+	"alloy-trie?/arbitrary",
 ]

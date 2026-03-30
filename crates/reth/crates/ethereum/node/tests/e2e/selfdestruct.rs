@@ -14,7 +14,7 @@ use alloy_primitives::{Address, Bytes, TxKind, U256, bytes};
 use alloy_provider::{Provider, ProviderBuilder};
 use alloy_rpc_types_eth::TransactionRequest;
 use futures::StreamExt;
-use reth_chainspec::{ChainSpec, ChainSpecBuilder, MAINNET};
+use reth_chainspec::{BASE_MAINNET, ChainSpec, ChainSpecBuilder};
 use reth_e2e_test_utils::setup_engine;
 use reth_node_api::TreeConfig;
 use reth_node_ethereum::EthereumNode;
@@ -28,7 +28,7 @@ const MAX_PRIORITY_FEE_PER_GAS: u128 = 1_000_000_000;
 fn cancun_spec() -> Arc<ChainSpec> {
     Arc::new(
         ChainSpecBuilder::default()
-            .chain(MAINNET.chain)
+            .chain(BASE_MAINNET.chain)
             .genesis(serde_json::from_str(include_str!("../assets/genesis.json")).unwrap())
             .cancun_activated()
             .build(),
@@ -38,7 +38,7 @@ fn cancun_spec() -> Arc<ChainSpec> {
 fn shanghai_spec() -> Arc<ChainSpec> {
     Arc::new(
         ChainSpecBuilder::default()
-            .chain(MAINNET.chain)
+            .chain(BASE_MAINNET.chain)
             .genesis(serde_json::from_str(include_str!("../assets/genesis.json")).unwrap())
             .shanghai_activated()
             .build(),

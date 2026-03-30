@@ -3,7 +3,9 @@ use std::sync::Arc;
 use alloy_consensus::{BlockHeader, Header, TxEip2930, constants::ETH_TO_WEI};
 use alloy_genesis::{Genesis, GenesisAccount};
 use alloy_primitives::{Address, TxKind, U256, b256};
-use reth_chainspec::{ChainSpec, ChainSpecBuilder, EthereumHardfork, MAINNET, MIN_TRANSACTION_GAS};
+use reth_chainspec::{
+    BASE_MAINNET, ChainSpec, ChainSpecBuilder, EthereumHardfork, MIN_TRANSACTION_GAS,
+};
 use reth_ethereum_primitives::{Block, BlockBody, Receipt, Transaction};
 use reth_evm::{
     ConfigureEvm,
@@ -38,14 +40,14 @@ pub(crate) fn chain_spec(address: Address) -> Arc<ChainSpec> {
     // provided sender
     Arc::new(
         ChainSpecBuilder::default()
-            .chain(MAINNET.chain)
+            .chain(BASE_MAINNET.chain)
             .genesis(Genesis {
                 alloc: [(
                     address,
                     GenesisAccount { balance: U256::from(ETH_TO_WEI), ..Default::default() },
                 )]
                 .into(),
-                ..MAINNET.genesis.clone()
+                ..BASE_MAINNET.genesis.clone()
             })
             .paris_activated()
             .build(),

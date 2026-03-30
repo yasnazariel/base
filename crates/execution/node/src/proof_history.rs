@@ -2,7 +2,6 @@
 
 use std::{sync::Arc, time::Duration};
 
-use base_execution_chainspec::OpChainSpec;
 use base_execution_exex::OpProofsExEx;
 use base_execution_rpc::{
     debug::{DebugApiExt, DebugApiOverrideServer},
@@ -11,6 +10,7 @@ use base_execution_rpc::{
 use base_execution_trie::{OpProofsStorage, db::MdbxProofsStorage};
 use eyre::ErrReport;
 use futures::FutureExt;
+use reth_chainspec::ChainSpec;
 use reth_db::DatabaseEnv;
 use reth_db_api::database_metrics::DatabaseMetrics;
 use reth_node_builder::{FullNodeComponents, NodeBuilder, WithLaunchContext};
@@ -24,7 +24,7 @@ use crate::{OpNode, args::RollupArgs};
 /// - in-mem proofs storage,
 /// - MDBX proofs storage.
 pub async fn launch_node_with_proof_history(
-    builder: WithLaunchContext<NodeBuilder<Arc<DatabaseEnv>, OpChainSpec>>,
+    builder: WithLaunchContext<NodeBuilder<Arc<DatabaseEnv>, ChainSpec>>,
     args: RollupArgs,
 ) -> eyre::Result<(), ErrReport> {
     let RollupArgs {

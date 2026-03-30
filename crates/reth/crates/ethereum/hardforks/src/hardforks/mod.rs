@@ -1,7 +1,10 @@
-mod dev;
+mod base;
 use alloc::{boxed::Box, vec::Vec};
 
-pub use dev::DEV_HARDFORKS;
+pub use base::{
+    BASE_DEVNET_0_SEPOLIA_DEV_0_HARDFORKS, BASE_MAINNET_HARDFORKS, BASE_SEPOLIA_HARDFORKS,
+    BASE_ZERONET_HARDFORKS, BaseChainUpgradesExt, DEV_HARDFORKS,
+};
 #[cfg(feature = "std")]
 use rustc_hash::FxHashMap;
 

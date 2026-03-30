@@ -100,7 +100,7 @@ pub struct TransactionFetcherConfig {
     /// Soft limit for the byte size of a
     /// [`PooledTransactions`](reth_eth_wire::PooledTransactions) response on assembling a
     /// [`GetPooledTransactions`](reth_eth_wire::GetPooledTransactions) request. Spec'd at 2
-    /// MiB.
+    /// `MiB`.
     pub soft_limit_byte_size_pooled_transactions_response: usize,
     /// Soft limit for the byte size of the expected
     /// [`PooledTransactions`](reth_eth_wire::PooledTransactions) response on packing a

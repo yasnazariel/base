@@ -38,30 +38,18 @@ tempfile.workspace = true
 [features]
 default = []
 
-otlp = ["reth-tracing/otlp", "reth-node-core/otlp"]
-otlp-logs = ["reth-tracing/otlp-logs", "reth-node-core/otlp-logs"]
+otlp = [ "reth-node-core/otlp", "reth-tracing/otlp" ]
+otlp-logs = [ "reth-node-core/otlp-logs", "reth-tracing/otlp-logs" ]
 
-dev = ["reth-cli-commands/arbitrary"]
+dev = [ "reth-cli-commands/arbitrary" ]
 
-asm-keccak = [
-    "reth-node-core/asm-keccak",
-    "reth-node-ethereum/asm-keccak",
-]
+asm-keccak = [ "reth-node-core/asm-keccak", "reth-node-ethereum/asm-keccak" ]
 
-jemalloc = [
-    "reth-node-core/jemalloc",
-    "reth-node-metrics/jemalloc",
-]
-jemalloc-prof = [
-    "jemalloc",
-    "reth-node-metrics/jemalloc-prof",
-]
-jemalloc-symbols = [
-    "jemalloc-prof",
-    "reth-node-metrics/jemalloc-symbols",
-]
-tracy-allocator = ["tracy"]
-tracy = ["reth-tracing/tracy", "reth-node-core/tracy"]
+jemalloc = [ "reth-node-core/jemalloc", "reth-node-metrics/jemalloc" ]
+jemalloc-prof = [ "jemalloc", "reth-node-metrics/jemalloc-prof" ]
+jemalloc-symbols = [ "jemalloc-prof", "reth-node-metrics/jemalloc-symbols" ]
+tracy-allocator = [ "tracy" ]
+tracy = [ "reth-node-core/tracy", "reth-tracing/tracy" ]
 
 # Because jemalloc is default and preferred over snmalloc when both features are
 # enabled, `--no-default-features` should be used when enabling snmalloc or
@@ -70,25 +58,25 @@ snmalloc = []
 snmalloc-native = []
 
 min-error-logs = [
-    "tracing/release_max_level_error",
-    "reth-node-core/min-error-logs",
+	"reth-node-core/min-error-logs",
+	"tracing/release_max_level_error",
 ]
 min-warn-logs = [
-    "tracing/release_max_level_warn",
-    "reth-node-core/min-warn-logs",
+	"reth-node-core/min-warn-logs",
+	"tracing/release_max_level_warn",
 ]
 min-info-logs = [
-    "tracing/release_max_level_info",
-    "reth-node-core/min-info-logs",
+	"reth-node-core/min-info-logs",
+	"tracing/release_max_level_info",
 ]
 min-debug-logs = [
-    "tracing/release_max_level_debug",
-    "reth-node-core/min-debug-logs",
+	"reth-node-core/min-debug-logs",
+	"tracing/release_max_level_debug",
 ]
 min-trace-logs = [
-    "tracing/release_max_level_trace",
-    "reth-node-core/min-trace-logs",
+	"reth-node-core/min-trace-logs",
+	"tracing/release_max_level_trace",
 ]
 
-rocksdb = ["reth-cli-commands/rocksdb"]
-edge = ["rocksdb"]
+rocksdb = [ "reth-cli-commands/rocksdb" ]
+edge = [ "rocksdb" ]

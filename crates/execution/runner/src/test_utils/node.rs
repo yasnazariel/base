@@ -5,9 +5,9 @@ use std::{any::Any, fmt, net::SocketAddr, path::PathBuf, sync::Arc};
 use alloy_provider::RootProvider;
 use alloy_rpc_client::RpcClient;
 use base_alloy_network::Base;
-use base_execution_chainspec::OpChainSpec;
 use base_node_core::args::RollupArgs;
 use eyre::Result;
+use reth_chainspec::ChainSpec;
 use reth_db::{
     ClientVersion, DatabaseEnv, init_db, mdbx::DatabaseArguments, test_utils::tempdir_path,
 };
@@ -60,7 +60,7 @@ impl LocalNode {
     /// Launch a new local node with the provided extensions and chain spec.
     pub async fn new(
         extensions: Vec<Box<dyn BaseNodeExtension>>,
-        chain_spec: Arc<OpChainSpec>,
+        chain_spec: Arc<ChainSpec>,
     ) -> Result<Self> {
         let exec = Runtime::test();
 

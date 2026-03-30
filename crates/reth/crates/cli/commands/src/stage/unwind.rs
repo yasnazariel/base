@@ -185,7 +185,7 @@ impl Subcommands {
 
 #[cfg(test)]
 mod tests {
-    use reth_chainspec::SEPOLIA;
+    use reth_chainspec::BASE_SEPOLIA;
     use reth_ethereum_cli::chainspec::EthereumChainSpecParser;
 
     use super::*;
@@ -217,6 +217,6 @@ mod tests {
             "reth", "--chain", "sepolia", "to-block", "100",
         ]);
         assert_eq!(cmd.command, Subcommands::ToBlock { target: BlockHashOrNumber::Number(100) });
-        assert_eq!(cmd.env.chain.chain_id(), SEPOLIA.chain_id());
+        assert_eq!(cmd.env.chain.chain_id(), BASE_SEPOLIA.chain_id());
     }
 }

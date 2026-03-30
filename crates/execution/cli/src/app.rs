@@ -1,10 +1,10 @@
 use std::{fmt, sync::Arc};
 
-use base_execution_chainspec::OpChainSpec;
 use base_execution_consensus::OpBeaconConsensus;
 use base_execution_evm::OpExecutorProvider;
 use base_node_core::OpNode;
 use eyre::{Result, eyre};
+use reth_chainspec::ChainSpec;
 use reth_cli_commands::launcher::Launcher;
 use reth_cli_runner::CliRunner;
 use reth_node_core::args::{OtlpInitStatus, OtlpLogsStatus};
@@ -73,7 +73,7 @@ where
         // Install the prometheus recorder to be sure to record all metrics
         install_prometheus_recorder();
 
-        let components = |spec: Arc<OpChainSpec>| {
+        let components = |spec: Arc<ChainSpec>| {
             (
                 OpExecutorProvider::optimism(Arc::clone(&spec)),
                 Arc::new(OpBeaconConsensus::new(spec)),

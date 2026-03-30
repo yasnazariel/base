@@ -3,8 +3,8 @@ use std::sync::Arc;
 use alloy_genesis::Genesis;
 use alloy_primitives::{Address, B256};
 use alloy_rpc_types_engine::PayloadAttributes;
-use base_execution_chainspec::OpChainSpecBuilder;
 use base_execution_payload_builder::{OpBuiltPayload, OpPayloadBuilderAttributes};
+use reth_chainspec::ChainSpecBuilder;
 use reth_e2e_test_utils::{
     NodeHelperType, TmpDB, transaction::TransactionTestContext, wallet::Wallet,
 };
@@ -25,7 +25,7 @@ pub async fn setup(num_nodes: usize) -> eyre::Result<(Vec<OpNode>, Wallet)> {
         serde_json::from_str(include_str!("../tests/assets/genesis.json")).unwrap();
     reth_e2e_test_utils::setup_engine(
         num_nodes,
-        Arc::new(OpChainSpecBuilder::base_mainnet().genesis(genesis).ecotone_activated().build()),
+        Arc::new(ChainSpecBuilder::base_mainnet().genesis(genesis).ecotone_activated().build()),
         false,
         Default::default(),
         optimism_payload_attributes,

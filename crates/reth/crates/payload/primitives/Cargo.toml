@@ -37,17 +37,17 @@ tokio = { workspace = true, default-features = false, features = ["sync"] }
 assert_matches.workspace = true
 
 [features]
-default = ["std"]
+default = [ "std" ]
 std = [
-    "reth-chainspec/std",
-    "reth-execution-types/std",
-    "reth-trie-common/std",
-    "alloy-eips/std",
-    "alloy-primitives/std",
-    "alloy-rpc-types-engine/std",
-    "serde/std",
-    "thiserror/std",
-    "reth-primitives-traits/std",
-    "either/std",
-    "alloy-consensus/std",
+	"alloy-consensus/std",
+	"alloy-eips/std",
+	"alloy-primitives/std",
+	"alloy-rpc-types-engine/std",
+	"either/std",
+	"reth-chainspec/std",
+	"reth-execution-types/std",
+	"reth-primitives-traits/std",
+	"reth-trie-common/std",
+	"serde/std",
+	"thiserror/std",
 ]

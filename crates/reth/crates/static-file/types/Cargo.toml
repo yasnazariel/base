@@ -29,16 +29,16 @@ insta.workspace = true
 tempfile.workspace = true
 
 [features]
-default = ["std"]
+default = [ "std" ]
 std = [
-    "alloy-primitives/std",
-    "derive_more/std",
-    "reth-stages-types/std",
-    "serde/std",
-    "strum/std",
-    "serde_json/std",
-    "fixed-map/std",
-    "dep:tracing",
-    "tracing?/std",
+	"alloy-primitives/std",
+	"dep:tracing",
+	"derive_more/std",
+	"fixed-map/std",
+	"reth-stages-types/std",
+	"serde/std",
+	"serde_json/std",
+	"strum/std",
+	"tracing?/std",
 ]
-clap = ["dep:clap"]
+clap = [ "dep:clap" ]

@@ -7,7 +7,7 @@ use alloy_rpc_types_eth::{Block, BlockTransactionHashes};
 use alloy_sol_types::SolCall;
 use base_alloy_consensus::{OpTypedTransaction, TxDeposit};
 use base_alloy_rpc_types::Transaction;
-use base_execution_chainspec::OpChainSpec;
+use reth_chainspec::ChainSpec;
 use reth_db::{
     ClientVersion, DatabaseEnv, init_db,
     mdbx::{DatabaseArguments, KILOBYTE, MEGABYTE, MaxReadTransactionDuration},
@@ -201,7 +201,7 @@ impl AsTxs for Vec<TxHash> {
     }
 }
 
-pub fn create_test_db(config: NodeConfig<OpChainSpec>) -> Arc<TempDatabase<DatabaseEnv>> {
+pub fn create_test_db(config: NodeConfig<ChainSpec>) -> Arc<TempDatabase<DatabaseEnv>> {
     let path = reth_node_core::dirs::MaybePlatformPath::<DataDirPath>::from(
         reth_db::test_utils::tempdir_path(),
     );

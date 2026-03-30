@@ -7,7 +7,6 @@ pub use alloy_primitives::{Address, B256, TxKind, U256};
 pub use alloy_sol_types::SolCall;
 use base_access_lists::FBALBuilderDb;
 pub use base_access_lists::FlashblockAccessList;
-use base_execution_chainspec::OpChainSpec;
 use base_execution_evm::OpEvmConfig;
 pub use base_revm::OpTransaction;
 pub use base_test_utils::{
@@ -15,6 +14,7 @@ pub use base_test_utils::{
     build_test_genesis,
 };
 pub use eyre::Result;
+use reth_chainspec::ChainSpec;
 use reth_evm::{ConfigureEvm, Evm};
 use revm::{DatabaseCommit, context::result::ResultAndState, database::InMemoryDB};
 pub use revm::{
@@ -30,8 +30,8 @@ mod storage;
 mod transfers;
 
 /// Loads the test chain spec from the genesis configuration.
-fn load_chain_spec() -> Arc<OpChainSpec> {
-    Arc::new(OpChainSpec::from_genesis(build_test_genesis()))
+fn load_chain_spec() -> Arc<ChainSpec> {
+    Arc::new(ChainSpec::from_genesis(build_test_genesis()))
 }
 
 /// Executes a list of transactions and builds a `FlashblockAccessList` tracking all

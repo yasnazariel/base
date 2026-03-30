@@ -9,7 +9,7 @@ use alloy_rpc_types_trace::geth::{
     AccountState, GethDebugTracingOptions, PreStateConfig, PreStateFrame,
 };
 use eyre::{Result, eyre};
-use reth_chainspec::{ChainSpecBuilder, MAINNET};
+use reth_chainspec::{BASE_MAINNET, ChainSpecBuilder};
 use reth_node_builder::{NodeBuilder, NodeHandle};
 use reth_node_core::{args::RpcServerArgs, node_config::NodeConfig};
 use reth_node_ethereum::EthereumNode;
@@ -27,7 +27,7 @@ const PRESTATE_SNAPSHOT: &str =
 async fn debug_trace_call_matches_geth_prestate_snapshot() -> Result<()> {
     reth_tracing::init_test_tracing();
 
-    let mut genesis: Genesis = MAINNET.genesis().clone();
+    let mut genesis: Genesis = BASE_MAINNET.genesis().clone();
     genesis.coinbase = address!("0x95222290dd7278aa3ddd389cc1e1d165cc4bafe5");
 
     let runtime = Runtime::with_existing_handle(tokio::runtime::Handle::current()).unwrap();
@@ -48,7 +48,7 @@ async fn debug_trace_call_matches_geth_prestate_snapshot() -> Result<()> {
 
     let chain_spec = Arc::new(
         ChainSpecBuilder::default()
-            .chain(MAINNET.chain)
+            .chain(BASE_MAINNET.chain)
             .genesis(genesis)
             .cancun_activated()
             .prague_activated()

@@ -19,9 +19,9 @@ reth-primitives-traits.workspace = true
 reth-payload-primitives.workspace = true
 
 [features]
-default = ["std"]
+default = [ "std" ]
 std = [
-    "reth-primitives-traits/std",
-    "reth-chainspec/std",
-    "reth-engine-primitives/std",
+	"reth-chainspec/std",
+	"reth-engine-primitives/std",
+	"reth-primitives-traits/std",
 ]

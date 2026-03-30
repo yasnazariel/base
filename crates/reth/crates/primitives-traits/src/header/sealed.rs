@@ -248,7 +248,7 @@ impl<H: crate::test_utils::TestHeader> SealedHeader<H> {
 
 #[cfg(feature = "rpc-compat")]
 mod rpc_compat {
-    use super::{SealedHeader, Sealable};
+    use super::{Sealable, SealedHeader};
 
     impl<H> SealedHeader<H> {
         /// Converts this header into `alloy_rpc_types_eth::Header<H>`.

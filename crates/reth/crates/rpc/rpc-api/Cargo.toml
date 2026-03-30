@@ -40,9 +40,9 @@ serde_json.workspace = true
 
 [features]
 client = [
-    "jsonrpsee/client",
-    "jsonrpsee/async-client",
-    "reth-rpc-eth-api/client",
+	"jsonrpsee/async-client",
+	"jsonrpsee/client",
+	"reth-rpc-eth-api/client",
 ]
 
 [dev-dependencies]

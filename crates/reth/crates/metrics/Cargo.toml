@@ -22,4 +22,4 @@ futures = { workspace = true, optional = true }
 tokio-util = { workspace = true, optional = true }
 
 [features]
-common = ["tokio", "futures", "tokio-util"]
+common = [ "futures", "tokio", "tokio-util" ]

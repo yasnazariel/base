@@ -55,7 +55,7 @@ impl DefaultPayloadBuilderValues {
 
     /// Set the default deadline in seconds
     pub fn with_deadline(mut self, v: u64) -> Self {
-        self.deadline = format!("{}", v);
+        self.deadline = format!("{v}");
         self
     }
 

@@ -8,7 +8,7 @@ use std::sync::Arc;
 use alloy_primitives::B256;
 use alloy_rpc_types_engine::{ExecutionPayloadV3, PayloadStatusEnum};
 use rand::{Rng, SeedableRng, rngs::StdRng};
-use reth_chainspec::{ChainSpecBuilder, MAINNET};
+use reth_chainspec::{BASE_MAINNET, ChainSpecBuilder};
 use reth_e2e_test_utils::{setup_engine, transaction::TransactionTestContext};
 use reth_node_ethereum::EthereumNode;
 use reth_rpc_api::EngineApiClient;
@@ -32,7 +32,7 @@ async fn can_handle_invalid_payload_then_valid() -> eyre::Result<()> {
 
     let chain_spec = Arc::new(
         ChainSpecBuilder::default()
-            .chain(MAINNET.chain)
+            .chain(BASE_MAINNET.chain)
             .genesis(serde_json::from_str(include_str!("../assets/genesis.json")).unwrap())
             .cancun_activated()
             .build(),
@@ -149,7 +149,7 @@ async fn can_handle_multiple_invalid_payloads() -> eyre::Result<()> {
 
     let chain_spec = Arc::new(
         ChainSpecBuilder::default()
-            .chain(MAINNET.chain)
+            .chain(BASE_MAINNET.chain)
             .genesis(serde_json::from_str(include_str!("../assets/genesis.json")).unwrap())
             .cancun_activated()
             .build(),
@@ -250,7 +250,7 @@ async fn can_handle_invalid_payload_with_transactions() -> eyre::Result<()> {
 
     let chain_spec = Arc::new(
         ChainSpecBuilder::default()
-            .chain(MAINNET.chain)
+            .chain(BASE_MAINNET.chain)
             .genesis(serde_json::from_str(include_str!("../assets/genesis.json")).unwrap())
             .cancun_activated()
             .build(),

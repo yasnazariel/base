@@ -12,7 +12,7 @@ use alloy_eips::{
 };
 use alloy_evm::block::BlockValidationError;
 use alloy_primitives::{B256, Bytes, TxKind, U256, b256, fixed_bytes, keccak256};
-use reth_chainspec::{ChainSpecBuilder, EthereumHardfork, ForkCondition, MAINNET};
+use reth_chainspec::{BASE_MAINNET, ChainSpecBuilder, EthereumHardfork, ForkCondition};
 use reth_ethereum_primitives::{Block, BlockBody, Transaction};
 use reth_evm::{
     ConfigureEvm,
@@ -74,7 +74,7 @@ fn eip_4788_non_genesis_call() {
     let db = create_database_with_beacon_root_contract();
 
     let chain_spec = Arc::new(
-        ChainSpecBuilder::from(&*MAINNET)
+        ChainSpecBuilder::from(&*BASE_MAINNET)
             .shanghai_activated()
             .with_fork(EthereumHardfork::Cancun, ForkCondition::Timestamp(1))
             .build(),
@@ -154,7 +154,7 @@ fn eip_4788_no_code_cancun() {
 
     // DON'T deploy the contract at genesis
     let chain_spec = Arc::new(
-        ChainSpecBuilder::from(&*MAINNET)
+        ChainSpecBuilder::from(&*BASE_MAINNET)
             .shanghai_activated()
             .with_fork(EthereumHardfork::Cancun, ForkCondition::Timestamp(1))
             .build(),
@@ -186,7 +186,7 @@ fn eip_4788_empty_account_call() {
     db.insert_account_info(SYSTEM_ADDRESS, Default::default());
 
     let chain_spec = Arc::new(
-        ChainSpecBuilder::from(&*MAINNET)
+        ChainSpecBuilder::from(&*BASE_MAINNET)
             .shanghai_activated()
             .with_fork(EthereumHardfork::Cancun, ForkCondition::Timestamp(1))
             .build(),
@@ -228,7 +228,7 @@ fn eip_4788_genesis_call() {
 
     // activate cancun at genesis
     let chain_spec = Arc::new(
-        ChainSpecBuilder::from(&*MAINNET)
+        ChainSpecBuilder::from(&*BASE_MAINNET)
             .shanghai_activated()
             .with_fork(EthereumHardfork::Cancun, ForkCondition::Timestamp(0))
             .build(),
@@ -288,7 +288,7 @@ fn eip_4788_high_base_fee() {
     let db = create_database_with_beacon_root_contract();
 
     let chain_spec = Arc::new(
-        ChainSpecBuilder::from(&*MAINNET)
+        ChainSpecBuilder::from(&*BASE_MAINNET)
             .shanghai_activated()
             .with_fork(EthereumHardfork::Cancun, ForkCondition::Timestamp(1))
             .build(),
@@ -354,7 +354,7 @@ fn eip_2935_pre_fork() {
     let db = create_database_with_block_hashes(1);
 
     let chain_spec = Arc::new(
-        ChainSpecBuilder::from(&*MAINNET)
+        ChainSpecBuilder::from(&*BASE_MAINNET)
             .shanghai_activated()
             .with_fork(EthereumHardfork::Prague, ForkCondition::Never)
             .build(),
@@ -390,7 +390,7 @@ fn eip_2935_fork_activation_genesis() {
     let db = create_database_with_block_hashes(0);
 
     let chain_spec = Arc::new(
-        ChainSpecBuilder::from(&*MAINNET)
+        ChainSpecBuilder::from(&*BASE_MAINNET)
             .shanghai_activated()
             .cancun_activated()
             .prague_activated()
@@ -426,7 +426,7 @@ fn eip_2935_fork_activation_within_window_bounds() {
     let db = create_database_with_block_hashes(fork_activation_block);
 
     let chain_spec = Arc::new(
-        ChainSpecBuilder::from(&*MAINNET)
+        ChainSpecBuilder::from(&*BASE_MAINNET)
             .shanghai_activated()
             .cancun_activated()
             .with_fork(EthereumHardfork::Prague, ForkCondition::Timestamp(1))
@@ -477,7 +477,7 @@ fn eip_2935_fork_activation_outside_window_bounds() {
     let db = create_database_with_block_hashes(fork_activation_block);
 
     let chain_spec = Arc::new(
-        ChainSpecBuilder::from(&*MAINNET)
+        ChainSpecBuilder::from(&*BASE_MAINNET)
             .shanghai_activated()
             .cancun_activated()
             .with_fork(EthereumHardfork::Prague, ForkCondition::Timestamp(1))
@@ -516,7 +516,7 @@ fn eip_2935_state_transition_inside_fork() {
     let db = create_database_with_block_hashes(2);
 
     let chain_spec = Arc::new(
-        ChainSpecBuilder::from(&*MAINNET)
+        ChainSpecBuilder::from(&*BASE_MAINNET)
             .shanghai_activated()
             .cancun_activated()
             .prague_activated()
@@ -618,7 +618,7 @@ fn eip_2935_state_transition_inside_fork() {
 #[test]
 fn eip_7002() {
     let chain_spec = Arc::new(
-        ChainSpecBuilder::from(&*MAINNET)
+        ChainSpecBuilder::from(&*BASE_MAINNET)
             .shanghai_activated()
             .cancun_activated()
             .prague_activated()
@@ -688,7 +688,7 @@ fn eip_7002() {
 fn block_gas_limit_error() {
     // Create a chain specification with fork conditions set for Prague
     let chain_spec = Arc::new(
-        ChainSpecBuilder::from(&*MAINNET)
+        ChainSpecBuilder::from(&*BASE_MAINNET)
             .shanghai_activated()
             .with_fork(EthereumHardfork::Prague, ForkCondition::Timestamp(0))
             .build(),
@@ -766,7 +766,7 @@ fn block_gas_limit_error() {
 #[test]
 fn test_balance_increment_not_duplicated() {
     let chain_spec = Arc::new(
-        ChainSpecBuilder::from(&*MAINNET)
+        ChainSpecBuilder::from(&*BASE_MAINNET)
             .shanghai_activated()
             .cancun_activated()
             .prague_activated()

@@ -122,7 +122,7 @@ where
 /// use reth_db::test_utils::create_test_rw_db;
 /// use reth_node_api::NodeTypesWithDBAdapter;
 /// use reth_node_builder::{NodeBuilder, NodeConfig};
-/// use base_execution_chainspec::BASE_MAINNET;
+/// use reth_chainspec::BASE_MAINNET;
 /// use base_execution_exex::OpProofsExEx;
 /// use base_node_core::{OpNode, args::RollupArgs};
 /// use base_execution_trie::{InMemoryProofsStorage, OpProofsStorage, db::MdbxProofsStorage};

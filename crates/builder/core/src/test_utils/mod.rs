@@ -11,13 +11,13 @@ use alloy_primitives::B256;
 pub use alloy_signer_local::PrivateKeySigner;
 pub use apis::*;
 use base_alloy_consensus::OpTypedTransaction;
-use base_execution_chainspec::OpChainSpec;
 use base_execution_primitives::OpTransactionSigned;
 pub use contracts::*;
 pub use driver::*;
 pub use external::*;
 pub use instance::*;
 use k256::sha2::{Digest, Sha256};
+use reth_chainspec::ChainSpec;
 use reth_node_builder::NodeConfig;
 use reth_primitives::Recovered;
 pub use txs::*;
@@ -69,7 +69,7 @@ pub async fn setup_test_instance_with_builder_config(
 /// The flashblocks WebSocket port will be automatically set to an available port if set to 0.
 pub async fn setup_test_instance_with_node_config(
     mut builder_config: BuilderConfig,
-    node_config: NodeConfig<OpChainSpec>,
+    node_config: NodeConfig<ChainSpec>,
 ) -> eyre::Result<LocalInstance> {
     clear_otel_env_vars();
     if builder_config.flashblocks_ws_addr.port() == 0 {

@@ -62,7 +62,13 @@ use tokio::sync::{mpsc, oneshot, oneshot::error::RecvError};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tracing::{debug, trace};
 
-use self::constants::{DEFAULT_SOFT_LIMIT_BYTE_SIZE_TRANSACTIONS_BROADCAST_MESSAGE, tx_manager::*};
+use self::constants::{
+    DEFAULT_SOFT_LIMIT_BYTE_SIZE_TRANSACTIONS_BROADCAST_MESSAGE,
+    tx_manager::{
+        DEFAULT_MAX_COUNT_BAD_IMPORTS, DEFAULT_MAX_COUNT_PENDING_POOL_IMPORTS,
+        DEFAULT_MAX_COUNT_TRANSACTIONS_SEEN_BY_PEER,
+    },
+};
 pub use self::constants::{
     SOFT_LIMIT_BYTE_SIZE_POOLED_TRANSACTIONS_RESPONSE,
     tx_fetcher::DEFAULT_SOFT_LIMIT_BYTE_SIZE_POOLED_TRANSACTIONS_RESP_ON_PACK_GET_POOLED_TRANSACTIONS_REQ,

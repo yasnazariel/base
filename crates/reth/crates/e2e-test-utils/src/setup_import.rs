@@ -275,7 +275,7 @@ pub fn load_forkchoice_state(path: &Path) -> eyre::Result<alloy_rpc_types_engine
 mod tests {
     use std::path::PathBuf;
 
-    use reth_chainspec::{ChainSpecBuilder, MAINNET};
+    use reth_chainspec::{BASE_MAINNET, ChainSpecBuilder};
     use reth_db::mdbx::DatabaseArguments;
     use reth_payload_builder::EthPayloadBuilderAttributes;
     use reth_primitives::SealedBlock;
@@ -294,7 +294,7 @@ mod tests {
 
         let chain_spec = Arc::new(
             ChainSpecBuilder::default()
-                .chain(MAINNET.chain)
+                .chain(BASE_MAINNET.chain)
                 .genesis(
                     serde_json::from_str(include_str!("testsuite/assets/genesis.json")).unwrap(),
                 )
@@ -435,7 +435,7 @@ mod tests {
     fn create_test_chain_spec() -> Arc<ChainSpec> {
         Arc::new(
             ChainSpecBuilder::default()
-                .chain(MAINNET.chain)
+                .chain(BASE_MAINNET.chain)
                 .genesis(
                     serde_json::from_str(include_str!("testsuite/assets/genesis.json")).unwrap(),
                 )

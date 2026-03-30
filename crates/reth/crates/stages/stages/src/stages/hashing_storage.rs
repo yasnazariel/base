@@ -22,7 +22,7 @@ use reth_stages_api::{
 };
 use reth_storage_api::StorageSettingsCache;
 use reth_storage_errors::provider::ProviderResult;
-use tracing::*;
+use tracing::info;
 
 /// Maximum number of channels that can exist in memory.
 const MAXIMUM_CHANNELS: usize = 10_000;

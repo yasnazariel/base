@@ -354,7 +354,7 @@ impl<C: ChainSpecParser, Ext: clap::Args + fmt::Debug, SubCmd: Subcommand + fmt:
 #[cfg(test)]
 mod tests {
     use clap::CommandFactory;
-    use reth_chainspec::SEPOLIA;
+    use reth_chainspec::BASE_SEPOLIA;
     use reth_node_core::args::ColorMode;
 
     use super::*;
@@ -534,7 +534,7 @@ mod tests {
         match cli.command {
             Commands::Stage(cmd) => match cmd.command {
                 stage::Subcommands::Unwind(cmd) => {
-                    assert_eq!(cmd.chain_spec().unwrap().chain_id(), SEPOLIA.chain_id());
+                    assert_eq!(cmd.chain_spec().unwrap().chain_id(), BASE_SEPOLIA.chain_id());
                 }
                 _ => panic!("Expected Unwind command"),
             },
@@ -564,7 +564,7 @@ mod tests {
         match cli.command {
             Commands::Stage(cmd) => match cmd.command {
                 stage::Subcommands::Unwind(cmd) => {
-                    assert_eq!(cmd.chain_spec().unwrap().chain_id(), SEPOLIA.chain_id());
+                    assert_eq!(cmd.chain_spec().unwrap().chain_id(), BASE_SEPOLIA.chain_id());
                 }
                 _ => panic!("Expected Unwind command"),
             },

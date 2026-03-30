@@ -21,7 +21,7 @@ mod tests {
     use alloy_genesis::GenesisAccount;
     use alloy_primitives::{Address, B256, U256, b256, hex_literal::hex};
     use alloy_trie::root::{state_root_ref_unhashed, state_root_unhashed};
-    use reth_chainspec::{HOLESKY, MAINNET, SEPOLIA};
+    use reth_chainspec::{BASE_MAINNET, BASE_SEPOLIA, BASE_ZERONET};
 
     #[test]
     fn check_empty_state_root() {
@@ -62,7 +62,7 @@ mod tests {
     fn test_chain_state_roots() {
         let expected_mainnet_state_root =
             b256!("0xd7f8974fb5ac78d9ac099b9ad5018bedc2ce0a72dad1827a1709da30580f0544");
-        let calculated_mainnet_state_root = state_root_ref_unhashed(&MAINNET.genesis.alloc);
+        let calculated_mainnet_state_root = state_root_ref_unhashed(&BASE_MAINNET.genesis.alloc);
         assert_eq!(
             expected_mainnet_state_root, calculated_mainnet_state_root,
             "mainnet state root mismatch"
@@ -70,7 +70,7 @@ mod tests {
 
         let expected_sepolia_state_root =
             b256!("0x5eb6e371a698b8d68f665192350ffcecbbbf322916f4b51bd79bb6887da3f494");
-        let calculated_sepolia_state_root = state_root_ref_unhashed(&SEPOLIA.genesis.alloc);
+        let calculated_sepolia_state_root = state_root_ref_unhashed(&BASE_SEPOLIA.genesis.alloc);
         assert_eq!(
             expected_sepolia_state_root, calculated_sepolia_state_root,
             "sepolia state root mismatch"
@@ -78,7 +78,7 @@ mod tests {
 
         let expected_holesky_state_root =
             b256!("0x69d8c9d72f6fa4ad42d4702b433707212f90db395eb54dc20bc85de253788783");
-        let calculated_holesky_state_root = state_root_ref_unhashed(&HOLESKY.genesis.alloc);
+        let calculated_holesky_state_root = state_root_ref_unhashed(&BASE_ZERONET.genesis.alloc);
         assert_eq!(
             expected_holesky_state_root, calculated_holesky_state_root,
             "holesky state root mismatch"

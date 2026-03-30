@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use alloy_rpc_types_engine::PayloadStatusEnum;
 use eyre::Result;
-use reth_chainspec::{ChainSpecBuilder, MAINNET};
+use reth_chainspec::{BASE_MAINNET, ChainSpecBuilder};
 use reth_e2e_test_utils::testsuite::{
     TestBuilder,
     actions::{
@@ -26,7 +26,7 @@ fn default_engine_tree_setup() -> Setup<EthEngineTypes> {
     Setup::default()
         .with_chain_spec(Arc::new(
             ChainSpecBuilder::default()
-                .chain(MAINNET.chain)
+                .chain(BASE_MAINNET.chain)
                 .genesis(
                     serde_json::from_str(include_str!(
                         "../../../../e2e-test-utils/src/testsuite/assets/genesis.json"
@@ -210,7 +210,7 @@ async fn test_engine_tree_buffered_blocks_are_eventually_connected_e2e() -> Resu
             Setup::default()
                 .with_chain_spec(Arc::new(
                     ChainSpecBuilder::default()
-                        .chain(MAINNET.chain)
+                        .chain(BASE_MAINNET.chain)
                         .genesis(
                             serde_json::from_str(include_str!(
                                 "../../../../e2e-test-utils/src/testsuite/assets/genesis.json"
@@ -302,7 +302,7 @@ async fn test_engine_tree_live_sync_transition_eventually_canonical_e2e() -> Res
             Setup::default()
                 .with_chain_spec(Arc::new(
                     ChainSpecBuilder::default()
-                        .chain(MAINNET.chain)
+                        .chain(BASE_MAINNET.chain)
                         .genesis(
                             serde_json::from_str(include_str!(
                                 "../../../../e2e-test-utils/src/testsuite/assets/genesis.json"
@@ -415,7 +415,7 @@ fn disk_reorg_setup(storage_v2: bool) -> Setup<EthEngineTypes> {
     let mut setup = Setup::default()
         .with_chain_spec(Arc::new(
             ChainSpecBuilder::default()
-                .chain(MAINNET.chain)
+                .chain(BASE_MAINNET.chain)
                 .genesis(
                     serde_json::from_str(include_str!(
                         "../../../../e2e-test-utils/src/testsuite/assets/genesis.json"

@@ -2,10 +2,10 @@
 
 use std::{path::PathBuf, sync::Arc};
 
-use base_execution_chainspec::OpChainSpec;
 use base_execution_primitives::OpPrimitives;
 use base_execution_trie::{OpProofsStorage, OpProofsStore, db::MdbxProofsStorage};
 use clap::Parser;
+use reth_chainspec::ChainSpec;
 use reth_cli::chainspec::ChainSpecParser;
 use reth_cli_commands::common::{AccessRights, CliNodeTypes, Environment, EnvironmentArgs};
 use reth_node_core::version::version_metadata;
@@ -62,7 +62,7 @@ impl<C: ChainSpecParser> UnwindCommand<C> {
     }
 }
 
-impl<C: ChainSpecParser<ChainSpec = OpChainSpec>> UnwindCommand<C> {
+impl<C: ChainSpecParser<ChainSpec = ChainSpec>> UnwindCommand<C> {
     /// Execute [`UnwindCommand`].
     pub async fn execute<N: CliNodeTypes<ChainSpec = C::ChainSpec, Primitives = OpPrimitives>>(
         self,

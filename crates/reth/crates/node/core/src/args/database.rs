@@ -367,7 +367,7 @@ mod tests {
         let possible_values: Vec<PossibleValue> = parser.possible_values().unwrap().collect();
 
         // Expected possible values
-        let expected_values = vec![
+        let expected_values = [
             PossibleValue::new("fatal")
                 .help("Enables logging for critical conditions, i.e. assertion failures"),
             PossibleValue::new("error").help("Enables logging for error conditions"),

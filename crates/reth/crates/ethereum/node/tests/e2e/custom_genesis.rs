@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use alloy_genesis::Genesis;
 use alloy_primitives::B256;
-use reth_chainspec::{ChainSpecBuilder, MAINNET};
+use reth_chainspec::{BASE_MAINNET, ChainSpecBuilder};
 use reth_e2e_test_utils::{setup, transaction::TransactionTestContext};
 use reth_node_ethereum::EthereumNode;
 use reth_provider::{HeaderProvider, StageCheckpointReader};
@@ -23,7 +23,7 @@ async fn can_run_eth_node_with_custom_genesis_number() -> eyre::Result<()> {
 
     let chain_spec = Arc::new(
         ChainSpecBuilder::default()
-            .chain(MAINNET.chain)
+            .chain(BASE_MAINNET.chain)
             .genesis(genesis)
             .cancun_activated()
             .build(),
@@ -77,7 +77,7 @@ async fn custom_genesis_block_query_boundaries() -> eyre::Result<()> {
 
     let chain_spec = Arc::new(
         ChainSpecBuilder::default()
-            .chain(MAINNET.chain)
+            .chain(BASE_MAINNET.chain)
             .genesis(genesis)
             .cancun_activated()
             .build(),

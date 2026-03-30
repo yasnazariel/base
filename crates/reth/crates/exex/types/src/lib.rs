@@ -1,4 +1,4 @@
-//! Commonly used ExEx types.
+//! Commonly used `ExEx` types.
 
 #![doc(
     html_logo_url = "https://raw.githubusercontent.com/paradigmxyz/reth/main/assets/reth-docs.png",
@@ -16,10 +16,10 @@ pub use finished_height::FinishedExExHeight;
 pub use head::ExExHead;
 pub use notification::ExExNotification;
 
-/// Bincode-compatible serde implementations for commonly used ExEx types.
+/// Bincode-compatible serde implementations for commonly used `ExEx` types.
 ///
 /// `bincode` crate doesn't work with optionally serializable serde fields, but some of the
-/// ExEx types require optional serialization for RPC compatibility. This module makes so that
+/// `ExEx` types require optional serialization for RPC compatibility. This module makes so that
 /// all fields are serialized.
 ///
 /// Read more: <https://github.com/bincode-org/bincode/issues/326>

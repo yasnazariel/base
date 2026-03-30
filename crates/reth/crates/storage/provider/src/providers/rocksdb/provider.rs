@@ -130,11 +130,11 @@ const DEFAULT_BYTES_PER_SYNC: u64 = 1_048_576;
 const DEFAULT_WRITE_BUFFER_SIZE: usize = 128 << 20;
 
 /// Default buffer capacity for compression in batches.
-/// 4 KiB matches common block/page sizes and comfortably holds typical history values,
+/// 4 `KiB` matches common block/page sizes and comfortably holds typical history values,
 /// reducing the first few reallocations without over-allocating.
 const DEFAULT_COMPRESS_BUF_CAPACITY: usize = 4096;
 
-/// Default auto-commit threshold for batch writes (4 GiB).
+/// Default auto-commit threshold for batch writes (4 `GiB`).
 ///
 /// When a batch exceeds this size, it is automatically committed to prevent OOM
 /// during large bulk writes. The consistency check on startup heals any crash
@@ -440,7 +440,7 @@ impl RocksDBProviderInner {
     fn cf_handle_rw(&self, name: &str) -> Result<&rocksdb::ColumnFamily, DatabaseError> {
         self.db_rw()
             .cf_handle(name)
-            .ok_or_else(|| DatabaseError::Other(format!("Column family '{}' not found", name)))
+            .ok_or_else(|| DatabaseError::Other(format!("Column family '{name}' not found")))
     }
 
     /// Gets a value from a column family.
@@ -730,7 +730,7 @@ impl RocksDBProvider {
 
     /// Creates a new batch with auto-commit enabled.
     ///
-    /// When the batch size exceeds the threshold (4 GiB), the batch is automatically
+    /// When the batch size exceeds the threshold (4 `GiB`), the batch is automatically
     /// committed and reset. This prevents OOM during large bulk writes while maintaining
     /// crash-safety via the consistency check on startup.
     pub fn batch_with_auto_commit(&self) -> RocksDBBatch<'_> {
@@ -1546,8 +1546,7 @@ impl<'a> RocksDBBatch<'a> {
 
         debug_assert!(
             indices.windows(2).all(|w| w[0] < w[1]),
-            "indices must be strictly increasing: {:?}",
-            indices
+            "indices must be strictly increasing: {indices:?}"
         );
 
         let last_key = ShardedKey::new(address, u64::MAX);
@@ -1608,8 +1607,7 @@ impl<'a> RocksDBBatch<'a> {
 
         debug_assert!(
             indices.windows(2).all(|w| w[0] < w[1]),
-            "indices must be strictly increasing: {:?}",
-            indices
+            "indices must be strictly increasing: {indices:?}"
         );
 
         let last_key = StorageShardedKey::last(address, storage_key);

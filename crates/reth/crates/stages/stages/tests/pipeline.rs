@@ -6,7 +6,7 @@ use alloy_consensus::{Header, TxEip1559, TxReceipt, constants::ETH_TO_WEI};
 use alloy_eips::eip1559::INITIAL_BASE_FEE;
 use alloy_genesis::{Genesis, GenesisAccount};
 use alloy_primitives::{Address, B256, Bytes, TxKind, U256, bytes, keccak256};
-use reth_chainspec::{ChainSpecBuilder, ChainSpecProvider, MAINNET};
+use reth_chainspec::{BASE_MAINNET, ChainSpecBuilder, ChainSpecProvider};
 use reth_config::config::StageConfig;
 use reth_consensus::noop::NoopConsensus;
 use reth_db_api::{cursor::DbCursorRO, models::BlockNumberAddress, transaction::DbTx};
@@ -248,7 +248,7 @@ async fn run_pipeline_forward_and_unwind(
     let initial_balance = U256::from(ETH_TO_WEI) * U256::from(1000);
     let chain_spec = Arc::new(
         ChainSpecBuilder::default()
-            .chain(MAINNET.chain)
+            .chain(BASE_MAINNET.chain)
             .genesis(Genesis {
                 alloc: [
                     (
@@ -264,7 +264,7 @@ async fn run_pipeline_forward_and_unwind(
                     ),
                 ]
                 .into(),
-                ..MAINNET.genesis.clone()
+                ..BASE_MAINNET.genesis.clone()
             })
             .shanghai_activated()
             .build(),

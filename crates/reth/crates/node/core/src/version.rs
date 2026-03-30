@@ -12,6 +12,7 @@ pub const CLIENT_CODE: ClientCode = ClientCode::RH;
 static VERSION_METADATA: OnceLock<RethCliVersionConsts> = OnceLock::new();
 
 /// Initialize the global version metadata.
+#[allow(clippy::result_large_err)]
 pub fn try_init_version_metadata(
     metadata: RethCliVersionConsts,
 ) -> Result<(), RethCliVersionConsts> {

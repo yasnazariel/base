@@ -421,6 +421,7 @@ impl<B: FullBlock> BlockClient for FileClient<B> {
 
 /// File reader type for handling different compression formats.
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 enum FileReader {
     /// Regular uncompressed file with remaining byte tracking.
     Plain { file: File, remaining_bytes: u64 },

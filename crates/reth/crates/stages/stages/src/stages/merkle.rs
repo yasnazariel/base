@@ -19,7 +19,7 @@ use reth_stages_api::{
 };
 use reth_trie::{IntermediateStateRootState, StateRoot, StateRootProgress, StoredSubNode};
 use reth_trie_db::DatabaseStateRoot;
-use tracing::*;
+use tracing::{debug, error, info};
 
 // TODO: automate the process outlined below so the user can just send in a debugging package
 /// The error message that we include in invalid state root errors to tell users what information

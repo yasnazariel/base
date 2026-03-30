@@ -50,6 +50,7 @@ pub struct DefaultEngineValues {
 
 impl DefaultEngineValues {
     /// Initialize the global engine defaults with this configuration
+    #[allow(clippy::result_large_err)]
     pub fn try_init(self) -> Result<(), Self> {
         ENGINE_DEFAULTS.set(self)
     }

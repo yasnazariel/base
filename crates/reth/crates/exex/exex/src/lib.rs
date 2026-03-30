@@ -27,7 +27,7 @@
 //!
 //! ## Examples
 //!
-//! ### Simple Indexer ExEx
+//! ### Simple Indexer `ExEx`
 //! ```no_run
 //! use alloy_consensus::BlockHeader;
 //! use futures::StreamExt;
@@ -65,7 +65,7 @@
 //!
 //! ## Invariants
 //!
-//! - An ExEx must not block the main Reth execution
+//! - An `ExEx` must not block the main Reth execution
 //! - Notifications are processed in canonical order
 //! - `ExExs` should be able to recover from temporary failures
 //! - Memory and resource usage must be controlled

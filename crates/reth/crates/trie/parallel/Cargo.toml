@@ -55,16 +55,21 @@ proptest-arbitrary-interop.workspace = true
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros"] }
 
 [features]
-default = ["metrics"]
-metrics = ["reth-metrics", "dep:metrics", "reth-trie/metrics", "reth-trie-sparse/metrics"]
+default = [ "metrics" ]
+metrics = [
+	"dep:metrics",
+	"reth-metrics",
+	"reth-trie-sparse/metrics",
+	"reth-trie/metrics",
+]
 test-utils = [
-    "reth-primitives-traits/test-utils",
-    "reth-provider/test-utils",
-    "reth-trie-common/test-utils",
-    "reth-trie-db/test-utils",
-    "reth-trie-sparse/test-utils",
-    "reth-trie/test-utils",
-    "reth-tasks/test-utils",
+	"reth-primitives-traits/test-utils",
+	"reth-provider/test-utils",
+	"reth-tasks/test-utils",
+	"reth-trie-common/test-utils",
+	"reth-trie-db/test-utils",
+	"reth-trie-sparse/test-utils",
+	"reth-trie/test-utils",
 ]
 
 [[bench]]

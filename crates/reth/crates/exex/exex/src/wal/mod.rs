@@ -24,7 +24,7 @@ use parking_lot::{RwLock, RwLockReadGuard};
 use reth_exex_types::ExExNotification;
 use reth_tracing::tracing::{debug, instrument};
 
-/// WAL is a write-ahead log (WAL) that stores the notifications sent to ExExes.
+/// WAL is a write-ahead log (WAL) that stores the notifications sent to `ExExes`.
 ///
 /// WAL is backed by a directory of binary files represented by [`Storage`] and a block cache
 /// represented by [`BlockCache`]. The role of the block cache is to avoid walking the WAL directory
@@ -60,7 +60,7 @@ where
 
     /// Finalizes the WAL up to the given canonical block, inclusive.
     ///
-    /// The caller should check that all ExExes are on the canonical chain and will not need any
+    /// The caller should check that all `ExExes` are on the canonical chain and will not need any
     /// blocks from the WAL below the provided block, inclusive.
     pub fn finalize(&self, to_block: BlockNumHash) -> WalResult<()> {
         self.inner.finalize(to_block)
