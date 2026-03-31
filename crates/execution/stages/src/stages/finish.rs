@@ -1,6 +1,5 @@
-use reth_stages_api::{
-    ExecInput, ExecOutput, Stage, StageCheckpoint, StageError, StageId, UnwindInput, UnwindOutput,
-};
+use reth_stages_api::{ExecInput, ExecOutput, Stage, StageError, UnwindInput, UnwindOutput};
+use reth_stages_types::{StageCheckpoint, StageId};
 
 /// The finish stage.
 ///

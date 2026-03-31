@@ -34,10 +34,9 @@ use reth_eth_wire_types::{
     Capability, DisconnectReason, EthVersion, NetworkPrimitives, UnifiedStatus,
     capability::Capabilities,
 };
-use reth_network_p2p::sync::NetworkSyncUpdater;
-pub use reth_network_p2p::{BlockClient, HeadersClient};
+use reth_network_p2p::{BlockClient, sync::NetworkSyncUpdater};
 use reth_network_peers::NodeRecord;
-pub use reth_network_types::{PeerKind, Reputation, ReputationChangeKind};
+use reth_network_types::{PeerKind, Reputation, ReputationChangeKind};
 use test_utils::PeersHandleProvider;
 
 /// The `PeerId` type.

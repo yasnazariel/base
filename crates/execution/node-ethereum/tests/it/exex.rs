@@ -8,7 +8,8 @@ use futures::future;
 use reth_db::test_utils::create_test_rw_db;
 use reth_exex::ExExContext;
 use reth_node_api::FullNodeComponents;
-use reth_node_builder::{NodeBuilder, NodeConfig};
+use reth_node_builder::NodeBuilder;
+use reth_node_core::node_config::NodeConfig;
 use reth_node_ethereum::{EthereumNode, node::EthereumAddOns};
 
 struct DummyExEx<Node: FullNodeComponents> {

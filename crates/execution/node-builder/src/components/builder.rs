@@ -4,9 +4,11 @@ use std::{future::Future, marker::PhantomData};
 
 use reth_chainspec::EthChainSpec;
 use reth_consensus::{FullConsensus, noop::NoopConsensus};
+use reth_evm::ConfigureEvm;
 use reth_network::{EthNetworkPrimitives, NetworkPrimitives, types::NetPrimitivesFor};
 use reth_network_api::{FullNetwork, noop::NoopNetwork};
-use reth_node_api::{BlockTy, BodyTy, HeaderTy, NodeTypes, PrimitivesTy, ReceiptTy, TxTy};
+use reth_node_api::FullNodeTypes;
+use reth_node_types::{BlockTy, BodyTy, HeaderTy, NodeTypes, PrimitivesTy, ReceiptTy, TxTy};
 use reth_payload_builder::PayloadBuilderHandle;
 use reth_transaction_pool::{
     EthPoolTransaction, EthPooledTransaction, PoolPooledTx, PoolTransaction, TransactionPool,
@@ -14,7 +16,7 @@ use reth_transaction_pool::{
 };
 
 use crate::{
-    BuilderContext, ConfigureEvm, FullNodeTypes,
+    BuilderContext,
     components::{
         Components, ConsensusBuilder, ExecutorBuilder, NetworkBuilder, NodeComponents,
         PayloadServiceBuilder, PoolBuilder,

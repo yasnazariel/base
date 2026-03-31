@@ -2,7 +2,7 @@
 use std::{path::PathBuf, sync::Arc};
 
 use clap::Parser;
-use reth_chainspec::{EthChainSpec, EthereumHardforks};
+use reth_chainspec::EthChainSpec;
 use reth_cli::chainspec::ChainSpecParser;
 use reth_db::{DatabaseEnv, init_db, mdbx::DatabaseArguments};
 use reth_db_api::{
@@ -10,11 +10,12 @@ use reth_db_api::{
     transaction::DbTx,
 };
 use reth_db_common::DbTool;
-use reth_node_builder::NodeTypesWithDB;
+use reth_ethereum_forks::EthereumHardforks;
 use reth_node_core::{
     args::DatadirArgs,
     dirs::{DataDirPath, PlatformPath},
 };
+use reth_node_types::NodeTypesWithDB;
 use tracing::info;
 
 use crate::common::{AccessRights, CliNodeComponents, CliNodeTypes, Environment, EnvironmentArgs};

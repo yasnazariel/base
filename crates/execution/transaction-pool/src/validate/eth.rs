@@ -20,7 +20,8 @@ use alloy_eips::{
     BlockId, eip1559::ETHEREUM_BLOCK_GAS_LIMIT_30M, eip4844::env_settings::EnvKzgSettings,
     eip7840::BlobParams,
 };
-use reth_chainspec::{ChainSpecProvider, EthChainSpec, EthereumHardforks};
+use reth_chainspec::{ChainSpecProvider, EthChainSpec};
+use reth_ethereum_forks::EthereumHardforks;
 use reth_evm::ConfigureEvm;
 use reth_primitives_traits::{
     Account, BlockTy, GotExpected, HeaderTy, SealedBlock,

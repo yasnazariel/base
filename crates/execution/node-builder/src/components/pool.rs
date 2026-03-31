@@ -4,15 +4,16 @@ use std::future::Future;
 
 use alloy_primitives::map::AddressSet;
 use reth_chain_state::CanonStateSubscriptions;
-use reth_chainspec::EthereumHardforks;
-use reth_node_api::{BlockTy, NodeTypes, TxTy};
+use reth_ethereum_forks::EthereumHardforks;
+use reth_node_api::FullNodeTypes;
+use reth_node_types::{BlockTy, NodeTypes, TxTy};
 use reth_transaction_pool::{
     BlobStore, CoinbaseTipOrdering, PoolConfig, PoolTransaction, SubPoolLimit, TransactionOrdering,
     TransactionPool, TransactionValidationTaskExecutor, TransactionValidator,
     blobstore::DiskFileBlobStore,
 };
 
-use crate::{BuilderContext, FullNodeTypes};
+use crate::BuilderContext;
 
 /// A type that knows how to build the transaction pool.
 pub trait PoolBuilder<Node: FullNodeTypes, Evm>: Send {

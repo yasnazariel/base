@@ -704,7 +704,7 @@ impl<TX: DbTx + DbTxMut + 'static, N: NodeTypesForProvider> DatabaseProvider<TX,
         #[cfg(all(unix, feature = "rocksdb"))]
         if rocksdb_enabled {
             timings.rocksdb = rocksdb_result.ok_or_else(|| {
-                ProviderError::Database(reth_db_api::DatabaseError::Other(
+                ProviderError::Database(reth_storage_errors::db::DatabaseError::Other(
                     "RocksDB thread panicked".into(),
                 ))
             })??;

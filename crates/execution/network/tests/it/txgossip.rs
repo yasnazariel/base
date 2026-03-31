@@ -12,7 +12,8 @@ use reth_network::{
         TransactionIngressPolicy, TransactionPropagationKind, TransactionsManagerConfig,
     },
 };
-use reth_network_api::{PeerKind, PeersInfo, events::PeerEvent};
+use reth_network_api::{PeersInfo, events::PeerEvent};
+use reth_network_types::PeerKind;
 use reth_provider::test_utils::{ExtendedAccount, MockEthProvider};
 use reth_transaction_pool::{
     AddedTransactionOutcome, PoolTransaction, TransactionPool, test_utils::TransactionGenerator,

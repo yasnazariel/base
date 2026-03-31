@@ -12,10 +12,10 @@ use alloy_eips::BlockHashOrNumber;
 use alloy_primitives::{B256, TxHash};
 use futures::{Stream, StreamExt, stream::FuturesOrdered};
 use reth_chain_state::CanonStateNotification;
-use reth_errors::{ProviderError, ProviderResult};
 use reth_execution_types::Chain;
 use reth_primitives_traits::{Block, BlockBody, NodePrimitives, RecoveredBlock};
 use reth_storage_api::{BlockReader, TransactionVariant};
+use reth_storage_errors::provider::{ProviderError, ProviderResult};
 use reth_tasks::{TaskSpawner, TokioTaskExecutor};
 use schnellru::{ByLength, Limiter, LruMap};
 use tokio::sync::{

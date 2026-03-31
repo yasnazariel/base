@@ -6,9 +6,8 @@
 use alloy_eips::BlockNumHash;
 use futures::StreamExt;
 use reth_eth_wire_types::{GetBlockHeaders, HeadersDirection};
-use reth_network_api::{
-    NetworkEvent, NetworkEventListenerProvider, PeerRequest, Peers, ReputationChangeKind,
-};
+use reth_network_api::{NetworkEvent, NetworkEventListenerProvider, PeerRequest, Peers};
+use reth_network_types::ReputationChangeKind;
 use tokio::sync::oneshot;
 use tracing::{debug, info, trace};
 

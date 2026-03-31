@@ -6,7 +6,7 @@ use eyre::{Result, eyre};
 use futures_util::future::BoxFuture;
 use jsonrpsee::core::client::ClientT;
 use reth_e2e_test_utils::testsuite::{BlockInfo, Environment, actions::Action};
-use reth_node_api::EngineTypes;
+use reth_engine_primitives::EngineTypes;
 use serde_json::Value;
 use tracing::{debug, info};
 

@@ -9,10 +9,10 @@ use alloy_eips::{
 };
 use base_alloy_chains::BaseUpgrades;
 use jsonrpsee::{core::RpcResult, proc_macros::rpc};
-use reth_chainspec::{ChainSpecProvider, EthereumHardforks, Hardforks};
+use reth_chainspec::ChainSpecProvider;
+use reth_ethereum_forks::{EthereumHardforks, Hardforks};
 use reth_evm::ConfigureEvm;
-use reth_node_api::NodePrimitives;
-use reth_primitives_traits::header::HeaderMut;
+use reth_primitives_traits::{NodePrimitives, header::HeaderMut};
 use reth_rpc_eth_api::helpers::config::{EthConfigApiServer, EthConfigHandler};
 use reth_storage_api::BlockReaderIdExt;
 

@@ -4,8 +4,9 @@ use alloy_chains::Chain;
 use alloy_hardforks::{EthereumHardfork, ForkId, Head};
 use alloy_primitives::{B256, U256, hex};
 use alloy_rlp::{BufMut, Encodable, RlpDecodable, RlpEncodable};
-use reth_chainspec::{BASE_MAINNET, EthChainSpec, Hardforks};
+use reth_chainspec::{BASE_MAINNET, EthChainSpec};
 use reth_codecs_derive::add_arbitrary_tests;
+use reth_ethereum_forks::Hardforks;
 
 use crate::EthVersion;
 
@@ -479,7 +480,8 @@ mod tests {
     use alloy_primitives::{B256, U256, b256, hex};
     use alloy_rlp::{Decodable, Encodable};
     use rand::Rng;
-    use reth_chainspec::{Chain, ChainSpec, ForkCondition, NamedChain};
+    use reth_chainspec::{Chain, ChainSpec, NamedChain};
+    use reth_ethereum_forks::ForkCondition;
 
     use crate::{EthVersion, Status, StatusEth69, StatusMessage, UnifiedStatus};
 

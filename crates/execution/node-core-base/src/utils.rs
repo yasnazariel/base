@@ -8,8 +8,8 @@ use reth_chainspec::ChainSpecBuilder;
 use reth_e2e_test_utils::{
     NodeHelperType, TmpDB, transaction::TransactionTestContext, wallet::Wallet,
 };
-use reth_node_api::NodeTypesWithDBAdapter;
-use reth_payload_builder::EthPayloadBuilderAttributes;
+use reth_ethereum_engine_primitives::EthPayloadBuilderAttributes;
+use reth_node_types::NodeTypesWithDBAdapter;
 use reth_provider::providers::BlockchainProvider;
 use tokio::sync::Mutex;
 

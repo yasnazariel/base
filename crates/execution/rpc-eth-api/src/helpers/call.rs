@@ -14,13 +14,12 @@ use alloy_rpc_types_eth::{
     state::{EvmOverrides, StateOverride},
 };
 use futures::Future;
-use reth_errors::{ProviderError, RethError};
+use reth_errors::RethError;
 use reth_evm::{
     ConfigureEvm, Evm, EvmEnvFor, HaltReasonFor, InspectorFor, TransactionEnv, TxEnvFor,
     env::BlockEnvironment, execute::BlockBuilder,
 };
-use reth_node_api::BlockBody;
-use reth_primitives_traits::Recovered;
+use reth_primitives_traits::{BlockBody, Recovered};
 use reth_revm::{
     cancelled::CancelOnDrop,
     database::StateProviderDatabase,
@@ -34,6 +33,7 @@ use reth_rpc_eth_types::{
     simulate::{self, EthSimulateError},
 };
 use reth_storage_api::{BlockIdReader, ProviderTx, StateProviderBox};
+use reth_storage_errors::provider::ProviderError;
 use revm::{
     Database, DatabaseCommit,
     context::Block,

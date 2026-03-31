@@ -6,14 +6,14 @@ use std::{
 use alloy_primitives::map::foldhash::fast::FixedState;
 use clap::Parser;
 use itertools::Itertools;
-use reth_chainspec::EthereumHardforks;
 use reth_db::{DatabaseEnv, static_file::iter_static_files};
 use reth_db_api::{
     RawKey, RawTable, RawValue, TableViewer, Tables, cursor::DbCursorRO, table::Table,
     transaction::DbTx,
 };
 use reth_db_common::DbTool;
-use reth_node_builder::{NodeTypesWithDB, NodeTypesWithDBAdapter};
+use reth_ethereum_forks::EthereumHardforks;
+use reth_node_types::{NodeTypesWithDB, NodeTypesWithDBAdapter};
 use reth_provider::{DBProvider, StaticFileProviderFactory, providers::ProviderNodeTypes};
 use reth_static_file_types::StaticFileSegment;
 use tracing::{info, warn};

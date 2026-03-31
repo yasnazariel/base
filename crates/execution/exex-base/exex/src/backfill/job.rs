@@ -11,15 +11,17 @@ use reth_evm::{
     ConfigureEvm,
     execute::{BlockExecutionError, BlockExecutionOutput, Executor},
 };
-use reth_node_api::{Block as _, BlockBody as _, NodePrimitives};
-use reth_primitives_traits::{RecoveredBlock, SignedTransaction, format_gas_throughput};
+use reth_primitives_traits::{
+    Block as _, BlockBody as _, NodePrimitives, RecoveredBlock, SignedTransaction,
+    format_gas_throughput,
+};
 use reth_provider::{
     BlockReader, Chain, ExecutionOutcome, HeaderProvider, ProviderError, StateProviderFactory,
     TransactionVariant,
 };
 use reth_prune_types::PruneModes;
 use reth_revm::database::StateProviderDatabase;
-use reth_stages_api::ExecutionStageThresholds;
+use reth_stages_types::ExecutionStageThresholds;
 use reth_tracing::tracing::{debug, trace};
 
 use crate::StreamBackfillJob;

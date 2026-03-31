@@ -19,13 +19,15 @@ use futures_util::{
     future::{BoxFuture, Fuse, FusedFuture},
 };
 use reth_chain_state::CanonStateNotification;
-use reth_chainspec::{ChainSpecProvider, EthChainSpec, EthereumHardforks};
+use reth_chainspec::{ChainSpecProvider, EthChainSpec};
+use reth_ethereum_forks::EthereumHardforks;
 use reth_execution_types::ChangedAccount;
 use reth_fs_util::FsPathError;
 use reth_primitives_traits::{
     NodePrimitives, SealedHeader, transaction::signed::SignedTransaction,
 };
-use reth_storage_api::{BlockReaderIdExt, StateProviderFactory, errors::provider::ProviderError};
+use reth_storage_api::{BlockReaderIdExt, StateProviderFactory};
+use reth_storage_errors::provider::ProviderError;
 use reth_tasks::TaskSpawner;
 use serde::{Deserialize, Serialize};
 use tokio::{

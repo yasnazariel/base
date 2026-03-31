@@ -22,8 +22,9 @@ use reth_evm::{
     },
 };
 use reth_execution_types::BlockExecutionOutput;
-use reth_payload_builder_primitives::PayloadBuilderError;
-use reth_payload_primitives::{BuildNextEnv, BuiltPayloadExecutedBlock, PayloadBuilderAttributes};
+use reth_payload_primitives::{
+    BuildNextEnv, BuiltPayloadExecutedBlock, PayloadBuilderAttributes, PayloadBuilderError,
+};
 use reth_payload_util::{BestPayloadTransactions, NoopPayloadTransactions, PayloadTransactions};
 use reth_primitives::{OpHeader, OpPrimitives, OpTransactionSigned};
 use reth_primitives_traits::{SealedHeader, SignedTransaction};
@@ -31,7 +32,8 @@ use reth_revm::{
     L1_BLOCK_CONTRACT, L1BlockInfo, cancelled::CancelOnDrop, database::StateProviderDatabase,
     db::State, witness::ExecutionWitnessRecord,
 };
-use reth_storage_api::{StateProvider, StateProviderFactory, errors::ProviderError};
+use reth_storage_api::{StateProvider, StateProviderFactory};
+use reth_storage_errors::provider::ProviderError;
 use reth_transaction_pool::{
     BestTransactionsAttributes, OpPooledTx, PoolTransaction, TransactionPool,
     estimated_da_size::DataAvailabilitySized,

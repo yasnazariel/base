@@ -16,14 +16,11 @@ use base_execution_payload_builder::{
 use base_protocol::Predeploys;
 use reth_chainspec::ChainSpec;
 use reth_consensus::ConsensusError;
-use reth_node_api::{
-    EngineApiValidator, EngineTypes, PayloadValidator,
-    payload::{
-        EngineApiMessageVersion, EngineObjectValidationError, MessageValidationKind,
-        NewPayloadError, PayloadOrAttributes, PayloadTypes, VersionSpecificValidationError,
-        validate_parent_beacon_block_root_presence,
-    },
-    validate_version_specific_fields,
+use reth_engine_primitives::{EngineApiValidator, EngineTypes, PayloadValidator};
+use reth_payload_primitives::{
+    EngineApiMessageVersion, EngineObjectValidationError, MessageValidationKind, NewPayloadError,
+    PayloadOrAttributes, PayloadTypes, VersionSpecificValidationError,
+    validate_parent_beacon_block_root_presence, validate_version_specific_fields,
 };
 use reth_primitives_traits::{Block as _, RecoveredBlock, SealedBlock};
 use reth_provider::StateProviderFactory;

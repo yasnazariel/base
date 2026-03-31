@@ -13,12 +13,13 @@ use alloy_rpc_types_eth::BlockNumberOrTag;
 use futures::Future;
 use reth_chain_state::{BlockState, ComputedTrieData, ExecutedBlock};
 use reth_chainspec::{ChainSpecProvider, EthChainSpec};
-use reth_errors::{BlockExecutionError, BlockValidationError, ProviderError, RethError};
+use reth_errors::RethError;
 use reth_evm::{
     ConfigureEvm, Evm, NextBlockEnvAttributes,
     execute::{BlockBuilder, BlockBuilderOutcome, BlockExecutionOutput},
 };
 use reth_evm_ethereum::OpNextBlockEnvAttributes;
+use reth_execution_errors::{BlockExecutionError, BlockValidationError};
 use reth_primitives_traits::{HeaderTy, SealedHeader, transaction::error::InvalidTransactionError};
 use reth_revm::{database::StateProviderDatabase, db::State};
 use reth_rpc_convert::RpcConvert;
@@ -30,6 +31,7 @@ use reth_storage_api::{
     BlockReader, BlockReaderIdExt, ProviderHeader, ProviderTx, ReceiptProvider, StateProviderBox,
     StateProviderFactory, noop::NoopProvider,
 };
+use reth_storage_errors::provider::ProviderError;
 use reth_transaction_pool::{
     BestTransactions, BestTransactionsAttributes, PoolTransaction, TransactionPool,
     error::InvalidPoolTransactionError,

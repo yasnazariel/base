@@ -21,10 +21,11 @@ use base_alloy_rpc_types_engine::{
     OpExecutionPayloadEnvelopeV5, OpExecutionPayloadV4,
 };
 use reth_chainspec::EthChainSpec;
+use reth_ethereum_engine_primitives::EthPayloadBuilderAttributes;
 use reth_evm_ethereum::OpNextBlockEnvAttributes;
-use reth_payload_builder::{EthPayloadBuilderAttributes, PayloadBuilderError};
 use reth_payload_primitives::{
     BuildNextEnv, BuiltPayload, BuiltPayloadExecutedBlock, PayloadBuilderAttributes,
+    PayloadBuilderError,
 };
 use reth_primitives::{OpHeader, OpPrimitives, OpSealedBlock, OpTransactionSigned};
 use reth_primitives_traits::{SealedBlock, SealedHeader, WithEncoded};

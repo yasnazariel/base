@@ -12,8 +12,8 @@ mod tests {
     use std::{fs::OpenOptions, io::Write as _, path::PathBuf};
 
     use alloy_primitives::{Address, U256};
-    use reth_chain_state::EthPrimitives;
     use reth_db::{models::AccountBeforeTx, test_utils::create_test_static_files_dir};
+    use reth_ethereum_primitives::EthPrimitives;
     use reth_primitives_traits::Account;
     use reth_static_file_types::{ChangesetOffset, ChangesetOffsetReader, StaticFileSegment};
 

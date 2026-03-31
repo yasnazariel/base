@@ -19,9 +19,9 @@ use reth_e2e_test_utils::{
         setup::{NetworkSetup, Setup},
     },
 };
-use reth_node_api::TreeConfig;
-use reth_node_ethereum::{EthEngineTypes, EthereumNode};
-use reth_payload_builder::EthPayloadBuilderAttributes;
+use reth_engine_primitives::TreeConfig;
+use reth_ethereum_engine_primitives::{EthEngineTypes, EthPayloadBuilderAttributes};
+use reth_node_ethereum::EthereumNode;
 use tempfile::TempDir;
 use tracing::debug;
 

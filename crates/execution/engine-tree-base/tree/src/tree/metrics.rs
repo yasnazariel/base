@@ -2,7 +2,6 @@ use std::time::{Duration, Instant};
 
 use alloy_rpc_types_engine::{PayloadStatus, PayloadStatusEnum};
 use reth_engine_primitives::{ForkchoiceStatus, OnForkChoiceUpdated};
-use reth_errors::ProviderError;
 use reth_evm::metrics::ExecutorMetrics;
 use reth_execution_types::BlockExecutionOutput;
 use reth_metrics::{
@@ -10,6 +9,7 @@ use reth_metrics::{
     metrics::{Counter, Gauge, Histogram},
 };
 use reth_primitives_traits::constants::gas_units::MEGAGAS;
+use reth_storage_errors::provider::ProviderError;
 use reth_trie::updates::TrieUpdates;
 
 use crate::tree::{TreeOutcome, error::InsertBlockFatalError};

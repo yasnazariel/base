@@ -8,13 +8,13 @@ use futures::{Stream, StreamExt};
 use pin_project::pin_project;
 use reth_chainspec::EthChainSpec;
 use reth_consensus::FullConsensus;
-use reth_engine_primitives::{BeaconEngineMessage, ConsensusEngineEvent};
+use reth_engine_primitives::{BeaconEngineMessage, ConsensusEngineEvent, TreeConfig};
 use reth_engine_tree::{
     backfill::PipelineSync,
     download::BasicBlockDownloader,
     engine::{EngineApiKind, EngineApiRequest, EngineApiRequestHandler, EngineHandler},
     persistence::PersistenceHandle,
-    tree::{EngineApiTreeHandler, EngineValidator, TreeConfig},
+    tree::{EngineApiTreeHandler, EngineValidator},
 };
 pub use reth_engine_tree::{
     chain::{ChainEvent, ChainOrchestrator},

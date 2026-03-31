@@ -17,7 +17,7 @@ pub use external::*;
 pub use instance::*;
 use k256::sha2::{Digest, Sha256};
 use reth_chainspec::ChainSpec;
-use reth_node_builder::NodeConfig;
+use reth_node_core::node_config::NodeConfig;
 use reth_primitives::{OpTransactionSigned, Recovered};
 pub use txs::*;
 pub use utils::*;

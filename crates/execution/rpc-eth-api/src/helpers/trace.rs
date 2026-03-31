@@ -7,7 +7,6 @@ use alloy_primitives::B256;
 use alloy_rpc_types_eth::{BlockId, TransactionInfo};
 use futures::Future;
 use reth_chainspec::ChainSpecProvider;
-use reth_errors::ProviderError;
 use reth_evm::{
     ConfigureEvm, Database, Evm, EvmEnvFor, EvmFor, HaltReasonFor, InspectorFor, TxEnvFor,
     evm::EvmFactoryExt, system_calls::SystemCaller, tracing::TracingCtx,
@@ -19,6 +18,7 @@ use reth_revm::{
 };
 use reth_rpc_eth_types::{EthApiError, cache::db::StateCacheDb};
 use reth_storage_api::{ProviderBlock, ProviderTx};
+use reth_storage_errors::provider::ProviderError;
 use revm::{DatabaseCommit, context::Block, context_interface::result::ResultAndState};
 use revm_inspectors::tracing::{TracingInspector, TracingInspectorConfig};
 

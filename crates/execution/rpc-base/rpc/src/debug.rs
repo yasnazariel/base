@@ -17,9 +17,10 @@ use async_trait::async_trait;
 use futures::Stream;
 use jsonrpsee::core::RpcResult;
 use parking_lot::RwLock;
-use reth_chainspec::{ChainSpecProvider, EthChainSpec, EthereumHardforks};
+use reth_chainspec::{ChainSpecProvider, EthChainSpec};
 use reth_engine_primitives::ConsensusEngineEvent;
 use reth_errors::RethError;
+use reth_ethereum_forks::EthereumHardforks;
 use reth_evm::{ConfigureEvm, EvmEnvFor, execute::Executor};
 use reth_primitives_traits::{
     Block as BlockTrait, BlockBody, BlockTy, ReceiptWithBloom, RecoveredBlock,

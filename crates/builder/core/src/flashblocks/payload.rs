@@ -26,11 +26,12 @@ use reth_basic_payload_builder::BuildOutcome;
 use reth_evm::{ConfigureEvm, execute::BlockBuilder};
 use reth_evm_ethereum::{OpEvmConfig, OpNextBlockEnvAttributes};
 use reth_execution_types::ChangedAccount;
-use reth_node_api::{Block, BuiltPayloadExecutedBlock, PayloadBuilderError};
-use reth_payload_primitives::PayloadBuilderAttributes;
+use reth_payload_primitives::{
+    BuiltPayloadExecutedBlock, PayloadBuilderAttributes, PayloadBuilderError,
+};
 use reth_payload_util::BestPayloadTransactions;
 use reth_primitives::OpTransactionSigned;
-use reth_primitives_traits::RecoveredBlock;
+use reth_primitives_traits::{Block, RecoveredBlock};
 use reth_provider::{
     BlockExecutionOutput, BlockExecutionResult, ExecutionOutcome, HashedPostStateProvider,
     ProviderError, StateRootProvider, StorageRootProvider,

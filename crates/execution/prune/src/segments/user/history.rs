@@ -1,7 +1,7 @@
 use alloy_primitives::BlockNumber;
 use itertools::Itertools;
 use reth_db_api::{
-    BlockNumberList, DatabaseError, RawKey, RawTable, RawValue,
+    BlockNumberList, RawKey, RawTable, RawValue,
     cursor::{DbCursorRO, DbCursorRW},
     models::ShardedKey,
     table::Table,
@@ -9,6 +9,7 @@ use reth_db_api::{
 };
 use reth_provider::DBProvider;
 use reth_prune_types::{SegmentOutput, SegmentOutputCheckpoint};
+use reth_storage_errors::db::DatabaseError;
 use rustc_hash::FxHashMap;
 
 use crate::PruneLimiter;

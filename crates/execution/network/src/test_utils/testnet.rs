@@ -10,10 +10,11 @@ use std::{
 
 use futures::{FutureExt, StreamExt};
 use pin_project::pin_project;
-use reth_chainspec::{ChainSpecProvider, EthereumHardforks, Hardforks};
+use reth_chainspec::ChainSpecProvider;
 use reth_eth_wire::{
     DisconnectReason, EthNetworkPrimitives, HelloMessageWithProtocols, protocol::Protocol,
 };
+use reth_ethereum_forks::{EthereumHardforks, Hardforks};
 use reth_ethereum_primitives::{PooledTransactionVariant, TransactionSigned};
 use reth_evm_ethereum::EthEvmConfig;
 use reth_network_api::{

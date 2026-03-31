@@ -5,17 +5,16 @@ use alloy_rpc_types::{Block, Header, Receipt, Transaction, TransactionRequest};
 use eyre::OptionExt;
 use reth_chainspec::EthChainSpec;
 use reth_engine_primitives::InvalidBlockHook;
-use reth_node_api::{FullNodeComponents, NodeTypes};
+use reth_node_api::{AddOnsContext, FullNodeComponents};
 use reth_node_core::{
     args::InvalidBlockHookType,
     dirs::{ChainPath, DataDirPath},
     node_config::NodeConfig,
 };
+use reth_node_types::NodeTypes;
 use reth_primitives_traits::NodePrimitives;
 use reth_provider::ChainSpecProvider;
 use reth_rpc_api::EthApiClient;
-
-use crate::AddOnsContext;
 
 /// Extension trait for [`AddOnsContext`] to create invalid block hooks.
 pub trait InvalidBlockHookExt {

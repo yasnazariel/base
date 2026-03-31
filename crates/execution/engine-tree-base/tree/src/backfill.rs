@@ -11,7 +11,8 @@ use std::task::{Context, Poll, ready};
 
 use futures::FutureExt;
 use reth_provider::providers::ProviderNodeTypes;
-use reth_stages_api::{ControlFlow, Pipeline, PipelineError, PipelineTarget, PipelineWithResult};
+use reth_stages_api::{ControlFlow, Pipeline, PipelineError, PipelineWithResult};
+use reth_stages_types::PipelineTarget;
 use reth_tasks::TaskSpawner;
 use tokio::sync::oneshot;
 use tracing::trace;
@@ -240,8 +241,8 @@ mod tests {
     use reth_network_p2p::test_utils::TestFullBlockClient;
     use reth_primitives_traits::SealedHeader;
     use reth_provider::test_utils::MockNodeTypesWithDB;
-    use reth_stages::ExecOutput;
-    use reth_stages_api::StageCheckpoint;
+    use reth_stages_api::ExecOutput;
+    use reth_stages_types::StageCheckpoint;
     use reth_tasks::TokioTaskExecutor;
 
     use super::*;

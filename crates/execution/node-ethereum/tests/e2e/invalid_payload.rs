@@ -10,6 +10,7 @@ use alloy_rpc_types_engine::{ExecutionPayloadV3, PayloadStatusEnum};
 use rand::{Rng, SeedableRng, rngs::StdRng};
 use reth_chainspec::{BASE_MAINNET, ChainSpecBuilder};
 use reth_e2e_test_utils::{setup_engine, transaction::TransactionTestContext};
+use reth_ethereum_engine_primitives::EthEngineTypes;
 use reth_node_ethereum::EthereumNode;
 use reth_rpc_api::EngineApiClient;
 
@@ -70,7 +71,7 @@ async fn can_handle_invalid_payload_then_valid() -> eyre::Result<()> {
     invalid_payload.payload_inner.payload_inner.state_root = B256::random_with(&mut rng);
 
     // Send the invalid payload to the receiver - should be rejected
-    let invalid_result = EngineApiClient::<reth_node_ethereum::EthEngineTypes>::new_payload_v3(
+    let invalid_result = EngineApiClient::<EthEngineTypes>::new_payload_v3(
         &receiver_engine,
         invalid_payload.clone(),
         vec![],
@@ -99,7 +100,7 @@ async fn can_handle_invalid_payload_then_valid() -> eyre::Result<()> {
         &valid_block.clone().into_block(),
     );
 
-    let valid_result = EngineApiClient::<reth_node_ethereum::EthEngineTypes>::new_payload_v3(
+    let valid_result = EngineApiClient::<EthEngineTypes>::new_payload_v3(
         &receiver_engine,
         valid_payload,
         vec![],
@@ -186,7 +187,7 @@ async fn can_handle_multiple_invalid_payloads() -> eyre::Result<()> {
         );
         invalid_payload.payload_inner.payload_inner.state_root = B256::random_with(&mut rng);
 
-        let result = EngineApiClient::<reth_node_ethereum::EthEngineTypes>::new_payload_v3(
+        let result = EngineApiClient::<EthEngineTypes>::new_payload_v3(
             &receiver_engine,
             invalid_payload,
             vec![],
@@ -209,7 +210,7 @@ async fn can_handle_multiple_invalid_payloads() -> eyre::Result<()> {
         &valid_block.clone().into_block(),
     );
 
-    let valid_result = EngineApiClient::<reth_node_ethereum::EthEngineTypes>::new_payload_v3(
+    let valid_result = EngineApiClient::<EthEngineTypes>::new_payload_v3(
         &receiver_engine,
         valid_payload,
         vec![],
@@ -293,7 +294,7 @@ async fn can_handle_invalid_payload_with_transactions() -> eyre::Result<()> {
     invalid_payload.payload_inner.payload_inner.state_root = B256::random_with(&mut rng);
 
     // Send invalid payload - should be rejected
-    let invalid_result = EngineApiClient::<reth_node_ethereum::EthEngineTypes>::new_payload_v3(
+    let invalid_result = EngineApiClient::<EthEngineTypes>::new_payload_v3(
         &receiver_engine,
         invalid_payload.clone(),
         vec![],
@@ -321,7 +322,7 @@ async fn can_handle_invalid_payload_with_transactions() -> eyre::Result<()> {
         &valid_block.clone().into_block(),
     );
 
-    let valid_result = EngineApiClient::<reth_node_ethereum::EthEngineTypes>::new_payload_v3(
+    let valid_result = EngineApiClient::<EthEngineTypes>::new_payload_v3(
         &receiver_engine,
         valid_payload,
         vec![],

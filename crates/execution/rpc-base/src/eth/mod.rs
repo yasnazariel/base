@@ -18,10 +18,11 @@ use alloy_primitives::U256;
 use base_alloy_network::Base;
 use eyre::WrapErr;
 pub use receipt::{OpReceiptBuilder, OpReceiptFieldsBuilder};
-use reth_chainspec::{EthereumHardforks, Hardforks};
+use reth_ethereum_forks::{EthereumHardforks, Hardforks};
 use reth_evm::ConfigureEvm;
-use reth_node_api::{FullNodeComponents, FullNodeTypes, HeaderTy, NodeTypes};
+use reth_node_api::{FullNodeComponents, FullNodeTypes};
 use reth_node_builder::rpc::{EthApiBuilder, EthApiCtx};
+use reth_node_types::{HeaderTy, NodeTypes};
 use reth_rpc::eth::core::EthApiInner;
 use reth_rpc_eth_api::{
     EthApiTypes, FromEvmError, FullEthApiServer, RpcConvert, RpcConverter, RpcNodeCore,

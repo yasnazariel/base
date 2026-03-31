@@ -15,6 +15,7 @@ workspace = true
 # reth
 reth-chainspec.workspace = true
 reth-codecs-derive.workspace = true
+reth-ethereum-forks.workspace = true
 reth-ethereum-primitives.workspace = true
 reth-primitives-traits.workspace = true
 
@@ -60,6 +61,7 @@ std = [
 	"bytes/std",
 	"derive_more/std",
 	"reth-chainspec/std",
+	"reth-ethereum-forks/std",
 	"reth-ethereum-primitives/std",
 	"reth-primitives-traits/std",
 	"serde?/std",
@@ -74,6 +76,7 @@ arbitrary = [
 	"dep:proptest",
 	"dep:proptest-arbitrary-interop",
 	"reth-chainspec/arbitrary",
+	"reth-ethereum-forks/arbitrary",
 	"reth-ethereum-primitives/arbitrary",
 	"reth-primitives-traits/arbitrary",
 ]

@@ -5,8 +5,9 @@ use std::{collections::HashMap, marker::PhantomData};
 use alloy_primitives::B256;
 use eyre::Result;
 use jsonrpsee::http_client::HttpClient;
-use reth_node_api::{EngineTypes, PayloadTypes};
+use reth_engine_primitives::EngineTypes;
 use reth_payload_builder::PayloadId;
+use reth_payload_primitives::PayloadTypes;
 
 use crate::{
     NodeBuilderHelper,

@@ -2,10 +2,11 @@
 use std::sync::Arc;
 
 use clap::Parser;
-use reth_chainspec::{ChainSpecProvider, EthChainSpec, EthereumHardforks};
+use reth_chainspec::{ChainSpecProvider, EthChainSpec};
 use reth_cli::chainspec::ChainSpecParser;
 use reth_cli_runner::CliContext;
 use reth_cli_util::cancellation::CancellationToken;
+use reth_ethereum_forks::EthereumHardforks;
 use reth_node_builder::common::metrics_hooks;
 use reth_node_core::{args::MetricArgs, version::version_metadata};
 use reth_node_metrics::{

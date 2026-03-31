@@ -3,8 +3,8 @@ use alloc::vec::Vec;
 use alloy_consensus::{BlockHeader, TxReceipt, proofs::calculate_receipt_root};
 use alloy_eips::{Encodable2718, eip7685::Requests};
 use alloy_primitives::{B256, Bloom, Bytes};
-use reth_chainspec::EthereumHardforks;
 use reth_consensus::ConsensusError;
+use reth_ethereum_forks::EthereumHardforks;
 use reth_primitives_traits::{
     Block, GotExpected, Receipt, RecoveredBlock, receipt::gas_spent_by_transactions,
 };

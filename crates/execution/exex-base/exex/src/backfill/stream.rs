@@ -14,11 +14,10 @@ use reth_evm::{
     ConfigureEvm,
     execute::{BlockExecutionError, BlockExecutionOutput},
 };
-use reth_node_api::NodePrimitives;
-use reth_primitives_traits::RecoveredBlock;
+use reth_primitives_traits::{NodePrimitives, RecoveredBlock};
 use reth_provider::{BlockReader, Chain, StateProviderFactory};
 use reth_prune_types::PruneModes;
-use reth_stages_api::ExecutionStageThresholds;
+use reth_stages_types::ExecutionStageThresholds;
 use reth_tracing::tracing::debug;
 use tokio::task::JoinHandle;
 
@@ -247,8 +246,9 @@ mod tests {
     use alloy_primitives::{Address, TxKind, U256, b256};
     use eyre::Result;
     use futures::StreamExt;
-    use reth_chainspec::{ChainSpec, EthereumHardfork, MIN_TRANSACTION_GAS};
+    use reth_chainspec::{ChainSpec, MIN_TRANSACTION_GAS};
     use reth_db_common::init::init_genesis;
+    use reth_ethereum_forks::EthereumHardfork;
     use reth_ethereum_primitives::{Block, BlockBody, Transaction};
     use reth_evm_ethereum::EthEvmConfig;
     use reth_primitives_traits::{
@@ -259,7 +259,7 @@ mod tests {
         providers::{BlockchainProvider, ProviderNodeTypes},
         test_utils::create_test_provider_factory_with_chain_spec,
     };
-    use reth_stages_api::ExecutionStageThresholds;
+    use reth_stages_types::ExecutionStageThresholds;
     use reth_testing_utils::{generators, generators::sign_tx_with_key_pair};
     use secp256k1::Keypair;
 

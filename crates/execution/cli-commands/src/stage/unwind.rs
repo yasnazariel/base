@@ -5,20 +5,22 @@ use std::sync::Arc;
 use alloy_eips::BlockHashOrNumber;
 use alloy_primitives::B256;
 use clap::{Parser, Subcommand};
-use reth_chainspec::{ChainSpecProvider, EthChainSpec, EthereumHardforks};
+use reth_chainspec::{ChainSpecProvider, EthChainSpec};
 use reth_cli::chainspec::ChainSpecParser;
 use reth_config::Config;
 use reth_consensus::noop::NoopConsensus;
 use reth_db::DatabaseEnv;
 use reth_downloaders::{bodies::noop::NoopBodiesDownloader, headers::noop::NoopHeaderDownloader};
+use reth_ethereum_forks::EthereumHardforks;
 use reth_evm::ConfigureEvm;
 use reth_exex::ExExManagerHandle;
 use reth_provider::{BlockNumReader, ProviderFactory, providers::ProviderNodeTypes};
 use reth_stages::{
-    ExecutionStageThresholds, Pipeline, StageSet,
     sets::{DefaultStages, OfflineStages},
     stages::ExecutionStage,
 };
+use reth_stages_api::{Pipeline, StageSet};
+use reth_stages_types::{ExecutionStageThresholds, StageId};
 use reth_static_file::StaticFileProducer;
 use tokio::sync::watch;
 use tracing::info;
@@ -100,7 +102,7 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + EthereumHardforks>> Command<C>
                     prune_modes.clone(),
                 )
                 .builder()
-                .disable(reth_stages::StageId::SenderRecovery),
+                .disable(StageId::SenderRecovery),
             )
         } else {
             Pipeline::<N>::builder().with_tip_sender(tip_tx).add_stages(

@@ -17,10 +17,8 @@ use reth_provider::{
     TransactionsProvider, TransactionsProviderExt,
 };
 use reth_prune_types::{PruneCheckpoint, PruneMode, PrunePurpose, PruneSegment};
-use reth_stages_api::{
-    EntitiesCheckpoint, ExecInput, ExecOutput, Stage, StageCheckpoint, StageError, StageId,
-    UnwindInput, UnwindOutput,
-};
+use reth_stages_api::{ExecInput, ExecOutput, Stage, StageError, UnwindInput, UnwindOutput};
+use reth_stages_types::{EntitiesCheckpoint, StageCheckpoint, StageId};
 use reth_storage_errors::provider::ProviderError;
 use tracing::{info, trace};
 
@@ -288,7 +286,7 @@ mod tests {
     use reth_provider::{
         BlockBodyIndicesProvider, DatabaseProviderFactory, providers::StaticFileWriter,
     };
-    use reth_stages_api::StageUnitCheckpoint;
+    use reth_stages_types::StageUnitCheckpoint;
     use reth_testing_utils::generators::{
         self, BlockParams, BlockRangeParams, random_block, random_block_range,
     };
@@ -605,8 +603,8 @@ mod tests {
 
     #[cfg(all(unix, feature = "rocksdb"))]
     mod rocksdb_tests {
+        use reth_db_api::models::StorageSettings;
         use reth_provider::RocksDBProviderFactory;
-        use reth_storage_api::StorageSettings;
 
         use super::*;
 

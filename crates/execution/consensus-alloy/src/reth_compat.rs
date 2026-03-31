@@ -482,7 +482,7 @@ impl reth_db_api::table::Compress for OpTxEnvelope {
 }
 
 impl reth_db_api::table::Decompress for OpTxEnvelope {
-    fn decompress(value: &[u8]) -> Result<Self, reth_db_api::DatabaseError> {
+    fn decompress(value: &[u8]) -> Result<Self, reth_storage_errors::db::DatabaseError> {
         let (obj, _) = Compact::from_compact(value, value.len());
         Ok(obj)
     }
@@ -497,7 +497,7 @@ impl reth_db_api::table::Compress for OpReceipt {
 }
 
 impl reth_db_api::table::Decompress for OpReceipt {
-    fn decompress(value: &[u8]) -> Result<Self, reth_db_api::DatabaseError> {
+    fn decompress(value: &[u8]) -> Result<Self, reth_storage_errors::db::DatabaseError> {
         let (obj, _) = Compact::from_compact(value, value.len());
         Ok(obj)
     }

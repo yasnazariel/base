@@ -6,22 +6,22 @@ use std::{
 };
 
 use reth_db::DatabaseEnv;
-use reth_node_api::{EngineTypes, FullNodeComponents, PayloadTypes};
-// re-export the node api types
-pub use reth_node_api::{FullNodeTypes, NodeTypes};
+use reth_engine_primitives::EngineTypes;
+use reth_node_api::{FullNodeComponents, FullNodeTypes, NodeAddOns};
 use reth_node_core::{
     dirs::{ChainPath, DataDirPath},
     node_config::NodeConfig,
 };
+use reth_node_types::NodeTypes;
 use reth_payload_builder::PayloadBuilderHandle;
+use reth_payload_primitives::PayloadTypes;
 use reth_provider::ChainSpecProvider;
 use reth_rpc_api::EngineApiClient;
 use reth_rpc_builder::{RpcServerHandle, auth::AuthServerHandle};
 use reth_tasks::TaskExecutor;
 
 use crate::{
-    NodeAdapter, NodeAddOns, NodeHandle, RethFullAdapter, components::NodeComponentsBuilder,
-    rpc::RethRpcAddOns,
+    NodeAdapter, NodeHandle, RethFullAdapter, components::NodeComponentsBuilder, rpc::RethRpcAddOns,
 };
 
 /// A helper type to obtain components for a given node when [`FullNodeTypes::Types`] is a [`Node`]

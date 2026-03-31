@@ -12,7 +12,8 @@ use alloy_eips::{
 };
 use alloy_evm::block::BlockValidationError;
 use alloy_primitives::{B256, Bytes, TxKind, U256, b256, fixed_bytes, keccak256};
-use reth_chainspec::{BASE_MAINNET, ChainSpecBuilder, EthereumHardfork, ForkCondition};
+use reth_chainspec::{BASE_MAINNET, ChainSpecBuilder};
+use reth_ethereum_forks::{EthereumHardfork, ForkCondition};
 use reth_ethereum_primitives::{Block, BlockBody, Transaction};
 use reth_evm::{
     ConfigureEvm,

@@ -4,12 +4,12 @@ use reth_provider::{
     BlockReader, ChainStateBlockReader, DBProvider, PruneCheckpointReader, PruneCheckpointWriter,
     RocksDBProviderFactory, StageCheckpointReader, StaticFileProviderFactory,
 };
-use reth_prune::{
-    PruneMode, PruneModes, PruneSegment, PrunerBuilder, SegmentOutput, SegmentOutputCheckpoint,
+use reth_prune::PrunerBuilder;
+use reth_prune_types::{
+    PruneMode, PruneModes, PruneSegment, SegmentOutput, SegmentOutputCheckpoint,
 };
-use reth_stages_api::{
-    ExecInput, ExecOutput, Stage, StageCheckpoint, StageError, StageId, UnwindInput, UnwindOutput,
-};
+use reth_stages_api::{ExecInput, ExecOutput, Stage, StageError, UnwindInput, UnwindOutput};
+use reth_stages_types::{StageCheckpoint, StageId};
 use reth_storage_api::{ChangeSetReader, StorageChangeSetReader, StorageSettingsCache};
 use tracing::info;
 
@@ -198,7 +198,7 @@ mod tests {
     use reth_provider::{
         TransactionsProvider, TransactionsProviderExt, providers::StaticFileWriter,
     };
-    use reth_prune::PruneMode;
+    use reth_prune_types::PruneMode;
     use reth_testing_utils::generators::{self, BlockRangeParams, random_block_range};
 
     use super::*;

@@ -29,8 +29,8 @@ use std::{
 
 use futures::{Future, StreamExt};
 use parking_lot::Mutex;
-use reth_chainspec::EnrForkIdEntry;
 use reth_eth_wire::{DisconnectReason, EthNetworkPrimitives, NetworkPrimitives};
+use reth_ethereum_forks::EnrForkIdEntry;
 use reth_fs_util::{self as fs, FsPathError};
 use reth_metrics::common::mpsc::UnboundedMeteredSender;
 use reth_network_api::{

@@ -12,16 +12,16 @@ use reth_chain_state::{
     CanonicalInMemoryState, ComputedTrieData, ExecutedBlock, MemoryOverlayStateProvider,
     NewCanonicalChain,
 };
-use reth_consensus::{Consensus, FullConsensus};
+use reth_consensus::{Consensus, ConsensusError, FullConsensus};
 use reth_engine_primitives::{
-    BeaconEngineMessage, BeaconOnNewPayloadError, ConsensusEngineEvent, ExecutionPayload,
-    ForkchoiceStateTracker, OnForkChoiceUpdated,
+    BeaconEngineMessage, BeaconOnNewPayloadError, ConsensusEngineEvent, ForkchoiceStateTracker,
+    OnForkChoiceUpdated, TreeConfig,
 };
-use reth_errors::{ConsensusError, ProviderResult};
 use reth_evm::ConfigureEvm;
 use reth_payload_builder::PayloadBuilderHandle;
 use reth_payload_primitives::{
-    BuiltPayload, EngineApiMessageVersion, NewPayloadError, PayloadBuilderAttributes, PayloadTypes,
+    BuiltPayload, EngineApiMessageVersion, ExecutionPayload, NewPayloadError,
+    PayloadBuilderAttributes, PayloadTypes,
 };
 use reth_primitives_traits::{NodePrimitives, RecoveredBlock, SealedBlock, SealedHeader};
 use reth_provider::{
@@ -32,6 +32,7 @@ use reth_provider::{
 };
 use reth_revm::database::StateProviderDatabase;
 use reth_stages_api::ControlFlow;
+use reth_storage_errors::provider::ProviderResult;
 use reth_tasks::spawn_os_thread;
 use reth_trie_db::ChangesetCache;
 use revm::interpreter::debug_unreachable;
@@ -71,7 +72,6 @@ pub use metrics::EngineApiMetrics;
 pub use payload_processor::*;
 pub use payload_validator::{BasicEngineValidator, EngineValidator};
 pub use persistence_state::PersistenceState;
-pub use reth_engine_primitives::TreeConfig;
 
 use crate::tree::error::AdvancePersistenceError;
 

@@ -3,7 +3,8 @@
 use alloy_consensus::Header;
 use base_node_core::OpEngineTypes;
 use reth_chainspec::ChainSpec;
-use reth_node_api::{FullNodeTypes, NodeTypes};
+use reth_node_api::FullNodeTypes;
+use reth_node_types::NodeTypes;
 use reth_payload_util::PayloadTransactions;
 use reth_primitives::{OpPrimitives, OpTransactionSigned};
 use reth_provider::{BlockReaderIdExt, ChainSpecProvider, StateProviderFactory};

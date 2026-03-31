@@ -11,13 +11,15 @@ use alloy_rpc_types_eth::{BlockError, error::EthRpcErrorCode, request::Transacti
 use alloy_sol_types::{ContractError, RevertReason};
 use alloy_transport::{RpcError, TransportErrorKind};
 pub use api::{AsEthApiError, FromEthApiError, FromEvmError, IntoEthApiError};
-use reth_errors::{BlockExecutionError, BlockValidationError, RethError};
+use reth_errors::RethError;
+use reth_execution_errors::{BlockExecutionError, BlockValidationError};
 use reth_primitives_traits::transaction::{error::InvalidTransactionError, signed::RecoveryError};
 use reth_revm::db::bal::EvmDatabaseError;
 use reth_rpc_convert::{CallFeesError, EthTxEnvError, TransactionConversionError};
 use reth_rpc_server_types::result::{
     block_id_to_str, internal_rpc_err, invalid_params_rpc_err, rpc_err, rpc_error_with_code,
 };
+use reth_storage_errors::provider::ProviderError;
 use reth_transaction_pool::error::{
     Eip4844PoolTransactionError, Eip7702PoolTransactionError, InvalidPoolTransactionError,
     PoolError, PoolErrorKind, PoolTransactionError,
@@ -498,9 +500,8 @@ impl From<BlockExecutionError> for EthApiError {
     }
 }
 
-impl From<reth_errors::ProviderError> for EthApiError {
-    fn from(error: reth_errors::ProviderError) -> Self {
-        use reth_errors::ProviderError;
+impl From<ProviderError> for EthApiError {
+    fn from(error: ProviderError) -> Self {
         match error {
             ProviderError::HeaderNotFound(hash) => Self::HeaderNotFound(hash.into()),
             ProviderError::BlockHashNotFound(hash) | ProviderError::UnknownBlockHash(hash) => {

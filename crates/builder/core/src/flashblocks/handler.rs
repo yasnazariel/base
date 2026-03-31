@@ -1,6 +1,6 @@
 use base_execution_payload_builder::OpBuiltPayload;
 use base_node_core::OpEngineTypes;
-use reth_node_builder::Events;
+use reth_payload_builder_primitives::Events;
 use tokio::sync::mpsc;
 use tracing::{debug, warn};
 

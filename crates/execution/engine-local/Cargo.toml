@@ -11,6 +11,7 @@ exclude.workspace = true
 [dependencies]
 # reth
 reth-chainspec.workspace = true
+reth-ethereum-forks.workspace = true
 reth-engine-primitives = { workspace = true, features = ["std"] }
 reth-ethereum-engine-primitives.workspace = true
 reth-payload-builder.workspace = true

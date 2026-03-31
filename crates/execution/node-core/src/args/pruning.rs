@@ -4,13 +4,13 @@ use std::{collections::BTreeMap, ops::Not, sync::OnceLock};
 
 use alloy_primitives::{Address, BlockNumber};
 use clap::{Args, builder::RangedU64ValueParser};
-use reth_chainspec::EthereumHardforks;
 use reth_config::config::PruneConfig;
+use reth_ethereum_forks::{EthereumHardfork, EthereumHardforks};
 use reth_prune_types::{
     MINIMUM_DISTANCE, MINIMUM_UNWIND_SAFE_DISTANCE, PruneMode, PruneModes, ReceiptsLogPruneConfig,
 };
 
-use crate::{args::error::ReceiptsLogError, primitives::EthereumHardfork};
+use crate::args::error::ReceiptsLogError;
 
 /// Global static pruning defaults
 static PRUNING_DEFAULTS: OnceLock<DefaultPruningValues> = OnceLock::new();

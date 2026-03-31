@@ -5,41 +5,41 @@ use std::{marker::PhantomData, sync::Arc, time::SystemTime};
 use alloy_eips::{eip7840::BlobParams, merge::EPOCH_SLOTS};
 use alloy_network::Ethereum;
 use alloy_rpc_types_engine::ExecutionData;
-use reth_chainspec::{ChainSpec, EthChainSpec, EthereumHardforks, Hardforks};
+use reth_chainspec::{ChainSpec, EthChainSpec};
 use reth_engine_primitives::EngineTypes;
 use reth_ethereum_consensus::EthBeaconConsensus;
 use reth_ethereum_engine_primitives::{
-    EthBuiltPayload, EthPayloadAttributes, EthPayloadBuilderAttributes,
+    EthBuiltPayload, EthEngineTypes, EthPayloadAttributes, EthPayloadBuilderAttributes,
 };
+use reth_ethereum_forks::{EthereumHardforks, Hardforks};
 use reth_ethereum_primitives::{EthPrimitives, TransactionSigned};
 use reth_evm::{
     ConfigureEvm, EvmFactory, EvmFactoryFor, NextBlockEnvAttributes, eth::spec::EthExecutorSpec,
 };
 use reth_network::{NetworkHandle, PeersInfo, primitives::BasicNetworkPrimitives};
-use reth_node_api::{
-    AddOnsContext, FullNodeComponents, HeaderTy, NodeAddOns, NodePrimitives, PrimitivesTy, TxTy,
-};
+use reth_node_api::{AddOnsContext, FullNodeComponents, FullNodeTypes, NodeAddOns};
 use reth_node_builder::{
     BuilderContext, Node, NodeAdapter,
     components::{
         BasicPayloadServiceBuilder, ComponentsBuilder, ConsensusBuilder, ExecutorBuilder,
         NetworkBuilder, PoolBuilder, TxPoolBuilder,
     },
-    node::{FullNodeTypes, NodeTypes},
     rpc::{
         BasicEngineApiBuilder, BasicEngineValidatorBuilder, EngineApiBuilder, EngineValidatorAddOn,
-        EngineValidatorBuilder, EthApiBuilder, EthApiCtx, Identity, PayloadValidatorBuilder,
-        RethRpcAddOns, RpcAddOns, RpcHandle,
+        EngineValidatorBuilder, EthApiBuilder, EthApiCtx, PayloadValidatorBuilder, RethRpcAddOns,
+        RpcAddOns, RpcHandle,
     },
 };
+use reth_node_types::{HeaderTy, NodeTypes, PrimitivesTy, TxTy};
 use reth_payload_primitives::PayloadTypes;
+use reth_primitives_traits::NodePrimitives;
 use reth_provider::{EthStorage, providers::ProviderFactoryBuilder};
 use reth_rpc::{
     TestingApi,
     eth::core::{EthApiFor, EthRpcConverterFor},
 };
 use reth_rpc_api::servers::TestingApiServer;
-use reth_rpc_builder::middleware::RethRpcMiddleware;
+use reth_rpc_builder::{Identity, middleware::RethRpcMiddleware};
 use reth_rpc_eth_api::{
     RpcConvert, RpcTypes, SignableTxRequest,
     helpers::{
@@ -56,7 +56,7 @@ use reth_transaction_pool::{
 };
 use revm::context::TxEnv;
 
-use crate::{EthEngineTypes, EthEvmConfig};
+use crate::EthEvmConfig;
 pub use crate::{EthereumEngineValidator, payload::EthereumPayloadBuilder};
 
 /// Type configuration for a regular Ethereum node.

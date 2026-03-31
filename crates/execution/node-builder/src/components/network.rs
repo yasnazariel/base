@@ -4,10 +4,11 @@ use std::future::Future;
 
 use reth_network::types::NetPrimitivesFor;
 use reth_network_api::FullNetwork;
-use reth_node_api::PrimitivesTy;
+use reth_node_api::FullNodeTypes;
+use reth_node_types::PrimitivesTy;
 use reth_transaction_pool::TransactionPool;
 
-use crate::{BuilderContext, FullNodeTypes};
+use crate::BuilderContext;
 
 /// A type that knows how to build the network implementation.
 pub trait NetworkBuilder<Node: FullNodeTypes, Pool: TransactionPool>: Send {

@@ -16,7 +16,7 @@ use metrics::Label;
 use parking_lot::Mutex;
 use reth_chain_state::ExecutedBlock;
 use reth_db_api::{
-    BlockNumberList, DatabaseError,
+    BlockNumberList,
     database_metrics::DatabaseMetrics,
     models::{
         ShardedKey, StorageSettings, sharded_key::NUM_OF_INDICES_IN_SHARD,
@@ -28,7 +28,7 @@ use reth_db_api::{
 use reth_primitives_traits::BlockBody as _;
 use reth_prune_types::PruneMode;
 use reth_storage_errors::{
-    db::{DatabaseErrorInfo, DatabaseWriteError, DatabaseWriteOperation, LogLevel},
+    db::{DatabaseError, DatabaseErrorInfo, DatabaseWriteError, DatabaseWriteOperation, LogLevel},
     provider::{ProviderError, ProviderResult},
 };
 use rocksdb::{
@@ -2324,7 +2324,7 @@ impl<'db> RocksTx<'db> {
         encoded_key: &[u8],
         block_number: BlockNumber,
         lowest_available_block_number: Option<BlockNumber>,
-        key_matches: impl FnOnce(&[u8]) -> Result<bool, reth_db_api::DatabaseError>,
+        key_matches: impl FnOnce(&[u8]) -> Result<bool, reth_storage_errors::db::DatabaseError>,
         prev_key_matches: impl Fn(&[u8]) -> bool,
     ) -> ProviderResult<HistoryInfo>
     where

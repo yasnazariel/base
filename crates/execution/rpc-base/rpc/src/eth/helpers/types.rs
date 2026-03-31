@@ -16,6 +16,7 @@ mod tests {
     use alloy_rpc_types_eth::TransactionRequest;
     use reth_chainspec::BASE_MAINNET;
     use reth_rpc_eth_types::simulate::resolve_transaction;
+    use reth_storage_errors::provider::ProviderError;
     use revm::database::CacheDB;
 
     use super::*;
@@ -23,7 +24,7 @@ mod tests {
     #[test]
     fn test_resolve_transaction_empty_request() {
         let builder = EthRpcConverter::new(EthReceiptConverter::new(BASE_MAINNET.clone()));
-        let mut db = CacheDB::<reth_revm::db::EmptyDBTyped<reth_errors::ProviderError>>::default();
+        let mut db = CacheDB::<reth_revm::db::EmptyDBTyped<ProviderError>>::default();
         let tx = TransactionRequest::default();
         let result = resolve_transaction(tx, 21000, 0, 1, &mut db, &builder).unwrap();
 
@@ -36,7 +37,7 @@ mod tests {
 
     #[test]
     fn test_resolve_transaction_legacy() {
-        let mut db = CacheDB::<reth_revm::db::EmptyDBTyped<reth_errors::ProviderError>>::default();
+        let mut db = CacheDB::<reth_revm::db::EmptyDBTyped<ProviderError>>::default();
         let builder = EthRpcConverter::new(EthReceiptConverter::new(BASE_MAINNET.clone()));
 
         let tx = TransactionRequest { gas_price: Some(100), ..Default::default() };
@@ -52,7 +53,7 @@ mod tests {
 
     #[test]
     fn test_resolve_transaction_partial_eip1559() {
-        let mut db = CacheDB::<reth_revm::db::EmptyDBTyped<reth_errors::ProviderError>>::default();
+        let mut db = CacheDB::<reth_revm::db::EmptyDBTyped<ProviderError>>::default();
         let rpc_converter = EthRpcConverter::new(EthReceiptConverter::new(BASE_MAINNET.clone()));
 
         let tx = TransactionRequest {

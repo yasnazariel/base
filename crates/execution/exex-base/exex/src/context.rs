@@ -2,9 +2,11 @@ use std::fmt::Debug;
 
 use alloy_eips::BlockNumHash;
 use reth_exex_types::ExExHead;
-use reth_node_api::{FullNodeComponents, NodePrimitives, NodeTypes, PrimitivesTy};
+use reth_node_api::FullNodeComponents;
 use reth_node_core::node_config::NodeConfig;
+use reth_node_types::{NodeTypes, PrimitivesTy};
 use reth_payload_builder::PayloadBuilderHandle;
+use reth_primitives_traits::NodePrimitives;
 use reth_provider::BlockReader;
 use reth_tasks::TaskExecutor;
 use tokio::sync::mpsc::{UnboundedSender, error::SendError};

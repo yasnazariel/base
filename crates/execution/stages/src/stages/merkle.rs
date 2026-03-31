@@ -14,8 +14,10 @@ use reth_provider::{
     StageCheckpointWriter, StatsReader, StorageChangeSetReader, StorageSettingsCache, TrieWriter,
 };
 use reth_stages_api::{
-    BlockErrorKind, EntitiesCheckpoint, ExecInput, ExecOutput, MerkleCheckpoint, Stage,
-    StageCheckpoint, StageError, StageId, StorageRootMerkleCheckpoint, UnwindInput, UnwindOutput,
+    BlockErrorKind, ExecInput, ExecOutput, Stage, StageError, UnwindInput, UnwindOutput,
+};
+use reth_stages_types::{
+    EntitiesCheckpoint, MerkleCheckpoint, StageCheckpoint, StageId, StorageRootMerkleCheckpoint,
 };
 use reth_trie::{IntermediateStateRootState, StateRoot, StateRootProgress, StoredSubNode};
 use reth_trie_db::DatabaseStateRoot;
@@ -451,7 +453,7 @@ mod tests {
     use reth_db_api::cursor::{DbCursorRO, DbCursorRW, DbDupCursorRO};
     use reth_primitives_traits::{SealedBlock, StorageEntry};
     use reth_provider::{StaticFileProviderFactory, providers::StaticFileWriter};
-    use reth_stages_api::StageUnitCheckpoint;
+    use reth_stages_types::StageUnitCheckpoint;
     use reth_static_file_types::StaticFileSegment;
     use reth_testing_utils::generators::{
         self, BlockParams, BlockRangeParams, random_block, random_block_range,

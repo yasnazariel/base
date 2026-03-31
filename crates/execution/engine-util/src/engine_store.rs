@@ -10,9 +10,9 @@ use std::{
 
 use alloy_rpc_types_engine::ForkchoiceState;
 use futures::{Stream, StreamExt};
-use reth_engine_primitives::{BeaconEngineMessage, ExecutionPayload};
+use reth_engine_primitives::BeaconEngineMessage;
 use reth_fs_util as fs;
-use reth_payload_primitives::PayloadTypes;
+use reth_payload_primitives::{ExecutionPayload, PayloadTypes};
 use serde::{Deserialize, Serialize};
 use tracing::*;
 

@@ -12,16 +12,13 @@ use alloy_primitives::{B256, BlockNumber, U256};
 use eyre::eyre;
 use reth_chainspec::{BASE_MAINNET, ChainSpec, EthChainSpec};
 use reth_config::config::PruneConfig;
-pub use reth_engine_primitives::{
-    DEFAULT_MEMORY_BLOCK_BUFFER_TARGET, DEFAULT_PERSISTENCE_THRESHOLD, DEFAULT_RESERVED_CPU_CORES,
-};
+use reth_db_api::models::StorageSettings;
 use reth_ethereum_forks::{EthereumHardforks, Head};
 use reth_network_p2p::headers::client::HeadersClient;
 use reth_primitives_traits::SealedHeader;
 use reth_stages_types::StageId;
 use reth_storage_api::{
     BlockHashReader, DatabaseProviderFactory, HeaderProvider, StageCheckpointReader,
-    StorageSettings,
 };
 use reth_storage_errors::provider::ProviderResult;
 use serde::{Serialize, de::DeserializeOwned};

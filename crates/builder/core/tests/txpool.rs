@@ -8,8 +8,7 @@ use base_builder_core::{
     },
 };
 use reth_chainspec::ChainSpec;
-use reth_node_builder::NodeConfig;
-use reth_node_core::args::TxPoolArgs;
+use reth_node_core::{args::TxPoolArgs, node_config::NodeConfig};
 
 #[tokio::test]
 async fn pending_pool_limit() -> eyre::Result<()> {

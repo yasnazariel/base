@@ -3,8 +3,9 @@
 use std::future::Future;
 
 use reth_chain_state::CanonStateNotification;
-use reth_payload_builder_primitives::PayloadBuilderError;
-use reth_payload_primitives::{BuiltPayload, PayloadBuilderAttributes, PayloadKind};
+use reth_payload_primitives::{
+    BuiltPayload, PayloadBuilderAttributes, PayloadBuilderError, PayloadKind,
+};
 use reth_primitives_traits::NodePrimitives;
 
 /// A type that can build a payload.

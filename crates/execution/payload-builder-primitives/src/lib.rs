@@ -9,6 +9,5 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 mod events;
-pub use reth_payload_primitives::PayloadBuilderError;
 
 pub use crate::events::{Events, PayloadEvents};

@@ -23,9 +23,9 @@ use reth_provider::{
     BlockHashReader, DBProvider, HeaderSyncGapProvider, StaticFileProviderFactory,
     providers::StaticFileWriter,
 };
-use reth_stages_api::{
-    CheckpointBlockRange, EntitiesCheckpoint, ExecInput, ExecOutput, HeadersCheckpoint, Stage,
-    StageCheckpoint, StageError, StageId, UnwindInput, UnwindOutput,
+use reth_stages_api::{ExecInput, ExecOutput, Stage, StageError, UnwindInput, UnwindOutput};
+use reth_stages_types::{
+    CheckpointBlockRange, EntitiesCheckpoint, HeadersCheckpoint, StageCheckpoint, StageId,
 };
 use reth_static_file_types::StaticFileSegment;
 use tokio::sync::watch;
@@ -404,7 +404,7 @@ mod tests {
     use alloy_primitives::B256;
     use assert_matches::assert_matches;
     use reth_provider::{DatabaseProviderFactory, ProviderFactory, StaticFileProviderFactory};
-    use reth_stages_api::StageUnitCheckpoint;
+    use reth_stages_types::StageUnitCheckpoint;
     use reth_testing_utils::generators::{self, random_header, random_header_range};
     use test_runner::HeadersTestRunner;
 

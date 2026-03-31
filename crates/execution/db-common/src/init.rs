@@ -12,8 +12,8 @@ use reth_chainspec::EthChainSpec;
 use reth_codecs::Compact;
 use reth_config::config::EtlConfig;
 use reth_db_api::{
-    BlockNumberList, DatabaseError,
-    models::{ShardedKey, storage_sharded_key::StorageShardedKey},
+    BlockNumberList,
+    models::{ShardedKey, StorageSettings, storage_sharded_key::StorageShardedKey},
     tables,
     transaction::DbTxMut,
 };
@@ -27,11 +27,12 @@ use reth_provider::{
     DatabaseProviderFactory, EitherWriter, ExecutionOutcome, HashingWriter, HeaderProvider,
     HistoryWriter, NodePrimitivesProvider, OriginalValuesKnown, ProviderError, RevertsInit,
     RocksDBProviderFactory, StageCheckpointReader, StageCheckpointWriter, StateWriteConfig,
-    StateWriter, StaticFileProviderFactory, StorageSettings, StorageSettingsCache, TrieWriter,
-    errors::provider::ProviderResult, providers::StaticFileWriter,
+    StateWriter, StaticFileProviderFactory, StorageSettingsCache, TrieWriter,
+    providers::StaticFileWriter,
 };
 use reth_stages_types::{StageCheckpoint, StageId};
 use reth_static_file_types::StaticFileSegment;
+use reth_storage_errors::{db::DatabaseError, provider::ProviderResult};
 use reth_trie::{
     IntermediateStateRootState, Nibbles, StateRoot as StateRootComputer, StateRootProgress,
     prefix_set::{TriePrefixSets, TriePrefixSetsMut},

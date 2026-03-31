@@ -9,9 +9,8 @@ use reth_provider::{
     RocksDBProviderFactory, StorageSettingsCache,
 };
 use reth_prune_types::{PruneCheckpoint, PruneMode, PrunePurpose, PruneSegment};
-use reth_stages_api::{
-    ExecInput, ExecOutput, Stage, StageCheckpoint, StageError, StageId, UnwindInput, UnwindOutput,
-};
+use reth_stages_api::{ExecInput, ExecOutput, Stage, StageError, UnwindInput, UnwindOutput};
+use reth_stages_types::{StageCheckpoint, StageId};
 use tracing::info;
 
 use super::collect_account_history_indices;
@@ -669,11 +668,11 @@ mod tests {
 
     #[cfg(all(unix, feature = "rocksdb"))]
     mod rocksdb_tests {
+        use reth_db_api::models::StorageSettings;
         use reth_provider::{
             RocksDBProviderFactory, StaticFileProviderFactory, providers::StaticFileWriter,
         };
         use reth_static_file_types::StaticFileSegment;
-        use reth_storage_api::StorageSettings;
 
         use super::*;
 

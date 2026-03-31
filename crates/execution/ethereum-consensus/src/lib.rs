@@ -15,7 +15,7 @@ use alloc::{fmt::Debug, sync::Arc};
 
 use alloy_consensus::{EMPTY_OMMER_ROOT_HASH, constants::MAXIMUM_EXTRA_DATA_SIZE};
 use alloy_eips::eip7840::BlobParams;
-use reth_chainspec::{EthChainSpec, EthereumHardforks};
+use reth_chainspec::EthChainSpec;
 use reth_consensus::{Consensus, ConsensusError, FullConsensus, HeaderValidator, ReceiptRootBloom};
 use reth_consensus_common::validation::{
     validate_4844_header_standalone, validate_against_parent_4844,
@@ -24,6 +24,7 @@ use reth_consensus_common::validation::{
     validate_block_pre_execution, validate_body_against_header, validate_header_base_fee,
     validate_header_extra_data, validate_header_gas,
 };
+use reth_ethereum_forks::EthereumHardforks;
 use reth_execution_types::BlockExecutionResult;
 use reth_primitives_traits::{
     Block, BlockHeader, NodePrimitives, RecoveredBlock, SealedBlock, SealedHeader,

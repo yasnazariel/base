@@ -13,8 +13,9 @@ use proptest::test_runner::TestRunner;
 use rand::Rng;
 use reth_chainspec::ChainSpec;
 use reth_db_common::init::init_genesis;
+use reth_engine_primitives::TreeConfig;
 use reth_engine_tree::tree::{
-    PayloadProcessor, StateProviderBuilder, TreeConfig, precompile_cache::PrecompileCacheMap,
+    PayloadProcessor, StateProviderBuilder, precompile_cache::PrecompileCacheMap,
 };
 use reth_ethereum_primitives::TransactionSigned;
 use reth_evm::OnStateHook;

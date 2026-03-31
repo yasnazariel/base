@@ -6,7 +6,7 @@ use alloy_primitives::B256;
 use alloy_rpc_types_engine::{ForkchoiceState, PayloadStatusEnum};
 use eyre::Result;
 use futures_util::future::BoxFuture;
-use reth_node_api::EngineTypes;
+use reth_engine_primitives::EngineTypes;
 use reth_rpc_api::clients::EngineApiClient;
 use tracing::debug;
 

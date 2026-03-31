@@ -2,9 +2,9 @@
 
 use reth_chainspec::ChainSpec;
 use reth_db::DatabaseEnv;
-use reth_node_builder::{
-    FullNodeTypesAdapter, Node, NodeBuilder, NodeTypesWithDBAdapter, WithLaunchContext,
-};
+use reth_node_api::FullNodeTypesAdapter;
+use reth_node_builder::{Node, NodeBuilder, WithLaunchContext};
+use reth_node_types::NodeTypesWithDBAdapter;
 use reth_provider::providers::BlockchainProvider;
 
 use crate::node::BaseNode;

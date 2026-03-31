@@ -8,10 +8,10 @@ use reth_primitives_traits::NodePrimitives;
 use reth_provider::{
     BlockReader, DBProvider, EitherWriter, NodePrimitivesProvider, PruneCheckpointWriter,
     StaticFileProviderFactory, StorageSettingsCache, TransactionsProvider,
-    errors::provider::ProviderResult,
 };
 use reth_prune_types::{PruneCheckpoint, PruneSegment, SegmentOutput, SegmentOutputCheckpoint};
 use reth_static_file_types::StaticFileSegment;
+use reth_storage_errors::provider::ProviderResult;
 use tracing::{debug, trace};
 
 use crate::{

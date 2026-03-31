@@ -11,11 +11,12 @@ use reth_chainspec::ChainSpec;
 use reth_db::{
     ClientVersion, DatabaseEnv, init_db, mdbx::DatabaseArguments, test_utils::tempdir_path,
 };
-use reth_node_builder::{Node, NodeBuilder, NodeConfig, NodeHandle};
+use reth_node_builder::{Node, NodeBuilder, NodeHandle};
 use reth_node_core::{
     args::{DatadirArgs, DiscoveryArgs, NetworkArgs, RpcServerArgs},
     dirs::{DataDirPath, MaybePlatformPath},
     exit::NodeExitFuture,
+    node_config::NodeConfig,
 };
 use reth_provider::providers::BlockchainProvider;
 use reth_tasks::Runtime;

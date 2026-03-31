@@ -10,7 +10,6 @@ use reth_db::{
     },
 };
 use reth_db_api::{
-    DatabaseError as DbError,
     common::KeyValue,
     cursor::{DbCursorRO, DbCursorRW, DbDupCursorRO},
     database::Database,
@@ -30,7 +29,7 @@ use reth_provider::{
     test_utils::MockNodeTypesWithDB,
 };
 use reth_static_file_types::StaticFileSegment;
-use reth_storage_errors::provider::ProviderResult;
+use reth_storage_errors::{db::DatabaseError as DbError, provider::ProviderResult};
 use reth_testing_utils::generators::ChangeSet;
 use tempfile::TempDir;
 

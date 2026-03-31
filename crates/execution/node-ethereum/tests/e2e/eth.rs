@@ -9,7 +9,7 @@ use reth_chainspec::{BASE_MAINNET, ChainSpecBuilder, EthChainSpec};
 use reth_e2e_test_utils::{
     node::NodeTestContext, setup, setup_engine, transaction::TransactionTestContext, wallet::Wallet,
 };
-use reth_node_api::TreeConfig;
+use reth_engine_primitives::TreeConfig;
 use reth_node_builder::{NodeBuilder, NodeHandle};
 use reth_node_core::{args::RpcServerArgs, node_config::NodeConfig};
 use reth_node_ethereum::EthereumNode;

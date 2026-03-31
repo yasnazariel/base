@@ -8,14 +8,15 @@ use alloy_rpc_types_eth::BlockNumberOrTag;
 use eyre::Ok;
 use futures_util::Future;
 use jsonrpsee::{core::client::ClientT, http_client::HttpClient};
-use reth_chainspec::EthereumHardforks;
+use reth_ethereum_forks::EthereumHardforks;
 use reth_network_api::test_utils::PeersHandleProvider;
-use reth_node_api::{
-    Block, BlockBody, BlockTy, EngineApiMessageVersion, FullNodeComponents, PayloadTypes,
-    PrimitivesTy,
+use reth_node_api::FullNodeComponents;
+use reth_node_builder::{FullNode, rpc::RethRpcAddOns};
+use reth_node_types::{BlockTy, NodeTypes, PrimitivesTy};
+use reth_payload_primitives::{
+    BuiltPayload, EngineApiMessageVersion, PayloadBuilderAttributes, PayloadTypes,
 };
-use reth_node_builder::{FullNode, NodeTypes, rpc::RethRpcAddOns};
-use reth_payload_primitives::{BuiltPayload, PayloadBuilderAttributes};
+use reth_primitives_traits::{Block, BlockBody};
 use reth_provider::{
     BlockReader, BlockReaderIdExt, CanonStateNotificationStream, CanonStateSubscriptions,
     HeaderProvider, StageCheckpointReader,

@@ -11,8 +11,7 @@ use base_alloy_flz::tx_estimated_size_fjord as estimate_tx_compressed_size;
 use base_alloy_rpc_types::{L1BlockInfo, OpTransactionReceipt, OpTransactionReceiptFields};
 use reth_chainspec::{ChainSpecProvider, EthChainSpec};
 use reth_evm_ethereum::RethL1BlockInfo;
-use reth_node_api::NodePrimitives;
-use reth_primitives_traits::SealedBlock;
+use reth_primitives_traits::{NodePrimitives, SealedBlock};
 use reth_rpc_eth_api::{
     RpcConvert,
     helpers::LoadReceipt,

@@ -14,15 +14,14 @@ use reth_exex::ExExManagerHandle;
 use reth_network_p2p::{
     BlockClient, bodies::downloader::BodyDownloader, headers::downloader::HeaderDownloader,
 };
-use reth_node_api::HeaderTy;
+use reth_node_types::{BlockTy, HeaderTy};
 use reth_provider::{ProviderFactory, providers::ProviderNodeTypes};
-use reth_stages::{Pipeline, StageSet, prelude::DefaultStages, stages::ExecutionStage};
+use reth_stages::{prelude::DefaultStages, stages::ExecutionStage};
+use reth_stages_api::{MetricEventsSender, Pipeline, StageSet};
 use reth_static_file::StaticFileProducer;
 use reth_tasks::TaskExecutor;
 use reth_tracing::tracing::debug;
 use tokio::sync::watch;
-
-use crate::BlockTy;
 
 /// Constructs a [Pipeline] that's wired to the network
 #[expect(clippy::too_many_arguments)]
@@ -32,7 +31,7 @@ pub fn build_networked_pipeline<N, Client, Evm>(
     consensus: Arc<dyn FullConsensus<N::Primitives>>,
     provider_factory: ProviderFactory<N>,
     task_executor: &TaskExecutor,
-    metrics_tx: reth_stages::MetricEventsSender,
+    metrics_tx: MetricEventsSender,
     prune_config: PruneConfig,
     max_block: Option<BlockNumber>,
     static_file_producer: StaticFileProducer<ProviderFactory<N>>,
@@ -79,7 +78,7 @@ pub fn build_pipeline<N, H, B, Evm>(
     body_downloader: B,
     consensus: Arc<dyn FullConsensus<N::Primitives>>,
     max_block: Option<u64>,
-    metrics_tx: reth_stages::MetricEventsSender,
+    metrics_tx: MetricEventsSender,
     prune_config: PruneConfig,
     static_file_producer: StaticFileProducer<ProviderFactory<N>>,
     evm_config: Evm,

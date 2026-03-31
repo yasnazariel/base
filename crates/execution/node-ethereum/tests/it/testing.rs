@@ -7,10 +7,11 @@ use alloy_rpc_types_engine::ExecutionPayloadEnvelopeV4;
 use jsonrpsee_core::client::ClientT;
 use reth_db::test_utils::create_test_rw_db;
 use reth_ethereum_engine_primitives::EthPayloadAttributes;
-use reth_node_builder::{NodeBuilder, NodeConfig};
+use reth_node_builder::NodeBuilder;
 use reth_node_core::{
     args::DatadirArgs,
     dirs::{DataDirPath, MaybePlatformPath},
+    node_config::NodeConfig,
 };
 use reth_node_ethereum::{EthereumNode, node::EthereumAddOns};
 use reth_rpc_api::TestingBuildBlockRequestV1;

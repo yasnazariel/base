@@ -8,10 +8,11 @@ use std::{
 use alloy_consensus::{BlockHeader, TxReceipt, transaction::TxHashRef};
 use clap::Parser;
 use eyre::WrapErr;
-use reth_chainspec::{EthChainSpec, EthereumHardforks, Hardforks};
+use reth_chainspec::EthChainSpec;
 use reth_cli::chainspec::ChainSpecParser;
 use reth_cli_util::cancellation::CancellationToken;
 use reth_consensus::FullConsensus;
+use reth_ethereum_forks::{EthereumHardforks, Hardforks};
 use reth_evm::{ConfigureEvm, execute::Executor};
 use reth_primitives_traits::{BlockBody, GotExpected, format_gas_throughput};
 use reth_provider::{

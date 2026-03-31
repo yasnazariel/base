@@ -14,16 +14,14 @@ use alloy_evm::Evm;
 use alloy_primitives::B256;
 use reth_chain_state::{CanonicalInMemoryState, DeferredTrieData, ExecutedBlock, LazyOverlay};
 use reth_consensus::{ConsensusError, FullConsensus, ReceiptRootBloom};
-use reth_engine_primitives::{
-    ConfigureEngineEvm, ExecutableTxIterator, ExecutionPayload, InvalidBlockHook, PayloadValidator,
-};
-use reth_errors::{BlockExecutionError, ProviderResult};
+use reth_engine_primitives::{InvalidBlockHook, PayloadValidator};
 use reth_evm::{
-    ConfigureEvm, EvmEnvFor, ExecutionCtxFor, SpecFor, block::BlockExecutor,
-    execute::ExecutableTxFor,
+    ConfigureEngineEvm, ConfigureEvm, EvmEnvFor, ExecutableTxIterator, ExecutionCtxFor, SpecFor,
+    block::BlockExecutor, execute::ExecutableTxFor,
 };
+use reth_execution_errors::BlockExecutionError;
 use reth_payload_primitives::{
-    BuiltPayload, InvalidPayloadAttributesError, NewPayloadError, PayloadTypes,
+    BuiltPayload, ExecutionPayload, InvalidPayloadAttributesError, NewPayloadError, PayloadTypes,
 };
 use reth_primitives_traits::{
     AlloyBlockHeader, BlockBody, BlockTy, GotExpected, NodePrimitives, RecoveredBlock, SealedBlock,
@@ -36,6 +34,7 @@ use reth_provider::{
     StorageChangeSetReader, StorageSettingsCache, providers::OverlayStateProviderFactory,
 };
 use reth_revm::db::{State, states::bundle_state::BundleRetention};
+use reth_storage_errors::provider::ProviderResult;
 use reth_trie::{HashedPostState, StateRoot, updates::TrieUpdates};
 use reth_trie_db::ChangesetCache;
 use reth_trie_parallel::root::{ParallelStateRoot, ParallelStateRootError};

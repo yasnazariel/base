@@ -7,7 +7,7 @@ use alloy_consensus::BlockHeader;
 use alloy_eips::BlockNumHash;
 use alloy_primitives::{B256, BlockNumber, map::FbHashMap};
 use reth_exex_types::ExExNotification;
-use reth_node_api::NodePrimitives;
+use reth_primitives_traits::NodePrimitives;
 
 /// The block cache of the WAL.
 ///

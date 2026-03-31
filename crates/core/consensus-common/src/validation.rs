@@ -2,8 +2,9 @@
 
 use alloy_consensus::{BlockHeader as _, EMPTY_OMMER_ROOT_HASH};
 use alloy_eips::{eip4844::DATA_GAS_PER_BLOB, eip7840::BlobParams};
-use reth_chainspec::{EthChainSpec, EthereumHardfork, EthereumHardforks};
+use reth_chainspec::EthChainSpec;
 use reth_consensus::ConsensusError;
+use reth_ethereum_forks::{EthereumHardfork, EthereumHardforks};
 use reth_primitives_traits::{
     Block, BlockBody, BlockHeader, GotExpected, SealedBlock, SealedHeader,
     constants::{GAS_LIMIT_BOUND_DIVISOR, MAXIMUM_GAS_LIMIT_BLOCK, MINIMUM_GAS_LIMIT},

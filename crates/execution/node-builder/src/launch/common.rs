@@ -36,21 +36,21 @@ use alloy_primitives::{B256, BlockNumber};
 use eyre::Context;
 use futures::{Stream, StreamExt, future::Either, stream};
 use rayon::ThreadPoolBuilder;
-use reth_chainspec::{Chain, EthChainSpec, EthereumHardforks};
+use reth_chainspec::{Chain, EthChainSpec};
 use reth_config::{PruneConfig, config::EtlConfig};
 use reth_consensus::noop::NoopConsensus;
-use reth_db_api::{database::Database, database_metrics::DatabaseMetrics};
+use reth_db_api::{database::Database, database_metrics::DatabaseMetrics, models::StorageSettings};
 use reth_db_common::init::{InitStorageError, init_genesis_with_settings};
 use reth_downloaders::{bodies::noop::NoopBodiesDownloader, headers::noop::NoopHeaderDownloader};
+use reth_ethereum_forks::EthereumHardforks;
 use reth_evm::{ConfigureEvm, noop::NoopEvmConfig};
 use reth_exex::ExExManagerHandle;
 use reth_fs_util as fs;
 use reth_network_p2p::headers::client::HeadersClient;
-use reth_node_api::{FullNodeTypes, NodeTypes, NodeTypesWithDB, NodeTypesWithDBAdapter};
+use reth_node_api::FullNodeTypes;
 use reth_node_core::{
     dirs::{ChainPath, DataDirPath},
     node_config::NodeConfig,
-    primitives::BlockHeader,
     version::version_metadata,
 };
 use reth_node_ethstats::EthStatsService;
@@ -62,16 +62,21 @@ use reth_node_metrics::{
     server::{MetricServer, MetricServerConfig},
     version::VersionInfo,
 };
+use reth_node_types::{NodeTypes, NodeTypesWithDB, NodeTypesWithDBAdapter, PrimitivesTy};
+use reth_primitives_traits::BlockHeader;
 use reth_provider::{
     BlockHashReader, BlockNumReader, ProviderError, ProviderFactory, ProviderResult,
     RocksDBProviderFactory, StageCheckpointReader, StaticFileProviderBuilder,
-    StaticFileProviderFactory, StorageSettings,
+    StaticFileProviderFactory,
     providers::{NodeTypesForProvider, ProviderNodeTypes, RocksDBProvider, StaticFileProvider},
 };
-use reth_prune::{PruneModes, PrunerBuilder};
+use reth_prune::PrunerBuilder;
+use reth_prune_types::PruneModes;
 use reth_rpc_builder::config::RethRpcServerConfig;
 use reth_rpc_layer::JwtSecret;
-use reth_stages::{MetricEvent, PipelineBuilder, PipelineTarget, StageId, sets::DefaultStages};
+use reth_stages::sets::DefaultStages;
+use reth_stages_api::{MetricEvent, MetricsListener, PipelineBuilder};
+use reth_stages_types::{PipelineTarget, StageId};
 use reth_static_file::StaticFileProducer;
 use reth_tasks::TaskExecutor;
 use reth_tracing::{
@@ -85,7 +90,7 @@ use tokio::sync::{
 };
 
 use crate::{
-    BuilderContext, ExExLauncher, NodeAdapter, PrimitivesTy,
+    BuilderContext, ExExLauncher, NodeAdapter,
     components::{NodeComponents, NodeComponentsBuilder},
     hooks::OnComponentInitializedHook,
 };
@@ -136,7 +141,7 @@ impl LaunchContext {
         config: NodeConfig<ChainSpec>,
     ) -> eyre::Result<LaunchContextWith<WithConfigs<ChainSpec>>>
     where
-        ChainSpec: EthChainSpec + reth_chainspec::EthereumHardforks,
+        ChainSpec: EthChainSpec + reth_ethereum_forks::EthereumHardforks,
     {
         let toml_config = self.load_toml_config(&config)?;
         Ok(self.with(WithConfigs { config, toml_config }))
@@ -151,7 +156,7 @@ impl LaunchContext {
         config: &NodeConfig<ChainSpec>,
     ) -> eyre::Result<reth_config::Config>
     where
-        ChainSpec: EthChainSpec + reth_chainspec::EthereumHardforks,
+        ChainSpec: EthChainSpec + reth_ethereum_forks::EthereumHardforks,
     {
         let config_path = config.config.clone().unwrap_or_else(|| self.data_dir.config());
 
@@ -180,7 +185,7 @@ impl LaunchContext {
         config_path: impl AsRef<std::path::Path>,
     ) -> eyre::Result<()>
     where
-        ChainSpec: EthChainSpec + reth_chainspec::EthereumHardforks,
+        ChainSpec: EthChainSpec + reth_ethereum_forks::EthereumHardforks,
     {
         let mut should_save = reth_config.prune.segments.migrate();
 
@@ -410,7 +415,7 @@ impl<R, ChainSpec: EthChainSpec> LaunchContextWith<Attached<WithConfigs<ChainSpe
     /// Any configuration set in CLI will take precedence over those set in toml
     pub fn prune_config(&self) -> PruneConfig
     where
-        ChainSpec: reth_chainspec::EthereumHardforks,
+        ChainSpec: reth_ethereum_forks::EthereumHardforks,
     {
         let Some(mut node_prune_config) = self.node_config().prune_config() else {
             // No CLI config is set, use the toml config.
@@ -425,7 +430,7 @@ impl<R, ChainSpec: EthChainSpec> LaunchContextWith<Attached<WithConfigs<ChainSpe
     /// Returns the configured [`PruneModes`], returning the default if no config was available.
     pub fn prune_modes(&self) -> PruneModes
     where
-        ChainSpec: reth_chainspec::EthereumHardforks,
+        ChainSpec: reth_ethereum_forks::EthereumHardforks,
     {
         self.prune_config().segments
     }
@@ -433,7 +438,7 @@ impl<R, ChainSpec: EthChainSpec> LaunchContextWith<Attached<WithConfigs<ChainSpe
     /// Returns an initialized [`PrunerBuilder`] based on the configured [`PruneConfig`]
     pub fn pruner_builder(&self) -> PrunerBuilder
     where
-        ChainSpec: reth_chainspec::EthereumHardforks,
+        ChainSpec: reth_ethereum_forks::EthereumHardforks,
     {
         PrunerBuilder::new(self.prune_config())
     }
@@ -660,7 +665,7 @@ where
             WithMeteredProvider { provider_factory: self.right().clone(), metrics_sender };
 
         debug!(target: "reth::cli", "Spawning stages metrics listener task");
-        let sync_metrics_listener = reth_stages::MetricsListener::new(metrics_receiver);
+        let sync_metrics_listener = MetricsListener::new(metrics_receiver);
         self.task_executor()
             .spawn_critical_task("stages metrics listener task", sync_metrics_listener);
 

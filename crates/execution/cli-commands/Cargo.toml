@@ -12,6 +12,7 @@ repository.workspace = true
 [dependencies]
 # reth
 reth-chainspec.workspace = true
+reth-ethereum-forks.workspace = true
 reth-cli.workspace = true
 reth-cli-runner.workspace = true
 reth-cli-util.workspace = true
@@ -34,15 +35,17 @@ reth-network-peers = { workspace = true, features = ["secp256k1"] }
 reth-node-api.workspace = true
 reth-node-builder.workspace = true
 reth-node-core.workspace = true
+reth-node-types.workspace = true
 reth-node-events.workspace = true
 reth-node-metrics.workspace = true
 reth-ethereum-primitives = { workspace = true, optional = true }
 reth-provider.workspace = true
 reth-prune.workspace = true
-reth-prune-types = { workspace = true, optional = true }
+reth-prune-types.workspace = true
 reth-revm.workspace = true
 reth-stages.workspace = true
-reth-stages-types = { workspace = true, optional = true }
+reth-stages-api.workspace = true
+reth-stages-types.workspace = true
 reth-static-file-types = { workspace = true, features = ["clap"] }
 reth-static-file.workspace = true
 reth-tasks.workspace = true
@@ -119,9 +122,9 @@ arbitrary = [
 	"reth-ethereum-primitives/arbitrary",
 	"reth-primitives-traits/arbitrary",
 	"reth-prune-types/test-utils",
-	"reth-prune-types?/arbitrary",
+	"reth-prune-types/arbitrary",
 	"reth-stages-types/test-utils",
-	"reth-stages-types?/arbitrary",
+	"reth-stages-types/arbitrary",
 	"reth-trie-common/arbitrary",
 	"reth-trie-common/test-utils",
 ]

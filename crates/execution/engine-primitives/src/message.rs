@@ -11,13 +11,12 @@ use alloy_rpc_types_engine::{
 };
 use futures::{FutureExt, TryFutureExt, future::Either};
 use reth_errors::RethResult;
-use reth_payload_builder_primitives::PayloadBuilderError;
-use reth_payload_primitives::{EngineApiMessageVersion, PayloadTypes};
+use reth_payload_primitives::{
+    EngineApiMessageVersion, ExecutionPayload, PayloadBuilderError, PayloadTypes,
+};
 use tokio::sync::{mpsc::UnboundedSender, oneshot};
 
-use crate::{
-    BeaconOnNewPayloadError, ExecutionPayload, ForkchoiceStatus, error::BeaconForkChoiceUpdateError,
-};
+use crate::{BeaconOnNewPayloadError, ForkchoiceStatus, error::BeaconForkChoiceUpdateError};
 
 /// Represents the outcome of forkchoice update.
 ///

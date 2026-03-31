@@ -6,7 +6,7 @@ use std::{
 
 use reth_ethereum_primitives::EthPrimitives;
 use reth_exex_types::ExExNotification;
-use reth_node_api::NodePrimitives;
+use reth_primitives_traits::NodePrimitives;
 use reth_tracing::tracing::debug;
 use tracing::instrument;
 

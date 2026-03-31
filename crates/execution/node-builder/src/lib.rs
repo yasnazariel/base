@@ -47,12 +47,4 @@ pub use aliases::*;
 pub mod exex;
 
 use aquamarine as _;
-// re-export API types for convenience
-pub use reth_node_api::*;
-/// Re-export the core configuration traits.
-pub use reth_node_core::cli::config::{
-    PayloadBuilderConfig, RethNetworkConfig, RethTransactionPoolConfig,
-};
-// re-export the core config for convenience
-pub use reth_node_core::node_config::NodeConfig;
 use reth_rpc as _;

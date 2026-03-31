@@ -6,7 +6,8 @@ use alloy_primitives::B256;
 use alloy_rpc_types_engine::{ForkchoiceState, PayloadAttributes};
 use eyre::Result;
 use futures_util::future::BoxFuture;
-use reth_node_api::{EngineTypes, PayloadTypes};
+use reth_engine_primitives::EngineTypes;
+use reth_payload_primitives::PayloadTypes;
 use tracing::debug;
 
 use crate::testsuite::{

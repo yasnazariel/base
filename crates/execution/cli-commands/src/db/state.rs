@@ -7,7 +7,7 @@ use alloy_primitives::{Address, BlockNumber, U256, keccak256};
 use clap::Parser;
 use reth_db_api::{cursor::DbDupCursorRO, database::Database, tables, transaction::DbTx};
 use reth_db_common::DbTool;
-use reth_node_builder::NodeTypesWithDB;
+use reth_node_types::NodeTypesWithDB;
 use reth_provider::providers::ProviderNodeTypes;
 use reth_storage_api::{StateProvider, StorageReader, StorageSettingsCache};
 use tracing::info;

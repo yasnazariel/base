@@ -57,7 +57,8 @@ impl From<EnrCombinedKeyWrapper> for Enr<SecretKey> {
 mod tests {
     use alloy_rlp::Encodable;
     use discv5::enr::{CombinedKey, EnrKey};
-    use reth_chainspec::{BASE_MAINNET, EthereumHardfork};
+    use reth_chainspec::BASE_MAINNET;
+    use reth_ethereum_forks::EthereumHardfork;
     use reth_network_peers::NodeRecord;
 
     use super::*;

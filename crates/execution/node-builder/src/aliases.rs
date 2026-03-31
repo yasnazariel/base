@@ -1,5 +1,5 @@
 use reth_network::NetworkPrimitives;
-use reth_node_api::BlockBody;
+use reth_primitives_traits::BlockBody;
 use reth_provider::BlockReader;
 
 /// This is a type alias to make type bounds simpler, when we have a [`NetworkPrimitives`] and need

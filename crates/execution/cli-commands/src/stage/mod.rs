@@ -3,9 +3,10 @@
 use std::sync::Arc;
 
 use clap::{Parser, Subcommand};
-use reth_chainspec::{EthChainSpec, EthereumHardforks, Hardforks};
+use reth_chainspec::EthChainSpec;
 use reth_cli::chainspec::ChainSpecParser;
 use reth_cli_runner::CliContext;
+use reth_ethereum_forks::{EthereumHardforks, Hardforks};
 
 use crate::common::{CliNodeComponents, CliNodeTypes};
 

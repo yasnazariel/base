@@ -3,10 +3,10 @@ use std::sync::Arc;
 use alloy_primitives::B256;
 use reth_chainspec::{BASE_MAINNET, ChainSpec};
 use reth_db::{DatabaseEnv, test_utils::TempDatabase};
-use reth_errors::ProviderResult;
 use reth_ethereum_engine_primitives::EthEngineTypes;
 use reth_node_types::NodeTypesWithDBAdapter;
 use reth_primitives_traits::{Account, StorageEntry};
+use reth_storage_errors::provider::ProviderResult;
 use reth_trie::StateRoot;
 use reth_trie_db::DatabaseStateRoot;
 

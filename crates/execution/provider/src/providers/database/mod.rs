@@ -11,7 +11,10 @@ use alloy_primitives::{Address, B256, BlockHash, BlockNumber, TxHash, TxNumber};
 use parking_lot::RwLock;
 use reth_chainspec::ChainInfo;
 use reth_db::{DatabaseEnv, init_db, mdbx::DatabaseArguments};
-use reth_db_api::{database::Database, models::StoredBlockBodyIndices};
+use reth_db_api::{
+    database::Database,
+    models::{StorageSettings, StoredBlockBodyIndices},
+};
 use reth_errors::{RethError, RethResult};
 use reth_node_types::{
     BlockTy, HeaderTy, NodeTypesWithDB, NodeTypesWithDBAdapter, ReceiptTy, TxTy,
@@ -21,7 +24,7 @@ use reth_prune_types::{PruneCheckpoint, PruneModes, PruneSegment};
 use reth_stages_types::{PipelineTarget, StageCheckpoint, StageId};
 use reth_static_file_types::StaticFileSegment;
 use reth_storage_api::{
-    BlockBodyIndicesProvider, NodePrimitivesProvider, StorageSettings, StorageSettingsCache,
+    BlockBodyIndicesProvider, NodePrimitivesProvider, StorageSettingsCache,
     TryIntoHistoricalStateProvider,
 };
 use reth_storage_errors::provider::ProviderResult;

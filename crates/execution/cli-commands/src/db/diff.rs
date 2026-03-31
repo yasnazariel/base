@@ -13,11 +13,11 @@ use reth_db_api::{
     Tables, cursor::DbCursorRO, database::Database, table::Table, transaction::DbTx,
 };
 use reth_db_common::DbTool;
-use reth_node_builder::{NodeTypes, NodeTypesWithDBAdapter};
 use reth_node_core::{
     args::DatabaseArgs,
     dirs::{DataDirPath, PlatformPath},
 };
+use reth_node_types::{NodeTypes, NodeTypesWithDBAdapter};
 use tracing::{info, warn};
 
 #[derive(Parser, Debug)]

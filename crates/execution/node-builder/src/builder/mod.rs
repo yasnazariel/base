@@ -4,10 +4,11 @@
 
 use std::sync::Arc;
 
-use alloy_eips::eip4844::env_settings::EnvKzgSettings;
+use alloy_eips::{eip2124::Head, eip4844::env_settings::EnvKzgSettings};
 use futures::Future;
-use reth_chainspec::{EthChainSpec, EthereumHardforks, Hardforks};
+use reth_chainspec::EthChainSpec;
 use reth_db_api::{database::Database, database_metrics::DatabaseMetrics};
+use reth_ethereum_forks::{EthereumHardforks, Hardforks};
 use reth_exex::ExExContext;
 use reth_network::{
     NetworkBuilder, NetworkConfig, NetworkConfigBuilder, NetworkHandle, NetworkManager,
@@ -17,15 +18,13 @@ use reth_network::{
         config::{AnnouncementFilteringPolicy, StrictEthAnnouncementFilter},
     },
 };
-use reth_node_api::{
-    FullNodeTypes, FullNodeTypesAdapter, NodeAddOns, NodeTypes, NodeTypesWithDBAdapter,
-};
+use reth_node_api::{FullNodeTypes, FullNodeTypesAdapter, NodeAddOns};
 use reth_node_core::{
     cli::config::{PayloadBuilderConfig, RethTransactionPoolConfig},
     dirs::{ChainPath, DataDirPath},
     node_config::NodeConfig,
-    primitives::Head,
 };
+use reth_node_types::{NodeTypes, NodeTypesWithDBAdapter};
 use reth_provider::{
     ChainSpecProvider, FullProvider,
     providers::{BlockchainProvider, NodeTypesForProvider},

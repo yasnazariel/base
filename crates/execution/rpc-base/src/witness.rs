@@ -11,15 +11,13 @@ use base_execution_payload_builder::{
 use jsonrpsee_core::{RpcResult, async_trait};
 use reth_chainspec::{ChainSpecProvider, EthChainSpec};
 use reth_evm::ConfigureEvm;
-use reth_node_api::BuildNextEnv;
+use reth_payload_primitives::BuildNextEnv;
 use reth_primitives::{OpHeader, OpPrimitives, OpTransactionSigned};
 use reth_primitives_traits::SealedHeader;
 pub use reth_rpc_api::DebugExecutionWitnessApiServer;
 use reth_rpc_server_types::{ToRpcResult, result::internal_rpc_err};
-use reth_storage_api::{
-    BlockReaderIdExt, NodePrimitivesProvider, StateProviderFactory,
-    errors::{ProviderError, ProviderResult},
-};
+use reth_storage_api::{BlockReaderIdExt, NodePrimitivesProvider, StateProviderFactory};
+use reth_storage_errors::provider::{ProviderError, ProviderResult};
 use reth_tasks::TaskSpawner;
 use reth_transaction_pool::{OpPooledTx, TransactionPool};
 use tokio::sync::{Semaphore, oneshot};

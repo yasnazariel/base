@@ -7,14 +7,14 @@ pub use alloy_rpc_types_engine::{
     ExecutionPayloadEnvelopeV2, ExecutionPayloadEnvelopeV3, ExecutionPayloadEnvelopeV4,
     ExecutionPayloadV1, PayloadAttributes as EthPayloadAttributes,
 };
-use reth_chainspec::{EthChainSpec, EthereumHardforks};
+use reth_chainspec::EthChainSpec;
 use reth_engine_primitives::{EngineApiValidator, PayloadValidator};
+use reth_ethereum_forks::EthereumHardforks;
 use reth_ethereum_payload_builder::EthereumExecutionPayloadValidator;
 use reth_ethereum_primitives::Block;
-use reth_node_api::PayloadTypes;
 use reth_payload_primitives::{
     EngineApiMessageVersion, EngineObjectValidationError, NewPayloadError, PayloadOrAttributes,
-    validate_execution_requests, validate_version_specific_fields,
+    PayloadTypes, validate_execution_requests, validate_version_specific_fields,
 };
 use reth_primitives_traits::SealedBlock;
 

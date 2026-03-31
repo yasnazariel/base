@@ -20,7 +20,7 @@ use jsonrpsee_types::error::ErrorObject;
 use reth_basic_payload_builder::PayloadConfig;
 use reth_chainspec::EthChainSpec;
 use reth_evm::{ConfigureEvm, execute::Executor};
-use reth_node_api::{BuildNextEnv, PayloadBuilderAttributes, PayloadBuilderError};
+use reth_payload_primitives::{BuildNextEnv, PayloadBuilderAttributes, PayloadBuilderError};
 use reth_payload_util::NoopPayloadTransactions;
 use reth_primitives::{OpHeader, OpPrimitives, OpTransactionSigned};
 use reth_primitives_traits::SealedHeader;

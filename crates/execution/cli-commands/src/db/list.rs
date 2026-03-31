@@ -3,11 +3,11 @@ use std::cell::RefCell;
 use alloy_primitives::hex;
 use clap::Parser;
 use eyre::WrapErr;
-use reth_chainspec::EthereumHardforks;
 use reth_db::{DatabaseEnv, transaction::DbTx};
 use reth_db_api::{RawValue, TableViewer, Tables, database::Database, table::Table};
 use reth_db_common::{DbTool, ListFilter};
-use reth_node_builder::{NodeTypes, NodeTypesWithDBAdapter};
+use reth_ethereum_forks::EthereumHardforks;
+use reth_node_types::{NodeTypes, NodeTypesWithDBAdapter};
 use tracing::error;
 
 use super::tui::DbListTUI;

@@ -6,10 +6,14 @@ use reth_chainspec::ChainSpec;
 use reth_cli_commands::import_core::{ImportConfig, import_blocks_from_file};
 use reth_config::Config;
 use reth_db::DatabaseEnv;
-use reth_node_api::{NodeTypesWithDBAdapter, TreeConfig};
-use reth_node_builder::{EngineNodeLauncher, Node, NodeBuilder, NodeConfig, NodeHandle};
-use reth_node_core::args::{DiscoveryArgs, NetworkArgs, RpcServerArgs};
+use reth_engine_primitives::TreeConfig;
+use reth_node_builder::{EngineNodeLauncher, Node, NodeBuilder, NodeHandle};
+use reth_node_core::{
+    args::{DiscoveryArgs, NetworkArgs, RpcServerArgs},
+    node_config::NodeConfig,
+};
 use reth_node_ethereum::EthereumNode;
+use reth_node_types::NodeTypesWithDBAdapter;
 use reth_provider::{
     DatabaseProviderFactory, ProviderFactory, StageCheckpointReader, StaticFileProviderFactory,
     providers::BlockchainProvider,
@@ -62,7 +66,7 @@ pub async fn setup_engine_with_chain_import(
     is_dev: bool,
     tree_config: TreeConfig,
     rlp_path: &Path,
-    attributes_generator: impl Fn(u64) -> reth_payload_builder::EthPayloadBuilderAttributes
+    attributes_generator: impl Fn(u64) -> reth_ethereum_engine_primitives::EthPayloadBuilderAttributes
     + Send
     + Sync
     + Copy
@@ -277,8 +281,9 @@ mod tests {
 
     use reth_chainspec::{BASE_MAINNET, ChainSpecBuilder};
     use reth_db::mdbx::DatabaseArguments;
-    use reth_payload_builder::EthPayloadBuilderAttributes;
-    use reth_primitives::SealedBlock;
+    use reth_ethereum_engine_primitives::EthPayloadBuilderAttributes;
+    use reth_ethereum_primitives::Block as EthBlock;
+    use reth_primitives_traits::SealedBlock;
     use reth_provider::{
         BlockHashReader, BlockNumReader, BlockReaderIdExt, test_utils::MockNodeTypesWithDB,
     };
@@ -450,7 +455,7 @@ mod tests {
         chain_spec: &ChainSpec,
         block_count: u64,
         temp_dir: &Path,
-    ) -> (Vec<SealedBlock>, PathBuf) {
+    ) -> (Vec<SealedBlock<EthBlock>>, PathBuf) {
         let test_blocks = generate_test_blocks(chain_spec, block_count);
         assert_eq!(
             test_blocks.len(),

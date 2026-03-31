@@ -2,9 +2,9 @@
 //! `reth_rpc_eth_api::EthApiTypes`.
 
 use alloy_primitives::Bytes;
-use reth_errors::ProviderError;
 use reth_evm::{ConfigureEvm, EvmErrorFor, HaltReasonFor};
 use reth_revm::db::bal::EvmDatabaseError;
+use reth_storage_errors::provider::ProviderError;
 use revm::{context::result::ExecutionResult, context_interface::result::HaltReason};
 
 use super::RpcInvalidTransactionError;

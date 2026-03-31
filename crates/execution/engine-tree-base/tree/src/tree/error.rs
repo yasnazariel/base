@@ -2,10 +2,11 @@
 
 use alloy_consensus::BlockHeader;
 use reth_consensus::ConsensusError;
-use reth_errors::{BlockExecutionError, BlockValidationError, ProviderError};
 use reth_evm::execute::InternalBlockExecutionError;
+use reth_execution_errors::{BlockExecutionError, BlockValidationError};
 use reth_payload_primitives::NewPayloadError;
 use reth_primitives_traits::{Block, BlockBody, SealedBlock};
+use reth_storage_errors::provider::ProviderError;
 
 /// This is an error that can come from advancing persistence.
 #[derive(Debug, thiserror::Error)]

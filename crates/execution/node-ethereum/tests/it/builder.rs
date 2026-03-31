@@ -6,9 +6,11 @@ use reth_db::{
     DatabaseEnv,
     test_utils::{TempDatabase, create_test_rw_db},
 };
-use reth_node_api::NodeTypesWithDBAdapter;
-use reth_node_builder::{EngineNodeLauncher, FullNodeComponents, NodeBuilder, NodeConfig};
+use reth_node_api::FullNodeComponents;
+use reth_node_builder::{EngineNodeLauncher, NodeBuilder};
+use reth_node_core::node_config::NodeConfig;
 use reth_node_ethereum::node::{EthereumAddOns, EthereumNode};
+use reth_node_types::NodeTypesWithDBAdapter;
 use reth_provider::providers::BlockchainProvider;
 use reth_rpc_builder::Identity;
 use reth_tasks::Runtime;

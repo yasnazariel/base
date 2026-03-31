@@ -9,10 +9,10 @@ use reth_chainspec::{BASE_MAINNET, BASE_SEPOLIA};
 use reth_db::test_utils::create_test_rw_db;
 use reth_evm::{Database, Evm, EvmEnv, EvmFactory, precompiles::PrecompilesMap};
 use reth_evm_ethereum::{OpEvmConfig, OpRethReceiptBuilder};
-use reth_node_api::{FullNodeComponents, NodeTypesWithDBAdapter};
-use reth_node_builder::{
-    BuilderContext, FullNodeTypes, Node, NodeBuilder, NodeConfig, components::ExecutorBuilder,
-};
+use reth_node_api::{FullNodeComponents, FullNodeTypes};
+use reth_node_builder::{BuilderContext, Node, NodeBuilder, components::ExecutorBuilder};
+use reth_node_core::node_config::NodeConfig;
+use reth_node_types::NodeTypesWithDBAdapter;
 use reth_provider::providers::BlockchainProvider;
 use reth_revm::{
     BasePrecompiles, OpContext, OpHaltReason, OpSpecId, OpTransaction, OpTransactionError,

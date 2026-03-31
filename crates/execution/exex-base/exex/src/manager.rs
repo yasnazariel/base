@@ -20,8 +20,7 @@ use reth_chain_state::ForkChoiceStream;
 use reth_ethereum_primitives::EthPrimitives;
 use reth_evm::ConfigureEvm;
 use reth_metrics::{Metrics, metrics::Counter};
-use reth_node_api::NodePrimitives;
-use reth_primitives_traits::SealedHeader;
+use reth_primitives_traits::{NodePrimitives, SealedHeader};
 use reth_provider::HeaderProvider;
 use reth_tracing::tracing::{debug, warn};
 use tokio::sync::{

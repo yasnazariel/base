@@ -819,7 +819,6 @@ mod tests {
     };
     use reth_chainspec::{BASE_MAINNET, ChainSpec};
     use reth_db_api::models::{AccountBeforeTx, StoredBlockBodyIndices};
-    use reth_errors::ProviderError;
     use reth_ethereum_primitives::{Block, Receipt};
     use reth_execution_types::{
         BlockExecutionOutput, BlockExecutionResult, Chain, ExecutionOutcome,
@@ -831,6 +830,7 @@ mod tests {
         HeaderProvider, ReceiptProvider, ReceiptProviderIdExt, StateProviderFactory,
         StateWriteConfig, StateWriter, TransactionVariant, TransactionsProvider,
     };
+    use reth_storage_errors::provider::ProviderError;
     use reth_testing_utils::generators::{
         self, BlockParams, BlockRangeParams, random_block, random_block_range,
         random_changeset_range, random_eoa_accounts, random_receipt,

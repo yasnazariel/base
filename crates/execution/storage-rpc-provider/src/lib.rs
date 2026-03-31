@@ -44,7 +44,6 @@ use reth_db_api::{
     mock::{DatabaseMock, TxMock},
     models::StoredBlockBodyIndices,
 };
-use reth_errors::{ProviderError, ProviderResult};
 use reth_node_types::{
     Block, BlockBody, BlockTy, HeaderTy, NodeTypes, PrimitivesTy, ReceiptTy, TxTy,
 };
@@ -64,6 +63,7 @@ use reth_storage_api::{
     BlockBodyIndicesProvider, BlockReaderIdExt, BlockSource, DBProvider, NodePrimitivesProvider,
     ReceiptProviderIdExt, StatsReader,
 };
+use reth_storage_errors::provider::{ProviderError, ProviderResult};
 use reth_trie::{AccountProof, HashedPostState, MultiProof, TrieInput, updates::TrieUpdates};
 use tokio::{runtime::Handle, sync::broadcast};
 use tracing::{trace, warn};
@@ -232,7 +232,7 @@ where
     Node: NodeTypes,
 {
     fn block_hash(&self, number: BlockNumber) -> Result<Option<B256>, ProviderError> {
-        let block = self.block_on_async(async {
+        let block: Option<N::BlockResponse> = self.block_on_async(async {
             self.provider.get_block_by_number(number.into()).await.map_err(ProviderError::other)
         })?;
         Ok(block.map(|b| b.header().hash()))
@@ -278,7 +278,7 @@ where
     }
 
     fn block_number(&self, hash: B256) -> Result<Option<BlockNumber>, ProviderError> {
-        let block = self.block_on_async(async {
+        let block: Option<N::BlockResponse> = self.block_on_async(async {
             self.provider.get_block_by_hash(hash).await.map_err(ProviderError::other)
         })?;
         Ok(block.map(|b| b.header().number()))
@@ -294,7 +294,7 @@ where
     fn block_number_for_id(&self, block_id: BlockId) -> Result<Option<BlockNumber>, ProviderError> {
         match block_id {
             BlockId::Hash(hash) => {
-                let block = self.block_on_async(async {
+                let block: Option<N::BlockResponse> = self.block_on_async(async {
                     self.provider
                         .get_block_by_hash(hash.block_hash)
                         .await
@@ -338,7 +338,7 @@ where
     type Header = HeaderTy<Node>;
 
     fn header(&self, block_hash: BlockHash) -> ProviderResult<Option<Self::Header>> {
-        let block_response = self.block_on_async(async {
+        let block_response: Option<N::BlockResponse> = self.block_on_async(async {
             self.provider.get_block_by_hash(block_hash).await.map_err(ProviderError::other)
         })?;
 
@@ -374,7 +374,7 @@ where
         &self,
         number: BlockNumber,
     ) -> ProviderResult<Option<SealedHeader<Self::Header>>> {
-        let block_response = self.block_on_async(async {
+        let block_response: Option<N::BlockResponse> = self.block_on_async(async {
             self.provider.get_block_by_number(number.into()).await.map_err(ProviderError::other)
         })?;
 
@@ -585,7 +585,7 @@ where
             };
 
             // Convert the network receipts response to primitive receipts
-            let receipts = receipts
+            let receipts: Vec<ReceiptTy<Node>> = receipts
                 .into_iter()
                 .map(|receipt_response| {
                     <ReceiptTy<Node> as TryFromReceiptResponse<N>>::from_receipt_response(
@@ -1104,11 +1104,11 @@ where
     }
 
     fn account_balance(&self, addr: &Address) -> Result<Option<U256>, ProviderError> {
-        self.get_account(*addr).map(|acc| acc.map(|a| a.balance))
+        Ok(self.get_account(*addr)?.map(|account| account.balance))
     }
 
     fn account_nonce(&self, addr: &Address) -> Result<Option<u64>, ProviderError> {
-        self.get_account(*addr).map(|acc| acc.map(|a| a.nonce))
+        Ok(self.get_account(*addr)?.map(|account| account.nonce))
     }
 }
 
@@ -1398,7 +1398,7 @@ where
 
     fn block_number(&self, hash: B256) -> Result<Option<BlockNumber>, ProviderError> {
         self.block_on_async(async {
-            let block =
+            let block: Option<N::BlockResponse> =
                 self.provider.get_block_by_hash(hash).await.map_err(ProviderError::other)?;
 
             Ok(block.map(|b| b.header().number()))
@@ -1414,7 +1414,7 @@ where
 {
     fn block_hash(&self, number: u64) -> Result<Option<B256>, ProviderError> {
         self.block_on_async(async {
-            let block = self
+            let block: Option<N::BlockResponse> = self
                 .provider
                 .get_block_by_number(number.into())
                 .await

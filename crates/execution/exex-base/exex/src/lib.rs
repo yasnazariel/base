@@ -88,6 +88,8 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 
+use reth_exex_types::{ExExNotification, FinishedExExHeight};
+
 mod backfill;
 pub use backfill::*;
 
@@ -107,7 +109,4 @@ mod notifications;
 pub use notifications::*;
 
 mod wal;
-// Re-export exex types
-#[doc(inline)]
-pub use reth_exex_types::*;
 pub use wal::*;

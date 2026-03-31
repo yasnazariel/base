@@ -10,7 +10,6 @@ use std::{
 use alloy_eips::BlockNumHash;
 use crossbeam_channel::Sender as CrossbeamSender;
 use reth_chain_state::ExecutedBlock;
-use reth_errors::ProviderError;
 use reth_ethereum_primitives::EthPrimitives;
 use reth_primitives_traits::NodePrimitives;
 use reth_provider::{
@@ -19,6 +18,7 @@ use reth_provider::{
 };
 use reth_prune::{PrunerError, PrunerWithFactory};
 use reth_stages_api::{MetricEvent, MetricEventsSender};
+use reth_storage_errors::provider::ProviderError;
 use reth_tasks::spawn_os_thread;
 use thiserror::Error;
 use tracing::{debug, error, instrument};

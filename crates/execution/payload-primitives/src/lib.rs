@@ -14,7 +14,7 @@
 extern crate alloc;
 
 use alloy_primitives::Bytes;
-use reth_chainspec::EthereumHardforks;
+use reth_ethereum_forks::EthereumHardforks;
 use reth_primitives_traits::{NodePrimitives, SealedBlock};
 
 mod error;
@@ -501,7 +501,8 @@ pub fn validate_execution_requests(requests: &[Bytes]) -> Result<(), EngineObjec
 #[cfg(test)]
 mod tests {
     use assert_matches::assert_matches;
-    use reth_chainspec::{ChainSpecBuilder, EthereumHardfork, ForkCondition};
+    use reth_chainspec::ChainSpecBuilder;
+    use reth_ethereum_forks::{EthereumHardfork, ForkCondition};
 
     use super::*;
 

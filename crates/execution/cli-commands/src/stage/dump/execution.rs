@@ -7,13 +7,15 @@ use reth_db_api::{
 };
 use reth_db_common::DbTool;
 use reth_evm::ConfigureEvm;
-use reth_node_builder::NodeTypesWithDB;
 use reth_node_core::dirs::{ChainPath, DataDirPath};
+use reth_node_types::NodeTypesWithDB;
 use reth_provider::{
     DatabaseProviderFactory, ProviderFactory,
     providers::{ProviderNodeTypes, RocksDBProvider, StaticFileProvider},
 };
-use reth_stages::{Stage, StageCheckpoint, UnwindInput, stages::ExecutionStage};
+use reth_stages::stages::ExecutionStage;
+use reth_stages_api::{ExecInput, Stage, UnwindInput};
+use reth_stages_types::StageCheckpoint;
 use tracing::info;
 
 use super::setup;
@@ -179,8 +181,7 @@ where
 
     let mut exec_stage = ExecutionStage::new_with_executor(evm_config, Arc::new(consensus));
 
-    let input =
-        reth_stages::ExecInput { target: Some(to), checkpoint: Some(StageCheckpoint::new(from)) };
+    let input = ExecInput { target: Some(to), checkpoint: Some(StageCheckpoint::new(from)) };
     exec_stage.execute(&output_provider_factory.database_provider_rw()?, input)?;
 
     info!(target: "reth::cli", "Success");

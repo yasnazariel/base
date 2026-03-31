@@ -11,11 +11,12 @@ use base_node_core::{
     node::{OpPayloadBuilder, OpPoolBuilder},
 };
 use reth_chainspec::ChainSpec;
+use reth_node_api::FullNodeTypes;
 use reth_node_builder::{
     Node, NodeAdapter, NodeComponentsBuilder,
     components::{BasicPayloadServiceBuilder, ComponentsBuilder},
-    node::{FullNodeTypes, NodeTypes},
 };
+use reth_node_types::NodeTypes;
 use reth_primitives::OpPrimitives;
 use reth_provider::providers::ProviderFactoryBuilder;
 use reth_rpc_api::eth::RpcTypes;

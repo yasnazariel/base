@@ -11,9 +11,9 @@ use futures::{Stream, StreamExt};
 use reth_ethereum_primitives::EthPrimitives;
 use reth_evm::ConfigureEvm;
 use reth_exex_types::ExExHead;
-use reth_node_api::NodePrimitives;
+use reth_primitives_traits::NodePrimitives;
 use reth_provider::{BlockReader, Chain, HeaderProvider, StateProviderFactory};
-use reth_stages_api::ExecutionStageThresholds;
+use reth_stages_types::ExecutionStageThresholds;
 use reth_tracing::tracing::debug;
 use tokio::sync::mpsc::Receiver;
 

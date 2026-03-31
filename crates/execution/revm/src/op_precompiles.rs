@@ -1,5 +1,5 @@
 //! Contains Base specific precompiles.
-use std::{boxed::Box, string::String};
+use alloc::{boxed::Box, string::String};
 
 use revm::{
     context::Cfg,

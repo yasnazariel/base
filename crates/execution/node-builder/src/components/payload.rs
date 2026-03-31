@@ -4,13 +4,14 @@ use std::future::Future;
 
 use reth_basic_payload_builder::{BasicPayloadJobGenerator, BasicPayloadJobGeneratorConfig};
 use reth_chain_state::CanonStateSubscriptions;
-use reth_node_api::{NodeTypes, PayloadBuilderFor};
+use reth_node_api::{FullNodeTypes, PayloadBuilderFor};
+use reth_node_types::NodeTypes;
 use reth_payload_builder::{PayloadBuilderHandle, PayloadBuilderService, PayloadServiceCommand};
 use reth_transaction_pool::TransactionPool;
 use tokio::sync::{broadcast, mpsc};
 use tracing::warn;
 
-use crate::{BuilderContext, FullNodeTypes};
+use crate::BuilderContext;
 
 /// A type that knows how to spawn the payload service.
 pub trait PayloadServiceBuilder<Node: FullNodeTypes, Pool: TransactionPool, EvmConfig>:

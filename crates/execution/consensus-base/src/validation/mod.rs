@@ -215,7 +215,8 @@ mod tests {
     use alloy_primitives::{Bytes, b256, hex};
     use base_alloy_chains::BaseUpgrade;
     use base_alloy_consensus::{OpReceipt, OpTxEnvelope};
-    use reth_chainspec::{BASE_SEPOLIA, BaseFeeParams, ChainSpec, EthChainSpec, ForkCondition};
+    use reth_chainspec::{BASE_SEPOLIA, BaseFeeParams, ChainSpec, EthChainSpec};
+    use reth_ethereum_forks::ForkCondition;
 
     use super::*;
 

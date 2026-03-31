@@ -6,7 +6,7 @@ use human_bytes::human_bytes;
 use reth_codecs::Compact;
 use reth_db_api::{cursor::DbDupCursorRO, database::Database, tables, transaction::DbTx};
 use reth_db_common::DbTool;
-use reth_node_builder::NodeTypesWithDB;
+use reth_node_types::NodeTypesWithDB;
 use reth_storage_api::StorageSettingsCache;
 use tracing::info;
 

@@ -3,11 +3,11 @@
 use std::{hash::Hasher, time::Instant};
 
 use clap::ValueEnum;
-use reth_chainspec::EthereumHardforks;
 use reth_db::{DatabaseEnv, tables};
 use reth_db_api::table::Table;
 use reth_db_common::DbTool;
-use reth_node_builder::NodeTypesWithDBAdapter;
+use reth_ethereum_forks::EthereumHardforks;
+use reth_node_types::NodeTypesWithDBAdapter;
 use reth_provider::RocksDBProviderFactory;
 use tracing::info;
 

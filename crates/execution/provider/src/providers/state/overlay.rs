@@ -6,8 +6,6 @@ use std::{
 use alloy_primitives::{B256, BlockNumber};
 use metrics::{Counter, Histogram};
 use reth_chain_state::LazyOverlay;
-use reth_db_api::DatabaseError;
-use reth_errors::{ProviderError, ProviderResult};
 use reth_metrics::Metrics;
 use reth_primitives_traits::dashmap::{self, DashMap};
 use reth_prune_types::PruneSegment;
@@ -16,6 +14,10 @@ use reth_storage_api::{
     BlockNumReader, ChangeSetReader, DBProvider, DatabaseProviderFactory,
     DatabaseProviderROFactory, PruneCheckpointReader, StageCheckpointReader,
     StorageChangeSetReader, StorageSettingsCache,
+};
+use reth_storage_errors::{
+    db::DatabaseError,
+    provider::{ProviderError, ProviderResult},
 };
 use reth_trie::{
     HashedPostStateSorted,

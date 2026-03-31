@@ -19,9 +19,9 @@ use reth_provider::{
 };
 use reth_prune_types::{PruneCheckpoint, PruneMode, PrunePurpose, PruneSegment};
 use reth_stages_api::{
-    BlockErrorKind, EntitiesCheckpoint, ExecInput, ExecOutput, Stage, StageCheckpoint, StageError,
-    StageId, UnwindInput, UnwindOutput,
+    BlockErrorKind, ExecInput, ExecOutput, Stage, StageError, UnwindInput, UnwindOutput,
 };
+use reth_stages_types::{EntitiesCheckpoint, StageCheckpoint, StageId};
 use reth_static_file_types::StaticFileSegment;
 use thiserror::Error;
 use tracing::{debug, info};
@@ -470,7 +470,7 @@ mod tests {
         StaticFileProviderFactory, TransactionsProvider, providers::StaticFileWriter,
     };
     use reth_prune_types::{PruneCheckpoint, PruneMode};
-    use reth_stages_api::StageUnitCheckpoint;
+    use reth_stages_types::StageUnitCheckpoint;
     use reth_static_file_types::StaticFileSegment;
     use reth_testing_utils::generators::{
         self, BlockParams, BlockRangeParams, random_block, random_block_range,

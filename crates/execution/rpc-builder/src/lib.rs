@@ -42,9 +42,10 @@ use jsonrpsee::{
         middleware::rpc::RpcServiceBuilder,
     },
 };
-use reth_chainspec::{ChainSpecProvider, EthereumHardforks};
+use reth_chainspec::ChainSpecProvider;
 use reth_consensus::FullConsensus;
 use reth_engine_primitives::ConsensusEngineEvent;
+use reth_ethereum_forks::EthereumHardforks;
 use reth_evm::ConfigureEvm;
 pub use reth_ipc::server::{
     Builder as IpcServerBuilder, RpcServiceBuilder as IpcRpcServiceBuilder,

@@ -9,12 +9,11 @@ use parking_lot::Mutex;
 use reth_basic_payload_builder::{
     BasicPayloadJobGeneratorConfig, HeaderForPayload, PayloadConfig, PrecachedState,
 };
-use reth_node_api::{NodePrimitives, PayloadBuilderAttributes, PayloadKind};
-use reth_payload_builder::{
-    KeepPayloadJobAlive, PayloadBuilderError, PayloadJob, PayloadJobGenerator,
+use reth_payload_builder::{KeepPayloadJobAlive, PayloadJob, PayloadJobGenerator};
+use reth_payload_primitives::{
+    BuiltPayload, PayloadBuilderAttributes, PayloadBuilderError, PayloadKind,
 };
-use reth_payload_primitives::BuiltPayload;
-use reth_primitives_traits::HeaderTy;
+use reth_primitives_traits::{HeaderTy, NodePrimitives};
 use reth_provider::{BlockReaderIdExt, CanonStateNotification, StateProviderFactory};
 use reth_revm::cached::CachedReads;
 use reth_tasks::TaskSpawner;
@@ -477,8 +476,9 @@ mod tests {
     use alloy_primitives::U256;
     use base_execution_payload_builder::payload::OpPayloadBuilderAttributes;
     use rand::rng;
-    use reth_node_api::{BuiltPayloadExecutedBlock, NodePrimitives};
+    use reth_payload_primitives::BuiltPayloadExecutedBlock;
     use reth_primitives::{OpPrimitives, SealedBlock};
+    use reth_primitives_traits::NodePrimitives;
     use reth_provider::test_utils::MockEthProvider;
     use reth_tasks::TokioTaskExecutor;
     use reth_testing_utils::generators::{BlockRangeParams, random_block_range};

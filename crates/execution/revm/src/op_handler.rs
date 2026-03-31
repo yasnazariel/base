@@ -1,5 +1,5 @@
 //! Handler related to Base chain
-use std::boxed::Box;
+use alloc::boxed::Box;
 
 use revm::{
     context::{

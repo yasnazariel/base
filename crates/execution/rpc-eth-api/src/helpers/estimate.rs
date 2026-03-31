@@ -6,7 +6,6 @@ use alloy_primitives::{TxKind, U256};
 use alloy_rpc_types_eth::{BlockId, state::StateOverride};
 use futures::Future;
 use reth_chainspec::MIN_TRANSACTION_GAS;
-use reth_errors::ProviderError;
 use reth_evm::{ConfigureEvm, Database, Evm, EvmEnvFor, EvmFor, TransactionEnv, TxEnvFor};
 use reth_revm::{
     database::{EvmStateProvider, StateProviderDatabase},
@@ -21,6 +20,7 @@ use reth_rpc_eth_types::{
     },
 };
 use reth_rpc_server_types::constants::gas_oracle::{CALL_STIPEND_GAS, ESTIMATE_GAS_ERROR_RATIO};
+use reth_storage_errors::provider::ProviderError;
 use revm::{
     context::Block,
     context_interface::{Transaction, result::ExecutionResult},

@@ -15,7 +15,8 @@ use reth_consensus::FullConsensus;
 use reth_db::{static_file::HeaderMask, tables};
 use reth_evm::{ConfigureEvm, execute::Executor, metrics::ExecutorMetrics};
 use reth_execution_types::Chain;
-use reth_exex::{ExExManagerHandle, ExExNotification, ExExNotificationSource};
+use reth_exex::{ExExManagerHandle, ExExNotificationSource};
+use reth_exex_types::ExExNotification;
 use reth_primitives_traits::{BlockBody, NodePrimitives, format_gas_throughput};
 use reth_provider::{
     BlockHashReader, BlockReader, DBProvider, EitherWriter, ExecutionOutcome, HeaderProvider,
@@ -25,9 +26,11 @@ use reth_provider::{
 };
 use reth_revm::database::StateProviderDatabase;
 use reth_stages_api::{
-    BlockErrorKind, CheckpointBlockRange, EntitiesCheckpoint, ExecInput, ExecOutput,
-    ExecutionCheckpoint, ExecutionStageThresholds, Stage, StageCheckpoint, StageError, StageId,
-    UnwindInput, UnwindOutput,
+    BlockErrorKind, ExecInput, ExecOutput, Stage, StageError, UnwindInput, UnwindOutput,
+};
+use reth_stages_types::{
+    CheckpointBlockRange, EntitiesCheckpoint, ExecutionCheckpoint, ExecutionStageThresholds,
+    StageCheckpoint, StageId,
 };
 use reth_static_file_types::StaticFileSegment;
 use reth_trie::KeccakKeyHasher;
@@ -701,9 +704,8 @@ mod tests {
         AccountReader, BlockWriter, DatabaseProviderFactory, ReceiptProvider,
         StaticFileProviderFactory, test_utils::create_test_provider_factory,
     };
-    use reth_prune::PruneModes;
-    use reth_prune_types::{PruneMode, ReceiptsLogPruneConfig};
-    use reth_stages_api::StageUnitCheckpoint;
+    use reth_prune_types::{PruneMode, PruneModes, ReceiptsLogPruneConfig};
+    use reth_stages_types::StageUnitCheckpoint;
     use reth_testing_utils::generators;
 
     use super::*;

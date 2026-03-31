@@ -7,11 +7,13 @@ use alloy_primitives::B256;
 use alloy_rpc_types_engine::{ForkchoiceState, PayloadAttributes};
 use eyre::{Result, eyre};
 use reth_chainspec::ChainSpec;
+use reth_engine_primitives::{EngineTypes, TreeConfig};
+use reth_ethereum_engine_primitives::EthPayloadBuilderAttributes;
 use reth_ethereum_primitives::Block;
 use reth_network_p2p::sync::{NetworkSyncUpdater, SyncState};
-use reth_node_api::{EngineTypes, NodeTypes, PayloadTypes, TreeConfig};
-use reth_node_core::primitives::RecoveredBlock;
-use reth_payload_builder::EthPayloadBuilderAttributes;
+use reth_node_types::NodeTypes;
+use reth_payload_primitives::PayloadTypes;
+use reth_primitives_traits::RecoveredBlock;
 use revm::state::EvmState;
 use tokio::{
     sync::mpsc,

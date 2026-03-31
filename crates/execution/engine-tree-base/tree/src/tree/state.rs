@@ -10,7 +10,8 @@ use alloy_primitives::{
     B256, BlockNumber,
     map::{B256Map, B256Set},
 };
-use reth_chain_state::{DeferredTrieData, EthPrimitives, ExecutedBlock, LazyOverlay};
+use reth_chain_state::{DeferredTrieData, ExecutedBlock, LazyOverlay};
+use reth_ethereum_primitives::EthPrimitives;
 use reth_primitives_traits::{AlloyBlockHeader, NodePrimitives, SealedHeader};
 use tracing::debug;
 

@@ -5,7 +5,8 @@ use std::fmt;
 use alloy_eips::BlockId;
 use alloy_rpc_types_engine::PayloadError;
 use jsonrpsee_core::RpcResult;
-use reth_errors::ConsensusError;
+use reth_consensus::ConsensusError;
+use reth_storage_errors::provider::ProviderError;
 
 /// Helper trait to easily convert various `Result` types into [`RpcResult`]
 pub trait ToRpcResult<Ok, Err>: Sized {
@@ -105,7 +106,7 @@ macro_rules! impl_to_rpc_result {
 impl_to_rpc_result!(PayloadError);
 impl_to_rpc_result!(ConsensusError);
 impl_to_rpc_result!(reth_errors::RethError);
-impl_to_rpc_result!(reth_errors::ProviderError);
+impl_to_rpc_result!(ProviderError);
 impl_to_rpc_result!(reth_network_api::NetworkError);
 
 /// Constructs an invalid params JSON-RPC error.

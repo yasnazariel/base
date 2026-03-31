@@ -24,8 +24,6 @@ mod metrics;
 
 pub use engine_api::{EngineApi, EngineApiSender};
 pub use error::*;
-// re-export server trait for convenience
-pub use reth_rpc_api::EngineApiServer;
 
 #[cfg(test)]
 mod tests {

@@ -5,8 +5,9 @@ use std::sync::Arc;
 
 use alloy_consensus::BlockHeader;
 use alloy_primitives::{Address, B256};
-use reth_chainspec::{EthChainSpec, EthereumHardforks};
+use reth_chainspec::EthChainSpec;
 use reth_ethereum_engine_primitives::EthPayloadAttributes;
+use reth_ethereum_forks::EthereumHardforks;
 use reth_payload_primitives::PayloadAttributesBuilder;
 use reth_primitives_traits::SealedHeader;
 

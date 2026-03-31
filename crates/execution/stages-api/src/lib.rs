@@ -23,8 +23,7 @@ mod util;
 use aquamarine as _;
 pub use error::*;
 pub use pipeline::*;
-// re-export the stages types for convenience
-pub use reth_stages_types::*;
+use reth_stages_types::{PipelineTarget, StageCheckpoint, StageId};
 pub use stage::*;
 
 pub use crate::metrics::*;

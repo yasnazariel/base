@@ -91,9 +91,11 @@ use std::sync::Arc;
 use alloy_rpc_types_engine::ClientVersionV1;
 use base_execution_rpc::engine::OP_ENGINE_CAPABILITIES;
 pub use base_execution_rpc::{OpEngineApi, OpEthApi, OpEthApiBuilder};
-use reth_node_api::{AddOnsContext, EngineApiValidator, FullNodeComponents, NodeTypes};
+use reth_engine_primitives::EngineApiValidator;
+use reth_node_api::{AddOnsContext, FullNodeComponents};
 use reth_node_builder::rpc::{EngineApiBuilder, PayloadValidatorBuilder};
 use reth_node_core::version::{CLIENT_CODE, version_metadata};
+use reth_node_types::NodeTypes;
 use reth_payload_builder::PayloadStore;
 use reth_rpc_engine_api::{EngineApi, EngineCapabilities};
 

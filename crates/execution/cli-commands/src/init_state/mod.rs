@@ -5,11 +5,11 @@ use std::{io::BufReader, path::PathBuf, sync::Arc};
 use alloy_consensus::BlockHeader as AlloyBlockHeader;
 use alloy_primitives::{B256, Sealable};
 use clap::Parser;
-use reth_chainspec::{EthChainSpec, EthereumHardforks};
+use reth_chainspec::EthChainSpec;
 use reth_cli::chainspec::ChainSpecParser;
 use reth_db_common::init::init_from_state_dump;
-use reth_node_api::NodePrimitives;
-use reth_primitives_traits::{SealedHeader, header::HeaderMut};
+use reth_ethereum_forks::EthereumHardforks;
+use reth_primitives_traits::{NodePrimitives, SealedHeader, header::HeaderMut};
 use reth_provider::{
     BlockNumReader, DBProvider, DatabaseProviderFactory, StaticFileProviderFactory,
     StaticFileWriter,

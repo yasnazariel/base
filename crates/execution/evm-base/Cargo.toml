@@ -22,7 +22,7 @@ alloy-primitives.workspace = true
 # base
 base-alloy-flz.workspace = true
 base-alloy-chains.workspace = true
-reth-revm = { workspace = true, features = ["alloy"] }
+reth-revm = { path = "../revm", default-features = false, features = ["alloy"] }
 base-alloy-consensus = { workspace = true, features = ["evm"] }
 
 # revm

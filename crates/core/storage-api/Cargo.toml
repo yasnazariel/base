@@ -16,6 +16,7 @@ workspace = true
 reth-db-models.workspace = true
 reth-chainspec.workspace = true
 reth-db-api = { workspace = true, optional = true }
+reth-ethereum-forks.workspace = true
 reth-execution-types.workspace = true
 reth-primitives-traits.workspace = true
 reth-prune-types.workspace = true
@@ -44,6 +45,7 @@ std = [
 	"alloy-rpc-types-engine/std",
 	"reth-chainspec/std",
 	"reth-db-models/std",
+	"reth-ethereum-forks/std",
 	"reth-ethereum-primitives/std",
 	"reth-execution-types/std",
 	"reth-primitives-traits/std",
@@ -62,6 +64,7 @@ serde = [
 	"alloy-primitives/serde",
 	"alloy-rpc-types-engine/serde",
 	"reth-db-models/serde",
+	"reth-ethereum-forks/serde",
 	"reth-ethereum-primitives/serde",
 	"reth-execution-types/serde",
 	"reth-primitives-traits/serde",

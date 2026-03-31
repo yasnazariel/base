@@ -4,13 +4,12 @@ use alloy_consensus::BlockHeader;
 use alloy_primitives::{B256, BlockNumber};
 use alloy_rlp::Decodable;
 use reth_codecs::Compact;
-use reth_node_builder::NodePrimitives;
-use reth_primitives_traits::{SealedBlock, SealedHeader, SealedHeaderFor};
+use reth_primitives_traits::{NodePrimitives, SealedBlock, SealedHeader, SealedHeaderFor};
 use reth_provider::{
     BlockWriter, ProviderResult, StageCheckpointWriter, StaticFileProviderFactory,
     StaticFileWriter, providers::StaticFileProvider,
 };
-use reth_stages::{StageCheckpoint, StageId};
+use reth_stages_types::{StageCheckpoint, StageId};
 use reth_static_file_types::StaticFileSegment;
 use tracing::info;
 

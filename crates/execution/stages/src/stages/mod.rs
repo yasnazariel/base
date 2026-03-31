@@ -72,9 +72,8 @@ mod tests {
         test_utils::MockNodeTypesWithDB,
     };
     use reth_prune_types::{PruneMode, PruneModes};
-    use reth_stages_api::{
-        ExecInput, ExecutionStageThresholds, PipelineTarget, Stage, StageCheckpoint, StageId,
-    };
+    use reth_stages_api::{ExecInput, Stage};
+    use reth_stages_types::{ExecutionStageThresholds, PipelineTarget, StageCheckpoint, StageId};
     use reth_static_file_types::StaticFileSegment;
     use reth_testing_utils::generators::{
         self, BlockRangeParams, random_block, random_block_range, random_receipt,

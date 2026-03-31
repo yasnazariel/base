@@ -5,13 +5,14 @@ use comfy_table::{Cell, Row, Table as ComfyTable};
 use eyre::WrapErr;
 use human_bytes::human_bytes;
 use itertools::Itertools;
-use reth_chainspec::EthereumHardforks;
 use reth_db::{DatabaseEnv, mdbx, static_file::iter_static_files};
 use reth_db_api::{TableViewer, Tables, database::Database};
 use reth_db_common::DbTool;
+use reth_ethereum_forks::EthereumHardforks;
 use reth_fs_util as fs;
-use reth_node_builder::{NodePrimitives, NodeTypesWithDB, NodeTypesWithDBAdapter};
 use reth_node_core::dirs::{ChainPath, DataDirPath};
+use reth_node_types::{NodeTypesWithDB, NodeTypesWithDBAdapter};
+use reth_primitives_traits::NodePrimitives;
 use reth_provider::{
     RocksDBProviderFactory,
     providers::{ProviderNodeTypes, StaticFileProvider},

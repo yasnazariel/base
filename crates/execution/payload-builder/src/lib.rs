@@ -30,7 +30,10 @@
 //! use std::task::{Context, Poll};
 //! use alloy_consensus::{Header, Block};
 //! use alloy_primitives::U256;
-//! use reth_payload_builder::{EthBuiltPayload, PayloadBuilderError, KeepPayloadJobAlive, EthPayloadBuilderAttributes, PayloadJob, PayloadJobGenerator, PayloadKind};
+//! use reth_ethereum_engine_primitives::{EthBuiltPayload, EthPayloadBuilderAttributes};
+//! use reth_payload_builder::{
+//!     KeepPayloadJobAlive, PayloadBuilderError, PayloadJob, PayloadJobGenerator, PayloadKind,
+//! };
 //! use reth_primitives_traits::SealedBlock;
 //!
 //! /// The generator type that creates new jobs that builds empty blocks.
@@ -107,6 +110,8 @@
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+use reth_ethereum_engine_primitives as _;
+
 mod metrics;
 mod service;
 mod traits;
@@ -117,13 +122,6 @@ pub mod noop;
 pub mod test_utils;
 
 pub use alloy_rpc_types::engine::PayloadId;
-// re-export the Ethereum engine primitives for convenience
-#[doc(inline)]
-pub use reth_ethereum_engine_primitives::{
-    BlobSidecars, EthBuiltPayload, EthPayloadBuilderAttributes,
-};
-pub use reth_payload_builder_primitives::PayloadBuilderError;
-pub use reth_payload_primitives::PayloadKind;
 pub use service::{
     PayloadBuilderHandle, PayloadBuilderService, PayloadServiceCommand, PayloadStore,
 };

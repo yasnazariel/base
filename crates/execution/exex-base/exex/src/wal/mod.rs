@@ -4,7 +4,7 @@ mod cache;
 pub use cache::BlockCache;
 mod storage;
 use reth_ethereum_primitives::EthPrimitives;
-use reth_node_api::NodePrimitives;
+use reth_primitives_traits::NodePrimitives;
 pub use storage::Storage;
 mod metrics;
 use metrics::Metrics;

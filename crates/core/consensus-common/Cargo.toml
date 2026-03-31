@@ -14,6 +14,7 @@ workspace = true
 # reth
 reth-chainspec.workspace = true
 reth-consensus.workspace = true
+reth-ethereum-forks.workspace = true
 
 # ethereum
 reth-primitives-traits.workspace = true
@@ -33,6 +34,7 @@ std = [
 	"alloy-primitives/std",
 	"reth-chainspec/std",
 	"reth-consensus/std",
+	"reth-ethereum-forks/std",
 	"reth-ethereum-primitives/std",
 	"reth-primitives-traits/std",
 ]

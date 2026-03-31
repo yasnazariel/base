@@ -11,11 +11,11 @@ use reth_provider::{
     DBProvider, DatabaseProvider, DatabaseProviderFactory, test_utils::MockNodeTypesWithDB,
 };
 use reth_stages::{
-    StageCheckpoint,
     stages::{MerkleStage, SenderRecoveryStage, TransactionLookupStage},
     test_utils::TestStageDB,
 };
 use reth_stages_api::{ExecInput, Stage, StageExt, UnwindInput};
+use reth_stages_types::StageCheckpoint;
 use tokio::runtime::Runtime;
 
 mod setup;

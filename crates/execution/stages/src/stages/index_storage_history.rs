@@ -15,10 +15,11 @@ use reth_provider::{
 };
 use reth_prune_types::{PruneCheckpoint, PruneMode, PrunePurpose, PruneSegment};
 use reth_stages_api::{ExecInput, ExecOutput, Stage, StageError, UnwindInput, UnwindOutput};
+use reth_stages_types::{StageCheckpoint, StageId};
 use tracing::info;
 
 use super::{collect_history_indices, collect_storage_history_indices};
-use crate::{StageCheckpoint, StageId, stages::utils::load_storage_history};
+use crate::stages::utils::load_storage_history;
 
 /// Stage is indexing history the storage changesets generated in
 /// [`ExecutionStage`][crate::stages::ExecutionStage]. For more information
@@ -697,10 +698,9 @@ mod tests {
 
     #[cfg(all(unix, feature = "rocksdb"))]
     mod rocksdb_tests {
-        use reth_db_api::models::StorageBeforeTx;
+        use reth_db_api::models::{StorageBeforeTx, StorageSettings};
         use reth_provider::{RocksDBProviderFactory, providers::StaticFileWriter};
         use reth_static_file_types::StaticFileSegment;
-        use reth_storage_api::StorageSettings;
 
         use super::*;
 

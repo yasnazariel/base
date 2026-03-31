@@ -663,9 +663,9 @@ mod tests {
 
     use assert_matches::assert_matches;
     use reth_consensus::ConsensusError;
-    use reth_errors::ProviderError;
     use reth_provider::test_utils::{MockNodeTypesWithDB, create_test_provider_factory};
-    use reth_prune::PruneModes;
+    use reth_prune_types::PruneModes;
+    use reth_storage_errors::provider::ProviderError;
     use reth_testing_utils::generators::{self, random_block_with_parent};
     use tokio_stream::StreamExt;
 

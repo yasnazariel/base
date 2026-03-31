@@ -10,7 +10,8 @@ use reth_e2e_test_utils::testsuite::{
     actions::{MakeCanonical, UpdateBlockInfo},
     setup::{NetworkSetup, Setup},
 };
-use reth_node_ethereum::{EthEngineTypes, EthereumNode};
+use reth_ethereum_engine_primitives::EthEngineTypes;
+use reth_node_ethereum::EthereumNode;
 use reth_rpc_e2e_tests::rpc_compat::{InitializeFromExecutionApis, RunRpcCompatTests};
 use tracing::{debug, info};
 

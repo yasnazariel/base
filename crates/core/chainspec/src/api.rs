@@ -6,13 +6,11 @@ use alloy_eips::{calc_next_block_base_fee, eip1559::BaseFeeParams, eip7840::Blob
 use alloy_genesis::Genesis;
 use alloy_primitives::{B256, U256};
 use base_alloy_chains::BaseUpgrades;
+use reth_ethereum_forks::EthereumHardforks;
 use reth_network_peers::NodeRecord;
 use reth_primitives_traits::{AlloyBlockHeader, BlockHeader};
 
-use crate::{
-    ChainSpec, DepositContract, EthereumHardforks, compute_jovian_base_fee,
-    decode_holocene_base_fee,
-};
+use crate::{ChainSpec, DepositContract, compute_jovian_base_fee, decode_holocene_base_fee};
 
 /// Trait representing type configuring a chain spec.
 #[auto_impl::auto_impl(&, Arc)]

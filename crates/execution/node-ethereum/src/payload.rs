@@ -1,16 +1,18 @@
 //! Payload component configuration for the Ethereum node.
 
-use reth_chainspec::{EthChainSpec, EthereumHardforks};
+use reth_chainspec::EthChainSpec;
 use reth_ethereum_engine_primitives::{
     EthBuiltPayload, EthPayloadAttributes, EthPayloadBuilderAttributes,
 };
+use reth_ethereum_forks::EthereumHardforks;
 use reth_ethereum_payload_builder::EthereumBuilderConfig;
 use reth_ethereum_primitives::EthPrimitives;
 use reth_evm::ConfigureEvm;
-use reth_node_api::{FullNodeTypes, NodeTypes, PrimitivesTy, TxTy};
-use reth_node_builder::{
-    BuilderContext, PayloadBuilderConfig, PayloadTypes, components::PayloadBuilderBuilder,
-};
+use reth_node_api::FullNodeTypes;
+use reth_node_builder::{BuilderContext, components::PayloadBuilderBuilder};
+use reth_node_core::cli::config::PayloadBuilderConfig;
+use reth_node_types::{NodeTypes, PrimitivesTy, TxTy};
+use reth_payload_primitives::PayloadTypes;
 use reth_transaction_pool::{PoolTransaction, TransactionPool};
 
 /// A basic ethereum payload service.

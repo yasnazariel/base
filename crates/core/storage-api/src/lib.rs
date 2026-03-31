@@ -10,9 +10,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 extern crate alloc;
-
-// Re-export used error types.
-pub use reth_storage_errors as errors;
 mod account;
 pub use account::*;
 
@@ -100,8 +97,6 @@ pub use header_sync_gap::HeaderSyncGapProvider;
 pub mod metadata;
 #[cfg(feature = "db-api")]
 pub use metadata::{MetadataProvider, MetadataWriter, StorageSettingsCache};
-#[cfg(feature = "db-api")]
-pub use reth_db_api::models::StorageSettings;
 
 mod full;
 pub use full::*;

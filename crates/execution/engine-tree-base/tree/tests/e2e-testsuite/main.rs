@@ -17,7 +17,7 @@ use reth_e2e_test_utils::testsuite::{
     },
     setup::{NetworkSetup, Setup},
 };
-use reth_engine_tree::tree::TreeConfig;
+use reth_engine_primitives::TreeConfig;
 use reth_ethereum_engine_primitives::EthEngineTypes;
 use reth_node_ethereum::EthereumNode;
 

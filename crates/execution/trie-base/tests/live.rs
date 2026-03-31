@@ -10,16 +10,15 @@ use base_execution_trie::{
     live::LiveTrieCollector,
 };
 use derive_more::Constructor;
-use reth_chainspec::{
-    BASE_MAINNET, ChainSpec, ChainSpecBuilder, EthereumHardfork, MIN_TRANSACTION_GAS,
-};
+use reth_chainspec::{BASE_MAINNET, ChainSpec, ChainSpecBuilder, MIN_TRANSACTION_GAS};
 use reth_db::Database;
 use reth_db_common::init::init_genesis;
+use reth_ethereum_forks::EthereumHardfork;
 use reth_ethereum_primitives::{Block, BlockBody, Receipt, Transaction, TransactionSigned};
 use reth_evm::{ConfigureEvm, execute::Executor};
 use reth_evm_ethereum::EthEvmConfig;
-use reth_node_api::{NodePrimitives, NodeTypesWithDB};
-use reth_primitives_traits::{Block as _, RecoveredBlock};
+use reth_node_types::NodeTypesWithDB;
+use reth_primitives_traits::{Block as _, NodePrimitives, RecoveredBlock};
 use reth_provider::{
     BlockWriter as _, ExecutionOutcome, HashedPostStateProvider, LatestStateProviderRef,
     ProviderFactory, StateRootProvider,

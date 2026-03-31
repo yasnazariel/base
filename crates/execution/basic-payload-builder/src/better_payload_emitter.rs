@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use reth_payload_builder::PayloadBuilderError;
+use reth_payload_primitives::PayloadBuilderError;
 use tokio::sync::broadcast;
 
 use crate::{BuildArguments, BuildOutcome, HeaderForPayload, PayloadBuilder, PayloadConfig};

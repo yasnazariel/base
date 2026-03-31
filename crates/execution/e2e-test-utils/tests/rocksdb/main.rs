@@ -12,8 +12,8 @@ use jsonrpsee::core::client::ClientT;
 use reth_chainspec::{BASE_MAINNET, ChainSpec, ChainSpecBuilder};
 use reth_db::tables;
 use reth_e2e_test_utils::{E2ETestSetupBuilder, transaction::TransactionTestContext, wallet};
+use reth_ethereum_engine_primitives::EthPayloadBuilderAttributes;
 use reth_node_ethereum::EthereumNode;
-use reth_payload_builder::EthPayloadBuilderAttributes;
 use reth_provider::RocksDBProviderFactory;
 
 const ROCKSDB_POLL_TIMEOUT: Duration = Duration::from_secs(60);

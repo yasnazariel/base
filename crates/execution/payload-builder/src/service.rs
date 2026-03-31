@@ -16,8 +16,10 @@ use alloy_primitives::BlockTimestamp;
 use alloy_rpc_types::engine::PayloadId;
 use futures_util::{Stream, StreamExt, future::FutureExt};
 use reth_chain_state::CanonStateNotification;
-use reth_payload_builder_primitives::{Events, PayloadBuilderError, PayloadEvents};
-use reth_payload_primitives::{BuiltPayload, PayloadBuilderAttributes, PayloadKind, PayloadTypes};
+use reth_payload_builder_primitives::{Events, PayloadEvents};
+use reth_payload_primitives::{
+    BuiltPayload, PayloadBuilderAttributes, PayloadBuilderError, PayloadKind, PayloadTypes,
+};
 use reth_primitives_traits::NodePrimitives;
 use tokio::sync::{
     broadcast, mpsc,

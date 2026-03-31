@@ -9,8 +9,9 @@ use alloy_rpc_types_engine::{
 use alloy_rpc_types_eth::{Block, Header, Receipt, Transaction, TransactionRequest};
 use eyre::Result;
 use futures_util::future::BoxFuture;
+use reth_engine_primitives::EngineTypes;
 use reth_ethereum_primitives::TransactionSigned;
-use reth_node_api::{EngineTypes, PayloadTypes};
+use reth_payload_primitives::PayloadTypes;
 use reth_rpc_api::clients::{EngineApiClient, EthApiClient};
 use tokio::time::sleep;
 use tracing::debug;

@@ -5,13 +5,16 @@ use std::sync::Arc;
 use node::NodeTestContext;
 use reth_chainspec::ChainSpec;
 use reth_db::{DatabaseEnv, test_utils::TempDatabase};
+use reth_engine_primitives::TreeConfig;
 use reth_network_api::test_utils::PeersHandleProvider;
+use reth_node_api::FullNodeTypesAdapter;
 use reth_node_builder::{
-    FullNodeTypesAdapter, Node, NodeAdapter, NodeComponents, NodeTypes, NodeTypesWithDBAdapter,
-    PayloadTypes,
-    components::NodeComponentsBuilder,
+    Node, NodeAdapter,
+    components::{NodeComponents, NodeComponentsBuilder},
     rpc::{EngineValidatorAddOn, RethRpcAddOns},
 };
+use reth_node_types::{NodeTypes, NodeTypesWithDBAdapter};
+use reth_payload_primitives::PayloadTypes;
 use reth_provider::providers::{BlockchainProvider, NodeTypesForProvider};
 use wallet::Wallet;
 
@@ -65,7 +68,7 @@ pub async fn setup_engine<N>(
     num_nodes: usize,
     chain_spec: Arc<N::ChainSpec>,
     is_dev: bool,
-    tree_config: reth_node_api::TreeConfig,
+    tree_config: TreeConfig,
     attributes_generator: impl Fn(u64) -> <<N as NodeTypes>::Payload as PayloadTypes>::PayloadBuilderAttributes + Send + Sync + Copy + 'static,
 ) -> eyre::Result<(
     Vec<NodeHelperType<N, BlockchainProvider<NodeTypesWithDBAdapter<N, TmpDB>>>>,
@@ -90,7 +93,7 @@ pub async fn setup_engine_with_connection<N>(
     num_nodes: usize,
     chain_spec: Arc<N::ChainSpec>,
     is_dev: bool,
-    tree_config: reth_node_api::TreeConfig,
+    tree_config: TreeConfig,
     attributes_generator: impl Fn(u64) -> <<N as NodeTypes>::Payload as PayloadTypes>::PayloadBuilderAttributes + Send + Sync + Copy + 'static,
     connect_nodes: bool,
 ) -> eyre::Result<(
@@ -136,7 +139,9 @@ where
     Self: Default
         + NodeTypesForProvider<
             Payload: PayloadTypes<
-                PayloadBuilderAttributes: From<reth_payload_builder::EthPayloadBuilderAttributes>,
+                PayloadBuilderAttributes: From<
+                    reth_ethereum_engine_primitives::EthPayloadBuilderAttributes,
+                >,
             >,
         > + Node<
             TmpNodeAdapter<Self, BlockchainProvider<NodeTypesWithDBAdapter<Self, TmpDB>>>,
@@ -161,7 +166,9 @@ impl<T> NodeBuilderHelper for T where
     Self: Default
         + NodeTypesForProvider<
             Payload: PayloadTypes<
-                PayloadBuilderAttributes: From<reth_payload_builder::EthPayloadBuilderAttributes>,
+                PayloadBuilderAttributes: From<
+                    reth_ethereum_engine_primitives::EthPayloadBuilderAttributes,
+                >,
             >,
         > + Node<
             TmpNodeAdapter<Self, BlockchainProvider<NodeTypesWithDBAdapter<Self, TmpDB>>>,

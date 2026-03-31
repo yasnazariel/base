@@ -25,12 +25,10 @@ use base_node_core::OpEngineTypes;
 use reth_chain_state::{DeferredTrieData, ExecutedBlock, LazyOverlay};
 use reth_chainspec::ChainSpec;
 use reth_consensus::{ConsensusError, FullConsensus, ReceiptRootBloom};
-use reth_engine_primitives::{
-    ConfigureEngineEvm, ExecutableTxIterator, InvalidBlockHook, PayloadValidator,
-};
+use reth_engine_primitives::{InvalidBlockHook, PayloadValidator, TreeConfig};
 use reth_engine_tree::tree::{
     CachedStateProvider, EngineApiMetrics, EngineApiTreeState, EngineValidator, ExecutionEnv,
-    PayloadHandle, PayloadProcessor, StateProviderBuilder, TreeConfig,
+    PayloadHandle, PayloadProcessor, StateProviderBuilder,
     error::{InsertBlockError, InsertBlockErrorKind, InsertPayloadError},
     instrumented_state::InstrumentedStateProvider,
     payload_validator::{BlockOrPayload, TreeCtx, ValidationOutcome},
@@ -38,17 +36,18 @@ use reth_engine_tree::tree::{
     receipt_root_task::{IndexedReceipt, ReceiptRootTaskHandle},
     sparse_trie::StateRootComputeOutcome,
 };
-use reth_errors::{BlockExecutionError, ProviderResult};
 use reth_evm::{
-    ConfigureEvm, EvmEnvFor, ExecutionCtxFor, SpecFor, block::BlockExecutor,
-    execute::ExecutableTxFor,
+    ConfigureEngineEvm, ConfigureEvm, EvmEnvFor, ExecutableTxIterator, ExecutionCtxFor, SpecFor,
+    block::BlockExecutor, execute::ExecutableTxFor,
 };
 use reth_evm_ethereum::OpRethReceiptBuilder;
-use reth_node_api::{AddOnsContext, BlockTy, FullNodeComponents, FullNodeTypes, NodeTypes};
+use reth_execution_errors::BlockExecutionError;
+use reth_node_api::{AddOnsContext, FullNodeComponents, FullNodeTypes};
 use reth_node_builder::{
     invalid_block_hook::InvalidBlockHookExt,
-    rpc::{ChangesetCache, EngineValidatorBuilder, PayloadValidatorBuilder},
+    rpc::{EngineValidatorBuilder, PayloadValidatorBuilder},
 };
+use reth_node_types::{BlockTy, NodeTypes};
 use reth_payload_primitives::{
     BuiltPayload, InvalidPayloadAttributesError, NewPayloadError, PayloadTypes,
 };
@@ -68,7 +67,9 @@ use reth_revm::{
     database::StateProviderDatabase,
     db::{State, states::bundle_state::BundleRetention},
 };
+use reth_storage_errors::provider::ProviderResult;
 use reth_trie::{HashedPostState, StateRoot, updates::TrieUpdates};
+use reth_trie_db::ChangesetCache;
 use reth_trie_parallel::root::{ParallelStateRoot, ParallelStateRootError};
 use revm_primitives::Address;
 use tracing::{debug, debug_span, error, info, instrument, trace, warn};

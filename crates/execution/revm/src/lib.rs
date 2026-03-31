@@ -19,6 +19,7 @@ pub mod cached;
 pub mod cancelled;
 
 /// Contains glue code for integrating reth database into revm's [Database].
+#[cfg(feature = "database")]
 pub mod database;
 
 mod op_api;

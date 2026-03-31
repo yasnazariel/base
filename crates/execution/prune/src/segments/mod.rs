@@ -5,15 +5,14 @@ mod user;
 use std::{fmt::Debug, ops::RangeInclusive};
 
 use alloy_primitives::{BlockNumber, TxNumber};
-use reth_provider::{
-    BlockReader, PruneCheckpointWriter, StaticFileProviderFactory, errors::provider::ProviderResult,
-};
+use reth_provider::{BlockReader, PruneCheckpointWriter, StaticFileProviderFactory};
 use reth_prune_types::{
     PruneCheckpoint, PruneMode, PruneProgress, PrunePurpose, PruneSegment, SegmentOutput,
     SegmentOutputCheckpoint,
 };
 use reth_stages_types::StageId;
 use reth_static_file_types::StaticFileSegment;
+use reth_storage_errors::provider::ProviderResult;
 pub use set::SegmentSet;
 use tracing::error;
 pub use user::{

@@ -13,8 +13,8 @@ use rand::{Rng, seq::IndexedRandom};
 use reth_e2e_test_utils::{NodeHelperType, TmpDB, wallet::Wallet};
 use reth_ethereum_engine_primitives::EthPayloadBuilderAttributes;
 use reth_ethereum_primitives::TxType;
-use reth_node_api::NodeTypesWithDBAdapter;
 use reth_node_ethereum::EthereumNode;
+use reth_node_types::NodeTypesWithDBAdapter;
 use reth_provider::FullProvider;
 
 /// Helper function to create a new eth payload attributes

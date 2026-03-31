@@ -35,7 +35,7 @@ impl ChainSpecParser for EthereumChainSpecParser {
 
 #[cfg(test)]
 mod tests {
-    use reth_chainspec::EthereumHardforks;
+    use reth_ethereum_forks::EthereumHardforks;
 
     use super::*;
 

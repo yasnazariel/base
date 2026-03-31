@@ -4,8 +4,9 @@ use std::sync::Arc;
 
 use alloy_consensus::BlockHeader;
 use clap::Parser;
-use reth_chainspec::{ChainSpecProvider, EthChainSpec, EthereumHardforks};
+use reth_chainspec::{ChainSpecProvider, EthChainSpec};
 use reth_cli::chainspec::ChainSpecParser;
+use reth_ethereum_forks::EthereumHardforks;
 use reth_provider::BlockHashReader;
 use tracing::info;
 

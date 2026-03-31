@@ -41,7 +41,7 @@ use {
     alloy_eips::Decodable2718,
     alloy_primitives::{Bytes, U256},
     alloy_rpc_types_engine::ExecutionData,
-    reth_chainspec::EthereumHardforks,
+    reth_ethereum_forks::EthereumHardforks,
     reth_evm::{EvmEnvFor, ExecutionCtxFor},
     reth_primitives_traits::{SignedTransaction, TxTy, constants::MAX_TX_GAS_LIMIT_OSAKA},
     reth_storage_errors::any::AnyError,

@@ -17,8 +17,11 @@ use base_execution_trie::{
 };
 use futures::TryStreamExt;
 use reth_execution_types::Chain;
-use reth_exex::{ExExContext, ExExEvent, ExExNotification};
-use reth_node_api::{FullNodeComponents, NodePrimitives, NodeTypes};
+use reth_exex::{ExExContext, ExExEvent};
+use reth_exex_types::ExExNotification;
+use reth_node_api::FullNodeComponents;
+use reth_node_types::NodeTypes;
+use reth_primitives_traits::NodePrimitives;
 use reth_provider::{BlockNumReader, BlockReader, TransactionVariant};
 use reth_trie::{HashedPostStateSorted, SortedTrieData, updates::TrieUpdatesSorted};
 use tokio::{sync::watch, task, time};

@@ -26,14 +26,14 @@ use reth_db::{
     },
 };
 use reth_db_common::init::init_genesis;
+use reth_ethereum_engine_primitives::EthEngineTypes;
 use reth_ethereum_primitives::{EthPrimitives, TransactionSigned};
 use reth_evm_ethereum::MockEvmConfig;
 use reth_execution_types::Chain;
-use reth_exex::{ExExContext, ExExEvent, ExExNotification, ExExNotifications, Wal};
+use reth_exex::{ExExContext, ExExEvent, ExExNotifications, Wal};
+use reth_exex_types::ExExNotification;
 use reth_network::{NetworkConfigBuilder, NetworkManager, config::rng_secret_key};
-use reth_node_api::{
-    FullNodeTypes, FullNodeTypesAdapter, NodePrimitives, NodeTypes, NodeTypesWithDBAdapter,
-};
+use reth_node_api::{FullNodeTypes, FullNodeTypesAdapter};
 use reth_node_builder::{
     BuilderContext, Node, NodeAdapter, RethFullAdapter,
     components::{
@@ -42,15 +42,13 @@ use reth_node_builder::{
     },
 };
 use reth_node_core::node_config::NodeConfig;
-use reth_node_ethereum::{
-    EthEngineTypes,
-    node::{
-        EthereumAddOns, EthereumEngineValidatorBuilder, EthereumEthApiBuilder,
-        EthereumNetworkBuilder, EthereumPayloadBuilder,
-    },
+use reth_node_ethereum::node::{
+    EthereumAddOns, EthereumEngineValidatorBuilder, EthereumEthApiBuilder, EthereumNetworkBuilder,
+    EthereumPayloadBuilder,
 };
+use reth_node_types::{NodeTypes, NodeTypesWithDBAdapter};
 use reth_payload_builder::noop::NoopPayloadBuilderService;
-use reth_primitives_traits::{Block as _, RecoveredBlock};
+use reth_primitives_traits::{Block as _, NodePrimitives, RecoveredBlock};
 use reth_provider::{
     BlockReader, EthStorage, ProviderFactory,
     providers::{BlockchainProvider, RocksDBProvider, StaticFileProvider},

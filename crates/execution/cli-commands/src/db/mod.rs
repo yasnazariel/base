@@ -4,11 +4,12 @@ use std::{
 };
 
 use clap::{Parser, Subcommand};
-use reth_chainspec::{EthChainSpec, EthereumHardforks};
+use reth_chainspec::EthChainSpec;
 use reth_cli::chainspec::ChainSpecParser;
 use reth_cli_runner::CliContext;
 use reth_db::version::{DB_VERSION, DatabaseVersionError, get_db_version};
 use reth_db_common::DbTool;
+use reth_ethereum_forks::EthereumHardforks;
 
 use crate::common::{AccessRights, CliNodeTypes, Environment, EnvironmentArgs};
 mod account_storage;

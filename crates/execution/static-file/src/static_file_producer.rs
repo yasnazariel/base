@@ -18,12 +18,12 @@ use reth_provider::{
 };
 use reth_prune_types::PruneModes;
 use reth_stages_types::StageId;
-use reth_static_file_types::{HighestStaticFiles, StaticFileTargets};
+use reth_static_file_types::{HighestStaticFiles, StaticFileProducerEvent, StaticFileTargets};
 use reth_storage_errors::provider::ProviderResult;
 use reth_tokio_util::{EventSender, EventStream};
 use tracing::{debug, trace};
 
-use crate::{StaticFileProducerEvent, segments, segments::Segment};
+use crate::{segments, segments::Segment};
 
 /// Result of [`StaticFileProducerInner::run`] execution.
 pub type StaticFileProducerResult = ProviderResult<StaticFileTargets>;

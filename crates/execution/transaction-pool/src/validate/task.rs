@@ -3,7 +3,8 @@
 use std::{future::Future, pin::Pin, sync::Arc};
 
 use futures_util::{StreamExt, lock::Mutex};
-use reth_chainspec::{ChainSpecProvider, EthereumHardforks};
+use reth_chainspec::ChainSpecProvider;
+use reth_ethereum_forks::EthereumHardforks;
 use reth_evm::ConfigureEvm;
 use reth_primitives_traits::{HeaderTy, SealedBlock};
 use reth_storage_api::BlockReaderIdExt;

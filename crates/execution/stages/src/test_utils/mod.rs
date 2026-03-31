@@ -1,4 +1,4 @@
-use reth_stages_api::StageId;
+use reth_stages_types::StageId;
 
 #[cfg(test)]
 mod macros;

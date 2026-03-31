@@ -5,7 +5,8 @@ use std::time::Duration;
 use alloy_consensus::BlobTransactionValidationError;
 use alloy_eips::{BlockId, Typed2718, eip7594::BlobTransactionSidecarVariant};
 use alloy_primitives::{B256, hex};
-use reth_chainspec::{ChainSpecProvider, EthereumHardforks};
+use reth_chainspec::ChainSpecProvider;
+use reth_ethereum_forks::EthereumHardforks;
 use reth_primitives_traits::{AlloyBlockHeader, Recovered, WithEncoded};
 use reth_rpc_convert::RpcConvert;
 use reth_rpc_eth_api::{

@@ -85,9 +85,9 @@ mod tests {
     use alloy_primitives::Bytes;
     use assert_matches::assert_matches;
     use reth_chainspec::{ChainSpecProvider, EthChainSpec};
-    use reth_errors::ProviderError;
     use reth_ethereum_primitives::{Block, BlockBody};
     use reth_primitives_traits::{RecoveredBlock, SealedBlock, block::TestBlock};
+    use reth_storage_errors::provider::ProviderError;
 
     use super::*;
     use crate::{BlockWriter, test_utils::create_test_provider_factory};

@@ -8,7 +8,9 @@ use reth_provider::{
     DatabaseProviderFactory, ProviderFactory,
     providers::{ProviderNodeTypes, RocksDBProvider, StaticFileProvider},
 };
-use reth_stages::{Stage, StageCheckpoint, UnwindInput, stages::AccountHashingStage};
+use reth_stages::stages::AccountHashingStage;
+use reth_stages_api::{ExecInput, Stage, UnwindInput};
+use reth_stages_types::StageCheckpoint;
 use tracing::info;
 
 use super::setup;
@@ -91,10 +93,7 @@ fn dry_run<N: ProviderNodeTypes>(
     };
 
     loop {
-        let input = reth_stages::ExecInput {
-            target: Some(to),
-            checkpoint: Some(StageCheckpoint::new(from)),
-        };
+        let input = ExecInput { target: Some(to), checkpoint: Some(StageCheckpoint::new(from)) };
         if stage.execute(&provider, input)?.done {
             break;
         }

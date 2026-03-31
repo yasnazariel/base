@@ -4,7 +4,7 @@ use std::{sync::Arc, time::Instant};
 
 use base_flashblocks::{FlashblocksAPI, PendingBlocks};
 use futures::StreamExt;
-use reth_node_api::NodePrimitives;
+use reth_primitives_traits::NodePrimitives;
 use reth_provider::CanonStateNotification;
 use reth_tracing::tracing::debug;
 use reth_transaction_pool::TransactionPool;

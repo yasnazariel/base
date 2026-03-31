@@ -5,7 +5,9 @@ use core::error;
 
 use alloy_primitives::B256;
 use alloy_rpc_types_engine::{ForkchoiceUpdateError, PayloadError, PayloadStatusEnum};
-use reth_errors::{BlockExecutionError, ProviderError, RethError};
+use reth_errors::RethError;
+use reth_execution_errors::BlockExecutionError;
+use reth_storage_errors::provider::ProviderError;
 use tokio::sync::oneshot;
 
 /// Possible error variants during payload building.

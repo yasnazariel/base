@@ -1,6 +1,7 @@
 //! Helper trait for full rpc provider
 
-use reth_chainspec::{ChainSpecProvider, EthereumHardforks};
+use reth_chainspec::ChainSpecProvider;
+use reth_ethereum_forks::EthereumHardforks;
 
 use crate::{
     BlockReaderIdExt, HeaderProvider, StageCheckpointReader, StateProviderFactory,

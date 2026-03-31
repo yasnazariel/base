@@ -1,8 +1,6 @@
 //! Contains the payload builder trait.
 
-use reth_node_api::PayloadBuilderAttributes;
-use reth_payload_builder::PayloadBuilderError;
-use reth_payload_primitives::BuiltPayload;
+use reth_payload_primitives::{BuiltPayload, PayloadBuilderAttributes, PayloadBuilderError};
 
 use crate::{BlockCell, BuildArguments};
 

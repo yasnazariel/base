@@ -16,7 +16,7 @@ use alloy_rpc_types_eth::TransactionRequest;
 use futures::StreamExt;
 use reth_chainspec::{BASE_MAINNET, ChainSpec, ChainSpecBuilder};
 use reth_e2e_test_utils::setup_engine;
-use reth_node_api::TreeConfig;
+use reth_engine_primitives::TreeConfig;
 use reth_node_ethereum::EthereumNode;
 use reth_revm::db::BundleAccount;
 

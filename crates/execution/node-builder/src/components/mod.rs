@@ -23,13 +23,13 @@ pub use network::*;
 pub use payload::*;
 pub use pool::*;
 use reth_consensus::FullConsensus;
+use reth_evm::ConfigureEvm;
 use reth_network::types::NetPrimitivesFor;
 use reth_network_api::FullNetwork;
-use reth_node_api::{NodeTypes, PrimitivesTy, TxTy};
+use reth_node_api::FullNodeTypes;
+use reth_node_types::{NodeTypes, PrimitivesTy, TxTy};
 use reth_payload_builder::PayloadBuilderHandle;
 use reth_transaction_pool::{PoolPooledTx, PoolTransaction, TransactionPool};
-
-use crate::{ConfigureEvm, FullNodeTypes};
 
 /// An abstraction over the components of a node, consisting of:
 ///  - evm and executor

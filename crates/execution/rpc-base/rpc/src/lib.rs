@@ -47,7 +47,6 @@ pub use eth::{EthApi, EthApiBuilder, EthFilter, EthPubSub, helpers::SyncListener
 pub use miner::MinerApi;
 pub use net::NetApi;
 pub use reth::RethApi;
-pub use reth_rpc_convert::RpcTypes;
 pub use rpc::RPCApi;
 pub use testing::TestingApi;
 pub use trace::TraceApi;

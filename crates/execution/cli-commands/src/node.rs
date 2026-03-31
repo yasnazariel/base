@@ -3,10 +3,11 @@
 use std::{ffi::OsString, fmt, path::PathBuf, sync::Arc};
 
 use clap::{Args, Parser, value_parser};
-use reth_chainspec::{EthChainSpec, EthereumHardforks};
+use reth_chainspec::EthChainSpec;
 use reth_cli::chainspec::ChainSpecParser;
 use reth_cli_runner::CliContext;
 use reth_db::init_db;
+use reth_ethereum_forks::EthereumHardforks;
 use reth_node_builder::NodeBuilder;
 use reth_node_core::{
     args::{

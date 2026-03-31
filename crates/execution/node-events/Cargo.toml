@@ -14,7 +14,8 @@ workspace = true
 # reth
 reth-storage-api = { workspace = true, features = ["std"] }
 reth-network-api.workspace = true
-reth-stages.workspace = true
+reth-stages-api.workspace = true
+reth-stages-types.workspace = true
 reth-prune-types.workspace = true
 reth-static-file-types.workspace = true
 reth-primitives-traits.workspace = true

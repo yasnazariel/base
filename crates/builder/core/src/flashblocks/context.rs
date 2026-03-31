@@ -12,14 +12,14 @@ use base_alloy_consensus::{OpDepositReceipt, OpReceipt, OpTxType};
 use base_alloy_evm::OpReceiptBuilder;
 use base_execution_payload_builder::{OpPayloadBuilderAttributes, error::OpPayloadBuilderError};
 use reth_basic_payload_builder::PayloadConfig;
-use reth_chainspec::{ChainSpec, EthChainSpec, EthereumHardforks};
+use reth_chainspec::{ChainSpec, EthChainSpec};
+use reth_ethereum_forks::EthereumHardforks;
 use reth_evm::{
     ConfigureEvm, Evm, EvmEnv, EvmError, InvalidTxError, eth::receipt_builder::ReceiptBuilderCtx,
 };
 use reth_evm_ethereum::{OpEvmConfig, OpNextBlockEnvAttributes};
-use reth_node_api::PayloadBuilderError;
 use reth_payload_builder::PayloadId;
-use reth_payload_primitives::PayloadBuilderAttributes;
+use reth_payload_primitives::{PayloadBuilderAttributes, PayloadBuilderError};
 use reth_primitives::SealedHeader;
 use reth_primitives_traits::{InMemorySize, SignedTransaction};
 use reth_revm::{L1BlockInfo, OpSpecId, State, context::Block};

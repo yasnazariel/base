@@ -14,10 +14,8 @@ use reth_provider::{
     BlockReader, BlockWriter, DBProvider, ProviderError, StaticFileProviderFactory, StatsReader,
     providers::StaticFileWriter,
 };
-use reth_stages_api::{
-    EntitiesCheckpoint, ExecInput, ExecOutput, Stage, StageCheckpoint, StageError, StageId,
-    UnwindInput, UnwindOutput,
-};
+use reth_stages_api::{ExecInput, ExecOutput, Stage, StageError, UnwindInput, UnwindOutput};
+use reth_stages_types::{EntitiesCheckpoint, StageCheckpoint, StageId};
 use reth_static_file_types::StaticFileSegment;
 use reth_storage_errors::provider::ProviderResult;
 use tracing::{debug, trace};
@@ -256,7 +254,7 @@ where
 mod tests {
     use assert_matches::assert_matches;
     use reth_provider::StaticFileProviderFactory;
-    use reth_stages_api::StageUnitCheckpoint;
+    use reth_stages_types::StageUnitCheckpoint;
     use test_utils::*;
 
     use super::*;

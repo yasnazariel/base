@@ -8,8 +8,9 @@
 use std::{fmt, fmt::Debug, future::Future};
 
 use reth_exex::ExExContext;
-use reth_node_api::{FullNodeComponents, FullNodeTypes, NodeAddOns, NodeTypes};
+use reth_node_api::{FullNodeComponents, FullNodeTypes, NodeAddOns};
 use reth_node_core::node_config::NodeConfig;
+use reth_node_types::NodeTypes;
 use reth_tasks::TaskExecutor;
 
 use crate::{
@@ -115,7 +116,7 @@ impl<T: FullNodeTypes, C: NodeComponents<T>> FullNodeComponents for NodeAdapter<
     fn payload_builder_handle(
         &self,
     ) -> &reth_payload_builder::PayloadBuilderHandle<
-        <Self::Types as reth_node_api::NodeTypes>::Payload,
+        <Self::Types as reth_node_types::NodeTypes>::Payload,
     > {
         self.components.payload_builder_handle()
     }

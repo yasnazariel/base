@@ -1,10 +1,10 @@
 use alloy_primitives::B256;
 use reth_db_api::{
-    DatabaseError,
     cursor::{DbCursorRO, DbCursorRW, DbDupCursorRO, DbDupCursorRW},
     tables,
     transaction::DbTx,
 };
+use reth_storage_errors::db::DatabaseError;
 use reth_trie::{
     BranchNodeCompact, Nibbles, StorageTrieEntry, StoredNibbles, StoredNibblesSubKey,
     trie_cursor::{TrieCursor, TrieCursorFactory, TrieStorageCursor},

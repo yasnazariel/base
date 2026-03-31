@@ -20,10 +20,11 @@ use futures::{FutureExt, StreamExt};
 use nanoid::nanoid;
 use parking_lot::Mutex;
 use reth_chainspec::ChainSpec;
-use reth_node_builder::{NodeBuilder, NodeConfig};
+use reth_node_builder::NodeBuilder;
 use reth_node_core::{
     args::{DatadirArgs, NetworkArgs, RpcServerArgs},
     exit::NodeExitFuture,
+    node_config::NodeConfig,
 };
 use reth_tasks::{Runtime, RuntimeBuilder, RuntimeConfig};
 use reth_transaction_pool::{AllTransactionsEvents, BasePooledTransaction, TransactionPool};
@@ -295,7 +296,7 @@ fn chain_spec() -> Arc<ChainSpec> {
 /// `BaseUpgrade::V1` activated at genesis (timestamp 0).
 pub fn chain_spec_with_base_v1() -> Arc<ChainSpec> {
     use base_alloy_chains::BaseUpgrade;
-    use reth_chainspec::ForkCondition;
+    use reth_ethereum_forks::ForkCondition;
 
     let genesis = include_str!("./artifacts/genesis.json.tmpl");
     let genesis = serde_json::from_str(genesis).expect("invalid genesis JSON");

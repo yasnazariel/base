@@ -42,7 +42,7 @@ use reth_eth_wire::{
 use reth_ethereum_primitives::{TransactionSigned, TxType};
 use reth_metrics::common::mpsc::UnboundedMeteredReceiver;
 use reth_network_api::{
-    NetworkEvent, NetworkEventListenerProvider, PeerKind, PeerRequest, PeerRequestSender, Peers,
+    NetworkEvent, NetworkEventListenerProvider, PeerRequest, PeerRequestSender, Peers,
     events::{PeerEvent, SessionInfo},
 };
 use reth_network_p2p::{
@@ -50,7 +50,7 @@ use reth_network_p2p::{
     sync::SyncStateProvider,
 };
 use reth_network_peers::PeerId;
-use reth_network_types::ReputationChangeKind;
+use reth_network_types::{PeerKind, ReputationChangeKind};
 use reth_primitives_traits::SignedTransaction;
 use reth_tokio_util::EventStream;
 use reth_transaction_pool::{
@@ -2163,11 +2163,12 @@ mod tests {
     use futures::FutureExt;
     use reth_chainspec::MIN_TRANSACTION_GAS;
     use reth_ethereum_primitives::{PooledTransactionVariant, Transaction, TransactionSigned};
-    use reth_network_api::{NetworkInfo, PeerKind};
+    use reth_network_api::NetworkInfo;
     use reth_network_p2p::{
         error::{RequestError, RequestResult},
         sync::{NetworkSyncUpdater, SyncState},
     };
+    use reth_network_types::PeerKind;
     use reth_storage_api::noop::NoopProvider;
     use reth_transaction_pool::test_utils::{
         MockTransaction, MockTransactionFactory, TestPool, testing_pool,

@@ -15,6 +15,7 @@ workspace = true
 ## reth
 reth-chain-state.workspace = true
 reth-chainspec.workspace = true
+reth-ethereum-forks.workspace = true
 reth-config.workspace = true
 reth-consensus.workspace = true
 reth-db = { workspace = true, features = ["mdbx"] }
@@ -34,12 +35,15 @@ reth-network-p2p.workspace = true
 reth-network.workspace = true
 reth-node-api.workspace = true
 reth-node-core.workspace = true
+reth-node-types.workspace = true
 reth-node-events.workspace = true
 reth-node-metrics.workspace = true
 reth-payload-builder.workspace = true
+reth-payload-primitives.workspace = true
 reth-primitives-traits.workspace = true
 reth-provider.workspace = true
 reth-prune.workspace = true
+reth-prune-types.workspace = true
 reth-rpc.workspace = true
 reth-rpc-api.workspace = true
 reth-rpc-builder.workspace = true
@@ -47,6 +51,8 @@ reth-rpc-engine-api.workspace = true
 reth-rpc-eth-types.workspace = true
 reth-rpc-layer.workspace = true
 reth-stages.workspace = true
+reth-stages-api.workspace = true
+reth-stages-types.workspace = true
 reth-static-file.workspace = true
 reth-tasks = { workspace = true, features = ["rayon"] }
 reth-tokio-util.workspace = true

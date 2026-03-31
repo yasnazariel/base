@@ -202,7 +202,7 @@
 //! use reth_chainspec::ChainSpecProvider;
 //! use reth_transaction_pool::{TransactionValidationTaskExecutor, Pool, TransactionPool};
 //! use reth_transaction_pool::blobstore::InMemoryBlobStore;
-//! use reth_chainspec::EthereumHardforks;
+//! use reth_ethereum_forks::EthereumHardforks;
 //! use reth_evm::ConfigureEvm;
 //! use alloy_consensus::Header;
 //! async fn t<C, Evm>(client: C, evm_config: Evm)
@@ -288,8 +288,9 @@ use alloy_eips::{
 };
 use alloy_primitives::{Address, B256, TxHash, U256, map::AddressSet};
 use aquamarine as _;
-use reth_chainspec::{ChainSpecProvider, EthereumHardforks};
+use reth_chainspec::ChainSpecProvider;
 use reth_eth_wire_types::HandleMempoolData;
+use reth_ethereum_forks::EthereumHardforks;
 use reth_evm::ConfigureEvm;
 use reth_evm_ethereum::EthEvmConfig;
 use reth_execution_types::ChangedAccount;
@@ -464,7 +465,7 @@ where
     /// use reth_transaction_pool::{
     ///     blobstore::InMemoryBlobStore, Pool, TransactionValidationTaskExecutor,
     /// };
-    /// use reth_chainspec::EthereumHardforks;
+    /// use reth_ethereum_forks::EthereumHardforks;
     /// use reth_evm::ConfigureEvm;
     /// use alloy_consensus::Header;
     /// # fn t<C, Evm>(client: C, evm_config: Evm)

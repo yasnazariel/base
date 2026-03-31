@@ -25,7 +25,7 @@ use reth_node_metrics::{
     version::VersionInfo,
 };
 use reth_provider::{ChainSpecProvider, StageCheckpointReader, providers::ProviderNodeTypes};
-use reth_stages::StageId;
+use reth_stages_types::StageId;
 use reth_tasks::TaskExecutor;
 use reth_trie::{
     Nibbles,

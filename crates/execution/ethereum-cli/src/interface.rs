@@ -3,7 +3,7 @@
 use std::{ffi::OsString, fmt, future::Future, marker::PhantomData, sync::Arc};
 
 use clap::{Parser, Subcommand};
-use reth_chainspec::{ChainSpec, EthChainSpec, Hardforks};
+use reth_chainspec::{ChainSpec, EthChainSpec};
 use reth_cli::chainspec::ChainSpecParser;
 use reth_cli_commands::{
     common::{CliComponentsBuilder, CliNodeTypes, HeaderMut},
@@ -14,13 +14,14 @@ use reth_cli_commands::{
 };
 use reth_cli_runner::CliRunner;
 use reth_db::DatabaseEnv;
-use reth_node_api::NodePrimitives;
+use reth_ethereum_forks::Hardforks;
 use reth_node_builder::{NodeBuilder, WithLaunchContext};
 use reth_node_core::{
     args::{LogArgs, OtlpInitStatus, OtlpLogsStatus, TraceArgs},
     version::version_metadata,
 };
 use reth_node_metrics::recorder::install_prometheus_recorder;
+use reth_primitives_traits::NodePrimitives;
 use reth_rpc_server_types::{DefaultRpcModuleValidator, RpcModuleValidator};
 use reth_tracing::{FileWorkerGuard, Layers};
 use tracing::{info, warn};

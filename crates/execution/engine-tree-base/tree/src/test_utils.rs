@@ -9,8 +9,8 @@ use reth_provider::test_utils::{
     MockNodeTypesWithDB, create_test_provider_factory_with_chain_spec,
 };
 use reth_prune_types::PruneModes;
-use reth_stages::{ExecOutput, StageError, test_utils::TestStages};
-use reth_stages_api::Pipeline;
+use reth_stages::test_utils::TestStages;
+use reth_stages_api::{ExecOutput, Pipeline, StageError};
 use reth_static_file::StaticFileProducer;
 use tokio::sync::watch;
 

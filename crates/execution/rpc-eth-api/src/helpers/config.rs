@@ -10,14 +10,15 @@ use alloy_eips::{
 use alloy_evm::precompiles::Precompile;
 use alloy_primitives::Address;
 use jsonrpsee::{core::RpcResult, proc_macros::rpc};
-use reth_chainspec::{ChainSpecProvider, EthChainSpec, EthereumHardforks, Hardforks, Head};
-use reth_errors::{ProviderError, RethError};
+use reth_chainspec::{ChainSpecProvider, EthChainSpec};
+use reth_errors::RethError;
+use reth_ethereum_forks::{EthereumHardforks, Hardforks, Head};
 use reth_evm::{ConfigureEvm, Evm, precompiles::PrecompilesMap};
-use reth_node_api::NodePrimitives;
-use reth_primitives_traits::header::HeaderMut;
+use reth_primitives_traits::{NodePrimitives, header::HeaderMut};
 use reth_revm::db::EmptyDB;
 use reth_rpc_eth_types::EthApiError;
 use reth_storage_api::BlockReaderIdExt;
+use reth_storage_errors::provider::ProviderError;
 
 /// RPC endpoint support for [EIP-7910](https://eips.ethereum.org/EIPS/eip-7910)
 #[cfg_attr(not(feature = "client"), rpc(server, namespace = "eth"))]

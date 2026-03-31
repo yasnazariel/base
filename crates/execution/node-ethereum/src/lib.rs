@@ -11,13 +11,11 @@
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-pub use reth_ethereum_engine_primitives::EthEngineTypes;
 use reth_revm as _;
 use revm as _;
 
 pub mod evm;
 pub use evm::{EthEvmConfig, OpEvmConfig};
-pub use reth_ethereum_consensus as consensus;
 pub mod node;
 pub use node::*;
 

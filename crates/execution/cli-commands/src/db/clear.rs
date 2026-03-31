@@ -7,7 +7,7 @@ use reth_db_api::{
     transaction::{DbTx, DbTxMut},
 };
 use reth_db_common::DbTool;
-use reth_node_builder::NodeTypesWithDB;
+use reth_node_types::NodeTypesWithDB;
 use reth_provider::StaticFileProviderFactory;
 use reth_static_file_types::StaticFileSegment;
 

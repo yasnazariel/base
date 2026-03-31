@@ -12,21 +12,23 @@ use alloy_rpc_types_engine::{ForkchoiceState, PayloadStatus};
 use futures::{Stream, StreamExt, TryFutureExt, stream::FuturesUnordered};
 use itertools::Either;
 use reth_chainspec::{ChainSpecProvider, EthChainSpec};
-use reth_engine_primitives::{
-    BeaconEngineMessage, BeaconOnNewPayloadError, ExecutionPayload as _, OnForkChoiceUpdated,
-};
+use reth_engine_primitives::{BeaconEngineMessage, BeaconOnNewPayloadError, OnForkChoiceUpdated};
 use reth_engine_tree::tree::EngineValidator;
-use reth_errors::{BlockExecutionError, BlockValidationError, RethError, RethResult};
+use reth_errors::{RethError, RethResult};
 use reth_evm::{
     ConfigureEvm,
     execute::{BlockBuilder, BlockBuilderOutcome},
 };
-use reth_payload_primitives::{BuiltPayload, EngineApiMessageVersion, PayloadTypes};
+use reth_execution_errors::{BlockExecutionError, BlockValidationError};
+use reth_payload_primitives::{
+    BuiltPayload, EngineApiMessageVersion, ExecutionPayload as _, PayloadTypes,
+};
 use reth_primitives_traits::{
     BlockBody as _, BlockTy, HeaderTy, SealedBlock, SignedTransaction, block::Block as _,
 };
 use reth_revm::{database::StateProviderDatabase, db::State};
-use reth_storage_api::{BlockReader, StateProviderFactory, errors::ProviderError};
+use reth_storage_api::{BlockReader, StateProviderFactory};
+use reth_storage_errors::provider::ProviderError;
 use tokio::sync::oneshot;
 use tracing::*;
 

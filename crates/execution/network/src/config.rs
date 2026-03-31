@@ -3,7 +3,7 @@
 use std::{collections::HashSet, net::SocketAddr, sync::Arc};
 
 use alloy_eips::BlockNumHash;
-use reth_chainspec::{ChainSpecProvider, EthChainSpec, Hardforks};
+use reth_chainspec::{ChainSpecProvider, EthChainSpec};
 use reth_discv4::{DEFAULT_DISCOVERY_ADDRESS, Discv4Config, Discv4ConfigBuilder, NatResolver};
 use reth_discv5::NetworkStackId;
 use reth_dns_discovery::DnsDiscoveryConfig;
@@ -12,7 +12,7 @@ use reth_eth_wire::{
     UnifiedStatus,
     handshake::{EthHandshake, EthRlpxHandshake},
 };
-use reth_ethereum_forks::{ForkFilter, Head};
+use reth_ethereum_forks::{ForkFilter, Hardforks, Head};
 use reth_network_peers::{PeerId, TrustedPeer, mainnet_nodes, pk2id, sepolia_nodes};
 use reth_network_types::{PeersConfig, SessionsConfig};
 use reth_storage_api::{BlockNumReader, BlockReader, HeaderProvider, noop::NoopProvider};
@@ -721,11 +721,10 @@ mod tests {
     use alloy_eips::eip2124::ForkHash;
     use alloy_genesis::Genesis;
     use alloy_primitives::U256;
-    use reth_chainspec::{
-        BASE_MAINNET, Chain, ChainSpecBuilder, EthereumHardfork, ForkCondition, ForkId,
-    };
+    use reth_chainspec::{BASE_MAINNET, Chain, ChainSpecBuilder};
     use reth_discv5::build_local_enr;
     use reth_dns_discovery::tree::LinkEntry;
+    use reth_ethereum_forks::{EthereumHardfork, ForkCondition, ForkId};
     use reth_storage_api::noop::NoopProvider;
 
     use super::*;

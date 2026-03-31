@@ -2,9 +2,10 @@
 use std::future::Future;
 
 use reth_consensus::FullConsensus;
-use reth_node_api::PrimitivesTy;
+use reth_node_api::FullNodeTypes;
+use reth_node_types::PrimitivesTy;
 
-use crate::{BuilderContext, FullNodeTypes};
+use crate::BuilderContext;
 
 /// A type that knows how to build the consensus implementation.
 pub trait ConsensusBuilder<Node: FullNodeTypes>: Send {

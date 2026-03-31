@@ -3,17 +3,15 @@ use std::sync::Arc;
 use alloy_consensus::{BlockHeader, Header, TxEip2930, constants::ETH_TO_WEI};
 use alloy_genesis::{Genesis, GenesisAccount};
 use alloy_primitives::{Address, TxKind, U256, b256};
-use reth_chainspec::{
-    BASE_MAINNET, ChainSpec, ChainSpecBuilder, EthereumHardfork, MIN_TRANSACTION_GAS,
-};
+use reth_chainspec::{BASE_MAINNET, ChainSpec, ChainSpecBuilder, MIN_TRANSACTION_GAS};
+use reth_ethereum_forks::EthereumHardfork;
 use reth_ethereum_primitives::{Block, BlockBody, Receipt, Transaction};
 use reth_evm::{
     ConfigureEvm,
     execute::{BlockExecutionOutput, Executor},
 };
 use reth_evm_ethereum::EthEvmConfig;
-use reth_node_api::NodePrimitives;
-use reth_primitives_traits::{Block as _, RecoveredBlock};
+use reth_primitives_traits::{Block as _, NodePrimitives, RecoveredBlock};
 use reth_provider::{
     BlockWriter as _, ExecutionOutcome, LatestStateProvider, ProviderFactory,
     providers::ProviderNodeTypes,

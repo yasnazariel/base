@@ -260,7 +260,6 @@ base-engine-tree = { path = "crates/execution/engine-tree-base" }
 
 base-flashblocks = { path = "crates/execution/flashblocks" }
 
-base-execution-forks = { path = "crates/core/forks" }
 
 base-execution-storage = { path = "crates/execution/storage" }
 
@@ -791,7 +790,6 @@ reth-eth-wire = { path = "crates/execution/eth-wire" }
 
 reth-eth-wire-types = { path = "crates/execution/eth-wire-types" }
 
-reth-ethereum = { path = "crates/execution/ethereum" }
 
 reth-ethereum-cli = { path = "crates/execution/ethereum-cli", default-features = false }
 

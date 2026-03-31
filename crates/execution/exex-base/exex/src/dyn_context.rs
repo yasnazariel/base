@@ -6,8 +6,10 @@ use std::fmt::Debug;
 use alloy_eips::BlockNumHash;
 use reth_chainspec::EthChainSpec;
 use reth_ethereum_primitives::EthPrimitives;
-use reth_node_api::{FullNodeComponents, HeaderTy, NodePrimitives, NodeTypes, PrimitivesTy};
+use reth_node_api::FullNodeComponents;
 use reth_node_core::node_config::NodeConfig;
+use reth_node_types::{HeaderTy, NodeTypes, PrimitivesTy};
+use reth_primitives_traits::NodePrimitives;
 use reth_provider::BlockReader;
 use tokio::sync::mpsc;
 

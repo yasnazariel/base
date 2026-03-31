@@ -2,8 +2,9 @@
 use std::{path::PathBuf, sync::Arc};
 
 use clap::Parser;
-use reth_chainspec::{ChainSpecProvider, EthChainSpec, EthereumHardforks};
+use reth_chainspec::{ChainSpecProvider, EthChainSpec};
 use reth_cli::chainspec::ChainSpecParser;
+use reth_ethereum_forks::EthereumHardforks;
 use reth_node_core::version::version_metadata;
 use tracing::info;
 

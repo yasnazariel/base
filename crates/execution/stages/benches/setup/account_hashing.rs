@@ -3,14 +3,13 @@
 use std::{fs, ops::RangeInclusive, path::Path};
 
 use alloy_primitives::BlockNumber;
-use reth_db_api::{
-    DatabaseError as DbError, cursor::DbCursorRO, database::Database, tables, transaction::DbTx,
-};
+use reth_db_api::{cursor::DbCursorRO, database::Database, tables, transaction::DbTx};
 use reth_stages::{
-    StageCheckpoint,
     stages::{AccountHashingStage, SeedOpts},
     test_utils::TestStageDB,
 };
+use reth_stages_types::StageCheckpoint;
+use reth_storage_errors::db::DatabaseError as DbError;
 
 use super::constants;
 

@@ -14,7 +14,7 @@ use reth_db::{
         tempdir_path,
     },
 };
-use reth_node_builder::NodeTypesWithDBAdapter;
+use reth_node_types::NodeTypesWithDBAdapter;
 use reth_provider::{
     ProviderFactory,
     providers::{NodeTypesForProvider, RocksDBBuilder, StaticFileProvider},

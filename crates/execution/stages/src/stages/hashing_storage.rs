@@ -16,10 +16,8 @@ use reth_db_api::{
 use reth_etl::Collector;
 use reth_primitives_traits::StorageEntry;
 use reth_provider::{DBProvider, HashingWriter, StatsReader, StorageReader};
-use reth_stages_api::{
-    EntitiesCheckpoint, ExecInput, ExecOutput, Stage, StageCheckpoint, StageError, StageId,
-    StorageHashingCheckpoint, UnwindInput, UnwindOutput,
-};
+use reth_stages_api::{ExecInput, ExecOutput, Stage, StageError, UnwindInput, UnwindOutput};
+use reth_stages_types::{EntitiesCheckpoint, StageCheckpoint, StageId, StorageHashingCheckpoint};
 use reth_storage_api::StorageSettingsCache;
 use reth_storage_errors::provider::ProviderResult;
 use tracing::info;

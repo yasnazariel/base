@@ -46,16 +46,13 @@ use reth_network_p2p::{bodies::downloader::BodyDownloader, headers::downloader::
 use reth_primitives_traits::{Block, NodePrimitives};
 use reth_provider::HeaderSyncGapProvider;
 use reth_prune_types::{PruneMode, PruneModes};
-use reth_stages_api::Stage;
+use reth_stages_api::{Stage, StageSet, StageSetBuilder};
 use tokio::sync::watch;
 
-use crate::{
-    StageSet, StageSetBuilder,
-    stages::{
-        AccountHashingStage, BodyStage, ExecutionStage, FinishStage, HeaderStage,
-        IndexAccountHistoryStage, IndexStorageHistoryStage, MerkleStage, PruneSenderRecoveryStage,
-        PruneStage, SenderRecoveryStage, StorageHashingStage, TransactionLookupStage,
-    },
+use crate::stages::{
+    AccountHashingStage, BodyStage, ExecutionStage, FinishStage, HeaderStage,
+    IndexAccountHistoryStage, IndexStorageHistoryStage, MerkleStage, PruneSenderRecoveryStage,
+    PruneStage, SenderRecoveryStage, StorageHashingStage, TransactionLookupStage,
 };
 
 /// A set containing all stages to run a fully syncing instance of reth.

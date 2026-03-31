@@ -2,7 +2,7 @@ use std::{fmt, sync::Arc};
 
 use clap::Subcommand;
 use eyre::{Result, eyre};
-use reth_chainspec::{ChainSpec, EthChainSpec, Hardforks};
+use reth_chainspec::{ChainSpec, EthChainSpec};
 use reth_cli::chainspec::ChainSpecParser;
 use reth_cli_commands::{
     common::{CliComponentsBuilder, CliNodeTypes, HeaderMut},
@@ -10,10 +10,12 @@ use reth_cli_commands::{
 };
 use reth_cli_runner::CliRunner;
 use reth_db::DatabaseEnv;
-use reth_node_api::NodePrimitives;
+use reth_ethereum_consensus::EthBeaconConsensus;
+use reth_ethereum_forks::Hardforks;
 use reth_node_builder::{NodeBuilder, WithLaunchContext};
-use reth_node_ethereum::{EthEvmConfig, EthereumNode, consensus::EthBeaconConsensus};
+use reth_node_ethereum::{EthEvmConfig, EthereumNode};
 use reth_node_metrics::recorder::install_prometheus_recorder;
+use reth_primitives_traits::NodePrimitives;
 use reth_rpc_server_types::RpcModuleValidator;
 use reth_tasks::RayonConfig;
 use reth_tracing::{FileWorkerGuard, Layers};

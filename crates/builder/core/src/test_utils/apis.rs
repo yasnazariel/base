@@ -10,8 +10,9 @@ use jsonrpsee::{
     core::{RpcResult, client::SubscriptionClientT},
     proc_macros::rpc,
 };
-use reth_node_api::{EngineTypes, PayloadTypes};
+use reth_engine_primitives::EngineTypes;
 use reth_payload_builder::PayloadId;
+use reth_payload_primitives::PayloadTypes;
 use reth_rpc_layer::{AuthClientLayer, JwtSecret};
 use serde_json::Value;
 use tracing::{debug, info};

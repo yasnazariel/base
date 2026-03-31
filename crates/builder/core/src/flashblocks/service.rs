@@ -8,11 +8,11 @@ use base_node_runner::{BaseNode, OpNodeTypes, PayloadServiceBuilder as BasePaylo
 use derive_more::Debug;
 use reth_basic_payload_builder::BasicPayloadJobGeneratorConfig;
 use reth_evm_ethereum::OpEvmConfig;
-use reth_node_api::NodeTypes;
 use reth_node_builder::{
     BuilderContext,
     components::{ComponentsBuilder, PayloadServiceBuilder},
 };
+use reth_node_types::NodeTypes;
 use reth_payload_builder::{PayloadBuilderHandle, PayloadBuilderService};
 use reth_provider::CanonStateSubscriptions;
 use tracing::info;

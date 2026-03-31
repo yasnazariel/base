@@ -78,6 +78,8 @@ tokio = { workspace = true, features = ["test-util", "rt-multi-thread", "macros"
 
 # misc
 serial_test.workspace = true
+reth-ethereum-forks.workspace = true
+reth-node-types.workspace = true
 
 [features]
 serde-bincode-compat = [

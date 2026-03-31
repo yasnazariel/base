@@ -91,6 +91,3 @@ pub mod prelude;
 pub mod stages;
 
 pub mod sets;
-
-// re-export the stages API
-pub use reth_stages_api::*;

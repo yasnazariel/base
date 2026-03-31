@@ -7,7 +7,7 @@ use std::{any::Any, net::SocketAddr, sync::Arc, time::Instant};
 use alloy_eips::BlockHashOrNumber;
 use alloy_primitives::Sealable;
 use clap::Parser;
-use reth_chainspec::{EthChainSpec, EthereumHardforks, Hardforks};
+use reth_chainspec::EthChainSpec;
 use reth_cli::chainspec::ChainSpecParser;
 use reth_cli_runner::CliContext;
 use reth_cli_util::get_secret_key;
@@ -16,6 +16,7 @@ use reth_downloaders::{
     bodies::bodies::BodiesDownloaderBuilder,
     headers::reverse_headers::ReverseHeadersDownloaderBuilder,
 };
+use reth_ethereum_forks::{EthereumHardforks, Hardforks};
 use reth_exex::ExExManagerHandle;
 use reth_network::BlockDownloaderProvider;
 use reth_network_p2p::HeadersClient;
@@ -33,14 +34,13 @@ use reth_provider::{
     ChainSpecProvider, DBProvider, DatabaseProviderFactory, StageCheckpointReader,
     StageCheckpointWriter,
 };
-use reth_stages::{
-    ExecInput, ExecOutput, ExecutionStageThresholds, Stage, StageExt, UnwindInput, UnwindOutput,
-    stages::{
-        AccountHashingStage, BodyStage, ExecutionStage, HeaderStage, IndexAccountHistoryStage,
-        IndexStorageHistoryStage, MerkleStage, SenderRecoveryStage, StorageHashingStage,
-        TransactionLookupStage,
-    },
+use reth_stages::stages::{
+    AccountHashingStage, BodyStage, ExecutionStage, HeaderStage, IndexAccountHistoryStage,
+    IndexStorageHistoryStage, MerkleStage, SenderRecoveryStage, StorageHashingStage,
+    TransactionLookupStage,
 };
+use reth_stages_api::{ExecInput, ExecOutput, Stage, StageExt, UnwindInput, UnwindOutput};
+use reth_stages_types::ExecutionStageThresholds;
 use tokio::sync::watch;
 use tracing::*;
 

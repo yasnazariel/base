@@ -3,7 +3,7 @@ use std::{ops::RangeInclusive, time::Duration};
 use alloy_primitives::BlockNumber;
 use reth_node_api::FullNodeComponents;
 use reth_prune_types::PruneModes;
-use reth_stages_api::ExecutionStageThresholds;
+use reth_stages_types::ExecutionStageThresholds;
 
 use super::stream::DEFAULT_PARALLELISM;
 use crate::BackfillJob;

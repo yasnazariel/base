@@ -43,7 +43,7 @@ pub use reth_execution_types::*;
 pub use reth_static_file_types as static_file;
 pub use reth_storage_api::{
     HistoryWriter, MetadataProvider, MetadataWriter, StateWriteConfig, StatsReader,
-    StorageSettings, StorageSettingsCache,
+    StorageSettingsCache,
 };
 /// Re-export provider error.
 pub use reth_storage_errors::provider::{ProviderError, ProviderResult};

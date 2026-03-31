@@ -3,27 +3,28 @@
 use std::{future::Future, pin::Pin, sync::Arc};
 
 use alloy_consensus::BlockHeader;
+use alloy_eips::eip2124::Head;
 use futures::{FutureExt, StreamExt, stream_select};
-use reth_chainspec::{EthChainSpec, EthereumHardforks};
+use reth_chainspec::EthChainSpec;
+use reth_engine_primitives::{ConsensusEngineHandle, TreeConfig};
 use reth_engine_service::service::{ChainEvent, EngineService};
 use reth_engine_tree::{
     chain::FromOrchestrator,
     engine::{EngineApiRequest, EngineRequestHandler},
-    tree::TreeConfig,
 };
 use reth_engine_util::EngineMessageStreamExt;
+use reth_ethereum_forks::EthereumHardforks;
 use reth_exex::ExExManagerHandle;
 use reth_network::{NetworkSyncUpdater, SyncState, types::BlockRangeUpdate};
 use reth_network_api::BlockDownloaderProvider;
-use reth_node_api::{
-    BuiltPayload, ConsensusEngineHandle, FullNodeTypes, NodeTypes, NodeTypesWithDBAdapter,
-};
+use reth_node_api::{AddOnsContext, FullNodeTypes};
 use reth_node_core::{
     dirs::{ChainPath, DataDirPath},
     exit::NodeExitFuture,
-    primitives::Head,
 };
 use reth_node_events::node;
+use reth_node_types::{NodeTypes, NodeTypesWithDBAdapter};
+use reth_payload_primitives::BuiltPayload;
 use reth_provider::{
     BlockNumReader, StorageSettingsCache,
     providers::{BlockchainProvider, NodeTypesForProvider},
@@ -36,8 +37,8 @@ use tokio::sync::{mpsc::unbounded_channel, oneshot};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
 use crate::{
-    AddOns, AddOnsContext, FullNode, LaunchContext, LaunchNode, NodeAdapter,
-    NodeBuilderWithComponents, NodeComponents, NodeComponentsBuilder, NodeHandle, NodeTypesAdapter,
+    AddOns, FullNode, LaunchContext, LaunchNode, NodeAdapter, NodeBuilderWithComponents,
+    NodeComponents, NodeComponentsBuilder, NodeHandle, NodeTypesAdapter,
     common::{Attached, LaunchContextWith, WithConfigs},
     hooks::NodeHooks,
     rpc::{EngineShutdown, EngineValidatorAddOn, EngineValidatorBuilder, RethRpcAddOns, RpcHandle},

@@ -12,14 +12,16 @@ use base_execution_rpc::{
 };
 use base_node_core::{OpEngineApiBuilder, OpEngineValidatorBuilder, OpNodeTypes};
 use reth_evm::ConfigureEvm;
-use reth_node_api::{BuildNextEnv, FullNodeComponents, NodeAddOns};
+use reth_node_api::{FullNodeComponents, NodeAddOns};
 use reth_node_builder::rpc::{
     BasicEngineValidatorBuilder, EngineApiBuilder, EngineValidatorAddOn, EngineValidatorBuilder,
-    EthApiBuilder, Identity, PayloadValidatorBuilder, RethRpcAddOns, RethRpcMiddleware,
-    RethRpcServerHandles, RpcAddOns, RpcContext, RpcHandle,
+    EthApiBuilder, PayloadValidatorBuilder, RethRpcAddOns, RethRpcServerHandles, RpcAddOns,
+    RpcContext, RpcHandle,
 };
+use reth_payload_primitives::BuildNextEnv;
 use reth_primitives::{OpHeader, OpPrimitives, OpTransactionSigned};
 use reth_rpc_api::{DebugApiServer, DebugExecutionWitnessApiServer};
+use reth_rpc_builder::{Identity, middleware::RethRpcMiddleware};
 use reth_rpc_server_types::RethRpcModule;
 use reth_tracing::tracing::debug;
 use reth_transaction_pool::{OpPooledTx, TransactionPool};

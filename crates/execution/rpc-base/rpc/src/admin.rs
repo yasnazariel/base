@@ -7,7 +7,8 @@ use alloy_rpc_types_admin::{
 };
 use async_trait::async_trait;
 use jsonrpsee::core::RpcResult;
-use reth_chainspec::{EthChainSpec, EthereumHardfork, EthereumHardforks, ForkCondition};
+use reth_chainspec::EthChainSpec;
+use reth_ethereum_forks::{EthereumHardfork, EthereumHardforks, ForkCondition};
 use reth_network_api::{NetworkInfo, Peers};
 use reth_network_peers::{AnyNode, NodeRecord, id2pk};
 use reth_network_types::PeerKind;

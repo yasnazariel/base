@@ -9,7 +9,11 @@ use alloy_primitives::{Address, B256, Bytes, TxKind, U256, bytes, keccak256};
 use reth_chainspec::{BASE_MAINNET, ChainSpecBuilder, ChainSpecProvider};
 use reth_config::config::StageConfig;
 use reth_consensus::noop::NoopConsensus;
-use reth_db_api::{cursor::DbCursorRO, models::BlockNumberAddress, transaction::DbTx};
+use reth_db_api::{
+    cursor::DbCursorRO,
+    models::{BlockNumberAddress, StorageSettings},
+    transaction::DbTx,
+};
 use reth_db_common::init::init_genesis;
 use reth_downloaders::{
     bodies::bodies::BodiesDownloaderBuilder, file_client::FileClient,
@@ -35,10 +39,11 @@ use reth_provider::{
 use reth_prune_types::PruneModes;
 use reth_revm::database::StateProviderDatabase;
 use reth_stages::sets::DefaultStages;
-use reth_stages_api::{Pipeline, StageId};
+use reth_stages_api::Pipeline;
+use reth_stages_types::StageId;
 use reth_static_file::StaticFileProducer;
 use reth_storage_api::{
-    ChangeSetReader, StateProvider, StorageChangeSetReader, StorageSettings, StorageSettingsCache,
+    ChangeSetReader, StateProvider, StorageChangeSetReader, StorageSettingsCache,
 };
 use reth_testing_utils::generators::{self, generate_key, sign_tx_with_key_pair};
 use reth_trie::{HashedPostState, KeccakKeyHasher, StateRoot};

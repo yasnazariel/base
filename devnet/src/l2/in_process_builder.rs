@@ -19,11 +19,12 @@ use reth_db::{
     ClientVersion, DatabaseEnv, init_db,
     mdbx::{DatabaseArguments, KILOBYTE, MEGABYTE, MaxReadTransactionDuration},
 };
-use reth_node_builder::{NodeBuilder, NodeConfig, NodeHandle};
+use reth_node_builder::{NodeBuilder, NodeHandle};
 use reth_node_core::{
     args::{DatadirArgs, NetworkArgs, RpcServerArgs},
     dirs::{DataDirPath, MaybePlatformPath},
     exit::NodeExitFuture,
+    node_config::NodeConfig,
 };
 use reth_tasks::{Runtime, RuntimeBuilder, RuntimeConfig};
 use reth_transaction_pool::{BasePooledTransaction, BuilderApiImpl, BuilderApiServer};

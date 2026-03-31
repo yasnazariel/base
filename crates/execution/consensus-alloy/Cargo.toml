@@ -37,13 +37,14 @@ serde = { workspace = true, features = ["derive"], optional = true }
 
 # evm
 revm = { workspace = true, optional = true }
-reth-revm = { workspace = true, optional = true }
+reth-revm = { path = "../revm", default-features = false, optional = true }
 alloy-evm = { workspace = true, optional = true }
 
 # reth
 bytes = { workspace = true, optional = true }
 reth-codecs = { workspace = true, optional = true }
 reth-db-api = { workspace = true, optional = true }
+reth-storage-errors.workspace = true
 modular-bitfield = { workspace = true, optional = true }
 reth-zstd-compressors = { workspace = true, optional = true }
 reth-primitives-traits = { workspace = true, optional = true, features = ["serde-bincode-compat"] }

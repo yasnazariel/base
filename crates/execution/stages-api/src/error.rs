@@ -1,10 +1,13 @@
 use alloy_eips::eip1898::BlockWithParent;
 use reth_consensus::ConsensusError;
-use reth_errors::{BlockExecutionError, DatabaseError, RethError};
+use reth_errors::RethError;
+use reth_execution_errors::BlockExecutionError;
 use reth_network_p2p::error::DownloadError;
 use reth_provider::ProviderError;
-use reth_prune::{PruneSegment, PruneSegmentError, PrunerError, UnwindTargetPrunedError};
+use reth_prune::PrunerError;
+use reth_prune_types::{PruneSegment, PruneSegmentError, UnwindTargetPrunedError};
 use reth_static_file_types::StaticFileSegment;
+use reth_storage_errors::db::DatabaseError;
 use thiserror::Error;
 use tokio::sync::broadcast::error::SendError;
 

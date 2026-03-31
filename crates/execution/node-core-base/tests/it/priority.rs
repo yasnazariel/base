@@ -23,10 +23,10 @@ use reth_e2e_test_utils::{
 };
 use reth_node_api::FullNodeTypes;
 use reth_node_builder::{
-    EngineNodeLauncher, Node, NodeBuilder, NodeConfig,
+    EngineNodeLauncher, Node, NodeBuilder,
     components::{BasicPayloadServiceBuilder, ComponentsBuilder},
 };
-use reth_node_core::args::DatadirArgs;
+use reth_node_core::{args::DatadirArgs, node_config::NodeConfig};
 use reth_payload_util::{
     BestPayloadTransactions, PayloadTransactions, PayloadTransactionsChain,
     PayloadTransactionsFixed,

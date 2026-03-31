@@ -17,7 +17,7 @@ reth-chainspec = { workspace = true, optional = true }
 reth-consensus.workspace = true
 reth-db.workspace = true
 reth-engine-primitives = { workspace = true, features = ["std"] }
-reth-errors.workspace = true
+reth-execution-errors.workspace = true
 reth-execution-types.workspace = true
 reth-evm = { workspace = true, features = ["metrics"] }
 reth-network-p2p.workspace = true
@@ -29,6 +29,8 @@ reth-provider.workspace = true
 reth-prune.workspace = true
 reth-revm = { workspace = true, features = ["optional-balance-check"] }
 reth-stages-api.workspace = true
+reth-stages-types.workspace = true
+reth-storage-errors.workspace = true
 reth-tasks.workspace = true
 reth-trie-parallel.workspace = true
 reth-trie-sparse = { workspace = true, features = ["std", "metrics"] }

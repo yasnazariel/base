@@ -16,8 +16,7 @@ use reth_db_api::{
     transaction::DbTx,
 };
 use reth_db_common::DbTool;
-use reth_node_api::{HeaderTy, ReceiptTy, TxTy};
-use reth_node_builder::NodeTypesWithDB;
+use reth_node_types::{HeaderTy, NodeTypesWithDB, ReceiptTy, TxTy};
 use reth_primitives_traits::ValueWithSubKey;
 use reth_provider::{ChangeSetReader, StaticFileProviderFactory, providers::ProviderNodeTypes};
 use reth_static_file_types::StaticFileSegment;

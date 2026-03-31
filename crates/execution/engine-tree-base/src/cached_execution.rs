@@ -6,12 +6,12 @@ use base_alloy_consensus::{OpReceipt, OpTxEnvelope, OpTxType};
 use base_alloy_evm::{OpBlockExecutor, OpTxResult};
 use base_flashblocks::{FlashblocksAPI, FlashblocksState};
 use reth_chainspec::ChainSpec;
-use reth_errors::BlockExecutionError;
 use reth_evm::{
     Evm, RecoveredTx,
     block::{BlockExecutor, ExecutableTx, InternalBlockExecutionError, TxResult},
 };
 use reth_evm_ethereum::OpRethReceiptBuilder;
+use reth_execution_errors::BlockExecutionError;
 use reth_primitives_traits::Recovered;
 use reth_provider::BlockNumReader;
 use reth_revm::{OpHaltReason, OpTransaction, State};

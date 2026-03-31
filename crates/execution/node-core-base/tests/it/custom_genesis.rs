@@ -11,8 +11,8 @@ use reth_db::test_utils::create_test_rw_db_with_path;
 use reth_e2e_test_utils::{
     node::NodeTestContext, transaction::TransactionTestContext, wallet::Wallet,
 };
-use reth_node_builder::{EngineNodeLauncher, Node, NodeBuilder, NodeConfig};
-use reth_node_core::args::DatadirArgs;
+use reth_node_builder::{EngineNodeLauncher, Node, NodeBuilder};
+use reth_node_core::{args::DatadirArgs, node_config::NodeConfig};
 use reth_provider::{HeaderProvider, StageCheckpointReader, providers::BlockchainProvider};
 use reth_stages_types::StageId;
 use tokio::sync::Mutex;

@@ -22,12 +22,11 @@ use reth_db_api::{
     tables,
     tables::BlockNumberList,
 };
-use reth_errors::ProviderError;
 use reth_node_types::NodePrimitives;
 use reth_primitives_traits::{ReceiptTy, StorageEntry};
 use reth_static_file_types::StaticFileSegment;
 use reth_storage_api::{ChangeSetReader, DBProvider, NodePrimitivesProvider, StorageSettingsCache};
-use reth_storage_errors::provider::ProviderResult;
+use reth_storage_errors::provider::{ProviderError, ProviderResult};
 use strum::{Display, EnumIs};
 
 #[cfg(all(unix, feature = "rocksdb"))]
@@ -1085,8 +1084,9 @@ impl EitherWriterDestination {
 mod tests {
     use alloy_primitives::Address;
     use reth_db::models::AccountBeforeTx;
+    use reth_db_api::models::StorageSettings;
     use reth_static_file_types::StaticFileSegment;
-    use reth_storage_api::{DatabaseProviderFactory, StorageSettings};
+    use reth_storage_api::DatabaseProviderFactory;
 
     use super::*;
     use crate::{StaticFileWriter, test_utils::create_test_provider_factory};
@@ -1202,12 +1202,14 @@ mod rocksdb_tests {
 
     use alloy_primitives::{Address, B256};
     use reth_db_api::{
-        models::{IntegerList, ShardedKey, storage_sharded_key::StorageShardedKey},
+        models::{
+            IntegerList, ShardedKey, StorageSettings, storage_sharded_key::StorageShardedKey,
+        },
         tables,
         transaction::DbTxMut,
     };
     use reth_ethereum_primitives::EthPrimitives;
-    use reth_storage_api::{DatabaseProviderFactory, StorageSettings};
+    use reth_storage_api::DatabaseProviderFactory;
     use tempfile::TempDir;
 
     use super::*;

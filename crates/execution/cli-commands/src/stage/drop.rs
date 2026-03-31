@@ -16,13 +16,13 @@ use reth_db_common::{
         insert_genesis_storage_history,
     },
 };
-use reth_node_api::{HeaderTy, ReceiptTy, TxTy};
 use reth_node_core::args::StageEnum;
+use reth_node_types::{HeaderTy, ReceiptTy, TxTy};
 use reth_provider::{
     DBProvider, RocksDBProviderFactory, StaticFileProviderFactory, StaticFileWriter,
 };
-use reth_prune::PruneSegment;
-use reth_stages::StageId;
+use reth_prune_types::PruneSegment;
+use reth_stages_types::StageId;
 use reth_static_file_types::StaticFileSegment;
 
 use crate::common::{AccessRights, CliNodeTypes, Environment, EnvironmentArgs};

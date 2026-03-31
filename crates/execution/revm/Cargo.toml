@@ -13,11 +13,11 @@ workspace = true
 
 [dependencies]
 # reth
-reth-evm = { workspace = true, optional = true }
-reth-primitives-traits.workspace = true
-reth-storage-errors.workspace = true
-reth-storage-api.workspace = true
-reth-trie = { workspace = true, optional = true }
+reth-evm = { path = "../evm", default-features = false, optional = true }
+reth-primitives-traits = { path = "../../core/primitives-traits", default-features = false, optional = true }
+reth-storage-errors = { path = "../../core/storage-errors", default-features = false, optional = true }
+reth-storage-api = { path = "../../core/storage-api", default-features = false, optional = true }
+reth-trie = { path = "../trie-base/trie", default-features = false, optional = true }
 
 # alloy
 alloy-evm = { workspace = true, optional = true }
@@ -52,13 +52,19 @@ std = [
 	"alloy-sol-types/std",
 	"base-alloy-flz/std",
 	"base-consensus-genesis/std",
+	"database",
 	"reth-ethereum-forks/std",
 	"reth-evm?/std",
-	"reth-primitives-traits/std",
+	"reth-primitives-traits?/std",
 	"reth-storage-api/std",
 	"reth-storage-errors/std",
 	"revm/std",
 	"serde?/std",
+]
+database = [
+	"dep:reth-primitives-traits",
+	"dep:reth-storage-api",
+	"dep:reth-storage-errors",
 ]
 dev = [
 	"memory_limit",
@@ -70,9 +76,11 @@ dev = [
 ]
 witness = [ "dep:reth-trie" ]
 test-utils = [
+	"database",
 	"dep:reth-trie",
-	"reth-primitives-traits/test-utils",
+	"reth-primitives-traits?/test-utils",
 	"reth-trie?/test-utils",
+	"std",
 ]
 serde = [
 	"alloy-consensus/serde",
@@ -80,8 +88,8 @@ serde = [
 	"base-consensus-genesis/serde",
 	"dep:serde",
 	"reth-ethereum-forks/serde",
-	"reth-primitives-traits/serde",
-	"reth-storage-api/serde",
+	"reth-primitives-traits?/serde",
+	"reth-storage-api?/serde",
 	"reth-trie?/serde",
 	"revm/serde",
 ]

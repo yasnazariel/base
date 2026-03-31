@@ -1,6 +1,7 @@
-use reth_errors::{DatabaseError, RethError};
+use reth_errors::RethError;
 use reth_provider::ProviderError;
 use reth_prune_types::PruneSegmentError;
+use reth_storage_errors::db::DatabaseError;
 use thiserror::Error;
 
 /// Errors that can occur during pruning.

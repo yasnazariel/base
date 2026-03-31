@@ -827,9 +827,8 @@ mod tests {
     #[cfg(all(unix, feature = "rocksdb"))]
     #[test]
     fn prune_rocksdb() {
-        use reth_db_api::models::storage_sharded_key::StorageShardedKey;
+        use reth_db_api::models::{StorageSettings, storage_sharded_key::StorageShardedKey};
         use reth_provider::RocksDBProviderFactory;
-        use reth_storage_api::StorageSettings;
 
         let db = TestStageDB::default();
         let mut rng = generators::rng();

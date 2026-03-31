@@ -14,6 +14,7 @@ workspace = true
 [dependencies]
 # reth
 reth-e2e-test-utils.workspace = true
+reth-engine-primitives.workspace = true
 reth-rpc-api = { workspace = true, features = ["client"] }
 
 # ethereum
@@ -29,12 +30,10 @@ serde_json.workspace = true
 tracing.workspace = true
 jsonrpsee.workspace = true
 
-# required for the Action trait
-reth-node-api.workspace = true
-
 [dev-dependencies]
 reth-tracing.workspace = true
 reth-chainspec.workspace = true
+reth-ethereum-engine-primitives.workspace = true
 reth-node-ethereum.workspace = true
 alloy-genesis.workspace = true
 

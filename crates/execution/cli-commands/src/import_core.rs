@@ -17,14 +17,16 @@ use reth_network_p2p::{
     bodies::downloader::BodyDownloader,
     headers::downloader::{HeaderDownloader, SyncTarget},
 };
-use reth_node_api::BlockTy;
 use reth_node_events::node::NodeEvent;
+use reth_node_types::BlockTy;
 use reth_provider::{
     BlockNumReader, HeaderProvider, ProviderError, ProviderFactory, StageCheckpointReader,
     providers::ProviderNodeTypes,
 };
-use reth_prune::PruneModes;
-use reth_stages::{ControlFlow, Pipeline, StageId, StageSet, prelude::*};
+use reth_prune_types::PruneModes;
+use reth_stages::prelude::DefaultStages;
+use reth_stages_api::{ControlFlow, Pipeline, StageSet};
+use reth_stages_types::StageId;
 use reth_static_file::StaticFileProducer;
 use tokio::sync::watch;
 use tracing::{debug, error, info, warn};

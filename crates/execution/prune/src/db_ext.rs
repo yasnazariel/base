@@ -1,11 +1,11 @@
 use std::{fmt::Debug, ops::RangeBounds};
 
 use reth_db_api::{
-    DatabaseError,
     cursor::{DbCursorRO, DbCursorRW, RangeWalker},
     table::{DupSort, Table, TableRow},
     transaction::{DbTx, DbTxMut},
 };
+use reth_storage_errors::db::DatabaseError;
 use tracing::debug;
 
 use crate::PruneLimiter;

@@ -10,7 +10,8 @@ use reth_exex::{
     DEFAULT_EXEX_MANAGER_CAPACITY, DEFAULT_WAL_BLOCKS_WARNING, ExExContext, ExExHandle,
     ExExManager, ExExManagerHandle, ExExNotificationSource, Wal,
 };
-use reth_node_api::{FullNodeComponents, NodeTypes, PrimitivesTy};
+use reth_node_api::FullNodeComponents;
+use reth_node_types::{NodeTypes, PrimitivesTy};
 use reth_provider::CanonStateSubscriptions;
 use reth_tracing::tracing::{debug, info};
 use tracing::Instrument;

@@ -10,7 +10,8 @@ use alloy_primitives::{Address, B256, BlockNumber, U256};
 use alloy_signer::SignerSync;
 use alloy_signer_local::PrivateKeySigner;
 use rand::Rng;
-use reth_chainspec::{ChainSpec, EthereumHardfork, MIN_TRANSACTION_GAS};
+use reth_chainspec::{ChainSpec, MIN_TRANSACTION_GAS};
+use reth_ethereum_forks::EthereumHardfork;
 use reth_ethereum_primitives::{
     Block, BlockBody, EthPrimitives, Receipt, Transaction, TransactionSigned,
 };

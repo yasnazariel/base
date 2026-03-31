@@ -21,6 +21,7 @@ reth-storage-errors.workspace = true
 reth-consensus-common.workspace = true
 reth-primitives-traits.workspace = true
 reth-chainspec.workspace = true
+reth-ethereum-forks.workspace = true
 
 # op-reth
 base-protocol.workspace = true
@@ -48,7 +49,6 @@ reth-provider = { workspace = true, features = ["test-utils"] }
 alloy-chains.workspace = true
 
 base-alloy-consensus.workspace = true
-base-execution-forks.workspace = true
 
 [features]
 default = [ "std" ]

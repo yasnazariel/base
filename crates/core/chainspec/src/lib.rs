@@ -28,8 +28,6 @@ pub use alloy_chains::{Chain, ChainKind, NamedChain};
 pub use alloy_evm::EvmLimitParams;
 pub use api::EthChainSpec;
 pub use info::ChainInfo;
-/// Re-export for convenience
-pub use reth_ethereum_forks::*;
 use reth_primitives_traits::sync::OnceLock;
 #[cfg(any(test, feature = "test-utils"))]
 pub use spec::test_fork_ids;
