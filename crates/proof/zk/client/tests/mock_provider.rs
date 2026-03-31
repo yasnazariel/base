@@ -84,6 +84,7 @@ async fn mock_get_proof_returns_completed() {
 /// including every retryable gRPC status code.
 #[rstest]
 #[case::invalid_url(ZkProofError::InvalidUrl("not a url".into()), false)]
+#[case::tls_config(ZkProofError::TlsConfig("no root certs".into()), false)]
 #[case::grpc_unavailable(
     ZkProofError::GrpcStatus(tonic::Status::unavailable("service down")),
     true
@@ -100,6 +101,7 @@ async fn mock_get_proof_returns_completed() {
     ZkProofError::GrpcStatus(tonic::Status::aborted("transaction conflict")),
     true
 )]
+#[case::grpc_unknown(ZkProofError::GrpcStatus(tonic::Status::unknown("h2 protocol error")), true)]
 #[case::grpc_not_found(ZkProofError::GrpcStatus(tonic::Status::not_found("session gone")), false)]
 #[case::grpc_invalid_argument(
     ZkProofError::GrpcStatus(tonic::Status::invalid_argument("bad request")),

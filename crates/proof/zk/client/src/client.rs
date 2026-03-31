@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
-use tonic::transport::{Channel, Endpoint};
+use tonic::transport::{Channel, ClientTlsConfig, Endpoint};
 use tracing::{debug, warn};
 use url::Url;
 
@@ -71,15 +71,20 @@ impl ZkProofClient {
     /// # Errors
     ///
     /// Returns [`ZkProofError::InvalidUrl`] if the URL cannot be parsed as a
-    /// valid gRPC endpoint.
+    /// valid gRPC endpoint, or [`ZkProofError::TlsConfig`] if TLS setup fails.
     pub fn new(config: &ZkProofClientConfig) -> Result<Self, ZkProofError> {
-        let endpoint_str = config.endpoint.as_str();
-
-        let channel = Endpoint::from_shared(endpoint_str.to_owned())
+        let mut endpoint = Endpoint::from_shared(config.endpoint.as_str().to_owned())
             .map_err(|e| ZkProofError::InvalidUrl(format!("{}: {e}", config.endpoint)))?
             .connect_timeout(config.connect_timeout)
-            .timeout(config.request_timeout)
-            .connect_lazy();
+            .timeout(config.request_timeout);
+
+        if config.endpoint.scheme() == "https" {
+            endpoint = endpoint
+                .tls_config(ClientTlsConfig::new().with_enabled_roots())
+                .map_err(|e| ZkProofError::TlsConfig(e.to_string()))?;
+        }
+
+        let channel = endpoint.connect_lazy();
 
         debug!(endpoint = %config.endpoint, "ZK client created");
 
@@ -140,5 +145,38 @@ impl ZkProofProvider for ZkProofClient {
 
     async fn get_proof(&self, request: GetProofRequest) -> Result<GetProofResponse, ZkProofError> {
         self.get_proof(request).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_config(endpoint: &str) -> ZkProofClientConfig {
+        ZkProofClientConfig {
+            endpoint: Url::parse(endpoint).unwrap(),
+            connect_timeout: Duration::from_secs(5),
+            request_timeout: Duration::from_secs(10),
+        }
+    }
+
+    #[tokio::test]
+    async fn new_with_http_endpoint_succeeds() {
+        let client = ZkProofClient::new(&test_config("http://127.0.0.1:50051"));
+        assert!(client.is_ok());
+    }
+
+    #[tokio::test]
+    async fn new_with_https_endpoint_succeeds() {
+        let client = ZkProofClient::new(&test_config("https://example.com:50051"));
+        assert!(client.is_ok());
+    }
+
+    #[test]
+    fn new_with_invalid_url_returns_error() {
+        // `Endpoint::from_shared` requires a valid HTTP(S) URI with host, so a
+        // `data:` URI is always rejected.
+        let result = ZkProofClient::new(&test_config("data:text/plain,hello"));
+        assert!(result.is_err());
     }
 }
