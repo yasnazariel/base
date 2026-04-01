@@ -34,10 +34,8 @@ async fn virtual_address_registry_e2e() {
     let mut h = ActionTestHarness::new(L1MinerConfig::default(), rollup_cfg);
 
     let l1_chain = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
-    let mut builder = h.create_l2_sequencer_with_evm_override(
-        l1_chain,
-        Box::new(RegistryEvmOverride),
-    );
+    let mut builder =
+        h.create_l2_sequencer_with_evm_override(l1_chain, Box::new(RegistryEvmOverride));
 
     let account = builder.test_account();
 
@@ -53,11 +51,7 @@ async fn virtual_address_registry_e2e() {
     // ── Step 2: Verify registration ────────────────────────────────────
     {
         let resolved = StorageBackedRegistry::read_master(builder.db(), master_id);
-        assert_eq!(
-            resolved,
-            Some(master_address),
-            "master must be registered after write"
-        );
+        assert_eq!(resolved, Some(master_address), "master must be registered after write");
     }
 
     // ── Step 3: Verify virtual address resolution ──────────────────────
@@ -82,11 +76,7 @@ async fn virtual_address_registry_e2e() {
     {
         let regular_addr = address!("d8dA6BF26964aF9D7eEd9e03E53415D37aA96045");
         let resolved = StorageBackedRegistry::resolve(builder.db(), regular_addr);
-        assert_eq!(
-            resolved,
-            Ok(regular_addr),
-            "non-virtual address must pass through unchanged"
-        );
+        assert_eq!(resolved, Ok(regular_addr), "non-virtual address must pass through unchanged");
     }
 
     // ── Step 4: Build blocks with transactions ─────────────────────────
@@ -109,10 +99,9 @@ async fn virtual_address_registry_e2e() {
 
     // Block 3: send a registerVirtualMaster call to the registry address.
     // This exercises the EvmOverride's interception of registry calls.
-    let register_calldata = IAddressRegistry::registerVirtualMasterCall {
-        salt: alloy_primitives::FixedBytes::ZERO,
-    }
-    .abi_encode();
+    let register_calldata =
+        IAddressRegistry::registerVirtualMasterCall { salt: alloy_primitives::FixedBytes::ZERO }
+            .abi_encode();
 
     let registry_tx = {
         let mut acct = account.lock().expect("test account lock");
@@ -131,11 +120,7 @@ async fn virtual_address_registry_e2e() {
     // The registry write from step 1 should still be present.
     {
         let resolved = StorageBackedRegistry::read_master(builder.db(), master_id);
-        assert_eq!(
-            resolved,
-            Some(master_address),
-            "registry mapping must survive block execution"
-        );
+        assert_eq!(resolved, Some(master_address), "registry mapping must survive block execution");
     }
 
     // Virtual address resolution still works after blocks.
@@ -150,7 +135,7 @@ async fn virtual_address_registry_e2e() {
 
     // ── Step 6: Batch blocks and submit to L1 ──────────────────────────
     let mut batcher = Batcher::new(ActionL2Source::new(), &h.rollup_config, batcher_cfg.clone());
-    let l1_chain_for_batcher = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
+    let _l1_chain_for_batcher = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
 
     for block in [block1, block2, block3] {
         batcher.push_block(block);
@@ -158,10 +143,7 @@ async fn virtual_address_registry_e2e() {
     }
 
     // Verify that L1 blocks were mined containing batch data.
-    assert!(
-        h.l1.latest_number() >= 3,
-        "L1 should have mined blocks for the batch submissions"
-    );
+    assert!(h.l1.latest_number() >= 3, "L1 should have mined blocks for the batch submissions");
 
     // Verify the batcher produced valid L1 transactions.
     let mut found_batch_tx = false;

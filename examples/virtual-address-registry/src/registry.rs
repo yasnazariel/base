@@ -70,10 +70,9 @@ impl StorageBackedRegistry {
         // Commit the storage write.
         let mut state = revm::state::EvmState::default();
         let mut account = revm::state::Account::default();
-        account.storage.insert(
-            slot,
-            revm::state::EvmStorageSlot::new_changed(U256::ZERO, value, 0),
-        );
+        account
+            .storage
+            .insert(slot, revm::state::EvmStorageSlot::new_changed(U256::ZERO, value, 0));
         account.mark_touch();
         state.insert(REGISTRY_ADDRESS, account);
         db.commit(state);

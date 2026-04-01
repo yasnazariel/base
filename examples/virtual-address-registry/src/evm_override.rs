@@ -10,8 +10,7 @@ use base_alloy_consensus::OpTxEnvelope;
 use base_consensus_genesis::RollupConfig;
 use revm::database::InMemoryDB;
 
-use crate::StorageBackedRegistry;
-use crate::abi::IAddressRegistry;
+use crate::{StorageBackedRegistry, abi::IAddressRegistry};
 
 /// EVM override that intercepts calls to the virtual address registry.
 ///
@@ -93,13 +92,12 @@ impl RegistryEvmOverride {
 
         let selector: [u8; 4] = input[..4].try_into().unwrap();
 
-        if selector == IAddressRegistry::registerVirtualMasterCall::SELECTOR {
-            if let Ok(call) =
+        if selector == IAddressRegistry::registerVirtualMasterCall::SELECTOR
+            && let Ok(call) =
                 <IAddressRegistry::registerVirtualMasterCall as SolCall>::abi_decode(&input[4..])
             {
                 let _ = StorageBackedRegistry::register(db, caller, B256::from(call.salt));
             }
-        }
         // Other selectors (resolveRecipient, getMaster, etc.) are read-only and
         // don't need special handling in this simplified example.
 
@@ -124,7 +122,7 @@ fn tx_input(tx: &OpTxEnvelope) -> Bytes {
 }
 
 /// Determine the sender address for a transaction.
-fn tx_sender(tx: &OpTxEnvelope) -> Address {
+const fn tx_sender(tx: &OpTxEnvelope) -> Address {
     match tx {
         OpTxEnvelope::Deposit(sealed) => sealed.inner().from,
         _ => TEST_ACCOUNT_ADDRESS,

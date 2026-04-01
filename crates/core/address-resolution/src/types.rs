@@ -21,8 +21,8 @@ pub const VIRTUAL_MAGIC: [u8; 10] = [0xFD; 10];
 
 /// Reserved address for the virtual-address registry precompile / contract.
 pub const REGISTRY_ADDRESS: Address = Address::new([
-    0xFD, 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00,
+    0xFD, 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00,
 ]);
 
 /// Errors that can occur during virtual address registration or resolution.
@@ -41,7 +41,9 @@ pub enum RegistryError {
 impl core::fmt::Display for RegistryError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Self::ProofOfWorkFailed => write!(f, "proof-of-work failed: first 4 bytes must be zero"),
+            Self::ProofOfWorkFailed => {
+                write!(f, "proof-of-work failed: first 4 bytes must be zero")
+            }
             Self::MasterIdCollision(addr) => {
                 write!(f, "master ID collision: already registered to {addr}")
             }

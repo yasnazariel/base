@@ -344,8 +344,7 @@ impl L2Sequencer {
         evm_override: Box<dyn EvmOverride>,
     ) -> Self {
         let test_account = Arc::new(Mutex::new(TestAccount::new(TEST_ACCOUNT_KEY)));
-        let executor =
-            StatefulL2Executor::with_evm_override(rollup_config.clone(), evm_override);
+        let executor = StatefulL2Executor::with_evm_override(rollup_config.clone(), evm_override);
 
         Self {
             head,
@@ -386,7 +385,7 @@ impl L2Sequencer {
     ///
     /// Callers can pre-seed account state (e.g. registry entries, sentinel
     /// bytecode) before building blocks.
-    pub fn db_mut(&mut self) -> &mut InMemoryDB {
+    pub const fn db_mut(&mut self) -> &mut InMemoryDB {
         self.executor.db_mut()
     }
 
@@ -689,7 +688,10 @@ impl StatefulL2Executor {
     ///
     /// The override replaces the default `OpEvmConfig::optimism()` execution
     /// path, allowing injection of custom precompile providers.
-    pub fn with_evm_override(rollup_config: RollupConfig, evm_override: Box<dyn EvmOverride>) -> Self {
+    pub fn with_evm_override(
+        rollup_config: RollupConfig,
+        evm_override: Box<dyn EvmOverride>,
+    ) -> Self {
         let mut db = InMemoryDB::default();
         db.insert_account_info(
             TEST_ACCOUNT_ADDRESS,
@@ -702,7 +704,7 @@ impl StatefulL2Executor {
     ///
     /// Callers can pre-seed account state (e.g. sentinel bytecode for
     /// precompile addresses) before executing transactions.
-    pub fn db_mut(&mut self) -> &mut InMemoryDB {
+    pub const fn db_mut(&mut self) -> &mut InMemoryDB {
         &mut self.db
     }
 
@@ -791,8 +793,7 @@ impl StatefulL2Executor {
         timestamp: u64,
         parent_hash: B256,
     ) -> Result<(B256, u64), L2SequencerError> {
-        let mut spec_builder =
-            OpChainSpecBuilder::base_mainnet().chain(rollup_config.l2_chain_id);
+        let mut spec_builder = OpChainSpecBuilder::base_mainnet().chain(rollup_config.l2_chain_id);
 
         if let Some(ts) = rollup_config.hardforks.base.v1 {
             spec_builder = spec_builder.with_fork(BaseUpgrade::V1, ForkCondition::Timestamp(ts));
