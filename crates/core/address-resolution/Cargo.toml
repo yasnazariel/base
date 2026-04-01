@@ -16,5 +16,5 @@ workspace = true
 alloy-primitives = { workspace = true, default-features = false }
 
 [features]
-default = ["std"]
-std = ["alloy-primitives/std"]
+default = [ "std" ]
+std = [ "alloy-primitives/std" ]
