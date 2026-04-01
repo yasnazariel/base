@@ -68,6 +68,7 @@ members = [
   "etc/tools/*",
   "devnet",
   "actions/harness",
+  "examples/virtual-address-registry",
 ]
 default-members = [
   "bin/based",
@@ -185,6 +186,7 @@ base-alloy-rpc-jsonrpsee = { path = "crates/core/rpc-jsonrpsee" }
 base-alloy-evm = { path = "crates/core/evm", default-features = false }
 base-alloy-flz = { path = "crates/core/flz", default-features = false }
 base-alloy-consensus = { path = "crates/core/consensus", default-features = false }
+base-address-resolution = { path = "crates/core/address-resolution", default-features = false }
 base-alloy-rpc-types-engine = { path = "crates/core/rpc-types-engine", default-features = false }
 
 # Builder

@@ -12,6 +12,8 @@ mod actions 'actions'
 mod devnet 'etc/docker'
 # Load testing for networks
 mod load-test 'crates/infra/load-tests'
+# Workspace examples
+mod examples 'examples'
 
 alias t := test
 alias f := fix

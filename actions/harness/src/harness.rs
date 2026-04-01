@@ -8,8 +8,8 @@ use base_protocol::{BlockInfo, L1BlockInfoTx, L2BlockInfo};
 
 use crate::{
     ActionBlobDataSource, ActionDataSource, ActionEngineClient, ActionL1ChainProvider,
-    ActionL2ChainProvider, ActionL2Source, ActionPipeline, BlobVerifierPipeline, L1Miner,
-    L1MinerConfig, L2Sequencer, SharedL1Chain, TestGossipTransport, TestRollupNode,
+    ActionL2ChainProvider, ActionL2Source, ActionPipeline, BlobVerifierPipeline, EvmOverride,
+    L1Miner, L1MinerConfig, L2Sequencer, SharedL1Chain, TestGossipTransport, TestRollupNode,
     VerifierPipeline, block_info_from,
 };
 
@@ -257,6 +257,41 @@ impl ActionTestHarness {
         let system_config = self.rollup_config.genesis.system_config.unwrap_or_default();
 
         L2Sequencer::new(genesis_head, l1_chain, self.rollup_config.clone(), system_config)
+    }
+
+    /// Create an [`L2Sequencer`] with a custom [`EvmOverride`].
+    ///
+    /// Same as [`create_l2_sequencer`] but the returned sequencer uses the
+    /// given override for EVM execution, allowing custom precompile providers.
+    ///
+    /// [`create_l2_sequencer`]: Self::create_l2_sequencer
+    pub fn create_l2_sequencer_with_evm_override(
+        &self,
+        l1_chain: SharedL1Chain,
+        evm_override: Box<dyn EvmOverride>,
+    ) -> L2Sequencer {
+        let l1_genesis_hash = l1_chain.get_block(0).map(|b| b.hash()).unwrap_or_default();
+
+        let genesis_head = L2BlockInfo {
+            block_info: BlockInfo {
+                hash: self.rollup_config.genesis.l2.hash,
+                number: self.rollup_config.genesis.l2.number,
+                parent_hash: Default::default(),
+                timestamp: self.rollup_config.genesis.l2_time,
+            },
+            l1_origin: BlockNumHash { number: 0, hash: l1_genesis_hash },
+            seq_num: 0,
+        };
+
+        let system_config = self.rollup_config.genesis.system_config.unwrap_or_default();
+
+        L2Sequencer::with_evm_override(
+            genesis_head,
+            l1_chain,
+            self.rollup_config.clone(),
+            system_config,
+            evm_override,
+        )
     }
 
     /// Decode the [`L1BlockInfoTx`] from the first deposit transaction of an

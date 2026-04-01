@@ -34,7 +34,7 @@ use base_consensus_engine::{EngineClient, EngineClientError, HyperAuthClient};
 use base_consensus_genesis::RollupConfig;
 use base_protocol::{BlockInfo, L2BlockInfo};
 
-use crate::{SharedBlockHashRegistry, SharedL1Chain, StatefulL2Executor};
+use crate::{EvmOverride, SharedBlockHashRegistry, SharedL1Chain, StatefulL2Executor};
 
 /// A payload built in-process during sequencer mode, waiting to be fetched via `get_payload`.
 #[derive(Debug)]
@@ -102,6 +102,30 @@ impl ActionEngineClient {
         l1_chain: SharedL1Chain,
     ) -> Self {
         let executor = StatefulL2Executor::new((*rollup_config).clone());
+        let inner = Arc::new(Mutex::new(ActionEngineClientInner {
+            executor,
+            canonical_head,
+            executed_headers: HashMap::new(),
+            pending_payloads: HashMap::new(),
+            payload_counter: 0,
+        }));
+        Self { inner, rollup_config, block_registry, l1_chain }
+    }
+
+    /// Create a new `ActionEngineClient` with a custom [`EvmOverride`].
+    ///
+    /// The override is applied to the internal [`StatefulL2Executor`] so that
+    /// re-execution during derivation uses the same custom precompile
+    /// providers as the sequencer.
+    pub fn with_evm_override(
+        rollup_config: Arc<RollupConfig>,
+        canonical_head: L2BlockInfo,
+        block_registry: SharedBlockHashRegistry,
+        l1_chain: SharedL1Chain,
+        evm_override: Box<dyn EvmOverride>,
+    ) -> Self {
+        let executor =
+            StatefulL2Executor::with_evm_override((*rollup_config).clone(), evm_override);
         let inner = Arc::new(Mutex::new(ActionEngineClientInner {
             executor,
             canonical_head,

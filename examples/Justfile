@@ -1,0 +1,21 @@
+# Recipes for the examples directory.
+# Import this module from the root Justfile with:
+#   mod examples 'examples'
+
+# Run all examples by default
+default: all
+
+# Run all examples
+all:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for dir in */; do
+        [ -f "$dir/Cargo.toml" ] || continue
+        crate=$(basename "$dir")
+        echo "── $crate ──"
+        cargo test -p "$crate"
+    done
+
+# Run the virtual address registry example
+virtual-address-registry:
+    cargo test -p virtual-address-registry

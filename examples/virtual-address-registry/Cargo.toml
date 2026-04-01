@@ -1,0 +1,31 @@
+[package]
+name = "virtual-address-registry"
+description = "Example: virtual address registry precompile with e2e integration test"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+base-address-resolution = { workspace = true, features = ["std"] }
+base-action-harness.workspace = true
+base-alloy-consensus.workspace = true
+base-consensus-genesis = { workspace = true, features = ["std"] }
+
+# revm
+revm.workspace = true
+
+# alloy
+alloy-sol-types = { workspace = true, features = ["std"] }
+alloy-primitives.workspace = true
+
+[dev-dependencies]
+base-batcher-encoder.workspace = true
+base-protocol.workspace = true
+tokio = { workspace = true, features = ["rt", "macros"] }

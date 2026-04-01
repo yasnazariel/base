@@ -28,6 +28,28 @@ use revm::{
 
 use crate::{L2BlockProvider, SharedL1Chain, SupervisedP2P};
 
+/// Override for custom EVM execution in the test harness.
+///
+/// Implement this trait to inject custom precompile providers or other
+/// EVM modifications into the [`StatefulL2Executor`]. When set on an
+/// executor, this replaces the default `OpEvmConfig::optimism()` execution path.
+pub trait EvmOverride: core::fmt::Debug + Send + Sync {
+    /// Execute `transactions` against `db` and return `(state_root, cumulative_gas_used)`.
+    ///
+    /// Implementors have full control over EVM construction (including
+    /// precompile selection) and must commit state changes to `db` and
+    /// compute the state root via [`compute_state_root`].
+    fn execute_transactions(
+        &self,
+        db: &mut InMemoryDB,
+        rollup_config: &RollupConfig,
+        transactions: &[OpTxEnvelope],
+        block_number: u64,
+        timestamp: u64,
+        parent_hash: B256,
+    ) -> Result<(B256, u64), L2SequencerError>;
+}
+
 /// Hardcoded private key for the test account used across all action tests.
 ///
 /// The corresponding address is deterministic: derive it via
@@ -310,6 +332,35 @@ impl L2Sequencer {
         }
     }
 
+    /// Create a new sequencer with a custom [`EvmOverride`].
+    ///
+    /// The override replaces the default EVM execution path, allowing
+    /// injection of custom precompile providers for testing.
+    pub fn with_evm_override(
+        head: L2BlockInfo,
+        l1_chain: SharedL1Chain,
+        rollup_config: RollupConfig,
+        system_config: SystemConfig,
+        evm_override: Box<dyn EvmOverride>,
+    ) -> Self {
+        let test_account = Arc::new(Mutex::new(TestAccount::new(TEST_ACCOUNT_KEY)));
+        let executor =
+            StatefulL2Executor::with_evm_override(rollup_config.clone(), evm_override);
+
+        Self {
+            head,
+            l1_chain,
+            rollup_config,
+            l1_chain_config: L1ChainConfig::default(),
+            system_config,
+            test_account,
+            executor,
+            l1_origin_pin: None,
+            block_hashes: SharedBlockHashRegistry::new(),
+            supervised_p2p: None,
+        }
+    }
+
     /// Return the current unsafe L2 head.
     pub const fn head(&self) -> L2BlockInfo {
         self.head
@@ -329,6 +380,14 @@ impl L2Sequencer {
     /// transactions.
     pub const fn db(&self) -> &InMemoryDB {
         self.executor.db()
+    }
+
+    /// Returns a mutable reference to the sequencer's in-memory EVM database.
+    ///
+    /// Callers can pre-seed account state (e.g. registry entries, sentinel
+    /// bytecode) before building blocks.
+    pub fn db_mut(&mut self) -> &mut InMemoryDB {
+        self.executor.db_mut()
     }
 
     /// Return the sequencer's shared block-hash registry.
@@ -608,6 +667,8 @@ pub fn decode_raw_transactions(raw_txs: &[Bytes]) -> Result<Vec<OpTxEnvelope>, L
 pub struct StatefulL2Executor {
     db: InMemoryDB,
     rollup_config: RollupConfig,
+    /// Optional EVM override for custom precompile providers.
+    evm_override: Option<Box<dyn EvmOverride>>,
 }
 
 impl StatefulL2Executor {
@@ -621,7 +682,28 @@ impl StatefulL2Executor {
             TEST_ACCOUNT_ADDRESS,
             AccountInfo { balance: TEST_ACCOUNT_BALANCE, ..Default::default() },
         );
-        Self { db, rollup_config }
+        Self { db, rollup_config, evm_override: None }
+    }
+
+    /// Create a new executor with a custom [`EvmOverride`].
+    ///
+    /// The override replaces the default `OpEvmConfig::optimism()` execution
+    /// path, allowing injection of custom precompile providers.
+    pub fn with_evm_override(rollup_config: RollupConfig, evm_override: Box<dyn EvmOverride>) -> Self {
+        let mut db = InMemoryDB::default();
+        db.insert_account_info(
+            TEST_ACCOUNT_ADDRESS,
+            AccountInfo { balance: TEST_ACCOUNT_BALANCE, ..Default::default() },
+        );
+        Self { db, rollup_config, evm_override: Some(evm_override) }
+    }
+
+    /// Returns a mutable reference to the internal EVM database.
+    ///
+    /// Callers can pre-seed account state (e.g. sentinel bytecode for
+    /// precompile addresses) before executing transactions.
+    pub fn db_mut(&mut self) -> &mut InMemoryDB {
+        &mut self.db
     }
 
     /// Returns a reference to the internal EVM database.
@@ -667,10 +749,52 @@ impl StatefulL2Executor {
         timestamp: u64,
         parent_hash: B256,
     ) -> Result<(B256, u64), L2SequencerError> {
-        let mut spec_builder =
-            OpChainSpecBuilder::base_mainnet().chain(self.rollup_config.l2_chain_id);
+        // Delegate to the custom override when one is configured.
+        if let Some(evm_override) = &self.evm_override {
+            // Clone the override ref to satisfy the borrow checker (we need &mut self.db).
+            let evm_override = evm_override.as_ref();
 
-        if let Some(ts) = self.rollup_config.hardforks.base.v1 {
+            // Safety: we need to reborrow because evm_override borrows self immutably
+            // while execute_transactions needs &mut self.db. Work around by reading
+            // the config first.
+            let rollup_config = self.rollup_config.clone();
+            return evm_override.execute_transactions(
+                &mut self.db,
+                &rollup_config,
+                transactions,
+                block_number,
+                timestamp,
+                parent_hash,
+            );
+        }
+
+        Self::default_execute_transactions(
+            &mut self.db,
+            &self.rollup_config,
+            transactions,
+            block_number,
+            timestamp,
+            parent_hash,
+        )
+    }
+
+    /// Default EVM execution using `OpEvmConfig::optimism()`.
+    ///
+    /// This is the standard execution path used when no [`EvmOverride`] is set.
+    /// It is also available as a public function so that custom overrides can
+    /// delegate to it for transactions they do not need to intercept.
+    pub fn default_execute_transactions(
+        db: &mut InMemoryDB,
+        rollup_config: &RollupConfig,
+        transactions: &[OpTxEnvelope],
+        block_number: u64,
+        timestamp: u64,
+        parent_hash: B256,
+    ) -> Result<(B256, u64), L2SequencerError> {
+        let mut spec_builder =
+            OpChainSpecBuilder::base_mainnet().chain(rollup_config.l2_chain_id);
+
+        if let Some(ts) = rollup_config.hardforks.base.v1 {
             spec_builder = spec_builder.with_fork(BaseUpgrade::V1, ForkCondition::Timestamp(ts));
         }
 
@@ -693,11 +817,11 @@ impl StatefulL2Executor {
 
             let evm_env =
                 evm_config.evm_env(&header).map_err(|e| L2SequencerError::Evm(e.to_string()))?;
-            let mut evm = evm_config.evm_with_env(&mut self.db, evm_env);
+            let mut evm = evm_config.evm_with_env(&mut *db, evm_env);
             match evm.transact(op_tx) {
                 Ok(ResultAndState { state, result }) => {
                     cumulative_gas_used = cumulative_gas_used.saturating_add(result.gas_used());
-                    self.db.commit(state);
+                    db.commit(state);
                 }
                 Err(e) => {
                     return Err(L2SequencerError::Evm(format!("{e:?}")));
@@ -705,6 +829,6 @@ impl StatefulL2Executor {
             }
         }
 
-        Ok((compute_state_root(&self.db), cumulative_gas_used))
+        Ok((compute_state_root(db), cumulative_gas_used))
     }
 }
