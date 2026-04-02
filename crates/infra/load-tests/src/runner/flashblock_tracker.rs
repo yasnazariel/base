@@ -34,7 +34,7 @@ pub struct FlashblockTracker {
 
 impl FlashblockTracker {
     /// Creates a new [`FlashblockTracker`].
-    pub const fn new(
+    pub fn new(
         ws_url: Url,
         flashblock_times: FlashblockTimes,
         cancel_token: CancellationToken,
