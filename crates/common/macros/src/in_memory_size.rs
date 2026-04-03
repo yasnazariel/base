@@ -79,9 +79,10 @@ fn contains_generic(ty: &Type, params: &[Ident]) -> bool {
                 if let syn::PathArguments::AngleBracketed(ab) = &seg.arguments {
                     for arg in &ab.args {
                         if let syn::GenericArgument::Type(inner) = arg
-                            && contains_generic(inner, params) {
-                                return true;
-                            }
+                            && contains_generic(inner, params)
+                        {
+                            return true;
+                        }
                     }
                 }
             }
@@ -158,12 +159,13 @@ fn bounds(data: &Data, trait_path: &TokenStream, params: &[Ident]) -> Vec<syn::W
             .iter()
             .filter_map(|v| {
                 if let Fields::Unnamed(f) = &v.fields
-                    && f.unnamed.len() == 1 {
-                        let ty = &f.unnamed[0].ty;
-                        if contains_generic(ty, params) {
-                            return Some(parse_quote!(#ty: #trait_path));
-                        }
+                    && f.unnamed.len() == 1
+                {
+                    let ty = &f.unnamed[0].ty;
+                    if contains_generic(ty, params) {
+                        return Some(parse_quote!(#ty: #trait_path));
                     }
+                }
                 None
             })
             .collect(),
