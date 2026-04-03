@@ -17,7 +17,7 @@ use crate::{OpReceiptEnvelope, OpTxType};
 /// Transaction receipt for Base chains.
 ///
 /// Receipt containing result of transaction execution.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, base_common_macros::InMemorySize)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[cfg_attr(feature = "serde", serde(tag = "type"))]

@@ -19,7 +19,7 @@ use crate::OpTxEnvelope;
 ///
 /// The difference between this and the [`OpTxEnvelope`] is that this type does not have the deposit
 /// transaction variant, which is not expected to be pooled.
-#[derive(Clone, Debug, TransactionEnvelope)]
+#[derive(Clone, Debug, TransactionEnvelope, base_common_macros::InMemorySize)]
 #[envelope(tx_type_name = OpPooledTxType, serde_cfg(feature = "serde"))]
 pub enum OpPooledTransaction {
     /// An untagged [`TxLegacy`].

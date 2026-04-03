@@ -1,8 +1,9 @@
 //! Reth compatibility implementations for base-alloy consensus types.
 //!
 //! This module provides implementations of reth traits gated behind the `reth` feature flag,
-//! including `InMemorySize`, `SignedTransaction`, `SerdeBincodeCompat`, `Compact`,
+//! including `SignedTransaction`, `SerdeBincodeCompat`, `Compact`,
 //! `Envelope`, `ToTxCompact`, `FromTxCompact`, `Compress`, and `Decompress`.
+//! `InMemorySize` is derived directly on the types via `#[derive(InMemorySize)]`.
 
 // Ensure `reth-ethereum-primitives` serde-bincode-compat feature is activated.
 use alloc::{borrow::Cow, vec::Vec};
@@ -28,7 +29,7 @@ use crate::{
 };
 
 // ---------------------------------------------------------------------------
-// InMemorySize (reth-primitives-traits)
+// InMemorySize (reth-primitives-traits) — non-derived types
 // ---------------------------------------------------------------------------
 
 impl reth_primitives_traits::InMemorySize for OpTxType {
@@ -45,26 +46,6 @@ impl reth_primitives_traits::InMemorySize for TxDeposit {
     }
 }
 
-impl reth_primitives_traits::InMemorySize for OpDepositReceipt {
-    fn size(&self) -> usize {
-        self.inner.size()
-            + core::mem::size_of_val(&self.deposit_nonce)
-            + core::mem::size_of_val(&self.deposit_receipt_version)
-    }
-}
-
-impl reth_primitives_traits::InMemorySize for OpReceipt {
-    fn size(&self) -> usize {
-        match self {
-            Self::Legacy(receipt)
-            | Self::Eip2930(receipt)
-            | Self::Eip1559(receipt)
-            | Self::Eip7702(receipt) => receipt.size(),
-            Self::Deposit(receipt) => receipt.size(),
-        }
-    }
-}
-
 impl reth_primitives_traits::InMemorySize for OpTypedTransaction {
     fn size(&self) -> usize {
         match self {
@@ -73,17 +54,6 @@ impl reth_primitives_traits::InMemorySize for OpTypedTransaction {
             Self::Eip1559(tx) => tx.size(),
             Self::Eip7702(tx) => tx.size(),
             Self::Deposit(tx) => tx.size(),
-        }
-    }
-}
-
-impl reth_primitives_traits::InMemorySize for OpPooledTransaction {
-    fn size(&self) -> usize {
-        match self {
-            Self::Legacy(tx) => tx.size(),
-            Self::Eip2930(tx) => tx.size(),
-            Self::Eip1559(tx) => tx.size(),
-            Self::Eip7702(tx) => tx.size(),
         }
     }
 }

@@ -1,5 +1,5 @@
 use alloy_consensus::{
-    EthereumTxEnvelope, Extended, Sealable, Sealed, SignableTransaction, Signed,
+    EthereumTxEnvelope, Extended, InMemorySize, Sealable, Sealed, SignableTransaction, Signed,
     TransactionEnvelope, TxEip1559, TxEip2930, TxEip7702, TxEnvelope, TxLegacy,
     error::ValueError,
     transaction::{TransactionInfo, TxHashRef},
@@ -447,6 +447,37 @@ impl OpTxEnvelope {
 impl TxHashRef for OpTxEnvelope {
     fn tx_hash(&self) -> &B256 {
         Self::hash(self)
+    }
+}
+
+impl InMemorySize for OpTxType {
+    #[inline]
+    fn size(&self) -> usize {
+        core::mem::size_of::<Self>()
+    }
+}
+
+impl InMemorySize for OpTypedTransaction {
+    fn size(&self) -> usize {
+        match self {
+            Self::Legacy(tx) => tx.size(),
+            Self::Eip2930(tx) => tx.size(),
+            Self::Eip1559(tx) => tx.size(),
+            Self::Eip7702(tx) => tx.size(),
+            Self::Deposit(tx) => tx.size(),
+        }
+    }
+}
+
+impl InMemorySize for OpTxEnvelope {
+    fn size(&self) -> usize {
+        match self {
+            Self::Legacy(tx) => tx.size(),
+            Self::Eip2930(tx) => tx.size(),
+            Self::Eip1559(tx) => tx.size(),
+            Self::Eip7702(tx) => tx.size(),
+            Self::Deposit(tx) => tx.size(),
+        }
     }
 }
 

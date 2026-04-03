@@ -18,7 +18,7 @@ use crate::transaction::OpDepositInfo;
 pub type OpDepositReceiptWithBloom<T = Log> = ReceiptWithBloom<OpDepositReceipt<T>>;
 
 /// Receipt containing result of transaction execution.
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Debug, PartialEq, Eq, Default, base_common_macros::InMemorySize)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct OpDepositReceipt<T = Log> {
@@ -34,6 +34,7 @@ pub struct OpDepositReceipt<T = Log> {
             with = "alloy_serde::quantity::opt"
         )
     )]
+    #[in_memory_size(size_of)]
     pub deposit_nonce: Option<u64>,
     /// Deposit receipt version for deposit transactions
     ///
@@ -48,6 +49,7 @@ pub struct OpDepositReceipt<T = Log> {
             with = "alloy_serde::quantity::opt"
         )
     )]
+    #[in_memory_size(size_of)]
     pub deposit_receipt_version: Option<u64>,
 }
 

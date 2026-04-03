@@ -24,6 +24,9 @@ alloy-primitives = { workspace = true, features = ["rlp"] }
 alloy-network = { workspace = true, optional = true }
 alloy-rpc-types-eth = { workspace = true, optional = true }
 
+# macros
+base-common-macros.workspace = true
+
 # misc
 thiserror.workspace = true
 
