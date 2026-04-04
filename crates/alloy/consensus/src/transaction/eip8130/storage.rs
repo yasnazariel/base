@@ -38,6 +38,29 @@ pub const SEQUENCE_BASE_SLOT: U256 = U256::from_limbs([2, 0, 0, 0]);
 /// does not overlap with AccountConfiguration storage.
 pub const NONCE_BASE_SLOT: U256 = U256::from_limbs([1, 0, 0, 0]);
 
+/// Base storage slot for the `expiringNonceSeen` mapping in NonceManager.
+///
+/// `expiringNonceSeen[txHash]` → `keccak256(txHash . EXPIRING_SEEN_BASE_SLOT)`
+///
+/// Stores the `expiry` timestamp (`u64`) for each recorded transaction hash.
+/// A non-zero value whose expiry is still in the future means the hash is
+/// active and must not be replayed.
+pub const EXPIRING_SEEN_BASE_SLOT: U256 = U256::from_limbs([2, 0, 0, 0]);
+
+/// Base storage slot for the `expiringNonceRing` mapping in NonceManager.
+///
+/// `expiringNonceRing[index]` → `keccak256(pad(index, 32) . EXPIRING_RING_BASE_SLOT)`
+///
+/// A fixed-size circular buffer of transaction hashes. The pointer advances
+/// monotonically and wraps at [`EXPIRING_NONCE_SET_CAPACITY`](super::constants::EXPIRING_NONCE_SET_CAPACITY).
+pub const EXPIRING_RING_BASE_SLOT: U256 = U256::from_limbs([3, 0, 0, 0]);
+
+/// Direct storage slot holding the current ring-buffer pointer (`u32`).
+///
+/// This is **not** a mapping — the value is stored directly at this slot
+/// in the NonceManager address.
+pub const EXPIRING_RING_PTR_SLOT: U256 = U256::from_limbs([4, 0, 0, 0]);
+
 /// Computes the storage slot for `owner_config[account][ownerId]`.
 pub fn owner_config_slot(account: Address, owner_id: B256) -> B256 {
     let inner = {
@@ -71,6 +94,30 @@ pub fn nonce_slot(account: Address, nonce_key: U256) -> B256 {
     let mut buf = [0u8; 64];
     buf[..32].copy_from_slice(&nonce_key.to_be_bytes::<32>());
     buf[32..64].copy_from_slice(inner.as_slice());
+    keccak256(buf)
+}
+
+/// Computes the storage slot for `expiringNonceSeen[txHash]`.
+pub fn expiring_seen_slot(tx_hash: B256) -> B256 {
+    let mut buf = [0u8; 64];
+    buf[..32].copy_from_slice(tx_hash.as_slice());
+    EXPIRING_SEEN_BASE_SLOT.to_be_bytes::<32>().as_slice().iter().enumerate().for_each(
+        |(i, &b)| {
+            buf[32 + i] = b;
+        },
+    );
+    keccak256(buf)
+}
+
+/// Computes the storage slot for `expiringNonceRing[index]`.
+pub fn expiring_ring_slot(index: u32) -> B256 {
+    let mut buf = [0u8; 64];
+    buf[28..32].copy_from_slice(&index.to_be_bytes());
+    EXPIRING_RING_BASE_SLOT.to_be_bytes::<32>().as_slice().iter().enumerate().for_each(
+        |(i, &b)| {
+            buf[32 + i] = b;
+        },
+    );
     keccak256(buf)
 }
 
@@ -273,5 +320,28 @@ mod tests {
         let (verifier, scope) = parse_owner_config(B256::ZERO);
         assert_eq!(verifier, Address::ZERO);
         assert_eq!(scope, 0);
+    }
+
+    #[test]
+    fn expiring_seen_slot_deterministic() {
+        let hash = B256::repeat_byte(0xAA);
+        assert_eq!(expiring_seen_slot(hash), expiring_seen_slot(hash));
+    }
+
+    #[test]
+    fn different_hashes_different_seen_slots() {
+        let a = expiring_seen_slot(B256::repeat_byte(0xAA));
+        let b = expiring_seen_slot(B256::repeat_byte(0xBB));
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn expiring_ring_slot_deterministic() {
+        assert_eq!(expiring_ring_slot(42), expiring_ring_slot(42));
+    }
+
+    #[test]
+    fn different_indices_different_ring_slots() {
+        assert_ne!(expiring_ring_slot(0), expiring_ring_slot(1));
     }
 }

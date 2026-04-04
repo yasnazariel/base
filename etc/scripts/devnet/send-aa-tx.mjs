@@ -15,6 +15,12 @@
  *   deploy       Creates a new smart account via account_changes (CREATE entry)
  *   nonce-rpc    Verify base_getEip8130Nonce RPC matches storage reads + increments
  *   estimate-gas Verify eth_estimateGas / eth_call work with type 0x7B AA requests
+ *   custom-verifier  Deploy + register AlwaysValidVerifier as custom EVM verifier (scope=SENDER+PAYER)
+ *   delegate-native  Delegate verifier with K1 inner (native path, no on-chain call)
+ *   delegate-p256    Delegate verifier with P256 inner (native delegation + P256 signature)
+ *   locked-config    Lock an account then verify config changes are rejected
+ *   nonceless        Send a nonce-free tx (NONCE_KEY_MAX + expiry), verify no replay
+ *   delegation       Set/change EIP-7702 code delegation via account_changes entry (type 0x02)
  *
  * Options:
  *   --probe <addr>    OwnerIdProbe contract address
@@ -60,12 +66,13 @@ const NONCE_MANAGER_ADDRESS = '0x000000000000000000000000000000000000Aa02';
 // Deployed contract addresses — loaded from deploy-8130.sh output if available,
 // otherwise fall back to provisional values matching predeploys.rs.
 const FALLBACK_ADDRESSES = {
-  accountConfiguration: '0x0F127193b72E0f8546A6F4E471b6F8241900932B',
-  defaultAccount:       '0xb080bA38C82F824137A12Db1Ac53baeDa70e4a03',
-  k1Verifier:           '0x167Ad053B3d786C6a6dC90aCa456DE98625EE31C',
-  p256Verifier:         '0x0D8D9D476D39764D9C0eC19449497FE1F39c673B',
-  webAuthnVerifier:     '0x895650b7dd7C5Bd1c31006A7790b353A8dB73F7D',
-  delegateVerifier:     '0x1Bc0F6e1496420590fD4981Dd7b844525F32B1D1',
+  accountConfiguration: '0x47B8020ea35AbeBD959cEEf7a0D1bEae19d8cA21',
+  defaultAccount:       '0x19E994e7Fe4a114A3E40a989Cc5F5f2324E7E21d',
+  k1Verifier:           '0x6E03196230De715554734a73058dA27AdfE2A7A9',
+  p256Verifier:         '0x75E9779603e826f2D8d4dD7Edee3F0a737e4228d',
+  webAuthnVerifier:     '0xb2c8b7ec119882fBcc32FDe1be1341e19a5Bd53E',
+  delegateVerifier:     '0x149A439e8ea89541d8A1d2Ab046E39b0A91D0843',
+  alwaysValidVerifier:  '0x6812F1aab1dd53e3f6705de05b96D3b93f3503D8',
 };
 
 function loadDeployedAddresses() {
@@ -89,9 +96,14 @@ const K1_VERIFIER_ADDRESS     = DEPLOYED.k1Verifier;
 const P256_VERIFIER_ADDRESS   = DEPLOYED.p256Verifier;
 const WEBAUTHN_VERIFIER_ADDRESS = DEPLOYED.webAuthnVerifier;
 const DELEGATE_VERIFIER_ADDRESS = DEPLOYED.delegateVerifier;
+const ALWAYS_VALID_VERIFIER_ADDRESS = DEPLOYED.alwaysValidVerifier;
+
+// keccak256("ALWAYS_VALID") — fixed owner ID returned by AlwaysValidVerifier
+const ALWAYS_VALID_OWNER_ID = keccak256(toHex(new TextEncoder().encode('ALWAYS_VALID')));
 
 const SENDER_KEY = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d';
 const PAYER_KEY  = '0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a';
+const DELEGATE_KEY = '0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a';
 
 const CONFIG_CHANGE_TYPEHASH = keccak256(
   toHex('ConfigChange(address account,uint64 chainId,uint64 sequence,ConfigOperation[] operations)ConfigOperation(uint8 opType,address verifier,bytes32 ownerId,uint8 scope)')
@@ -215,11 +227,11 @@ async function signAndSend(unsignedRlpFields, { accountChanges = [], trace = tru
 
   let senderAuth;
   if (customSenderAuth) {
-    senderAuth = customSenderAuth(sigHash);
+    senderAuth = await Promise.resolve(customSenderAuth(sigHash));
     console.log(`Using custom sender auth (${(senderAuth.length - 2) / 2} bytes)`);
   } else {
     const sig = await account.sign({ hash: sigHash });
-    senderAuth = concat([toHex(0x01, { size: 1 }), sig]);
+    senderAuth = concat([K1_VERIFIER_ADDRESS, sig]);
   }
 
   let payerAuth = '0x';
@@ -233,7 +245,7 @@ async function signAndSend(unsignedRlpFields, { accountChanges = [], trace = tru
     console.log(`Payer signing hash:  ${payerSigHash}`);
 
     const payerSig = await payerAccount.sign({ hash: payerSigHash });
-    payerAuth = concat([toHex(0x01, { size: 1 }), payerSig]);
+    payerAuth = concat([K1_VERIFIER_ADDRESS, payerSig]);
   }
 
   const signedRlpFields = [
@@ -301,13 +313,13 @@ async function signAndSend(unsignedRlpFields, { accountChanges = [], trace = tru
   return { nodeTxHash, receipt };
 }
 
-function baseTxFields(nonce, callsRlp, accountChangesRlp = [], payerAddress = '0x0000000000000000000000000000000000000000') {
+function baseTxFields(nonce, callsRlp, accountChangesRlp = [], payerAddress = '0x0000000000000000000000000000000000000000', { nonceKey = 0n, expiry = 0n } = {}) {
   return [
     encodeUint(L2_CHAIN_ID),
     encodeAddress(account.address),
-    encodeUint(0n),
+    encodeUint(nonceKey),
     encodeUint(nonce),
-    encodeUint(0n),
+    encodeUint(expiry),
     encodeUint(1000000n),
     encodeUint(1000000000n),
     encodeUint(500000n),
@@ -521,7 +533,7 @@ async function runConfigChange() {
   console.log(`Config change digest: ${digest}`);
 
   const authSig = await account.sign({ hash: digest });
-  const authorizerAuth = concat([toHex(0x01, { size: 1 }), authSig]);
+  const authorizerAuth = concat([K1_VERIFIER_ADDRESS, authSig]);
 
   const configChangeRlp = [
     toHex(0x01, { size: 1 }),
@@ -629,7 +641,7 @@ async function runP256() {
 
   const digest = configChangeDigest(account.address, 0n, currentSeq, [operation]);
   const authSig = await account.sign({ hash: digest });
-  const authorizerAuth = concat([toHex(0x01, { size: 1 }), authSig]);
+  const authorizerAuth = concat([K1_VERIFIER_ADDRESS, authSig]);
 
   const configChangeRlp = [
     toHex(0x01, { size: 1 }),
@@ -687,7 +699,7 @@ async function runP256() {
     const rBytes = sig.r.toString(16).padStart(64, '0');
     const sBytes = sig.s.toString(16).padStart(64, '0');
     return concat([
-      toHex(0x02, { size: 1 }),
+      P256_VERIFIER_ADDRESS,
       toHex(p256PubRaw),
       '0x' + rBytes + sBytes,
     ]);
@@ -755,7 +767,7 @@ async function runWebAuthn() {
 
   const digest = configChangeDigest(account.address, 0n, currentSeq, [operation]);
   const authSig = await account.sign({ hash: digest });
-  const authorizerAuth = concat([toHex(0x01, { size: 1 }), authSig]);
+  const authorizerAuth = concat([K1_VERIFIER_ADDRESS, authSig]);
 
   const configChangeRlp = [
     toHex(0x01, { size: 1 }),
@@ -842,7 +854,7 @@ async function runWebAuthn() {
     ]);
 
     return concat([
-      toHex(0x03, { size: 1 }),
+      WEBAUTHN_VERIFIER_ADDRESS,
       toHex(envelope),
     ]);
   };
@@ -1218,6 +1230,572 @@ async function runEstimateGas() {
 }
 
 // ─────────────────────────────────────────────────
+// Mode: custom-verifier (AlwaysValid EVM verifier)
+// ─────────────────────────────────────────────────
+async function runCustomVerifier() {
+  console.log('\n--- Custom EVM Verifier (AlwaysValid) E2E ---');
+  console.log(`AlwaysValid verifier: ${ALWAYS_VALID_VERIFIER_ADDRESS}`);
+  console.log(`AlwaysValid owner ID: ${ALWAYS_VALID_OWNER_ID}`);
+
+  const SCOPE_SENDER_PAYER = 0x03; // SENDER (0x01) | PAYER (0x02)
+
+  // Step 1: Register AlwaysValid owner with SENDER+PAYER scope via config change
+  console.log('\n--- Step 1: Register AlwaysValid owner (scope=SENDER+PAYER) ---');
+
+  const nonce1 = await getAaNonce();
+  const seqSlotHash = sequenceSlot(account.address);
+  const packedSeq = await client.getStorageAt({ address: ACCOUNT_CONFIG_ADDRESS, slot: seqSlotHash });
+  const currentSeq = BigInt(packedSeq || '0x0') & ((1n << 64n) - 1n);
+
+  const operation = {
+    opType: 1,
+    verifier: ALWAYS_VALID_VERIFIER_ADDRESS,
+    ownerId: ALWAYS_VALID_OWNER_ID,
+    scope: SCOPE_SENDER_PAYER,
+  };
+
+  const digest = configChangeDigest(account.address, 0n, currentSeq, [operation]);
+  const authSig = await account.sign({ hash: digest });
+  const authorizerAuth = concat([K1_VERIFIER_ADDRESS, authSig]);
+
+  const configChangeRlp = [
+    toHex(0x01, { size: 1 }),
+    encodeUint(0n),
+    encodeUint(currentSeq),
+    [[
+      toHex(0x01, { size: 1 }),
+      encodeAddress(ALWAYS_VALID_VERIFIER_ADDRESS),
+      ALWAYS_VALID_OWNER_ID,
+      toHex(SCOPE_SENDER_PAYER, { size: 1 }),
+    ]],
+    authorizerAuth,
+  ];
+
+  const setupCallsRlp = [[[encodeAddress(opts.probeAddr), encodeFunctionData({ abi: PROBE_ABI, functionName: 'probe' })]]];
+  const unsigned1 = baseTxFields(nonce1, setupCallsRlp, [configChangeRlp]);
+  const { receipt: receipt1 } = await signAndSend(unsigned1, { trace: false });
+
+  const ownerSlotHash = ownerConfigSlot(account.address, ALWAYS_VALID_OWNER_ID);
+  const ownerConfig = await client.getStorageAt({ address: ACCOUNT_CONFIG_ADDRESS, slot: ownerSlotHash });
+  const verifierHex = '0x' + ownerConfig.slice(-40);
+
+  if (verifierHex.toLowerCase() !== ALWAYS_VALID_VERIFIER_ADDRESS.toLowerCase()) {
+    console.log(`FAILED: AlwaysValid verifier not registered (got ${verifierHex})`);
+    process.exit(1);
+  }
+  console.log('SUCCESS: AlwaysValid owner registered with SENDER+PAYER scope');
+
+  // Step 2: Send AA tx using AlwaysValid as sender (type 0x00 custom)
+  console.log('\n--- Step 2: Send AA tx with AlwaysValid sender auth ---');
+
+  const nonce2 = await getAaNonce();
+  const callsRlp = [[[encodeAddress(opts.probeAddr), encodeFunctionData({ abi: PROBE_ABI, functionName: 'probe' })]]];
+  const unsigned2 = baseTxFields(nonce2, callsRlp);
+
+  const customSenderAuth = (_sigHash) => {
+    // verifier_address(20) || data (empty for AlwaysValid)
+    return ALWAYS_VALID_VERIFIER_ADDRESS;
+  };
+
+  const { receipt: receipt2 } = await signAndSend(unsigned2, { trace: opts.trace, customSenderAuth });
+
+  if (receipt2?.status === '0x1') {
+    console.log('SUCCESS: AlwaysValid custom-verifier AA tx executed!');
+  } else {
+    console.log(`FAILED: status ${receipt2?.status || 'unknown'}`);
+    process.exit(1);
+  }
+}
+
+// ─────────────────────────────────────────────────
+// Mode: delegate-native (delegate with K1 inner)
+// ─────────────────────────────────────────────────
+async function runDelegateNative() {
+  const delegateAccount = privateKeyToAccount(DELEGATE_KEY);
+  const delegateOwnerId = padHex(delegateAccount.address.toLowerCase(), { size: 32, dir: 'right' });
+
+  console.log('\n--- Delegate Verifier (K1 inner) E2E ---');
+  console.log(`Sender:    ${account.address}`);
+  console.log(`Delegate:  ${delegateAccount.address}`);
+  console.log(`Owner ID:  ${delegateOwnerId}`);
+  console.log(`Verifier:  ${DELEGATE_VERIFIER_ADDRESS} (Delegate)`);
+
+  // Step 1: Register delegate owner on sender's account
+  console.log('\n--- Step 1: Register delegate owner on sender ---');
+
+  const nonce1 = await getAaNonce();
+  const seqSlotHash = sequenceSlot(account.address);
+  const packedSeq = await client.getStorageAt({ address: ACCOUNT_CONFIG_ADDRESS, slot: seqSlotHash });
+  const currentSeq = BigInt(packedSeq || '0x0') & ((1n << 64n) - 1n);
+
+  const operation = {
+    opType: 1,
+    verifier: DELEGATE_VERIFIER_ADDRESS,
+    ownerId: delegateOwnerId,
+    scope: 0, // unrestricted
+  };
+
+  const digest = configChangeDigest(account.address, 0n, currentSeq, [operation]);
+  const authSig = await account.sign({ hash: digest });
+  const authorizerAuth = concat([K1_VERIFIER_ADDRESS, authSig]);
+
+  const configChangeRlp = [
+    toHex(0x01, { size: 1 }),
+    encodeUint(0n),
+    encodeUint(currentSeq),
+    [[
+      toHex(0x01, { size: 1 }),
+      encodeAddress(DELEGATE_VERIFIER_ADDRESS),
+      delegateOwnerId,
+      '0x',
+    ]],
+    authorizerAuth,
+  ];
+
+  const setupCallsRlp = [[[encodeAddress(opts.probeAddr), encodeFunctionData({ abi: PROBE_ABI, functionName: 'probe' })]]];
+  const unsigned1 = baseTxFields(nonce1, setupCallsRlp, [configChangeRlp]);
+  const { receipt: receipt1 } = await signAndSend(unsigned1, { trace: false });
+
+  const ownerSlotHash = ownerConfigSlot(account.address, delegateOwnerId);
+  const ownerConfig = await client.getStorageAt({ address: ACCOUNT_CONFIG_ADDRESS, slot: ownerSlotHash });
+  const verifierHex = '0x' + ownerConfig.slice(-40);
+
+  if (verifierHex.toLowerCase() !== DELEGATE_VERIFIER_ADDRESS.toLowerCase()) {
+    console.log(`FAILED: Delegate verifier not registered (got ${verifierHex})`);
+    process.exit(1);
+  }
+  console.log('SUCCESS: Delegate owner registered on sender account');
+
+  // Step 2: Send AA tx where delegate signs with K1 (type 0x04 || 0x01 || K1 sig)
+  console.log('\n--- Step 2: Send AA tx with delegate K1 auth ---');
+
+  const nonce2 = await getAaNonce();
+  const callsRlp = [[[encodeAddress(opts.probeAddr), encodeFunctionData({ abi: PROBE_ABI, functionName: 'probe' })]]];
+  const unsigned2 = baseTxFields(nonce2, callsRlp);
+
+  const delegateSenderAuth = (sigHash) => {
+    const sig = delegateAccount.sign({ hash: sigHash });
+    // DELEGATE_VERIFIER(20) || K1_VERIFIER(20) || K1 signature
+    return sig.then(s => concat([DELEGATE_VERIFIER_ADDRESS, K1_VERIFIER_ADDRESS, s]));
+  };
+
+  // signAndSend expects sync or we handle async in customSenderAuth
+  const signingPayload = concat([toHex(AA_TX_TYPE, { size: 1 }), toRlp(unsigned2)]);
+  const sigHash = keccak256(signingPayload);
+  const delegateSig = await delegateAccount.sign({ hash: sigHash });
+  const senderAuth = concat([DELEGATE_VERIFIER_ADDRESS, K1_VERIFIER_ADDRESS, delegateSig]);
+
+  const { receipt: receipt2 } = await signAndSend(unsigned2, {
+    trace: opts.trace,
+    customSenderAuth: () => senderAuth,
+  });
+
+  if (receipt2?.status === '0x1') {
+    console.log('SUCCESS: Delegate-native (K1 inner) AA tx executed!');
+  } else {
+    console.log(`FAILED: status ${receipt2?.status || 'unknown'}`);
+    process.exit(1);
+  }
+}
+
+// ─────────────────────────────────────────────────
+// Mode: delegate-p256 (delegate with P256 inner)
+// ─────────────────────────────────────────────────
+async function runDelegateP256() {
+  console.log('\n--- Delegate Verifier (P256 inner) E2E ---');
+
+  const p256PrivateKey = p256curve.utils.randomPrivateKey();
+  const p256PubUncompressed = p256curve.getPublicKey(p256PrivateKey, false);
+  const p256PubRaw = p256PubUncompressed.slice(1);
+  const p256OwnerId = keccak256(toHex(p256PubRaw));
+
+  console.log(`Sender:     ${account.address}`);
+  console.log(`P256 owner: ${p256OwnerId}`);
+  console.log(`P256 verifier:    ${P256_VERIFIER_ADDRESS}`);
+  console.log(`Delegate verifier: ${DELEGATE_VERIFIER_ADDRESS}`);
+
+  // Step 1: Register P256 owner on the sender's account (via config change)
+  // so the delegate inner verification can resolve the P256 owner_id.
+  console.log('\n--- Step 1: Register P256 owner on sender (for inner resolution) ---');
+
+  const nonce1 = await getAaNonce();
+  const seqSlotHash = sequenceSlot(account.address);
+  const packedSeq1 = await client.getStorageAt({ address: ACCOUNT_CONFIG_ADDRESS, slot: seqSlotHash });
+  const seq1 = BigInt(packedSeq1 || '0x0') & ((1n << 64n) - 1n);
+
+  const p256Op = {
+    opType: 1,
+    verifier: DELEGATE_VERIFIER_ADDRESS,
+    ownerId: p256OwnerId,
+    scope: 0, // unrestricted
+  };
+
+  const digest1 = configChangeDigest(account.address, 0n, seq1, [p256Op]);
+  const authSig1 = await account.sign({ hash: digest1 });
+  const authorizerAuth1 = concat([K1_VERIFIER_ADDRESS, authSig1]);
+
+  const configChangeRlp1 = [
+    toHex(0x01, { size: 1 }),
+    encodeUint(0n),
+    encodeUint(seq1),
+    [[
+      toHex(0x01, { size: 1 }),
+      encodeAddress(DELEGATE_VERIFIER_ADDRESS),
+      p256OwnerId,
+      '0x',
+    ]],
+    authorizerAuth1,
+  ];
+
+  const setupCallsRlp = [[[encodeAddress(opts.probeAddr), encodeFunctionData({ abi: PROBE_ABI, functionName: 'probe' })]]];
+  const unsigned1 = baseTxFields(nonce1, setupCallsRlp, [configChangeRlp1]);
+  const { receipt: receipt1 } = await signAndSend(unsigned1, { trace: false });
+
+  const ownerSlotHash = ownerConfigSlot(account.address, p256OwnerId);
+  const ownerConfig = await client.getStorageAt({ address: ACCOUNT_CONFIG_ADDRESS, slot: ownerSlotHash });
+  const verifierHex = '0x' + ownerConfig.slice(-40);
+
+  if (verifierHex.toLowerCase() !== DELEGATE_VERIFIER_ADDRESS.toLowerCase()) {
+    console.log(`FAILED: Delegate+P256 owner not registered (got ${verifierHex})`);
+    process.exit(1);
+  }
+  console.log('SUCCESS: P256 owner registered with DelegateVerifier on sender');
+
+  // Step 2: Send AA tx with delegate + P256 inner auth
+  // Auth: 0x04 (delegate) || 0x02 (P256 inner) || pubkey(64) || sig(64)
+  console.log('\n--- Step 2: Send AA tx with delegate P256 auth ---');
+
+  const nonce2 = await getAaNonce();
+  const callsRlp = [[[encodeAddress(opts.probeAddr), encodeFunctionData({ abi: PROBE_ABI, functionName: 'probe' })]]];
+  const unsigned2 = baseTxFields(nonce2, callsRlp);
+
+  const signingPayload = concat([toHex(AA_TX_TYPE, { size: 1 }), toRlp(unsigned2)]);
+  const sigHash = keccak256(signingPayload);
+  const hashArr = new Uint8Array(sigHash.slice(2).match(/.{2}/g).map(b => parseInt(b, 16)));
+  const sig = p256curve.sign(hashArr, p256PrivateKey, { lowS: true });
+  const rBytes = sig.r.toString(16).padStart(64, '0');
+  const sBytes = sig.s.toString(16).padStart(64, '0');
+
+  const senderAuth = concat([
+    DELEGATE_VERIFIER_ADDRESS,  // delegate verifier (20 bytes)
+    P256_VERIFIER_ADDRESS,      // P256 inner verifier (20 bytes)
+    toHex(p256PubRaw),          // P256 public key (64 bytes)
+    '0x' + rBytes + sBytes,     // P256 signature (64 bytes)
+  ]);
+
+  const { receipt: receipt2 } = await signAndSend(unsigned2, {
+    trace: opts.trace,
+    customSenderAuth: () => senderAuth,
+  });
+
+  if (receipt2?.status === '0x1') {
+    console.log('SUCCESS: Delegate-P256 (P256 inner via native delegation) AA tx executed!');
+  } else {
+    console.log(`FAILED: status ${receipt2?.status || 'unknown'}`);
+    process.exit(1);
+  }
+}
+
+// ─────────────────────────────────────────────────
+// Mode: locked-config
+// ─────────────────────────────────────────────────
+async function runLockedConfig() {
+  const LOCK_ABI = [
+    { type: 'function', name: 'lock', inputs: [{ type: 'uint16', name: 'unlockDelay' }], outputs: [], stateMutability: 'nonpayable' },
+  ];
+
+  console.log('\n--- Locked Config Test: Verify locked accounts reject config changes ---');
+  console.log(`Sender: ${account.address}`);
+
+  // Step 1: Lock the account via a call to AccountConfiguration.lock(600)
+  console.log('\n--- Step 1: Lock the account ---');
+
+  const lockCalldata = encodeFunctionData({ abi: LOCK_ABI, functionName: 'lock', args: [600] });
+  const nonce1 = await getAaNonce();
+  console.log(`AA nonce (key=0): ${nonce1}`);
+
+  const lockCalls = [[[encodeAddress(ACCOUNT_CONFIG_ADDRESS), lockCalldata]]];
+  const unsigned1 = baseTxFields(nonce1, lockCalls);
+  const { receipt: receipt1 } = await signAndSend(unsigned1, { trace: opts.trace });
+
+  if (receipt1?.status !== '0x1') {
+    console.log(`FAILED: Lock tx failed (status ${receipt1?.status || 'unknown'})`);
+    process.exit(1);
+  }
+  console.log('Account locked successfully');
+
+  // Verify lock state in storage: slot = keccak256(pad(account,32) || pad(1,32))
+  const lockSlotHash = keccak256(concat([
+    padHex(account.address.toLowerCase(), { size: 32, dir: 'left' }),
+    padHex('0x1', { size: 32, dir: 'left' }),
+  ]));
+  const lockValue = await client.getStorageAt({
+    address: ACCOUNT_CONFIG_ADDRESS,
+    slot: lockSlotHash,
+  });
+  console.log(`Lock storage: ${lockValue}`);
+
+  // Step 2: Try to send a config change while locked — expect rejection
+  console.log('\n--- Step 2: Attempt config change while locked (should fail) ---');
+
+  const newOwnerId = padHex('0xdeadbeef', { size: 32, dir: 'right' });
+  const nonce2 = await getAaNonce();
+
+  const seqSlotHash = sequenceSlot(account.address);
+  const packedSeq = await client.getStorageAt({ address: ACCOUNT_CONFIG_ADDRESS, slot: seqSlotHash });
+  const currentSeq = BigInt(packedSeq || '0x0') & ((1n << 64n) - 1n);
+
+  const operation = { opType: 1, verifier: K1_VERIFIER_ADDRESS, ownerId: newOwnerId, scope: 0 };
+  const digest = configChangeDigest(account.address, 0n, currentSeq, [operation]);
+  const authSig = await account.sign({ hash: digest });
+  const authorizerAuth = concat([K1_VERIFIER_ADDRESS, authSig]);
+
+  const configChangeRlp = [
+    toHex(0x01, { size: 1 }),
+    encodeUint(0n),
+    encodeUint(currentSeq),
+    [[toHex(0x01, { size: 1 }), encodeAddress(K1_VERIFIER_ADDRESS), newOwnerId, '0x']],
+    authorizerAuth,
+  ];
+
+  const probeCalldata = encodeFunctionData({ abi: PROBE_ABI, functionName: 'probe' });
+  const callsRlp2 = [[[encodeAddress(opts.probeAddr), probeCalldata]]];
+  const unsigned2 = baseTxFields(nonce2, callsRlp2, [configChangeRlp]);
+
+  // Sign manually — we expect submission to fail
+  const sigPayload = concat([toHex(AA_TX_TYPE, { size: 1 }), toRlp(unsigned2)]);
+  const sigHash = keccak256(sigPayload);
+  const senderSig = await account.sign({ hash: sigHash });
+  const senderAuth = concat([K1_VERIFIER_ADDRESS, senderSig]);
+  const encodedTx = concat([
+    toHex(AA_TX_TYPE, { size: 1 }),
+    toRlp([...unsigned2, senderAuth, '0x']),
+  ]);
+
+  try {
+    const txHash2 = await client.request({
+      method: 'eth_sendRawTransaction',
+      params: [encodedTx],
+    });
+    console.log(`TX was accepted (hash: ${txHash2}), checking receipt...`);
+    await new Promise(r => setTimeout(r, 5000));
+    const receipt2 = await client.request({
+      method: 'eth_getTransactionReceipt',
+      params: [txHash2],
+    });
+    if (!receipt2 || receipt2.status === '0x0') {
+      console.log('SUCCESS: Config change reverted on-chain (account is locked)');
+    } else {
+      console.log('FAILED: Config change succeeded despite account being locked!');
+      process.exit(1);
+    }
+  } catch (err) {
+    const msg = err.details || err.shortMessage || err.message;
+    console.log(`SUCCESS: Config change rejected while account locked: ${msg}`);
+  }
+}
+
+// ─────────────────────────────────────────────────
+// Mode: nonceless
+// ─────────────────────────────────────────────────
+async function runNonceless() {
+  const NONCE_KEY_MAX = (1n << 192n) - 1n;
+
+  console.log('\n--- Nonceless Transaction Test (NONCE_KEY_MAX) ---');
+  console.log(`Sender: ${account.address}`);
+  console.log(`NONCE_KEY_MAX: ${NONCE_KEY_MAX}`);
+
+  // Compute expiry relative to latest block timestamp
+  const block = await client.getBlock();
+  const blockTimestamp = Number(block.timestamp);
+  const expiry = BigInt(blockTimestamp + 20);
+  console.log(`Block timestamp: ${blockTimestamp}`);
+  console.log(`Expiry: ${expiry} (${Number(expiry) - blockTimestamp}s from now)`);
+
+  const probeCalldata = encodeFunctionData({ abi: PROBE_ABI, functionName: 'probe' });
+  const callsRlp = [[[encodeAddress(opts.probeAddr), probeCalldata]]];
+
+  const unsigned = baseTxFields(0n, callsRlp, [], '0x0000000000000000000000000000000000000000', {
+    nonceKey: NONCE_KEY_MAX,
+    expiry,
+  });
+
+  // Step 1: Send nonceless AA tx
+  console.log('\n--- Step 1: Send nonceless AA tx ---');
+  const { receipt, nodeTxHash } = await signAndSend(unsigned, { trace: opts.trace });
+
+  if (receipt?.status !== '0x1') {
+    console.log(`FAILED: Nonceless tx failed (status ${receipt?.status || 'unknown'})`);
+    process.exit(1);
+  }
+  console.log(`Nonceless tx landed! Hash: ${nodeTxHash}`);
+
+  // Step 2: Resubmit the exact same signed transaction (same hash)
+  console.log('\n--- Step 2: Resubmit same nonceless tx (should be rejected) ---');
+
+  const sigPayload = concat([toHex(AA_TX_TYPE, { size: 1 }), toRlp(unsigned)]);
+  const sigHash = keccak256(sigPayload);
+  const sig = await account.sign({ hash: sigHash });
+  const senderAuth = concat([K1_VERIFIER_ADDRESS, sig]);
+  const encodedTx = concat([
+    toHex(AA_TX_TYPE, { size: 1 }),
+    toRlp([...unsigned, senderAuth, '0x']),
+  ]);
+  const dupTxHash = keccak256(encodedTx);
+  console.log(`Duplicate TX hash: ${dupTxHash}`);
+
+  try {
+    await client.request({
+      method: 'eth_sendRawTransaction',
+      params: [encodedTx],
+    });
+    console.log('WARNING: Duplicate tx was accepted by RPC, checking if it lands...');
+    await new Promise(r => setTimeout(r, 5000));
+    const receipt2 = await client.request({
+      method: 'eth_getTransactionReceipt',
+      params: [dupTxHash],
+    });
+    if (!receipt2 || receipt2.status === '0x0') {
+      console.log('SUCCESS: Duplicate nonceless tx did not land');
+    } else {
+      console.log('FAILED: Duplicate nonceless tx actually landed twice!');
+      process.exit(1);
+    }
+  } catch (err) {
+    const msg = err.details || err.shortMessage || err.message;
+    console.log(`SUCCESS: Duplicate nonceless tx rejected: ${msg}`);
+  }
+}
+
+// ─────────────────────────────────────────────────
+// Mode: delegation
+// ─────────────────────────────────────────────────
+async function runDelegation() {
+  console.log('\n--- Delegation Entry Test (account_changes type 0x02) ---');
+  console.log(`Sender:          ${account.address}`);
+  console.log(`Default account: ${DEFAULT_ACCOUNT_ADDR}`);
+  console.log(`Account config:  ${ACCOUNT_CONFIG_ADDRESS}`);
+
+  // Step 1: Verify current code is auto-delegation to DEFAULT_ACCOUNT
+  const codeBefore = await client.getCode({ address: account.address });
+  console.log(`\nCode before: ${codeBefore}`);
+  const expectedDefault = ('0xef0100' + DEFAULT_ACCOUNT_ADDR.slice(2)).toLowerCase();
+  if (codeBefore?.toLowerCase() === expectedDefault) {
+    console.log('Current delegation: DEFAULT_ACCOUNT (as expected)');
+  } else if (codeBefore && codeBefore !== '0x') {
+    console.log(`Current code: ${codeBefore.slice(0, 50)}...`);
+  } else {
+    console.log('No code on sender (bare EOA), auto-delegation will fire first');
+  }
+
+  // Step 2: Send AA tx with delegation entry targeting ACCOUNT_CONFIG_ADDRESS
+  console.log('\n--- Step 2: Delegate to ACCOUNT_CONFIG_ADDRESS ---');
+  const nonce1 = await getAaNonce();
+  console.log(`AA nonce (key=0): ${nonce1}`);
+
+  const probeCalldata = encodeFunctionData({ abi: PROBE_ABI, functionName: 'probe' });
+  const callsRlp1 = [[[encodeAddress(opts.probeAddr), probeCalldata]]];
+
+  const delegationEntry1 = [
+    toHex(0x02, { size: 1 }),
+    encodeAddress(ACCOUNT_CONFIG_ADDRESS),
+  ];
+  const unsigned1 = baseTxFields(nonce1, callsRlp1, [delegationEntry1]);
+  const { receipt: receipt1 } = await signAndSend(unsigned1, { trace: opts.trace });
+
+  if (receipt1?.status !== '0x1') {
+    console.log(`FAILED: Delegation tx failed (status ${receipt1?.status || 'unknown'})`);
+    process.exit(1);
+  }
+
+  const codeAfter1 = await client.getCode({ address: account.address });
+  const expectedConfig = ('0xef0100' + ACCOUNT_CONFIG_ADDRESS.slice(2)).toLowerCase();
+  console.log(`Code after delegation: ${codeAfter1}`);
+  if (codeAfter1?.toLowerCase() === expectedConfig) {
+    console.log('SUCCESS: Delegation changed to ACCOUNT_CONFIG_ADDRESS');
+  } else {
+    console.log(`FAILED: Expected ${expectedConfig}, got ${codeAfter1}`);
+    process.exit(1);
+  }
+
+  // Step 3: Restore delegation back to DEFAULT_ACCOUNT
+  console.log('\n--- Step 3: Restore delegation to DEFAULT_ACCOUNT ---');
+  const nonce2 = await getAaNonce();
+  console.log(`AA nonce (key=0): ${nonce2}`);
+
+  const callsRlp2 = [[[encodeAddress(opts.probeAddr), probeCalldata]]];
+  const delegationEntry2 = [
+    toHex(0x02, { size: 1 }),
+    encodeAddress(DEFAULT_ACCOUNT_ADDR),
+  ];
+  const unsigned2 = baseTxFields(nonce2, callsRlp2, [delegationEntry2]);
+  const { receipt: receipt2 } = await signAndSend(unsigned2, { trace: opts.trace });
+
+  if (receipt2?.status !== '0x1') {
+    console.log(`FAILED: Restore delegation tx failed (status ${receipt2?.status || 'unknown'})`);
+    process.exit(1);
+  }
+
+  const codeAfter2 = await client.getCode({ address: account.address });
+  if (codeAfter2?.toLowerCase() === expectedDefault) {
+    console.log('SUCCESS: Delegation restored to DEFAULT_ACCOUNT');
+  } else {
+    console.log(`FAILED: Expected ${expectedDefault}, got ${codeAfter2}`);
+    process.exit(1);
+  }
+
+  // Step 4: Clear delegation (target = address(0))
+  console.log('\n--- Step 4: Clear delegation (target = address(0)) ---');
+  const nonce3 = await getAaNonce();
+  console.log(`AA nonce (key=0): ${nonce3}`);
+
+  const callsRlp3 = [[[encodeAddress(opts.probeAddr), probeCalldata]]];
+  const delegationEntry3 = [
+    toHex(0x02, { size: 1 }),
+    encodeAddress('0x0000000000000000000000000000000000000000'),
+  ];
+  const unsigned3 = baseTxFields(nonce3, callsRlp3, [delegationEntry3]);
+  const { receipt: receipt3 } = await signAndSend(unsigned3, { trace: opts.trace });
+
+  if (receipt3?.status !== '0x1') {
+    console.log(`FAILED: Clear delegation tx failed (status ${receipt3?.status || 'unknown'})`);
+    process.exit(1);
+  }
+
+  const codeAfter3 = await client.getCode({ address: account.address });
+  if (!codeAfter3 || codeAfter3 === '0x') {
+    console.log('SUCCESS: Delegation cleared — account is bare EOA again');
+  } else {
+    console.log(`FAILED: Expected empty code, got ${codeAfter3}`);
+    process.exit(1);
+  }
+
+  // Step 5: Send a normal tx — auto-delegation should fire, restoring DEFAULT_ACCOUNT
+  console.log('\n--- Step 5: Normal tx to verify auto-delegation restores ---');
+  const nonce4 = await getAaNonce();
+  console.log(`AA nonce (key=0): ${nonce4}`);
+
+  const callsRlp4 = [[[encodeAddress(opts.probeAddr), probeCalldata]]];
+  const unsigned4 = baseTxFields(nonce4, callsRlp4);
+  const { receipt: receipt4 } = await signAndSend(unsigned4, { trace: opts.trace });
+
+  if (receipt4?.status !== '0x1') {
+    console.log(`FAILED: Auto-delegation restore tx failed (status ${receipt4?.status || 'unknown'})`);
+    process.exit(1);
+  }
+
+  const codeAfter4 = await client.getCode({ address: account.address });
+  if (codeAfter4?.toLowerCase() === expectedDefault) {
+    console.log('SUCCESS: Auto-delegation restored DEFAULT_ACCOUNT after clear');
+  } else {
+    console.log(`FAILED: Expected ${expectedDefault}, got ${codeAfter4}`);
+    process.exit(1);
+  }
+
+  console.log('\n--- All delegation tests passed! ---');
+}
+
+// ─────────────────────────────────────────────────
 // Main
 // ─────────────────────────────────────────────────
 const blockNum = await client.getBlockNumber();
@@ -1257,8 +1835,26 @@ switch (opts.mode) {
   case 'estimate-gas':
     await runEstimateGas();
     break;
+  case 'custom-verifier':
+    await runCustomVerifier();
+    break;
+  case 'delegate-native':
+    await runDelegateNative();
+    break;
+  case 'delegate-p256':
+    await runDelegateP256();
+    break;
+  case 'locked-config':
+    await runLockedConfig();
+    break;
+  case 'nonceless':
+    await runNonceless();
+    break;
+  case 'delegation':
+    await runDelegation();
+    break;
   default:
     console.error(`Unknown mode: ${opts.mode}`);
-    console.error('Available modes: probe, multi-call, sponsor, config-change, p256, webauthn, receipt-test, deploy, nonce-rpc, estimate-gas');
+    console.error('Available modes: probe, multi-call, sponsor, config-change, p256, webauthn, receipt-test, deploy, nonce-rpc, estimate-gas, custom-verifier, delegate-native, delegate-p256, locked-config, nonceless, delegation');
     process.exit(1);
 }

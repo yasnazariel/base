@@ -8,16 +8,17 @@ mod constants;
 pub use constants::{
     AA_BASE_COST, AA_PAYER_TYPE, AA_TX_TYPE_ID, BYTECODE_BASE_GAS, BYTECODE_PER_BYTE_GAS,
     CONFIG_CHANGE_OP_GAS, CONFIG_CHANGE_SKIP_GAS, CUSTOM_VERIFIER_GAS_CAP, DEPLOYMENT_HEADER_SIZE,
-    EOA_AUTH_GAS, MAX_ACCOUNT_CHANGES_PER_TX, MAX_AUTHORIZATIONS_PER_TX, MAX_CALLS_PER_TX,
-    MAX_CONFIG_OPS_PER_TX, MAX_SIGNATURE_SIZE, NONCE_KEY_COLD_GAS, NONCE_KEY_WARM_GAS, SLOAD_GAS,
-    VERIFIER_CUSTOM, VERIFIER_DELEGATE, VERIFIER_K1, VERIFIER_P256_RAW, VERIFIER_P256_WEBAUTHN,
+    EOA_AUTH_GAS, EXPIRING_NONCE_GAS, EXPIRING_NONCE_SET_CAPACITY, MAX_ACCOUNT_CHANGES_PER_TX,
+    MAX_AUTHORIZATIONS_PER_TX, MAX_CALLS_PER_TX, MAX_CONFIG_OPS_PER_TX, MAX_SIGNATURE_SIZE,
+    NONCE_FREE_MAX_EXPIRY_WINDOW, NONCE_KEY_COLD_GAS, NONCE_KEY_MAX, NONCE_KEY_WARM_GAS, SLOAD_GAS,
     VerifierGasCosts,
 };
 
 mod types;
 pub use types::{
-    AccountChangeEntry, CHANGE_TYPE_CONFIG, CHANGE_TYPE_CREATE, Call, ConfigChangeEntry,
-    ConfigOperation, CreateEntry, OP_AUTHORIZE_OWNER, OP_REVOKE_OWNER, Owner, OwnerScope,
+    AccountChangeEntry, CHANGE_TYPE_CONFIG, CHANGE_TYPE_CREATE, CHANGE_TYPE_DELEGATION, Call,
+    ConfigChangeEntry, ConfigOperation, CreateEntry, DelegationEntry, OP_AUTHORIZE_OWNER,
+    OP_REVOKE_OWNER, Owner, OwnerScope,
 };
 
 mod tx;
@@ -25,14 +26,14 @@ pub use tx::TxEip8130;
 
 mod signature;
 pub use signature::{
-    ParsedSenderAuth, VerifierTarget, config_change_digest, parse_sender_auth,
-    payer_signature_hash, resolve_verifier, sender_signature_hash,
+    ParsedSenderAuth, config_change_digest, parse_sender_auth, payer_signature_hash,
+    sender_signature_hash,
 };
 
 mod gas;
 pub use gas::{
     account_change_units, account_changes_cost, authorizer_verification_gas, bytecode_cost,
-    delegate_inner_verifier_type, intrinsic_gas, intrinsic_gas_with_costs, nonce_key_cost,
+    delegate_inner_verifier, intrinsic_gas, intrinsic_gas_with_costs, nonce_key_cost,
     payer_auth_cost, payer_verification_gas, sender_auth_cost, sender_verification_gas,
     total_verification_gas, tx_payload_cost,
 };
@@ -49,18 +50,21 @@ pub use abi::{
 
 mod predeploys;
 pub use predeploys::{
-    ACCOUNT_CONFIG_ADDRESS, DEFAULT_ACCOUNT_ADDRESS, DELEGATE_VERIFIER_ADDRESS,
-    K1_VERIFIER_ADDRESS, NONCE_MANAGER_ADDRESS, P256_RAW_VERIFIER_ADDRESS,
-    P256_WEBAUTHN_VERIFIER_ADDRESS, TX_CONTEXT_ADDRESS,
+    ACCOUNT_CONFIG_ADDRESS, DEFAULT_ACCOUNT_ADDRESS, DEFAULT_HIGH_RATE_ACCOUNT_ADDRESS,
+    DELEGATE_VERIFIER_ADDRESS, EXTERNAL_CALLER_VERIFIER, K1_VERIFIER_ADDRESS,
+    NONCE_MANAGER_ADDRESS, P256_RAW_VERIFIER_ADDRESS, P256_WEBAUTHN_VERIFIER_ADDRESS,
+    REVOKED_VERIFIER, TX_CONTEXT_ADDRESS, is_account_config_known_deployed,
+    is_native_verifier, mark_account_config_deployed,
 };
 
 mod storage;
 #[allow(deprecated)]
 pub use storage::sequence_slot;
 pub use storage::{
-    LOCK_BASE_SLOT, NONCE_BASE_SLOT, OWNER_CONFIG_BASE_SLOT, SEQUENCE_BASE_SLOT,
-    encode_owner_config, lock_slot, nonce_slot, owner_config_slot, parse_owner_config,
-    read_sequence, sequence_base_slot, write_sequence,
+    EXPIRING_RING_BASE_SLOT, EXPIRING_RING_PTR_SLOT, EXPIRING_SEEN_BASE_SLOT, LOCK_BASE_SLOT,
+    NONCE_BASE_SLOT, OWNER_CONFIG_BASE_SLOT, SEQUENCE_BASE_SLOT, encode_owner_config,
+    expiring_ring_slot, expiring_seen_slot, lock_slot, nonce_slot, owner_config_slot,
+    parse_owner_config, read_sequence, sequence_base_slot, write_sequence,
 };
 
 #[cfg(feature = "evm")]
@@ -94,7 +98,6 @@ pub use validation::{
     ValidationError, check_lock_state, check_payer_authorization, check_sender_authorization,
     decode_verify_return, encode_verify_call, implicit_eoa_owner_id, resolve_sender,
     validate_config_change_sequences, validate_expiry, validate_nonce, validate_structure,
-    verifier_type_to_address,
 };
 
 #[cfg(feature = "native-verifier")]

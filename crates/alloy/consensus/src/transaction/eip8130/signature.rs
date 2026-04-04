@@ -4,13 +4,7 @@ use alloc::vec::Vec;
 
 use alloy_primitives::{Address, B256, Bytes, keccak256};
 
-use super::{
-    TxEip8130,
-    constants::{
-        VERIFIER_CUSTOM, VERIFIER_DELEGATE, VERIFIER_K1, VERIFIER_P256_RAW, VERIFIER_P256_WEBAUTHN,
-    },
-    types::ConfigChangeEntry,
-};
+use super::{TxEip8130, types::ConfigChangeEntry};
 
 /// Computes the EIP-712 config change authorization digest.
 ///
@@ -66,31 +60,11 @@ pub enum ParsedSenderAuth {
         /// The raw 65-byte ECDSA signature.
         signature: [u8; 65],
     },
-    /// Configured owner mode: verifier type byte + verifier-specific data.
+    /// Configured owner mode: verifier address + verifier-specific data.
     Configured {
-        /// The verifier type byte.
-        verifier_type: u8,
-        /// For native verifiers (0x01-0x04): the data after the type byte.
-        /// For custom (0x00): the verifier address (20 bytes) + remaining data.
-        data: Bytes,
-    },
-}
-
-/// Identifies the verifier for a configured owner.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum VerifierTarget {
-    /// One of the native verifiers (K1, P256_RAW, P256_WEBAUTHN, DELEGATE).
-    Native {
-        /// The verifier type byte (0x01-0x04).
-        verifier_type: u8,
-        /// Verifier-specific authentication data.
-        data: Bytes,
-    },
-    /// A custom verifier contract.
-    Custom {
-        /// The address of the custom verifier contract.
-        verifier_address: Address,
-        /// Verifier-specific authentication data.
+        /// The verifier address (first 20 bytes of `sender_auth`).
+        verifier: Address,
+        /// The verifier-specific authentication data after the address prefix.
         data: Bytes,
     },
 }
@@ -98,7 +72,7 @@ pub enum VerifierTarget {
 /// Parse `sender_auth` based on the transaction's `from` field.
 ///
 /// - If `from == Address::ZERO` (EOA mode): expect exactly 65 bytes (raw ECDSA).
-/// - Otherwise (configured owner): first byte is the verifier type.
+/// - Otherwise (configured owner): first 20 bytes are the verifier address.
 pub fn parse_sender_auth(tx: &TxEip8130) -> Result<ParsedSenderAuth, &'static str> {
     if tx.is_eoa() {
         if tx.sender_auth.len() != 65 {
@@ -109,31 +83,13 @@ pub fn parse_sender_auth(tx: &TxEip8130) -> Result<ParsedSenderAuth, &'static st
         return Ok(ParsedSenderAuth::Eoa { signature: sig });
     }
 
-    if tx.sender_auth.is_empty() {
-        return Err("configured sender_auth must not be empty");
+    if tx.sender_auth.len() < 20 {
+        return Err("configured sender_auth must contain at least a 20-byte verifier address");
     }
 
-    let verifier_type = tx.sender_auth[0];
-    let data = Bytes::copy_from_slice(&tx.sender_auth[1..]);
-    Ok(ParsedSenderAuth::Configured { verifier_type, data })
-}
-
-/// Resolve a configured auth's verifier type + data into a concrete target.
-pub fn resolve_verifier(verifier_type: u8, data: &Bytes) -> Result<VerifierTarget, &'static str> {
-    match verifier_type {
-        VERIFIER_K1 | VERIFIER_P256_RAW | VERIFIER_P256_WEBAUTHN | VERIFIER_DELEGATE => {
-            Ok(VerifierTarget::Native { verifier_type, data: data.clone() })
-        }
-        VERIFIER_CUSTOM => {
-            if data.len() < 20 {
-                return Err("custom verifier auth must contain at least 20-byte address");
-            }
-            let verifier_address = Address::from_slice(&data[..20]);
-            let remaining = Bytes::copy_from_slice(&data[20..]);
-            Ok(VerifierTarget::Custom { verifier_address, data: remaining })
-        }
-        _ => Err("unknown verifier type byte"),
-    }
+    let verifier = Address::from_slice(&tx.sender_auth[..20]);
+    let data = Bytes::copy_from_slice(&tx.sender_auth[20..]);
+    Ok(ParsedSenderAuth::Configured { verifier, data })
 }
 
 #[cfg(test)]
@@ -164,7 +120,9 @@ mod tests {
 
     #[test]
     fn parse_configured_k1() {
-        let mut auth = vec![VERIFIER_K1];
+        use crate::K1_VERIFIER_ADDRESS;
+        let mut auth = Vec::new();
+        auth.extend_from_slice(K1_VERIFIER_ADDRESS.as_slice());
         auth.extend_from_slice(&[0xAB; 65]);
         let tx = TxEip8130 {
             from: Address::repeat_byte(0x01),
@@ -173,8 +131,8 @@ mod tests {
         };
         let parsed = parse_sender_auth(&tx).unwrap();
         match parsed {
-            ParsedSenderAuth::Configured { verifier_type, data } => {
-                assert_eq!(verifier_type, VERIFIER_K1);
+            ParsedSenderAuth::Configured { verifier, data } => {
+                assert_eq!(verifier, K1_VERIFIER_ADDRESS);
                 assert_eq!(data.len(), 65);
             }
             _ => panic!("expected Configured"),
@@ -183,9 +141,10 @@ mod tests {
 
     #[test]
     fn parse_configured_custom() {
-        let mut auth = vec![VERIFIER_CUSTOM];
-        auth.extend_from_slice(&[0xCC; 20]); // verifier address
-        auth.extend_from_slice(&[0xDD; 32]); // data
+        let custom_verifier = Address::repeat_byte(0xCC);
+        let mut auth = Vec::new();
+        auth.extend_from_slice(custom_verifier.as_slice());
+        auth.extend_from_slice(&[0xDD; 32]);
         let tx = TxEip8130 {
             from: Address::repeat_byte(0x01),
             sender_auth: Bytes::from(auth),
@@ -193,16 +152,9 @@ mod tests {
         };
         let parsed = parse_sender_auth(&tx).unwrap();
         match parsed {
-            ParsedSenderAuth::Configured { verifier_type, data } => {
-                assert_eq!(verifier_type, VERIFIER_CUSTOM);
-                let target = resolve_verifier(verifier_type, &data).unwrap();
-                match target {
-                    VerifierTarget::Custom { verifier_address, data } => {
-                        assert_eq!(verifier_address, Address::repeat_byte(0xCC));
-                        assert_eq!(data.len(), 32);
-                    }
-                    _ => panic!("expected Custom"),
-                }
+            ParsedSenderAuth::Configured { verifier, data } => {
+                assert_eq!(verifier, custom_verifier);
+                assert_eq!(data.len(), 32);
             }
             _ => panic!("expected Configured"),
         }

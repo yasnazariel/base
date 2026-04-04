@@ -34,12 +34,6 @@ sol! {
     /// Account configuration system contract. Manages owner registrations,
     /// account creation (CREATE2), config changes, and account locking.
     interface IAccountConfig {
-        /// Registers or updates an owner for `msg.sender`.
-        function authorizeOwner(address verifier, bytes32 ownerId, uint8 scope) external;
-
-        /// Revokes an owner (sets verifier to `address(0)`).
-        function revokeOwner(bytes32 ownerId) external;
-
         /// Returns the owner configuration for a given account and owner ID.
         function getOwner(address account, bytes32 ownerId) external view returns (address verifier, uint8 scope);
 
@@ -56,13 +50,16 @@ sol! {
         function getChangeSequence(address account, uint64 chainId) external view returns (uint64);
 
         /// Locks an account's owner configuration for a minimum delay.
-        function lock(address account, uint64 unlockDelay, bytes calldata signature) external;
+        function lock(address account, uint32 unlockDelay, bytes calldata signature) external;
 
         /// Requests an unlock, starting the timelock.
         function requestUnlock(address account, bytes calldata signature) external;
 
         /// Completes the unlock after the delay has elapsed.
         function unlock(address account, bytes calldata signature) external;
+
+        /// Returns the lock state for an account.
+        function getLockState(address account) external view returns (bool locked, uint32 unlockDelay, uint32 unlockRequestedAt);
 
         /// Returns the addresses of the native verifier contracts.
         function getNativeVerifiers() external view returns (address k1, address p256Raw, address p256WebAuthn, address delegate);

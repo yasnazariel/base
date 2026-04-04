@@ -132,6 +132,7 @@ K1_VERIFIER=$(extract_addr "K1Verifier")
 P256_VERIFIER=$(extract_addr "P256Verifier")
 WEBAUTHN_VERIFIER=$(extract_addr "WebAuthnVerifier")
 DELEGATE_VERIFIER=$(extract_addr "DelegateVerifier")
+ALWAYS_VALID_VERIFIER=$(extract_addr "AlwaysValidVerifier")
 
 echo ""
 echo "=== Deployed Addresses ==="
@@ -142,6 +143,7 @@ echo "K1Verifier:             $K1_VERIFIER"
 echo "P256Verifier:           $P256_VERIFIER"
 echo "WebAuthnVerifier:       $WEBAUTHN_VERIFIER"
 echo "DelegateVerifier:       $DELEGATE_VERIFIER"
+echo "AlwaysValidVerifier:    $ALWAYS_VALID_VERIFIER"
 
 mkdir -p "$OUTPUT_DIR"
 cat >"$OUTPUT_DIR/8130-addresses.json" <<ADDR_EOF
@@ -152,7 +154,8 @@ cat >"$OUTPUT_DIR/8130-addresses.json" <<ADDR_EOF
   "k1Verifier": "$K1_VERIFIER",
   "p256Verifier": "$P256_VERIFIER",
   "webAuthnVerifier": "$WEBAUTHN_VERIFIER",
-  "delegateVerifier": "$DELEGATE_VERIFIER"
+  "delegateVerifier": "$DELEGATE_VERIFIER",
+  "alwaysValidVerifier": "$ALWAYS_VALID_VERIFIER"
 }
 ADDR_EOF
 

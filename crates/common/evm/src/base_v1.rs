@@ -1,22 +1,20 @@
 use alloy_evm::Database;
 use alloy_primitives::{Address, Bytes};
-use base_alloy_consensus::{ACCOUNT_CONFIG_ADDRESS, NONCE_MANAGER_ADDRESS, TX_CONTEXT_ADDRESS};
+use base_alloy_consensus::{NONCE_MANAGER_ADDRESS, TX_CONTEXT_ADDRESS};
 use base_alloy_chains::BaseUpgrades;
 use revm::{DatabaseCommit, primitives::HashMap, state::Bytecode};
 
-/// Addresses that need stub bytecode at activation to prevent EIP-161 cleanup.
+/// Precompile addresses that need stub bytecode to prevent EIP-161 cleanup.
 ///
-/// The protocol writes storage directly to these addresses (nonces, owner
-/// configs, tx context). Without code, EIP-161 state clearing would remove
-/// the accounts and their storage after each transaction.
+/// The protocol writes storage directly to these addresses (nonces, tx
+/// context). Without code, EIP-161 state clearing would remove the accounts
+/// and their storage after each transaction.
 ///
-/// Verifiers and DefaultAccount are NOT included — they receive real bytecode
-/// via `TxDeposit` upgrade transactions at hardfork activation (see
-/// `crates/consensus/upgrades/src/base_v1.rs`). On devnets they are deployed
-/// by `deploy-8130.sh`. When `deploy-8130.sh` deploys AccountConfiguration,
-/// the real Solidity bytecode overwrites the `0xFE` stub.
-const AA_PRECOMPILE_ADDRESSES: [Address; 3] =
-    [NONCE_MANAGER_ADDRESS, TX_CONTEXT_ADDRESS, ACCOUNT_CONFIG_ADDRESS];
+/// `AccountConfiguration` is NOT included — it is a real Solidity contract
+/// deployed via CREATE2 by `deploy-8130.sh` (devnet) or upgrade deposit
+/// transactions (mainnet). The node gates AA validation on its presence:
+/// before deployment, only the implicit EOA rule applies.
+const AA_PRECOMPILE_ADDRESSES: [Address; 2] = [NONCE_MANAGER_ADDRESS, TX_CONTEXT_ADDRESS];
 
 /// Stub bytecode deployed to precompile addresses.
 ///

@@ -1,8 +1,9 @@
 use alloy_consensus::{Transaction, transaction::Recovered};
 use alloy_eips::Encodable2718;
 use alloy_primitives::U256;
+use alloy_primitives::Address;
 use base_alloy_consensus::{
-    AA_TX_TYPE_ID, CUSTOM_VERIFIER_GAS_CAP, TxEip8130, VERIFIER_CUSTOM, intrinsic_gas,
+    AA_TX_TYPE_ID, CUSTOM_VERIFIER_GAS_CAP, TxEip8130, intrinsic_gas, is_native_verifier,
 };
 use base_revm::{L1BlockInfo, OpSpecId};
 use derive_more::Display;
@@ -57,11 +58,11 @@ pub fn validate_eip8130_tx(
 
     let aa_intrinsic = intrinsic_gas(tx, false, tx.chain_id);
     let has_custom = (!tx.is_eoa()
-        && !tx.sender_auth.is_empty()
-        && tx.sender_auth[0] == VERIFIER_CUSTOM)
+        && tx.sender_auth.len() >= 20
+        && !is_native_verifier(Address::from_slice(&tx.sender_auth[..20])))
         || (!tx.is_self_pay()
-            && !tx.payer_auth.is_empty()
-            && tx.payer_auth[0] == VERIFIER_CUSTOM);
+            && tx.payer_auth.len() >= 20
+            && !is_native_verifier(Address::from_slice(&tx.payer_auth[..20])));
     let verifier_cap = if has_custom { CUSTOM_VERIFIER_GAS_CAP } else { 0u64 };
     let total_gas =
         U256::from(aa_intrinsic) + U256::from(verifier_cap) + U256::from(tx.gas_limit);

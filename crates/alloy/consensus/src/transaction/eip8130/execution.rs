@@ -20,10 +20,13 @@ use alloc::vec::Vec;
 use alloy_primitives::{Address, B256, Bytes, U256};
 
 use super::{
-    predeploys::{ACCOUNT_CONFIG_ADDRESS, DEFAULT_ACCOUNT_ADDRESS, NONCE_MANAGER_ADDRESS},
+    predeploys::{
+        ACCOUNT_CONFIG_ADDRESS, DEFAULT_ACCOUNT_ADDRESS, NONCE_MANAGER_ADDRESS, REVOKED_VERIFIER,
+    },
     storage::{encode_owner_config, nonce_slot, owner_config_slot, sequence_base_slot},
     tx::TxEip8130,
     types::{ConfigChangeEntry, CreateEntry},
+    validation::implicit_eoa_owner_id,
 };
 
 /// A single storage write operation.
@@ -117,11 +120,18 @@ pub fn config_change_writes(account: Address, change: &ConfigChangeEntry) -> Vec
 
     let mut writes = Vec::new();
 
+    let self_owner_id = implicit_eoa_owner_id(account);
     for op in &change.operations {
         let slot = owner_config_slot(account, op.owner_id);
         let value = match op.op_type {
             OP_AUTHORIZE_OWNER => encode_owner_config(op.verifier, op.scope),
-            OP_REVOKE_OWNER => B256::ZERO,
+            OP_REVOKE_OWNER => {
+                if op.owner_id == self_owner_id {
+                    encode_owner_config(REVOKED_VERIFIER, 0)
+                } else {
+                    B256::ZERO
+                }
+            }
             _ => continue,
         };
         writes.push(StorageWrite {

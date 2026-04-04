@@ -14,18 +14,16 @@ use base_revm::{
 use revm::context::TxEnv;
 
 use crate::{
-    ACCOUNT_CONFIG_ADDRESS, AccountChangeEntry, CUSTOM_VERIFIER_GAS_CAP, OP_AUTHORIZE_OWNER,
-    OP_REVOKE_OWNER, OpTxEnvelope, OwnerScope, TxDeposit, TxEip8130, VERIFIER_CUSTOM,
-    VerifierGasCosts, account_change_units, auto_delegation_code, config_change_digest,
-    config_change_sequence, config_change_writes, delegate_inner_verifier_type,
-    derive_account_address, encode_verify_call, intrinsic_gas_with_costs,
-    owner_registration_writes, payer_auth_cost, payer_signature_hash, payer_verification_gas,
-    sender_signature_hash, total_verification_gas,
+    ACCOUNT_CONFIG_ADDRESS, AccountChangeEntry, CUSTOM_VERIFIER_GAS_CAP, K1_VERIFIER_ADDRESS,
+    NONCE_KEY_MAX, OP_AUTHORIZE_OWNER, OP_REVOKE_OWNER, OpTxEnvelope, OwnerScope, TxDeposit,
+    TxEip8130, VerifierGasCosts, account_change_units, auto_delegation_code,
+    config_change_digest, config_change_sequence, config_change_writes,
+    delegate_inner_verifier, derive_account_address, encode_verify_call,
+    intrinsic_gas_with_costs, is_native_verifier, owner_registration_writes, payer_auth_cost,
+    payer_signature_hash, payer_verification_gas, sender_signature_hash, total_verification_gas,
 };
 #[cfg(feature = "native-verifier")]
-use crate::{
-    NativeVerifyResult, ParsedSenderAuth, VERIFIER_K1, parse_sender_auth, try_native_verify,
-};
+use crate::{NativeVerifyResult, ParsedSenderAuth, parse_sender_auth, try_native_verify};
 
 #[cfg(feature = "native-verifier")]
 fn derive_sender_owner_id(tx: &TxEip8130) -> B256 {
@@ -38,13 +36,13 @@ fn derive_sender_owner_id(tx: &TxEip8130) -> B256 {
     match parsed {
         ParsedSenderAuth::Eoa { signature } => {
             let signature = Bytes::copy_from_slice(&signature);
-            match try_native_verify(VERIFIER_K1, &signature, sig_hash) {
+            match try_native_verify(K1_VERIFIER_ADDRESS, &signature, sig_hash) {
                 NativeVerifyResult::Verified(owner_id) => owner_id,
                 NativeVerifyResult::Invalid(_) | NativeVerifyResult::Unsupported => B256::ZERO,
             }
         }
-        ParsedSenderAuth::Configured { verifier_type, data } => {
-            match try_native_verify(verifier_type, &data, sig_hash) {
+        ParsedSenderAuth::Configured { verifier, data } => {
+            match try_native_verify(verifier, &data, sig_hash) {
                 NativeVerifyResult::Verified(owner_id) => owner_id,
                 NativeVerifyResult::Invalid(_) | NativeVerifyResult::Unsupported => B256::ZERO,
             }
@@ -60,19 +58,19 @@ fn derive_sender_owner_id(_tx: &TxEip8130) -> B256 {
 /// Verifies the payer's signature and returns the payer `owner_id`.
 ///
 /// For self-pay transactions returns `B256::ZERO`. For sponsored transactions,
-/// the first byte of `payer_auth` identifies the verifier type; the remaining
-/// bytes are passed to the native verifier.
+/// the first 20 bytes of `payer_auth` identify the verifier address; the
+/// remaining bytes are passed to the native verifier.
 #[cfg(feature = "native-verifier")]
 fn derive_payer_owner_id(tx: &TxEip8130) -> B256 {
-    if tx.is_self_pay() || tx.payer_auth.is_empty() {
+    if tx.is_self_pay() || tx.payer_auth.len() < 20 {
         return B256::ZERO;
     }
 
-    let verifier_type = tx.payer_auth[0];
-    let data = Bytes::copy_from_slice(&tx.payer_auth[1..]);
+    let verifier = Address::from_slice(&tx.payer_auth[..20]);
+    let data = Bytes::copy_from_slice(&tx.payer_auth[20..]);
     let sig_hash = payer_signature_hash(tx);
 
-    match try_native_verify(verifier_type, &data, sig_hash) {
+    match try_native_verify(verifier, &data, sig_hash) {
         NativeVerifyResult::Verified(owner_id) => owner_id,
         NativeVerifyResult::Invalid(_) | NativeVerifyResult::Unsupported => B256::ZERO,
     }
@@ -85,23 +83,24 @@ fn derive_payer_owner_id(_tx: &TxEip8130) -> B256 {
 
 /// Builds a [`Eip8130VerifyCall`] for a custom verifier auth blob.
 ///
-/// Returns `None` for native verifiers (type != 0x00) or empty blobs.
-/// For custom verifiers: extracts the verifier address and remaining data,
-/// then ABI-encodes `IVerifier.verify(hash, data)`.
+/// Returns `None` for native verifiers or blobs shorter than 20 bytes.
+/// For custom verifiers: the first 20 bytes are the verifier address, the
+/// remaining bytes are verifier-specific data. ABI-encodes
+/// `IVerifier.verify(hash, data)`.
 fn build_verify_call(
     auth: &[u8],
     sig_hash: B256,
     account: Address,
     required_scope: u8,
 ) -> Option<Eip8130VerifyCall> {
-    if auth.is_empty() || auth[0] != VERIFIER_CUSTOM {
+    if auth.len() < 20 {
         return None;
     }
-    if auth.len() < 21 {
+    let verifier = Address::from_slice(&auth[..20]);
+    if is_native_verifier(verifier) {
         return None;
     }
-    let verifier = Address::from_slice(&auth[1..21]);
-    let data = Bytes::copy_from_slice(&auth[21..]);
+    let data = Bytes::copy_from_slice(&auth[20..]);
     let calldata = encode_verify_call(sig_hash, &data);
     Some(Eip8130VerifyCall { verifier, calldata, account, required_scope })
 }
@@ -109,7 +108,8 @@ fn build_verify_call(
 /// Builds per-config-change authorizer validation data.
 ///
 /// For each `ConfigChangeEntry`, computes the config change digest, then:
-/// - **Custom verifier (0x00):** builds an [`Eip8130VerifyCall`] for runtime STATICCALL.
+/// - **Custom verifier (non-native address):** builds an [`Eip8130VerifyCall`] for runtime
+///   STATICCALL.
 /// - **Native verifier:** runs `try_native_verify` to obtain the `owner_id`.
 ///
 /// Returns one [`Eip8130AuthorizerValidation`] per config change entry.
@@ -124,13 +124,13 @@ fn build_authorizer_validations(
             AccountChangeEntry::ConfigChange(cc) => cc,
             _ => continue,
         };
-        if cc.authorizer_auth.is_empty() {
+        if cc.authorizer_auth.len() < 20 {
             validations.push(Eip8130AuthorizerValidation::default());
             continue;
         }
 
         let digest = config_change_digest(sender, cc);
-        let verifier_type = cc.authorizer_auth[0];
+        let verifier = Address::from_slice(&cc.authorizer_auth[..20]);
 
         let ops: Vec<Eip8130ConfigOp> = cc
             .operations
@@ -143,23 +143,23 @@ fn build_authorizer_validations(
             })
             .collect();
 
-        if verifier_type == VERIFIER_CUSTOM {
+        if !is_native_verifier(verifier) {
             let verify_call =
                 build_verify_call(&cc.authorizer_auth, digest, sender, OwnerScope::CONFIG);
             validations.push(Eip8130AuthorizerValidation {
-                verifier_type,
+                verifier: Address::ZERO,
                 owner_id: B256::ZERO,
                 verify_call,
                 operations: ops,
             });
         } else {
-            let data = Bytes::copy_from_slice(&cc.authorizer_auth[1..]);
-            let owner_id = match try_native_verify(verifier_type, &data, digest) {
+            let data = Bytes::copy_from_slice(&cc.authorizer_auth[20..]);
+            let owner_id = match try_native_verify(verifier, &data, digest) {
                 NativeVerifyResult::Verified(id) => id,
                 NativeVerifyResult::Invalid(_) | NativeVerifyResult::Unsupported => B256::ZERO,
             };
             validations.push(Eip8130AuthorizerValidation {
-                verifier_type,
+                verifier: Address::ZERO,
                 owner_id,
                 verify_call: None,
                 operations: ops,
@@ -180,13 +180,13 @@ fn build_authorizer_validations(
             AccountChangeEntry::ConfigChange(cc) => cc,
             _ => continue,
         };
-        if cc.authorizer_auth.is_empty() {
+        if cc.authorizer_auth.len() < 20 {
             validations.push(Eip8130AuthorizerValidation::default());
             continue;
         }
 
         let digest = config_change_digest(sender, cc);
-        let verifier_type = cc.authorizer_auth[0];
+        let verifier = Address::from_slice(&cc.authorizer_auth[..20]);
 
         let ops: Vec<Eip8130ConfigOp> = cc
             .operations
@@ -199,14 +199,14 @@ fn build_authorizer_validations(
             })
             .collect();
 
-        let verify_call = if verifier_type == VERIFIER_CUSTOM {
+        let verify_call = if !is_native_verifier(verifier) {
             build_verify_call(&cc.authorizer_auth, digest, sender, OwnerScope::CONFIG)
         } else {
             None
         };
 
         validations.push(Eip8130AuthorizerValidation {
-            verifier_type,
+            verifier: Address::ZERO,
             owner_id: B256::ZERO,
             verify_call,
             operations: ops,
@@ -242,8 +242,8 @@ pub fn build_eip8130_parts_with_costs(
     let owner_id = derive_sender_owner_id(tx);
     let payer_owner_id = derive_payer_owner_id(tx);
 
-    let sender_inner = delegate_inner_verifier_type(&tx.sender_auth);
-    let payer_inner = delegate_inner_verifier_type(&tx.payer_auth);
+    let sender_inner = delegate_inner_verifier(&tx.sender_auth);
+    let payer_inner = delegate_inner_verifier(&tx.payer_auth);
     let verification_gas = total_verification_gas(tx, costs, sender_inner, payer_inner);
 
     let has_create_entry =
@@ -323,6 +323,13 @@ pub fn build_eip8130_parts_with_costs(
                         _ => {}
                     }
                 }
+                config_change_logs.push(Eip8130ConfigLog::ChangeApplied {
+                    account: sender,
+                    sequence: cc.sequence,
+                });
+            }
+            AccountChangeEntry::Delegation(_) => {
+                // delegation_target is extracted below
             }
         }
     }
@@ -366,21 +373,35 @@ pub fn build_eip8130_parts_with_costs(
 
     let authorizer_validations = build_authorizer_validations(tx, sender);
 
+    let nonce_free_hash = if tx.nonce_key == NONCE_KEY_MAX {
+        Some(sender_signature_hash(tx))
+    } else {
+        None
+    };
+
+    let delegation_target = tx.account_changes.iter().find_map(|e| match e {
+        AccountChangeEntry::Delegation(d) => Some(d.target),
+        _ => None,
+    });
+
     let has_custom_authorizer = authorizer_validations.iter().any(|v| v.verify_call.is_some());
     let has_custom_verifier =
         sender_verify_call.is_some() || payer_verify_call.is_some() || has_custom_authorizer;
     let custom_verifier_gas_cap = if has_custom_verifier { CUSTOM_VERIFIER_GAS_CAP } else { 0 };
 
-    let sender_verifier_type = if tx.is_eoa() {
-        crate::VERIFIER_K1
+    let sender_verifier = if tx.is_eoa() {
+        K1_VERIFIER_ADDRESS
     } else if tx.sender_auth.is_empty() {
-        0
+        Address::ZERO
     } else {
-        tx.sender_auth[0]
+        Address::from_slice(&tx.sender_auth[..20])
     };
 
-    let payer_verifier_type =
-        if tx.is_self_pay() || tx.payer_auth.is_empty() { 0 } else { tx.payer_auth[0] };
+    let payer_verifier = if tx.is_self_pay() || tx.payer_auth.is_empty() {
+        Address::ZERO
+    } else {
+        Address::from_slice(&tx.payer_auth[..20])
+    };
 
     Eip8130Parts {
         expiry: tx.expiry,
@@ -389,14 +410,16 @@ pub fn build_eip8130_parts_with_costs(
         owner_id,
         payer_owner_id,
         nonce_key: tx.nonce_key,
+        nonce_free_hash,
         has_create_entry,
+        delegation_target,
         account_change_units: total_account_change_units,
         verification_gas,
         aa_intrinsic_gas,
         payer_intrinsic_gas,
         custom_verifier_gas_cap,
-        sender_verifier_type,
-        payer_verifier_type,
+        sender_verifier,
+        payer_verifier,
         auto_delegation_code: auto_delegation_code(),
         pre_writes,
         config_writes,
@@ -442,11 +465,14 @@ impl FromRecoveredTx<OpTxEnvelope> for TxEnv {
                     &VerifierGasCosts::BASE_V1,
                 );
                 let has_custom =
-                    (!inner.is_eoa() && !inner.sender_auth.is_empty() && inner.sender_auth[0] == VERIFIER_CUSTOM)
-                    || (!inner.is_self_pay() && !inner.payer_auth.is_empty() && inner.payer_auth[0] == VERIFIER_CUSTOM)
+                    (!inner.is_eoa() && inner.sender_auth.len() >= 20
+                        && !is_native_verifier(Address::from_slice(&inner.sender_auth[..20])))
+                    || (!inner.is_self_pay() && inner.payer_auth.len() >= 20
+                        && !is_native_verifier(Address::from_slice(&inner.payer_auth[..20])))
                     || inner.account_changes.iter().any(|entry| {
                         matches!(entry, AccountChangeEntry::ConfigChange(cc)
-                            if !cc.authorizer_auth.is_empty() && cc.authorizer_auth[0] == VERIFIER_CUSTOM)
+                            if cc.authorizer_auth.len() >= 20
+                                && !is_native_verifier(Address::from_slice(&cc.authorizer_auth[..20])))
                     });
                 let verifier_cap = if has_custom { CUSTOM_VERIFIER_GAS_CAP } else { 0 };
                 Self {
@@ -608,8 +634,8 @@ mod tests {
 
         let sig_hash = sender_signature_hash(&tx);
         let (signature, recovery_id) = signing_key.sign_prehash(sig_hash.as_slice()).unwrap();
-        let mut auth = Vec::with_capacity(66);
-        auth.push(VERIFIER_K1);
+        let mut auth = Vec::with_capacity(85);
+        auth.extend_from_slice(K1_VERIFIER_ADDRESS.as_slice());
         auth.extend_from_slice(&signature.to_bytes());
         auth.push(recovery_id.to_byte());
         tx.sender_auth = Bytes::from(auth);
@@ -624,14 +650,7 @@ mod tests {
     fn derive_owner_id_unsupported_verifier_returns_zero() {
         let tx = TxEip8130 {
             from: Address::repeat_byte(0x11),
-            sender_auth: Bytes::from(
-                [
-                    0x00u8, // custom verifier
-                    0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22,
-                    0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22,
-                ]
-                .to_vec(),
-            ),
+            sender_auth: Bytes::copy_from_slice(Address::repeat_byte(0x22).as_slice()),
             ..Default::default()
         };
 

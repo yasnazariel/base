@@ -57,14 +57,36 @@ const NONCE_COLD_WARM_DELTA: u64 = 17_100;
 /// AccountConfiguration deployed contract address.
 /// Must match the CREATE2 address from `Deploy.s.sol` (salt = 0).
 const ACCOUNT_CONFIG_ADDRESS: Address = Address::new([
-    0x0F, 0x12, 0x71, 0x93, 0xb7, 0x2E, 0x0f, 0x85, 0x46, 0xA6, 0xF4, 0xE4, 0x71, 0xb6, 0xF8,
-    0x24, 0x19, 0x00, 0x93, 0x2B,
+    0x47, 0xB8, 0x02, 0x0e, 0xa3, 0x5A, 0xbe, 0xBD, 0x95, 0x9c, 0xEE, 0xf7, 0xa0, 0xD1, 0xbE,
+    0xae, 0x19, 0xd8, 0xCA, 0x21,
 ]);
+
+/// Monotonic cache: once the AccountConfiguration contract is detected, we
+/// skip the code-existence check on all subsequent calls. Relaxed ordering
+/// is safe because the flag only transitions `false → true`.
+static ACCOUNT_CONFIG_DEPLOYED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
 /// Base storage slot for the nonce mapping in NonceManager (slot index 1).
 const NONCE_BASE_SLOT: U256 = U256::from_limbs([1, 0, 0, 0]);
 /// Base storage slot for the lock mapping in AccountConfig (slot index 1).
 const LOCK_BASE_SLOT: U256 = U256::from_limbs([1, 0, 0, 0]);
+
+/// Sentinel nonce key that activates nonce-free mode.
+///
+/// Mirrors [`base_alloy_consensus::NONCE_KEY_MAX`] to avoid a cyclic dependency.
+const NONCE_KEY_MAX: U256 = U256::from_limbs([u64::MAX, u64::MAX, u64::MAX, 0]);
+
+/// Mirrors [`base_alloy_consensus::EXPIRING_SEEN_BASE_SLOT`].
+const EXPIRING_SEEN_BASE_SLOT: U256 = U256::from_limbs([2, 0, 0, 0]);
+/// Mirrors [`base_alloy_consensus::EXPIRING_RING_BASE_SLOT`].
+const EXPIRING_RING_BASE_SLOT: U256 = U256::from_limbs([3, 0, 0, 0]);
+/// Mirrors [`base_alloy_consensus::EXPIRING_RING_PTR_SLOT`].
+const EXPIRING_RING_PTR_SLOT: U256 = U256::from_limbs([4, 0, 0, 0]);
+/// Mirrors [`base_alloy_consensus::EXPIRING_NONCE_SET_CAPACITY`].
+const EXPIRING_NONCE_SET_CAPACITY: u32 = 300_000;
+/// Mirrors [`base_alloy_consensus::NONCE_FREE_MAX_EXPIRY_WINDOW`].
+const NONCE_FREE_MAX_EXPIRY_WINDOW: u64 = 30;
 
 /// Computes the NonceManager storage slot for `nonce[account][nonce_key]`.
 ///
@@ -82,6 +104,28 @@ fn aa_nonce_slot(account: Address, nonce_key: U256) -> U256 {
     let mut buf = [0u8; 64];
     buf[..32].copy_from_slice(&nonce_key.to_be_bytes::<32>());
     buf[32..64].copy_from_slice(inner.as_slice());
+    U256::from_be_bytes(keccak256(buf).0)
+}
+
+/// Computes the storage slot for `expiringNonceSeen[txHash]`.
+///
+/// Mirrors [`base_alloy_consensus::expiring_seen_slot`] to avoid a cyclic dependency.
+fn aa_expiring_seen_slot(tx_hash: B256) -> U256 {
+    let mut buf = [0u8; 64];
+    buf[..32].copy_from_slice(tx_hash.as_slice());
+    let base = EXPIRING_SEEN_BASE_SLOT.to_be_bytes::<32>();
+    buf[32..64].copy_from_slice(&base);
+    U256::from_be_bytes(keccak256(buf).0)
+}
+
+/// Computes the storage slot for `expiringNonceRing[index]`.
+///
+/// Mirrors [`base_alloy_consensus::expiring_ring_slot`] to avoid a cyclic dependency.
+fn aa_expiring_ring_slot(index: u32) -> U256 {
+    let mut buf = [0u8; 64];
+    buf[28..32].copy_from_slice(&index.to_be_bytes());
+    let base = EXPIRING_RING_BASE_SLOT.to_be_bytes::<32>();
+    buf[32..64].copy_from_slice(&base);
     U256::from_be_bytes(keccak256(buf).0)
 }
 
@@ -198,7 +242,7 @@ where
 fn validate_native_verifier_owner<EVM, ERROR>(
     evm: &mut EVM,
     account: Address,
-    verifier_type: u8,
+    verifier: Address,
     owner_id: B256,
     required_scope: u8,
 ) -> Result<(), ERROR>
@@ -214,16 +258,24 @@ where
         evm.ctx().journal_mut().sload(ACCOUNT_CONFIG_ADDRESS, slot)?.data;
     let (on_chain_verifier, scope) = parse_owner_config_word(config_word);
 
-    if config_word == U256::ZERO {
-        // Slot is uninitialized — the account has no owner_config entry for
-        // this owner_id. This is normal for bare EOAs that authenticate via
-        // K1 signature alone without explicit AccountConfig registration.
-        // The cryptographic signature was already verified at a higher level.
-        return Ok(());
+    if on_chain_verifier == Address::with_last_byte(1) {
+        return Err(eip8130_invalid_tx::<ERROR>(
+            "native verifier owner explicitly revoked (REVOKED_VERIFIER sentinel)",
+        ));
     }
     if on_chain_verifier == Address::ZERO {
+        // Empty slot: implicit EOA rule applies only when
+        // owner_id matches bytes32(bytes20(account)).
+        let implicit_owner_id = {
+            let mut buf = [0u8; 32];
+            buf[..20].copy_from_slice(account.as_slice());
+            U256::from_be_bytes(buf)
+        };
+        if owner_id_uint == implicit_owner_id {
+            return Ok(());
+        }
         return Err(eip8130_invalid_tx::<ERROR>(
-            "native verifier owner revoked (config cleared)",
+            "owner_config not found and implicit EOA rule does not apply",
         ));
     }
     if scope != 0 && (scope & required_scope) == 0 {
@@ -232,7 +284,7 @@ where
         )));
     }
 
-    if verifier_type == crate::constants::VERIFIER_DELEGATE {
+    if verifier == crate::constants::DELEGATE_VERIFIER_ADDRESS {
         // DELEGATE: the on-chain verifier is the delegation target. Read
         // the inner owner's config for the SAME owner_id under the
         // delegation target's verifier address.
@@ -276,12 +328,32 @@ where
         return Ok(());
     }
 
+    if !ACCOUNT_CONFIG_DEPLOYED.load(std::sync::atomic::Ordering::Relaxed) {
+        let acct = evm.ctx().journal_mut().load_account_with_code_mut(ACCOUNT_CONFIG_ADDRESS)?.data;
+        let has_code = acct.account().info.code_hash != keccak256([]);
+        drop(acct);
+        if has_code {
+            ACCOUNT_CONFIG_DEPLOYED.store(true, std::sync::atomic::Ordering::Relaxed);
+        } else {
+            return Err(eip8130_invalid_tx::<ERROR>(
+                "config changes require AccountConfiguration to be deployed",
+            ));
+        }
+    }
+
     evm.ctx().journal_mut().load_account(ACCOUNT_CONFIG_ADDRESS)?;
 
     // Lock-state check: locked accounts cannot process config changes.
+    // AccountState packs `unlocksAt` (uint40) at bytes [11..16] of the slot.
+    // An account is locked when `block.timestamp < unlocksAt`.
     let lock_slot = aa_lock_slot(sender);
     let lock_word = evm.ctx().journal_mut().sload(ACCOUNT_CONFIG_ADDRESS, lock_slot)?.data;
-    if lock_word.to_be_bytes::<32>()[0] != 0 {
+    let lock_bytes = lock_word.to_be_bytes::<32>();
+    let mut ua = [0u8; 8];
+    ua[3..8].copy_from_slice(&lock_bytes[11..16]);
+    let unlocks_at = u64::from_be_bytes(ua);
+    let now: u64 = evm.ctx().block().timestamp().to();
+    if now < unlocks_at {
         return Err(eip8130_invalid_tx::<ERROR>(
             "config changes not allowed: account is locked",
         ));
@@ -361,7 +433,7 @@ where
     let mut pending_owners: HashMap<U256, (Address, u8)> = HashMap::new();
 
     for validation in &eip8130.authorizer_validations {
-        if validation.verifier_type == 0 && validation.verify_call.is_none() {
+        if validation.verifier == Address::ZERO && validation.verify_call.is_none() {
             continue;
         }
 
@@ -436,11 +508,14 @@ where
             let config_word =
                 evm.ctx().journal_mut().sload(ACCOUNT_CONFIG_ADDRESS, slot)?.data;
 
-            if config_word == U256::ZERO {
-                // Uninitialized slot — bare EOA with no explicit owner_config.
-                // Accept only if the owner_id matches the sender's implicit
-                // owner_id (bytes32(bytes20(sender))), which has unrestricted scope.
-                // Left-aligned per Solidity: bytes32(bytes20(address)).
+            let (on_chain_verifier, scope) = parse_owner_config_word(config_word);
+            if on_chain_verifier == Address::with_last_byte(1) {
+                return Err(eip8130_invalid_tx::<ERROR>(
+                    "config change authorizer owner revoked",
+                ));
+            }
+            if on_chain_verifier == Address::ZERO {
+                // Empty slot: implicit EOA rule
                 let implicit_owner_id = {
                     let mut buf = [0u8; 32];
                     buf[..20].copy_from_slice(sender.as_slice());
@@ -448,12 +523,6 @@ where
                 };
                 owner_id == implicit_owner_id
             } else {
-                let (on_chain_verifier, scope) = parse_owner_config_word(config_word);
-                if on_chain_verifier == Address::ZERO {
-                    return Err(eip8130_invalid_tx::<ERROR>(
-                        "config change authorizer owner revoked",
-                    ));
-                }
                 scope == 0 || (scope & crate::constants::OWNER_SCOPE_CONFIG) != 0
             }
         };
@@ -762,47 +831,156 @@ where
 
             // --- Nonce validation and increment in NonceManager ---
             let nonce_key = eip8130.nonce_key;
-            let slot = aa_nonce_slot(sender, nonce_key);
+            if nonce_key != NONCE_KEY_MAX {
+                let slot = aa_nonce_slot(sender, nonce_key);
 
-            journal.load_account(NONCE_MANAGER_ADDRESS)?;
-            let current_seq = journal.sload(NONCE_MANAGER_ADDRESS, slot)?.data;
+                journal.load_account(NONCE_MANAGER_ADDRESS)?;
+                let current_seq = journal.sload(NONCE_MANAGER_ADDRESS, slot)?.data;
 
-            let skip_nonce_check =
-                cfg.is_nonce_check_disabled() || cfg.is_base_fee_check_disabled();
+                let skip_nonce_check =
+                    cfg.is_nonce_check_disabled() || cfg.is_base_fee_check_disabled();
 
-            if !skip_nonce_check {
-                let expected = U256::from(nonce_sequence);
-                if current_seq != expected {
-                    if current_seq > expected {
-                        return Err(InvalidTransaction::NonceTooLow {
+                if !skip_nonce_check {
+                    let expected = U256::from(nonce_sequence);
+                    if current_seq != expected {
+                        if current_seq > expected {
+                            return Err(InvalidTransaction::NonceTooLow {
+                                tx: nonce_sequence,
+                                state: current_seq.as_limbs()[0],
+                            }
+                            .into());
+                        }
+                        return Err(InvalidTransaction::NonceTooHigh {
                             tx: nonce_sequence,
                             state: current_seq.as_limbs()[0],
                         }
                         .into());
                     }
-                    return Err(InvalidTransaction::NonceTooHigh {
-                        tx: nonce_sequence,
-                        state: current_seq.as_limbs()[0],
-                    }
-                    .into());
                 }
-            }
-            let next_seq = if skip_nonce_check {
-                current_seq + U256::from(1)
+                let next_seq = if skip_nonce_check {
+                    current_seq + U256::from(1)
+                } else {
+                    U256::from(nonce_sequence + 1)
+                };
+                journal.sstore(NONCE_MANAGER_ADDRESS, slot, next_seq)?;
             } else {
-                U256::from(nonce_sequence + 1)
-            };
-            journal.sstore(NONCE_MANAGER_ADDRESS, slot, next_seq)?;
+                // --- Expiring-nonce circular buffer (nonce-free mode) ---
+                //
+                // On-chain replay protection: a fixed-capacity ring buffer
+                // stores recent nonce-free tx hashes keyed by expiry. Before
+                // including a new nonce-free tx the handler checks that no
+                // active (unexpired) entry with the same hash exists, evicts
+                // the oldest entry if it has expired, and inserts the new one.
+                let now: u64 = block.timestamp().to();
+                let expiry = eip8130.expiry;
+                let skip_checks =
+                    cfg.is_nonce_check_disabled() || cfg.is_base_fee_check_disabled();
 
-            // --- Auto-delegate bare EOAs ---
-            // If sender has no code and there's no create entry deploying new
-            // code, set EIP-7702 delegation designator pointing at the
-            // DEFAULT_ACCOUNT_ADDRESS.
-            if !sender_has_code
+                if !skip_checks {
+                    if expiry <= now || expiry > now + NONCE_FREE_MAX_EXPIRY_WINDOW {
+                        return Err(ERROR::from_string(format!(
+                            "nonce-free expiry out of window: expiry={expiry}, now={now}"
+                        )));
+                    }
+                }
+
+                let nf_hash = eip8130.nonce_free_hash.unwrap_or_default();
+                journal.load_account(NONCE_MANAGER_ADDRESS)?;
+
+                // Replay check
+                let seen_slot = aa_expiring_seen_slot(nf_hash);
+                let seen_expiry = journal.sload(NONCE_MANAGER_ADDRESS, seen_slot)?.data;
+                if !skip_checks
+                    && seen_expiry != U256::ZERO
+                    && seen_expiry > U256::from(now)
+                {
+                    return Err(ERROR::from_string(
+                        "nonce-free transaction replay: hash already seen".into(),
+                    ));
+                }
+
+                // Read ring buffer pointer
+                let ptr_raw =
+                    journal.sload(NONCE_MANAGER_ADDRESS, EXPIRING_RING_PTR_SLOT)?.data;
+                let idx = ptr_raw.as_limbs()[0] as u32 % EXPIRING_NONCE_SET_CAPACITY;
+
+                // Read existing entry at this ring position
+                let ring_slot = aa_expiring_ring_slot(idx);
+                let old_hash_raw =
+                    journal.sload(NONCE_MANAGER_ADDRESS, ring_slot)?.data;
+
+                // Evict old entry if present (must be expired)
+                if old_hash_raw != U256::ZERO {
+                    let old_hash = B256::from(old_hash_raw.to_be_bytes::<32>());
+                    let old_seen_slot = aa_expiring_seen_slot(old_hash);
+                    let old_expiry =
+                        journal.sload(NONCE_MANAGER_ADDRESS, old_seen_slot)?.data;
+                    if !skip_checks
+                        && old_expiry != U256::ZERO
+                        && old_expiry > U256::from(now)
+                    {
+                        return Err(ERROR::from_string(
+                            "nonce-free buffer full: cannot evict unexpired entry".into(),
+                        ));
+                    }
+                    journal.sstore(NONCE_MANAGER_ADDRESS, old_seen_slot, U256::ZERO)?;
+                }
+
+                // Insert new entry into ring + seen set
+                journal.sstore(
+                    NONCE_MANAGER_ADDRESS,
+                    ring_slot,
+                    U256::from_be_bytes(nf_hash.0),
+                )?;
+                journal.sstore(NONCE_MANAGER_ADDRESS, seen_slot, U256::from(expiry))?;
+
+                // Advance pointer (wraps at capacity)
+                let next_ptr = if idx + 1 >= EXPIRING_NONCE_SET_CAPACITY {
+                    U256::ZERO
+                } else {
+                    U256::from(idx + 1)
+                };
+                journal.sstore(
+                    NONCE_MANAGER_ADDRESS,
+                    EXPIRING_RING_PTR_SLOT,
+                    next_ptr,
+                )?;
+            }
+
+            // --- Delegation ---
+            // Explicit entry (account_changes type 0x02) takes priority.
+            // Otherwise bare EOAs get auto-delegated to DEFAULT_ACCOUNT.
+            //
+            // Uses revm's native EIP-7702 `Bytecode::new_eip7702` so the
+            // code is recognized as delegation by `is_eip7702()` throughout
+            // the EVM (EXTCODESIZE, EXTCODECOPY, EXTCODEHASH, etc.).
+            if let Some(target) = eip8130.delegation_target {
+                let acc = journal.load_account_with_code_mut(sender)?.data;
+                let current_code = acc.account().info.code.as_ref();
+                let is_empty = current_code.map_or(true, |c| c.is_empty());
+                let is_delegation = current_code.map_or(false, |c| c.is_eip7702());
+                drop(acc);
+
+                if !is_empty && !is_delegation {
+                    return Err(ERROR::from_string(
+                        "delegation entry rejected: sender has non-delegation bytecode".into(),
+                    ));
+                }
+
+                let code = if target.is_zero() {
+                    revm::bytecode::Bytecode::default()
+                } else {
+                    revm::bytecode::Bytecode::new_eip7702(target)
+                };
+                let mut acc = journal.load_account_with_code_mut(sender)?.data;
+                acc.set_code_and_hash_slow(code);
+                drop(acc);
+            } else if !sender_has_code
                 && !eip8130.has_create_entry
-                && !eip8130.auto_delegation_code.is_empty()
+                && eip8130.auto_delegation_code.len() == 23
             {
-                let code = revm::bytecode::Bytecode::new_raw(eip8130.auto_delegation_code.clone());
+                let target = Address::from_slice(&eip8130.auto_delegation_code[3..]);
+                let code = revm::bytecode::Bytecode::new_eip7702(target);
                 let mut acc = journal.load_account_with_code_mut(sender)?.data;
                 acc.set_code_and_hash_slow(code);
                 drop(acc);
@@ -893,14 +1071,15 @@ where
         // Only adjust for real transactions — during estimation the handler
         // must stay consistent with validate_initial_tx_gas (which always
         // uses cold gas) so the binary search doesn't break.
-        let nonce_warm_adjustment = if !is_estimation {
-            let nonce_slot = aa_nonce_slot(sender, eip8130.nonce_key);
-            let nonce_value =
-                evm.ctx().journal_mut().sload(NONCE_MANAGER_ADDRESS, nonce_slot)?.data;
-            if nonce_value > U256::from(1) { NONCE_COLD_WARM_DELTA } else { 0 }
-        } else {
-            0
-        };
+        let nonce_warm_adjustment =
+            if !is_estimation && eip8130.nonce_key != NONCE_KEY_MAX {
+                let nonce_slot = aa_nonce_slot(sender, eip8130.nonce_key);
+                let nonce_value =
+                    evm.ctx().journal_mut().sload(NONCE_MANAGER_ADDRESS, nonce_slot)?.data;
+                if nonce_value > U256::from(1) { NONCE_COLD_WARM_DELTA } else { 0 }
+            } else {
+                0
+            };
 
         // Strip intrinsic and custom verifier cap from the revm gas_limit to
         // recover the sender's execution-only budget. During estimation, also
@@ -991,23 +1170,23 @@ where
             // Re-validate sender/payer owner_config against current chain
             // state so revoked owners are caught between mempool acceptance
             // and block inclusion.
-            if eip8130.sender_verify_call.is_none() && eip8130.sender_verifier_type != 0 {
+            if eip8130.sender_verify_call.is_none() && eip8130.sender_verifier != Address::ZERO {
                 validate_native_verifier_owner::<EVM, ERROR>(
                     evm,
                     sender,
-                    eip8130.sender_verifier_type,
+                    eip8130.sender_verifier,
                     eip8130.owner_id,
                     crate::constants::OWNER_SCOPE_SENDER,
                 )?;
             }
             if eip8130.payer_verify_call.is_none()
-                && eip8130.payer_verifier_type != 0
+                && eip8130.payer_verifier != Address::ZERO
                 && eip8130.payer != eip8130.sender
             {
                 validate_native_verifier_owner::<EVM, ERROR>(
                     evm,
                     eip8130.payer,
-                    eip8130.payer_verifier_type,
+                    eip8130.payer_verifier,
                     eip8130.payer_owner_id,
                     crate::constants::OWNER_SCOPE_PAYER,
                 )?;
@@ -2528,9 +2707,15 @@ mod tests {
         U256::from_be_bytes(bytes)
     }
 
+    /// Packs an `AccountState` slot with only the lock-related fields.
+    ///
+    /// Layout: `... | unlockDelay(2) | unlocksAt(5) | localSequence(8) | multichainSequence(8)`
+    /// When `locked` is true, sets `unlocksAt = type(uint40).max`.
     fn pack_lock_state(locked: bool) -> U256 {
         let mut bytes = [0u8; 32];
-        bytes[0] = u8::from(locked);
+        if locked {
+            bytes[11..16].copy_from_slice(&[0xff; 5]);
+        }
         U256::from_be_bytes(bytes)
     }
 
@@ -2592,7 +2777,7 @@ mod tests {
             sender,
             payer: sender,
             custom_verifier_gas_cap: 100_000,
-            sender_verifier_type: 0x00, // custom
+            sender_verifier: Address::ZERO, // custom
             call_phases: vec![vec![Eip8130Call {
                 to: target,
                 data: Bytes::new(),
@@ -2679,7 +2864,7 @@ mod tests {
             sender,
             payer: sender,
             custom_verifier_gas_cap: 100_000,
-            sender_verifier_type: 0x00,
+            sender_verifier: Address::ZERO,
             call_phases: vec![],
             sender_verify_call: Some(Eip8130VerifyCall {
                 verifier,
@@ -2758,7 +2943,7 @@ mod tests {
             sender,
             payer: sender,
             custom_verifier_gas_cap: 100_000,
-            sender_verifier_type: 0x00,
+            sender_verifier: Address::ZERO,
             call_phases: vec![],
             sender_verify_call: Some(Eip8130VerifyCall {
                 verifier,

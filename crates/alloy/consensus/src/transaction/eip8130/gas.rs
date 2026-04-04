@@ -2,21 +2,29 @@
 
 use alloy_rlp::Encodable;
 
+use alloy_primitives::Address;
+
 use super::{
     AccountChangeEntry, TxEip8130,
     constants::{
         AA_BASE_COST, BYTECODE_BASE_GAS, BYTECODE_PER_BYTE_GAS, CONFIG_CHANGE_OP_GAS,
-        CONFIG_CHANGE_SKIP_GAS, NONCE_KEY_COLD_GAS, NONCE_KEY_WARM_GAS, SLOAD_GAS,
-        VERIFIER_DELEGATE, VERIFIER_K1, VerifierGasCosts,
+        CONFIG_CHANGE_SKIP_GAS, EXPIRING_NONCE_GAS, NONCE_KEY_COLD_GAS, NONCE_KEY_MAX,
+        NONCE_KEY_WARM_GAS, SLOAD_GAS, VerifierGasCosts,
     },
+    predeploys::{DELEGATE_VERIFIER_ADDRESS, K1_VERIFIER_ADDRESS},
 };
 
-/// Extracts the inner verifier type for a DELEGATE auth blob.
+/// Extracts the inner verifier address for a DELEGATE auth blob.
 ///
-/// For delegate auth (`[0x04, inner_type, inner_data...]`), returns
-/// `Some(inner_type)`. For non-delegate auth or empty blobs, returns `None`.
-pub fn delegate_inner_verifier_type(auth: &[u8]) -> Option<u8> {
-    if auth.len() >= 2 && auth[0] == VERIFIER_DELEGATE { Some(auth[1]) } else { None }
+/// For delegate auth (`DELEGATE_VERIFIER_ADDRESS(20) || inner_verifier(20) || inner_data...`),
+/// returns `Some(inner_verifier)`. For non-delegate auth or blobs too short
+/// to contain both addresses, returns `None`.
+pub fn delegate_inner_verifier(auth: &[u8]) -> Option<Address> {
+    if auth.len() >= 40 && Address::from_slice(&auth[..20]) == DELEGATE_VERIFIER_ADDRESS {
+        Some(Address::from_slice(&auth[20..40]))
+    } else {
+        None
+    }
 }
 
 /// Computes the intrinsic gas for an AA transaction.
@@ -36,13 +44,14 @@ pub fn delegate_inner_verifier_type(auth: &[u8]) -> Option<u8> {
 /// `gas_limit` is execution-only (calls); intrinsic gas is charged on top.
 /// Total charge to payer: `effective_gas_price * (intrinsic_gas + execution_gas_used)`.
 ///
-/// **Custom verifiers** (type `0x00`) contribute 0 to `verification_gas`
-/// here because their cost is determined at runtime via STATICCALL, capped
-/// at [`CUSTOM_VERIFIER_GAS_CAP`], and charged to the payer separately.
+/// **Custom verifiers** (non-native addresses) contribute 0 to
+/// `verification_gas` here because their cost is determined at runtime via
+/// STATICCALL, capped at [`CUSTOM_VERIFIER_GAS_CAP`], and charged to the
+/// payer separately.
 ///
 /// The `nonce_key_is_warm` parameter indicates whether the nonce channel has been
 /// used before (affects the SSTORE cost). Verification gas uses the default
-/// [`VerifierGasCosts::BASE_V1`] schedule. Delegate inner verifier types are
+/// [`VerifierGasCosts::BASE_V1`] schedule. Delegate inner verifiers are
 /// automatically extracted from the auth blobs.
 pub fn intrinsic_gas(tx: &TxEip8130, nonce_key_is_warm: bool, chain_id: u64) -> u64 {
     intrinsic_gas_with_costs(tx, nonce_key_is_warm, chain_id, &VerifierGasCosts::BASE_V1)
@@ -55,8 +64,8 @@ pub fn intrinsic_gas_with_costs(
     chain_id: u64,
     costs: &VerifierGasCosts,
 ) -> u64 {
-    let sender_inner = delegate_inner_verifier_type(&tx.sender_auth);
-    let payer_inner = delegate_inner_verifier_type(&tx.payer_auth);
+    let sender_inner = delegate_inner_verifier(&tx.sender_auth);
+    let payer_inner = delegate_inner_verifier(&tx.payer_auth);
 
     let mut gas = AA_BASE_COST;
 
@@ -65,7 +74,11 @@ pub fn intrinsic_gas_with_costs(
     gas += payer_auth_cost(tx);
     gas += total_verification_gas(tx, costs, sender_inner, payer_inner);
     gas += authorizer_verification_gas(tx, costs);
-    gas += nonce_key_cost(nonce_key_is_warm);
+    if tx.nonce_key != NONCE_KEY_MAX {
+        gas += nonce_key_cost(nonce_key_is_warm);
+    } else {
+        gas += EXPIRING_NONCE_GAS;
+    }
     gas += bytecode_cost(tx);
     gas += account_changes_cost(tx, chain_id);
 
@@ -99,23 +112,24 @@ pub fn payer_auth_cost(tx: &TxEip8130) -> u64 {
 
 /// Gas charged for native cryptographic verification of the sender's signature.
 ///
-/// For EOA mode, the verifier type is implicitly K1. For configured owners,
-/// the first byte of `sender_auth` identifies the verifier type.
+/// For EOA mode, the verifier is implicitly K1. For configured owners,
+/// the first 20 bytes of `sender_auth` identify the verifier address.
 ///
 /// When `sender_auth` is empty (e.g. during `eth_estimateGas` with dummy auth),
 /// defaults to K1 gas so that gas estimates are not underestimated.
 ///
-/// The `inner_verifier_type` is only used for DELEGATE; the caller must
-/// resolve the delegation target and provide the inner type byte.
+/// The `inner_verifier` is only used for DELEGATE; the caller must
+/// resolve the delegation target and provide the inner verifier address.
 pub fn sender_verification_gas(
     tx: &TxEip8130,
     costs: &VerifierGasCosts,
-    inner_verifier_type: Option<u8>,
+    inner_verifier: Option<Address>,
 ) -> u64 {
     if tx.is_eoa() || tx.sender_auth.is_empty() {
-        costs.gas_for_verifier(VERIFIER_K1, None)
+        costs.gas_for_verifier(K1_VERIFIER_ADDRESS, None)
     } else {
-        costs.gas_for_verifier(tx.sender_auth[0], inner_verifier_type)
+        let verifier = Address::from_slice(&tx.sender_auth[..20]);
+        costs.gas_for_verifier(verifier, inner_verifier)
     }
 }
 
@@ -126,24 +140,24 @@ pub fn sender_verification_gas(
 pub fn payer_verification_gas(
     tx: &TxEip8130,
     costs: &VerifierGasCosts,
-    inner_verifier_type: Option<u8>,
+    inner_verifier: Option<Address>,
 ) -> u64 {
     if tx.is_self_pay() {
         return 0;
     }
     if tx.payer_auth.is_empty() {
-        return costs.gas_for_verifier(VERIFIER_K1, None);
+        return costs.gas_for_verifier(K1_VERIFIER_ADDRESS, None);
     }
-    let verifier_type = tx.payer_auth[0];
-    costs.gas_for_verifier(verifier_type, inner_verifier_type)
+    let verifier = Address::from_slice(&tx.payer_auth[..20]);
+    costs.gas_for_verifier(verifier, inner_verifier)
 }
 
 /// Total verification gas for both sender and payer.
 pub fn total_verification_gas(
     tx: &TxEip8130,
     costs: &VerifierGasCosts,
-    sender_inner: Option<u8>,
-    payer_inner: Option<u8>,
+    sender_inner: Option<Address>,
+    payer_inner: Option<Address>,
 ) -> u64 {
     sender_verification_gas(tx, costs, sender_inner)
         + payer_verification_gas(tx, costs, payer_inner)
@@ -153,8 +167,8 @@ pub fn total_verification_gas(
 ///
 /// Each `ConfigChangeEntry` has an `authorizer_auth` blob signed by an owner
 /// with CONFIG scope. For native verifiers the gas is included in intrinsic;
-/// for custom verifiers (0x00) it returns 0 (metered at runtime via the
-/// shared `CUSTOM_VERIFIER_GAS_CAP` budget).
+/// for custom verifiers (non-native addresses) it returns 0 (metered at
+/// runtime via the shared `CUSTOM_VERIFIER_GAS_CAP` budget).
 ///
 /// Also charges an SLOAD per config change for the owner_config read.
 pub fn authorizer_verification_gas(tx: &TxEip8130, costs: &VerifierGasCosts) -> u64 {
@@ -164,9 +178,9 @@ pub fn authorizer_verification_gas(tx: &TxEip8130, costs: &VerifierGasCosts) -> 
             if cc.authorizer_auth.is_empty() {
                 continue;
             }
-            let verifier_type = cc.authorizer_auth[0];
-            let inner = delegate_inner_verifier_type(&cc.authorizer_auth);
-            gas += costs.gas_for_verifier(verifier_type, inner);
+            let verifier = Address::from_slice(&cc.authorizer_auth[..20]);
+            let inner = delegate_inner_verifier(&cc.authorizer_auth);
+            gas += costs.gas_for_verifier(verifier, inner);
             gas += SLOAD_GAS; // owner_config read for CONFIG scope check
         }
     }
@@ -211,6 +225,9 @@ pub fn account_changes_cost(tx: &TxEip8130, chain_id: u64) -> u64 {
                     gas += CONFIG_CHANGE_SKIP_GAS;
                 }
             }
+            AccountChangeEntry::Delegation(_) => {
+                gas += super::constants::BYTECODE_PER_BYTE_GAS * 23;
+            }
         }
     }
     gas
@@ -228,6 +245,7 @@ pub fn account_change_units(tx: &TxEip8130) -> usize {
         .map(|entry| match entry {
             AccountChangeEntry::Create(create) => 1 + create.initial_owners.len(),
             AccountChangeEntry::ConfigChange(cc) => cc.operations.len(),
+            AccountChangeEntry::Delegation(_) => 1,
         })
         .sum()
 }
@@ -242,8 +260,12 @@ mod tests {
     use alloy_primitives::{Address, B256, Bytes, U256};
 
     use super::*;
-    use crate::transaction::eip8130::types::{
-        ConfigChangeEntry, ConfigOperation, CreateEntry, Owner,
+    use crate::transaction::eip8130::{
+        predeploys::{
+            DELEGATE_VERIFIER_ADDRESS, K1_VERIFIER_ADDRESS, P256_RAW_VERIFIER_ADDRESS,
+            P256_WEBAUTHN_VERIFIER_ADDRESS,
+        },
+        types::{ConfigChangeEntry, ConfigOperation, CreateEntry, Owner},
     };
 
     #[test]
@@ -414,12 +436,14 @@ mod tests {
 
     #[test]
     fn intrinsic_gas_smoke() {
+        let mut auth = K1_VERIFIER_ADDRESS.as_slice().to_vec();
+        auth.extend_from_slice(&[0xAB; 65]);
         let tx = TxEip8130 {
             chain_id: 8453,
             from: Address::repeat_byte(1),
             nonce_key: U256::ZERO,
             nonce_sequence: 0,
-            sender_auth: Bytes::from_static(&[0x01; 65]),
+            sender_auth: Bytes::from(auth),
             ..Default::default()
         };
         let gas = intrinsic_gas(&tx, true, 8453);
@@ -439,9 +463,11 @@ mod tests {
 
     #[test]
     fn sender_verification_gas_configured_k1() {
+        let mut auth = K1_VERIFIER_ADDRESS.as_slice().to_vec();
+        auth.push(0xAB);
         let tx = TxEip8130 {
             from: Address::repeat_byte(1),
-            sender_auth: Bytes::from_static(&[0x01, 0xAB]),
+            sender_auth: Bytes::from(auth),
             ..Default::default()
         };
         assert_eq!(sender_verification_gas(&tx, &VerifierGasCosts::BASE_V1, None), 6_000);
@@ -449,9 +475,11 @@ mod tests {
 
     #[test]
     fn sender_verification_gas_configured_p256() {
+        let mut auth = P256_RAW_VERIFIER_ADDRESS.as_slice().to_vec();
+        auth.push(0xAB);
         let tx = TxEip8130 {
             from: Address::repeat_byte(1),
-            sender_auth: Bytes::from_static(&[0x02, 0xAB]),
+            sender_auth: Bytes::from(auth),
             ..Default::default()
         };
         assert_eq!(sender_verification_gas(&tx, &VerifierGasCosts::BASE_V1, None), 9_500);
@@ -459,9 +487,11 @@ mod tests {
 
     #[test]
     fn sender_verification_gas_configured_webauthn() {
+        let mut auth = P256_WEBAUTHN_VERIFIER_ADDRESS.as_slice().to_vec();
+        auth.push(0xAB);
         let tx = TxEip8130 {
             from: Address::repeat_byte(1),
-            sender_auth: Bytes::from_static(&[0x03, 0xAB]),
+            sender_auth: Bytes::from(auth),
             ..Default::default()
         };
         assert_eq!(sender_verification_gas(&tx, &VerifierGasCosts::BASE_V1, None), 15_000);
@@ -469,24 +499,34 @@ mod tests {
 
     #[test]
     fn sender_verification_gas_delegate_with_k1_inner() {
+        let mut auth = DELEGATE_VERIFIER_ADDRESS.as_slice().to_vec();
+        auth.push(0xAB);
         let tx = TxEip8130 {
             from: Address::repeat_byte(1),
-            sender_auth: Bytes::from_static(&[0x04, 0xAB]),
+            sender_auth: Bytes::from(auth),
             ..Default::default()
         };
         let costs = VerifierGasCosts::BASE_V1;
-        assert_eq!(sender_verification_gas(&tx, &costs, Some(VERIFIER_K1)), 3_000 + 6_000,);
+        assert_eq!(
+            sender_verification_gas(&tx, &costs, Some(K1_VERIFIER_ADDRESS)),
+            3_000 + 6_000,
+        );
     }
 
     #[test]
     fn sender_verification_gas_delegate_with_p256_inner() {
+        let mut auth = DELEGATE_VERIFIER_ADDRESS.as_slice().to_vec();
+        auth.push(0xAB);
         let tx = TxEip8130 {
             from: Address::repeat_byte(1),
-            sender_auth: Bytes::from_static(&[0x04, 0xAB]),
+            sender_auth: Bytes::from(auth),
             ..Default::default()
         };
         let costs = VerifierGasCosts::BASE_V1;
-        assert_eq!(sender_verification_gas(&tx, &costs, Some(0x02)), 3_000 + 9_500,);
+        assert_eq!(
+            sender_verification_gas(&tx, &costs, Some(P256_RAW_VERIFIER_ADDRESS)),
+            3_000 + 9_500,
+        );
     }
 
     #[test]
@@ -511,13 +551,12 @@ mod tests {
 
     #[test]
     fn sender_verification_gas_custom_is_zero() {
+        let custom_verifier = Address::repeat_byte(0xCC);
+        let mut auth = custom_verifier.as_slice().to_vec();
+        auth.extend_from_slice(&[0xDD; 20]);
         let tx = TxEip8130 {
             from: Address::repeat_byte(1),
-            sender_auth: {
-                let mut auth = alloc::vec![0x00u8]; // custom
-                auth.extend_from_slice(&[0xCC; 20]); // verifier address
-                Bytes::from(auth)
-            },
+            sender_auth: Bytes::from(auth),
             ..Default::default()
         };
         assert_eq!(sender_verification_gas(&tx, &VerifierGasCosts::BASE_V1, None), 0);
@@ -531,9 +570,11 @@ mod tests {
 
     #[test]
     fn payer_verification_gas_sponsored_k1() {
+        let mut auth = K1_VERIFIER_ADDRESS.as_slice().to_vec();
+        auth.push(0xAB);
         let tx = TxEip8130 {
             payer: Address::repeat_byte(0xCC),
-            payer_auth: Bytes::from_static(&[0x01, 0xAB]),
+            payer_auth: Bytes::from(auth),
             ..Default::default()
         };
         assert_eq!(payer_verification_gas(&tx, &VerifierGasCosts::BASE_V1, None), 6_000);
@@ -541,11 +582,13 @@ mod tests {
 
     #[test]
     fn total_verification_gas_sender_and_payer() {
+        let mut payer_auth = P256_RAW_VERIFIER_ADDRESS.as_slice().to_vec();
+        payer_auth.push(0xAB);
         let tx = TxEip8130 {
             from: Address::ZERO,
             sender_auth: Bytes::from_static(&[0xAB; 65]),
             payer: Address::repeat_byte(0xCC),
-            payer_auth: Bytes::from_static(&[0x02, 0xAB]),
+            payer_auth: Bytes::from(payer_auth),
             ..Default::default()
         };
         let costs = VerifierGasCosts::BASE_V1;
@@ -560,27 +603,43 @@ mod tests {
             p256_webauthn: 20_000,
             delegate: 4_000,
         };
-        assert_eq!(custom.gas_for_verifier(0x01, None), 5_000);
-        assert_eq!(custom.gas_for_verifier(0x02, None), 10_000);
-        assert_eq!(custom.gas_for_verifier(0x03, None), 20_000);
-        assert_eq!(custom.gas_for_verifier(0x04, Some(0x01)), 4_000 + 5_000);
+        assert_eq!(custom.gas_for_verifier(K1_VERIFIER_ADDRESS, None), 5_000);
+        assert_eq!(custom.gas_for_verifier(P256_RAW_VERIFIER_ADDRESS, None), 10_000);
+        assert_eq!(custom.gas_for_verifier(P256_WEBAUTHN_VERIFIER_ADDRESS, None), 20_000);
+        assert_eq!(
+            custom.gas_for_verifier(DELEGATE_VERIFIER_ADDRESS, Some(K1_VERIFIER_ADDRESS)),
+            4_000 + 5_000,
+        );
     }
 
     #[test]
-    fn delegate_inner_type_extraction() {
-        assert_eq!(delegate_inner_verifier_type(&[0x04, 0x01, 0xAB]), Some(0x01));
-        assert_eq!(delegate_inner_verifier_type(&[0x04, 0x02]), Some(0x02));
-        assert_eq!(delegate_inner_verifier_type(&[0x01, 0xAB]), None);
-        assert_eq!(delegate_inner_verifier_type(&[0x04]), None);
-        assert_eq!(delegate_inner_verifier_type(&[]), None);
+    fn delegate_inner_verifier_extraction() {
+        let mut delegate_k1 = DELEGATE_VERIFIER_ADDRESS.as_slice().to_vec();
+        delegate_k1.extend_from_slice(K1_VERIFIER_ADDRESS.as_slice());
+        delegate_k1.push(0xAB);
+        assert_eq!(delegate_inner_verifier(&delegate_k1), Some(K1_VERIFIER_ADDRESS));
+
+        let mut delegate_p256 = DELEGATE_VERIFIER_ADDRESS.as_slice().to_vec();
+        delegate_p256.extend_from_slice(P256_RAW_VERIFIER_ADDRESS.as_slice());
+        assert_eq!(delegate_inner_verifier(&delegate_p256), Some(P256_RAW_VERIFIER_ADDRESS));
+
+        let mut k1_only = K1_VERIFIER_ADDRESS.as_slice().to_vec();
+        k1_only.push(0xAB);
+        assert_eq!(delegate_inner_verifier(&k1_only), None);
+
+        assert_eq!(delegate_inner_verifier(DELEGATE_VERIFIER_ADDRESS.as_slice()), None);
+        assert_eq!(delegate_inner_verifier(&[]), None);
     }
 
     #[test]
     fn intrinsic_gas_includes_delegate_inner_cost() {
+        let mut auth = DELEGATE_VERIFIER_ADDRESS.as_slice().to_vec();
+        auth.extend_from_slice(K1_VERIFIER_ADDRESS.as_slice());
+        auth.push(0xAB);
         let tx = TxEip8130 {
             chain_id: 8453,
             from: Address::repeat_byte(1),
-            sender_auth: Bytes::from_static(&[0x04, 0x01, 0xAB]), // delegate -> K1
+            sender_auth: Bytes::from(auth),
             ..Default::default()
         };
         let costs = VerifierGasCosts::BASE_V1;
@@ -598,10 +657,12 @@ mod tests {
 
     #[test]
     fn intrinsic_gas_includes_verification_gas() {
+        let mut auth = K1_VERIFIER_ADDRESS.as_slice().to_vec();
+        auth.extend_from_slice(&[0xAB; 65]);
         let tx = TxEip8130 {
             chain_id: 8453,
             from: Address::repeat_byte(1),
-            sender_auth: Bytes::from_static(&[0x01; 65]),
+            sender_auth: Bytes::from(auth),
             ..Default::default()
         };
         let without_verification = AA_BASE_COST

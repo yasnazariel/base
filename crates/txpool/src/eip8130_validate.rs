@@ -4,7 +4,7 @@
 //! crypto for K1 and P256 verifiers), and payer balance before accepting
 //! an AA transaction into the pending pool.
 //!
-//! Custom verifiers (type `0x00`) are verified via an EVM STATICCALL to
+//! Custom (non-native) verifiers are verified via an EVM STATICCALL to
 //! the verifier contract. This ensures no unverified transactions enter
 //! the mempool.
 
@@ -16,13 +16,14 @@ use reth_storage_api::StateProviderFactory;
 
 use base_alloy_consensus::{
     ACCOUNT_CONFIG_ADDRESS, AccountChangeEntry, CUSTOM_VERIFIER_GAS_CAP, DELEGATE_VERIFIER_ADDRESS,
-    K1_VERIFIER_ADDRESS, MAX_CONFIG_OPS_PER_TX, NONCE_MANAGER_ADDRESS, NativeVerifyResult,
-    OwnerScope, P256_RAW_VERIFIER_ADDRESS, P256_WEBAUTHN_VERIFIER_ADDRESS, ParsedSenderAuth,
-    TxEip8130, VERIFIER_CUSTOM, VERIFIER_K1, ValidationError, VerifierTarget, config_change_digest,
-    encode_verify_call, implicit_eoa_owner_id, intrinsic_gas, lock_slot, nonce_slot,
+    K1_VERIFIER_ADDRESS, MAX_CONFIG_OPS_PER_TX, NONCE_FREE_MAX_EXPIRY_WINDOW, NONCE_KEY_MAX,
+    NONCE_MANAGER_ADDRESS, NativeVerifyResult, OwnerScope, P256_RAW_VERIFIER_ADDRESS,
+    P256_WEBAUTHN_VERIFIER_ADDRESS, ParsedSenderAuth, REVOKED_VERIFIER, TxEip8130,
+    ValidationError, config_change_digest, encode_verify_call, expiring_seen_slot,
+    implicit_eoa_owner_id, intrinsic_gas, is_native_verifier, lock_slot, nonce_slot,
     owner_config_slot, parse_owner_config, parse_sender_auth, payer_signature_hash, read_sequence,
-    resolve_verifier, sender_signature_hash, sequence_base_slot, try_native_verify,
-    validate_expiry, validate_structure, verifier_type_to_address,
+    sender_signature_hash, sequence_base_slot, try_native_verify, validate_expiry,
+    validate_structure,
 };
 
 use crate::{InvalidationKey, OpPooledTx, SenderThroughputTier, compute_invalidation_keys};
@@ -32,7 +33,7 @@ use crate::{InvalidationKey, OpPooledTx, SenderThroughputTier, compute_invalidat
 /// - `None` (default): all verifiers are accepted.
 /// - `Some(set)`: the set contains allowed verifier addresses. Native verifier
 ///   addresses (K1, P256, WebAuthn, Delegate) are always included automatically.
-///   Only custom verifiers (type `0x00`) need explicit allowlisting.
+///   Only non-native (custom) verifiers need explicit allowlisting.
 #[derive(Debug, Clone)]
 pub struct VerifierAllowlist {
     allowed: HashSet<Address>,
@@ -142,6 +143,8 @@ pub enum Eip8130ValidationError {
     },
     /// Account is locked; config changes are rejected.
     AccountLocked,
+    /// AccountConfiguration contract has not been deployed yet.
+    AccountConfigNotDeployed,
     /// Config change sequence does not match on-chain value.
     SequenceMismatch {
         /// On-chain sequence.
@@ -163,6 +166,15 @@ pub enum Eip8130ValidationError {
         /// Available balance.
         available: U256,
     },
+    /// Nonce-free transaction's expiry is too far in the future.
+    NonceFreeExpiryTooFar {
+        /// Transaction's expiry timestamp.
+        expiry: u64,
+        /// Maximum allowed expiry.
+        max_allowed: u64,
+    },
+    /// Nonce-free transaction hash already recorded in the on-chain seen set.
+    NonceFreeReplay,
     /// Payer has too many pending sponsored transactions.
     PayerPendingLimitExceeded {
         /// The payer address.
@@ -210,6 +222,9 @@ impl std::fmt::Display for Eip8130ValidationError {
                 write!(f, "too many config operations ({count}/{limit})")
             }
             Self::AccountLocked => write!(f, "account is locked"),
+            Self::AccountConfigNotDeployed => {
+                write!(f, "AccountConfiguration contract not deployed")
+            }
             Self::SequenceMismatch { expected, got } => {
                 write!(f, "config change sequence mismatch (expected={expected}, got={got})")
             }
@@ -218,6 +233,12 @@ impl std::fmt::Display for Eip8130ValidationError {
             }
             Self::InsufficientBalance { required, available } => {
                 write!(f, "payer insufficient balance (required={required}, available={available})")
+            }
+            Self::NonceFreeExpiryTooFar { expiry, max_allowed } => {
+                write!(f, "nonce-free expiry too far: expiry={expiry}, max_allowed={max_allowed}")
+            }
+            Self::NonceFreeReplay => {
+                write!(f, "nonce-free transaction replay: hash already seen")
             }
             Self::PayerPendingLimitExceeded { payer, count, limit } => {
                 write!(f, "payer {payer} pending limit exceeded ({count}/{limit})")
@@ -286,25 +307,6 @@ fn read_owner_config_from_state(
     Ok(parse_owner_config(B256::from(value.to_be_bytes::<32>())))
 }
 
-/// Extracts the custom verifier address from an auth blob, if present.
-///
-/// Returns `Some(address)` when the first byte is `VERIFIER_CUSTOM` (0x00) and
-/// at least 20 address bytes follow. Returns `None` for native verifier types,
-/// empty blobs, or blobs that are too short for a valid custom verifier.
-fn extract_custom_verifier_address(auth: &Bytes) -> Option<Address> {
-    if auth.is_empty() {
-        return None;
-    }
-    if auth[0] != VERIFIER_CUSTOM {
-        return None;
-    }
-    // 1 byte type + at least 20 bytes address
-    if auth.len() < 21 {
-        return None;
-    }
-    Some(Address::from_slice(&auth[1..21]))
-}
-
 /// Resolves the sender address for an AA transaction.
 ///
 /// For EOA mode (`from == Address::ZERO`): ecrecovers the sender from
@@ -320,7 +322,7 @@ fn resolve_sender_address(tx: &TxEip8130) -> Result<(Address, B256), Eip8130Vali
         ParsedSenderAuth::Eoa { signature } => {
             let sig_hash = sender_signature_hash(tx);
             let sig_bytes = Bytes::copy_from_slice(&signature);
-            let result = try_native_verify(VERIFIER_K1, &sig_bytes, sig_hash);
+            let result = try_native_verify(K1_VERIFIER_ADDRESS, &sig_bytes, sig_hash);
             match result {
                 NativeVerifyResult::Verified(owner_id) => {
                     let recovered = Address::from_slice(&owner_id.as_slice()[..20]);
@@ -382,7 +384,8 @@ fn verify_custom_via_evm(
         .build()
         .map_err(|e| Eip8130ValidationError::CustomVerifierCallFailed(format!("{e:?}")))?;
 
-    let ctx = Context::mainnet().with_db(db).with_tx(tx);
+    let mut ctx = Context::mainnet().with_db(db).with_tx(tx);
+    ctx.cfg.disable_nonce_check = true;
     let mut evm = ctx.build_mainnet();
 
     let exec_result = evm
@@ -442,20 +445,15 @@ fn validate_sender_authorization(
 
     match parsed {
         ParsedSenderAuth::Eoa { .. } => unreachable!("handled above"),
-        ParsedSenderAuth::Configured { verifier_type, data } => {
-            let target = resolve_verifier(verifier_type, &data)
-                .map_err(|e| Eip8130ValidationError::SenderAuthInvalid(e.into()))?;
-
-            let (verifier_address, verify_data) = resolve_target(&target)?;
-
-            let result = try_native_verify(verifier_type, &verify_data, sig_hash);
+        ParsedSenderAuth::Configured { verifier, data } => {
+            let result = try_native_verify(verifier, &data, sig_hash);
             match result {
                 NativeVerifyResult::Verified(owner_id) => {
                     check_owner_authorized(
                         state,
                         sender,
                         owner_id,
-                        verifier_address,
+                        verifier,
                         OwnerScope::SENDER,
                         OwnerRole::Sender,
                     )?;
@@ -466,9 +464,9 @@ fn validate_sender_authorization(
                 }
                 NativeVerifyResult::Unsupported => verify_custom_via_evm(
                     state,
-                    verifier_address,
+                    verifier,
                     sig_hash,
-                    &verify_data,
+                    &data,
                     sender,
                     OwnerScope::SENDER,
                     OwnerRole::Sender,
@@ -488,30 +486,25 @@ fn validate_payer(
     state: &dyn reth_storage_api::StateProvider,
     custom_verifier_gas_limit: u64,
 ) -> Result<B256, Eip8130ValidationError> {
-    if tx.payer_auth.is_empty() {
+    if tx.payer_auth.len() < 20 {
         return Err(Eip8130ValidationError::PayerAuthInvalid(
-            "payer_auth is empty for sponsored tx".into(),
+            "payer_auth too short for verifier address".into(),
         ));
     }
 
     let sig_hash = payer_signature_hash(tx);
 
-    let verifier_type = tx.payer_auth[0];
-    let data = Bytes::copy_from_slice(&tx.payer_auth[1..]);
+    let verifier = Address::from_slice(&tx.payer_auth[..20]);
+    let data = Bytes::copy_from_slice(&tx.payer_auth[20..]);
 
-    let target = resolve_verifier(verifier_type, &data)
-        .map_err(|e| Eip8130ValidationError::PayerAuthInvalid(e.into()))?;
-
-    let (verifier_address, verify_data) = resolve_target_for_payer(&target)?;
-
-    let result = try_native_verify(verifier_type, &verify_data, sig_hash);
+    let result = try_native_verify(verifier, &data, sig_hash);
     match result {
         NativeVerifyResult::Verified(owner_id) => {
             check_owner_authorized(
                 state,
                 payer,
                 owner_id,
-                verifier_address,
+                verifier,
                 OwnerScope::PAYER,
                 OwnerRole::Payer,
             )?;
@@ -522,42 +515,14 @@ fn validate_payer(
         }
         NativeVerifyResult::Unsupported => verify_custom_via_evm(
             state,
-            verifier_address,
+            verifier,
             sig_hash,
-            &verify_data,
+            &data,
             payer,
             OwnerScope::PAYER,
             OwnerRole::Payer,
             custom_verifier_gas_limit,
         ),
-    }
-}
-
-/// Resolves a `VerifierTarget` into `(verifier_address, verify_data)`.
-fn resolve_target(target: &VerifierTarget) -> Result<(Address, Bytes), Eip8130ValidationError> {
-    match target {
-        VerifierTarget::Native { verifier_type, data } => {
-            let addr = verifier_type_to_address(*verifier_type).ok_or_else(|| {
-                Eip8130ValidationError::SenderAuthInvalid("unknown native verifier".into())
-            })?;
-            Ok((addr, data.clone()))
-        }
-        VerifierTarget::Custom { verifier_address, data } => Ok((*verifier_address, data.clone())),
-    }
-}
-
-/// Same as `resolve_target` but returns payer-specific errors.
-fn resolve_target_for_payer(
-    target: &VerifierTarget,
-) -> Result<(Address, Bytes), Eip8130ValidationError> {
-    match target {
-        VerifierTarget::Native { verifier_type, data } => {
-            let addr = verifier_type_to_address(*verifier_type).ok_or_else(|| {
-                Eip8130ValidationError::PayerAuthInvalid("unknown native verifier".into())
-            })?;
-            Ok((addr, data.clone()))
-        }
-        VerifierTarget::Custom { verifier_address, data } => Ok((*verifier_address, data.clone())),
     }
 }
 
@@ -576,6 +541,10 @@ fn check_owner_authorized(
 ) -> Result<(), Eip8130ValidationError> {
     let (verifier, scope) = read_owner_config_from_state(state, account, owner_id)?;
 
+    if verifier == REVOKED_VERIFIER {
+        return Err(role.not_authorized("owner explicitly revoked".into()));
+    }
+
     if verifier != Address::ZERO {
         if verifier != expected_verifier {
             return Err(role.not_authorized(format!(
@@ -589,6 +558,7 @@ fn check_owner_authorized(
         return Ok(());
     }
 
+    // verifier == address(0): empty slot, implicit EOA rule.
     let implicit_id = implicit_eoa_owner_id(account);
     if owner_id == implicit_id && expected_verifier == K1_VERIFIER_ADDRESS {
         return Ok(());
@@ -642,55 +612,41 @@ fn validate_authorizer_chain(
             _ => continue,
         };
 
-        if cc.authorizer_auth.is_empty() {
+        if cc.authorizer_auth.len() < 20 {
             return Err(Eip8130ValidationError::AuthorizerAuthInvalid(
-                "authorizer_auth is empty on config change entry".into(),
+                "authorizer_auth too short for verifier address".into(),
             ));
         }
 
         let digest = config_change_digest(sender, cc);
-        let verifier_type = cc.authorizer_auth[0];
-        let data = Bytes::copy_from_slice(&cc.authorizer_auth[1..]);
+        let auth = &cc.authorizer_auth;
+        let verifier = Address::from_slice(&auth[..20]);
+        let data = Bytes::copy_from_slice(&auth[20..]);
 
-        // Allowlist check for custom authorizer verifiers.
+        // Allowlist check for authorizer verifiers.
         if let Some(allowlist) = verifier_allowlist {
-            if let Some(addr) = extract_custom_verifier_address(&cc.authorizer_auth) {
-                if !allowlist.is_allowed(&addr) {
-                    return Err(Eip8130ValidationError::VerifierNotAllowed(addr));
-                }
+            if !allowlist.is_allowed(&verifier) {
+                return Err(Eip8130ValidationError::VerifierNotAllowed(verifier));
             }
         }
 
         // EIP-7702 delegation check for custom authorizer verifiers.
-        if let Some(addr) = extract_custom_verifier_address(&cc.authorizer_auth) {
-            if let Ok(Some(code)) = state.account_code(&addr) {
+        if !is_native_verifier(verifier) {
+            if let Ok(Some(code)) = state.account_code(&verifier) {
                 if code.original_bytes().starts_with(&[0xef, 0x01, 0x00]) {
-                    return Err(Eip8130ValidationError::VerifierEip7702Delegated(addr));
+                    return Err(Eip8130ValidationError::VerifierEip7702Delegated(verifier));
                 }
             }
         }
 
-        let target = resolve_verifier(verifier_type, &data)
-            .map_err(|e| Eip8130ValidationError::AuthorizerAuthInvalid(e.into()))?;
-
-        let (verifier_address, verify_data) = match &target {
-            VerifierTarget::Native { verifier_type, data } => {
-                let addr = verifier_type_to_address(*verifier_type).ok_or_else(|| {
-                    Eip8130ValidationError::AuthorizerAuthInvalid("unknown native verifier".into())
-                })?;
-                (addr, data.clone())
-            }
-            VerifierTarget::Custom { verifier_address, data } => (*verifier_address, data.clone()),
-        };
-
-        let result = try_native_verify(verifier_type, &verify_data, digest);
+        let result = try_native_verify(verifier, &data, digest);
         let owner_id = match result {
             NativeVerifyResult::Verified(id) => {
                 check_owner_authorized_with_pending(
                     state,
                     sender,
                     id,
-                    verifier_address,
+                    verifier,
                     OwnerScope::CONFIG,
                     &pending_owners,
                 )?;
@@ -701,9 +657,9 @@ fn validate_authorizer_chain(
             }
             NativeVerifyResult::Unsupported => verify_custom_via_evm(
                 state,
-                verifier_address,
+                verifier,
                 digest,
-                &verify_data,
+                &data,
                 sender,
                 OwnerScope::CONFIG,
                 OwnerRole::Authorizer,
@@ -808,22 +764,19 @@ where
         other => Eip8130ValidationError::Structural(other),
     })?;
 
-    // 2b. Verifier allowlist — reject custom verifiers not on the list.
-    //     Native types (0x01–0x04) are always allowed. Only custom verifier
-    //     addresses (type 0x00) are checked against the allowlist.
+    // 2b. Verifier allowlist — reject verifiers not on the list.
+    //     Native verifier addresses are always included in the allowlist.
     if let Some(allowlist) = verifier_allowlist {
-        if !tx.is_eoa() {
-            if let Some(addr) = extract_custom_verifier_address(&tx.sender_auth) {
-                if !allowlist.is_allowed(&addr) {
-                    return Err(Eip8130ValidationError::VerifierNotAllowed(addr));
-                }
+        if !tx.is_eoa() && tx.sender_auth.len() >= 20 {
+            let addr = Address::from_slice(&tx.sender_auth[..20]);
+            if !allowlist.is_allowed(&addr) {
+                return Err(Eip8130ValidationError::VerifierNotAllowed(addr));
             }
         }
-        if tx.payer != Address::ZERO && tx.payer != tx.effective_sender() {
-            if let Some(addr) = extract_custom_verifier_address(&tx.payer_auth) {
-                if !allowlist.is_allowed(&addr) {
-                    return Err(Eip8130ValidationError::VerifierNotAllowed(addr));
-                }
+        if tx.payer != Address::ZERO && tx.payer != tx.effective_sender() && tx.payer_auth.len() >= 20 {
+            let addr = Address::from_slice(&tx.payer_auth[..20]);
+            if !allowlist.is_allowed(&addr) {
+                return Err(Eip8130ValidationError::VerifierNotAllowed(addr));
             }
         }
     }
@@ -840,33 +793,69 @@ where
     //     delegation designator (0xef0100). Delegated accounts must not be
     //     used as verifier contracts.
     for auth_blob in [&tx.sender_auth, &tx.payer_auth] {
-        if let Some(addr) = extract_custom_verifier_address(auth_blob) {
-            if let Ok(Some(code)) = state.account_code(&addr) {
-                if code.original_bytes().starts_with(&[0xef, 0x01, 0x00]) {
-                    return Err(Eip8130ValidationError::VerifierEip7702Delegated(addr));
+        if auth_blob.len() >= 20 {
+            let addr = Address::from_slice(&auth_blob[..20]);
+            if !is_native_verifier(addr) {
+                if let Ok(Some(code)) = state.account_code(&addr) {
+                    if code.original_bytes().starts_with(&[0xef, 0x01, 0x00]) {
+                        return Err(Eip8130ValidationError::VerifierEip7702Delegated(addr));
+                    }
                 }
             }
         }
     }
 
-    // 5. Nonce validation
-    let nonce_key_slot = nonce_slot(sender, tx.nonce_key);
-    let current_nonce = read_storage(&*state, NONCE_MANAGER_ADDRESS, nonce_key_slot)?.to::<u64>();
-    if current_nonce != tx.nonce_sequence {
-        return Err(Eip8130ValidationError::NonceMismatch {
-            expected: current_nonce,
-            got: tx.nonce_sequence,
-        });
-    }
+    // 5. Nonce validation (skipped in nonce-free mode)
+    let current_nonce = if tx.nonce_key != NONCE_KEY_MAX {
+        let nonce_key_slot = nonce_slot(sender, tx.nonce_key);
+        let current = read_storage(&*state, NONCE_MANAGER_ADDRESS, nonce_key_slot)?.to::<u64>();
+        if current != tx.nonce_sequence {
+            return Err(Eip8130ValidationError::NonceMismatch {
+                expected: current,
+                got: tx.nonce_sequence,
+            });
+        }
+        current
+    } else {
+        if tx.expiry > block_timestamp + NONCE_FREE_MAX_EXPIRY_WINDOW {
+            return Err(Eip8130ValidationError::NonceFreeExpiryTooFar {
+                expiry: tx.expiry,
+                max_allowed: block_timestamp + NONCE_FREE_MAX_EXPIRY_WINDOW,
+            });
+        }
+        // Pre-check the on-chain expiring-nonce seen set for replay
+        let sig_hash = sender_signature_hash(&tx);
+        let seen_slot = expiring_seen_slot(sig_hash);
+        let seen_expiry =
+            read_storage(&*state, NONCE_MANAGER_ADDRESS, seen_slot)?.to::<u64>();
+        if seen_expiry != 0 && seen_expiry > block_timestamp {
+            return Err(Eip8130ValidationError::NonceFreeReplay);
+        }
+        0
+    };
 
     // 6. Lock state — reject config changes on locked accounts
     let has_config_changes =
         tx.account_changes.iter().any(|e| matches!(e, AccountChangeEntry::ConfigChange(_)));
     if has_config_changes {
+        if !base_alloy_consensus::is_account_config_known_deployed() {
+            let deployed = state
+                .account_code(&ACCOUNT_CONFIG_ADDRESS)
+                .map_err(|e| Eip8130ValidationError::StateError(e.to_string()))?
+                .is_some_and(|code| !code.is_empty());
+            if deployed {
+                base_alloy_consensus::mark_account_config_deployed();
+            } else {
+                return Err(Eip8130ValidationError::AccountConfigNotDeployed);
+            }
+        }
         let lock_slot_key = lock_slot(sender);
         let lock_value = read_storage(&*state, ACCOUNT_CONFIG_ADDRESS, lock_slot_key)?;
         let lock_bytes = lock_value.to_be_bytes::<32>();
-        if lock_bytes[0] != 0 {
+        let mut ua = [0u8; 8];
+        ua[3..8].copy_from_slice(&lock_bytes[11..16]);
+        let unlocks_at = u64::from_be_bytes(ua);
+        if block_timestamp < unlocks_at {
             return Err(Eip8130ValidationError::AccountLocked);
         }
     }
@@ -953,13 +942,16 @@ where
 
     // 11. Balance check — payer must cover max gas cost.
     //     Total = (intrinsic + custom_verifier_cap + execution_gas_limit) * max_fee_per_gas
-    let sender_is_custom =
-        !tx.is_eoa() && !tx.sender_auth.is_empty() && tx.sender_auth[0] == VERIFIER_CUSTOM;
-    let payer_is_custom =
-        !tx.is_self_pay() && !tx.payer_auth.is_empty() && tx.payer_auth[0] == VERIFIER_CUSTOM;
+    let sender_is_custom = !tx.is_eoa()
+        && tx.sender_auth.len() >= 20
+        && !is_native_verifier(Address::from_slice(&tx.sender_auth[..20]));
+    let payer_is_custom = !tx.is_self_pay()
+        && tx.payer_auth.len() >= 20
+        && !is_native_verifier(Address::from_slice(&tx.payer_auth[..20]));
     let authorizer_is_custom = tx.account_changes.iter().any(|e| {
         matches!(e, AccountChangeEntry::ConfigChange(cc)
-            if !cc.authorizer_auth.is_empty() && cc.authorizer_auth[0] == VERIFIER_CUSTOM)
+            if cc.authorizer_auth.len() >= 20
+                && !is_native_verifier(Address::from_slice(&cc.authorizer_auth[..20])))
     });
     let has_custom_verifier = sender_is_custom || payer_is_custom || authorizer_is_custom;
     let verifier_gas_cap = if has_custom_verifier { CUSTOM_VERIFIER_GAS_CAP } else { 0u64 };
@@ -1022,8 +1014,17 @@ fn compute_sender_throughput_tier(
         Err(_) => return SenderThroughputTier::Default,
     };
 
-    let sender_locked = lock_value.to_be_bytes::<32>()[0] != 0;
-    if !sender_locked {
+    let lock_bytes = lock_value.to_be_bytes::<32>();
+    let mut ua = [0u8; 8];
+    ua[3..8].copy_from_slice(&lock_bytes[11..16]);
+    let unlocks_at = u64::from_be_bytes(ua);
+    // We don't have the exact block timestamp here, so use the current
+    // `unlocksAt != 0` as a heuristic. A zero value means no lock was
+    // ever set; any non-zero value means the account was locked (or is
+    // in the process of unlocking). This over-classifies slightly for
+    // accounts that have fully unlocked but haven't cleared storage yet,
+    // which is safe — it only upgrades the throughput tier.
+    if unlocks_at == 0 {
         return SenderThroughputTier::Default;
     }
 
@@ -1073,32 +1074,5 @@ mod tests {
         let custom = Address::repeat_byte(0xAB);
         let allowlist = VerifierAllowlist::new([custom]);
         assert!(allowlist.is_allowed(&custom));
-    }
-
-    #[test]
-    fn extract_custom_verifier_from_auth() {
-        let mut auth = vec![VERIFIER_CUSTOM];
-        let addr = Address::repeat_byte(0xCC);
-        auth.extend_from_slice(addr.as_slice());
-        auth.extend_from_slice(&[0xDD; 32]);
-        let result = extract_custom_verifier_address(&Bytes::from(auth));
-        assert_eq!(result, Some(addr));
-    }
-
-    #[test]
-    fn extract_returns_none_for_native_type() {
-        let auth = Bytes::from(vec![VERIFIER_K1, 0xAA, 0xBB]);
-        assert_eq!(extract_custom_verifier_address(&auth), None);
-    }
-
-    #[test]
-    fn extract_returns_none_for_empty() {
-        assert_eq!(extract_custom_verifier_address(&Bytes::new()), None);
-    }
-
-    #[test]
-    fn extract_returns_none_for_short_custom() {
-        let auth = Bytes::from(vec![VERIFIER_CUSTOM, 0x01, 0x02]);
-        assert_eq!(extract_custom_verifier_address(&auth), None);
     }
 }

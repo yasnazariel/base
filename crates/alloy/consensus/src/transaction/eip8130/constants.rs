@@ -1,4 +1,11 @@
-//! EIP-8130 constants and verifier type identifiers.
+//! EIP-8130 constants and verifier gas costs.
+
+use alloy_primitives::{Address, U256};
+
+use super::predeploys::{
+    DELEGATE_VERIFIER_ADDRESS, K1_VERIFIER_ADDRESS, P256_RAW_VERIFIER_ADDRESS,
+    P256_WEBAUTHN_VERIFIER_ADDRESS,
+};
 
 /// The EIP-2718 transaction type byte for AA transactions.
 pub const AA_TX_TYPE_ID: u8 = 0x7B;
@@ -74,30 +81,43 @@ pub const MAX_CONFIG_OPS_PER_TX: usize = 5;
 
 /// Maximum gas allowed for a custom verifier STATICCALL.
 ///
-/// Custom verifiers (type `0x00`) are metered via an on-chain STATICCALL
-/// whose gas is charged to the payer separately from the sender's
-/// `gas_limit` (which is execution-only). This cap bounds the DoS surface
-/// of arbitrary verifier contracts.
+/// Custom verifiers are metered via an on-chain STATICCALL whose gas is
+/// charged to the payer separately from the sender's `gas_limit` (which is
+/// execution-only). This cap bounds the DoS surface of arbitrary verifier
+/// contracts.
 pub const CUSTOM_VERIFIER_GAS_CAP: u64 = 100_000;
 
-// ---------------------------------------------------------------------------
-// Native verifier type bytes
-// ---------------------------------------------------------------------------
+/// Maximum nonce key value (`2^192 - 1`), enabling nonce-free mode.
+///
+/// When `nonce_key == NONCE_KEY_MAX`, the protocol enters nonce-free mode:
+/// no nonce state is read or incremented. `nonce_sequence` must be `0` and
+/// `expiry` must be non-zero. Replay protection relies on short-lived
+/// expiry windows and transaction hash deduplication.
+///
+/// Nodes should reject nonce-free transactions whose `expiry` exceeds a
+/// short window (e.g. 30 seconds from the current timestamp).
+pub const NONCE_KEY_MAX: U256 = U256::from_limbs([u64::MAX, u64::MAX, u64::MAX, 0]);
 
-/// Custom verifier: `0x00 || address(20) || data`.
-pub const VERIFIER_CUSTOM: u8 = 0x00;
+/// Maximum allowed expiry window (in seconds) for nonce-free transactions.
+///
+/// The mempool rejects nonce-free transactions whose `expiry` is more than
+/// this many seconds into the future, bounding the replay-protection window.
+pub const NONCE_FREE_MAX_EXPIRY_WINDOW: u64 = 30;
 
-/// secp256k1 ECDSA.
-pub const VERIFIER_K1: u8 = 0x01;
+/// Capacity of the expiring-nonce circular buffer.
+///
+/// Sized for 10 000 TPS × 30-second window = 300 000 entries. Entries are
+/// evicted once the pointer wraps and the old entry has expired.
+pub const EXPIRING_NONCE_SET_CAPACITY: u32 = 300_000;
 
-/// secp256r1 / P-256 raw ECDSA.
-pub const VERIFIER_P256_RAW: u8 = 0x02;
-
-/// secp256r1 / P-256 WebAuthn assertion envelope.
-pub const VERIFIER_P256_WEBAUTHN: u8 = 0x03;
-
-/// Delegated validation (1-hop only).
-pub const VERIFIER_DELEGATE: u8 = 0x04;
+/// Intrinsic gas charged for expiring-nonce (nonce-free) transactions.
+///
+/// Accounts for the on-chain circular-buffer operations:
+///   2 × cold SLOAD (seen\[txHash\], ring\[idx\])      = 2 × 2 100 = 4 200
+///   1 × warm SLOAD (seen\[oldHash\])                   =     100
+///   3 × SSTORE-RESET (seen\[old\]=0, ring\[idx\], seen\[new\]) = 3 × 2 900 = 8 700
+///   Total = 13 000
+pub const EXPIRING_NONCE_GAS: u64 = 13_000;
 
 // ---------------------------------------------------------------------------
 // Verifier gas cost table
@@ -105,8 +125,8 @@ pub const VERIFIER_DELEGATE: u8 = 0x04;
 
 /// Configurable gas costs for native signature verification.
 ///
-/// Each verifier type has a fixed gas charge included in intrinsic gas.
-/// These costs account for the CPU work performed by native (Rust)
+/// Each native verifier address has a fixed gas charge included in intrinsic
+/// gas. These costs account for the CPU work performed by native (Rust)
 /// verifiers that would otherwise be "free" relative to on-chain
 /// STATICCALL verification.
 ///
@@ -114,8 +134,8 @@ pub const VERIFIER_DELEGATE: u8 = 0x04;
 /// cost of the target verifier it resolves to. For example, a delegate
 /// wrapping K1 costs `DELEGATE + K1 = 3_000 + 6_000 = 9_000`.
 ///
-/// Custom verifiers (type `0x00`) return 0 here because their gas is
-/// metered at runtime via STATICCALL, capped at [`CUSTOM_VERIFIER_GAS_CAP`],
+/// Custom verifiers (non-native addresses) return 0 here because their gas
+/// is metered at runtime via STATICCALL, capped at [`CUSTOM_VERIFIER_GAS_CAP`],
 /// and charged to the payer separately from the sender's execution `gas_limit`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct VerifierGasCosts {
@@ -134,26 +154,33 @@ impl VerifierGasCosts {
     pub const BASE_V1: Self =
         Self { k1: 6_000, p256_raw: 9_500, p256_webauthn: 15_000, delegate: 3_000 };
 
-    /// Returns the verification gas for a given verifier type byte.
+    /// Returns the verification gas for a given verifier address.
     ///
-    /// - For native types (K1, P256_RAW, P256_WEBAUTHN): returns the flat cost.
+    /// - For native verifiers (K1, P256_RAW, P256_WEBAUTHN): returns the flat
+    ///   cost.
     /// - For DELEGATE: returns `delegate + inner_verifier_cost`. The
-    ///   `inner_verifier_type` must be provided by the caller after resolving
-    ///   the delegation target. If the inner type is unknown or custom, only
+    ///   `inner_verifier` must be provided by the caller after resolving the
+    ///   delegation target. If the inner verifier is unknown or custom, only
     ///   the delegate overhead is returned.
-    /// - For CUSTOM (0x00) or unknown types: returns 0 (metered at runtime
-    ///   via STATICCALL).
-    pub fn gas_for_verifier(&self, verifier_type: u8, inner_verifier_type: Option<u8>) -> u64 {
-        match verifier_type {
-            VERIFIER_K1 => self.k1,
-            VERIFIER_P256_RAW => self.p256_raw,
-            VERIFIER_P256_WEBAUTHN => self.p256_webauthn,
-            VERIFIER_DELEGATE => {
-                let inner_cost =
-                    inner_verifier_type.map(|t| self.gas_for_verifier(t, None)).unwrap_or(0);
-                self.delegate + inner_cost
-            }
-            _ => 0,
+    /// - For custom verifiers (any other address): returns 0 (metered at
+    ///   runtime via STATICCALL).
+    pub fn gas_for_verifier(
+        &self,
+        verifier: Address,
+        inner_verifier: Option<Address>,
+    ) -> u64 {
+        if verifier == K1_VERIFIER_ADDRESS {
+            self.k1
+        } else if verifier == P256_RAW_VERIFIER_ADDRESS {
+            self.p256_raw
+        } else if verifier == P256_WEBAUTHN_VERIFIER_ADDRESS {
+            self.p256_webauthn
+        } else if verifier == DELEGATE_VERIFIER_ADDRESS {
+            let inner_cost =
+                inner_verifier.map(|v| self.gas_for_verifier(v, None)).unwrap_or(0);
+            self.delegate + inner_cost
+        } else {
+            0
         }
     }
 }

@@ -15,17 +15,30 @@ use super::{
     },
 };
 
-/// Lock state packed into a single storage slot.
+/// Lock state extracted from the `AccountState` storage slot.
 ///
-/// Layout: `locked (1 byte) | unlock_delay (8 bytes) | unlock_requested_at (8 bytes) | ...`
+/// Solidity: `AccountState { uint64 multichainSequence; uint64 localSequence; uint40 unlocksAt; uint16 unlockDelay; }`
+///
+/// The packed struct shares a single slot with change sequences. Right-aligned
+/// in the 32-byte word (big-endian byte array):
+///
+///   bytes [24..32] = multichainSequence (uint64)
+///   bytes [16..24] = localSequence      (uint64)
+///   bytes [11..16] = unlocksAt          (uint40)
+///   bytes [9..11]  = unlockDelay        (uint16)
+///   bytes [0..9]   = zeros
+///
+/// An account is locked when `block.timestamp < unlocks_at`.
+/// `unlocks_at == type(uint40).max` means permanently locked (until unlock initiated).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct LockState {
-    /// Whether the account is currently locked.
-    pub locked: bool,
+    /// Timestamp at which the account becomes unlocked.
+    ///
+    /// `0` = never locked (default), `type(uint40).max` = permanently locked,
+    /// other value = unlock pending at that timestamp.
+    pub unlocks_at: u64,
     /// Minimum delay (in seconds) before an unlock request takes effect.
-    pub unlock_delay: u64,
-    /// Timestamp when the unlock was requested (`0` if not requested).
-    pub unlock_requested_at: u64,
+    pub unlock_delay: u16,
 }
 
 /// Reads the `owner_config` for `(account, owner_id)` from the AccountConfig contract.
@@ -89,6 +102,9 @@ pub fn increment_nonce_op(
 }
 
 /// Reads the lock state for an account from the AccountConfig contract.
+///
+/// Parses the `unlocksAt` (uint40) and `unlockDelay` (uint16) fields from
+/// the packed `AccountState` slot. See [`LockState`] for byte layout.
 pub fn read_lock_state<DB: Database>(
     db: &mut DB,
     account: Address,
@@ -97,11 +113,12 @@ pub fn read_lock_state<DB: Database>(
     let value = db.storage(ACCOUNT_CONFIG_ADDRESS, slot.into())?;
     let bytes = value.to_be_bytes::<32>();
 
-    let locked = bytes[0] != 0;
-    let unlock_delay = u64::from_be_bytes(bytes[1..9].try_into().expect("8 bytes"));
-    let unlock_requested_at = u64::from_be_bytes(bytes[9..17].try_into().expect("8 bytes"));
+    let mut ua = [0u8; 8];
+    ua[3..8].copy_from_slice(&bytes[11..16]);
+    let unlocks_at = u64::from_be_bytes(ua);
+    let unlock_delay = u16::from_be_bytes([bytes[9], bytes[10]]);
 
-    Ok(LockState { locked, unlock_delay, unlock_requested_at })
+    Ok(LockState { unlocks_at, unlock_delay })
 }
 
 /// Reads the change sequence for `(account, chain_id)` from AccountConfig.

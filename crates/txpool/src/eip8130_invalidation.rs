@@ -228,6 +228,7 @@ pub fn compute_invalidation_keys(
                 let seq_slot = base_alloy_consensus::sequence_base_slot(sender);
                 keys.insert(InvalidationKey { address: ACCOUNT_CONFIG_ADDRESS, slot: seq_slot });
             }
+            AccountChangeEntry::Delegation(_) => {}
         }
     }
 

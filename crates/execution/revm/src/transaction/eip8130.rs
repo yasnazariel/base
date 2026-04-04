@@ -98,8 +98,19 @@ pub struct Eip8130Parts {
     pub payer_owner_id: B256,
     /// Nonce key for 2D nonce slot calculation.
     pub nonce_key: U256,
+    /// For nonce-free transactions (`nonce_key == NONCE_KEY_MAX`), the hash
+    /// used for on-chain replay protection via the expiring-nonce circular
+    /// buffer. Computed from `encode_for_sender_signing` — invariant to
+    /// signature values. `None` for standard (sequenced) transactions.
+    pub nonce_free_hash: Option<B256>,
     /// Whether the tx includes a create entry (determines auto-delegation skip).
     pub has_create_entry: bool,
+    /// Explicit delegation target from an `AccountChangeEntry::Delegation`.
+    ///
+    /// `Some(target)` means the tx requests EIP-7702-style code delegation to
+    /// `target`. `Some(Address::ZERO)` clears an existing delegation.
+    /// `None` means no delegation entry is present.
+    pub delegation_target: Option<Address>,
     /// Total account-change units in the transaction.
     ///
     /// Counting rules:
@@ -126,12 +137,12 @@ pub struct Eip8130Parts {
     /// separately from both intrinsic gas and the sender's execution
     /// `gas_limit`. Zero when no custom verifiers are used.
     pub custom_verifier_gas_cap: u64,
-    /// The sender's verifier type byte. Used by the handler at inclusion
+    /// The sender's verifier address. Used by the handler at inclusion
     /// time to re-validate native verifier ownership via owner_config SLOAD.
-    pub sender_verifier_type: u8,
-    /// The payer's verifier type byte (0 for self-pay). Used by the handler
-    /// for payer ownership re-validation at inclusion time.
-    pub payer_verifier_type: u8,
+    pub sender_verifier: Address,
+    /// The payer's verifier address (`Address::ZERO` for self-pay). Used by
+    /// the handler for payer ownership re-validation at inclusion time.
+    pub payer_verifier: Address,
     /// Auto-delegation code (`0xef0100 || DEFAULT_ACCOUNT_ADDRESS`) if applicable.
     /// Empty if auto-delegation is not needed.
     pub auto_delegation_code: Bytes,
@@ -181,8 +192,8 @@ pub struct Eip8130Parts {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Eip8130AuthorizerValidation {
-    /// Verifier type byte from `authorizer_auth[0]`.
-    pub verifier_type: u8,
+    /// Verifier address from the authorizer's auth prefix.
+    pub verifier: Address,
     /// The authenticated owner_id (from native verification at conversion time).
     /// Zero for custom verifiers (determined at runtime via STATICCALL).
     pub owner_id: B256,
@@ -257,6 +268,11 @@ pub fn account_created_log_topic() -> B256 {
     keccak256(b"AccountCreated(address,bytes32,bytes32)")
 }
 
+/// `keccak256("ChangeApplied(address,uint64)")`
+pub fn change_applied_log_topic() -> B256 {
+    keccak256(b"ChangeApplied(address,uint64)")
+}
+
 /// Pads an [`Address`] into a 32-byte indexed topic (left-padded with zeros).
 fn address_to_topic(addr: Address) -> B256 {
     let mut topic = B256::ZERO;
@@ -299,6 +315,13 @@ pub enum Eip8130ConfigLog {
         /// `keccak256(bytecode)` of the deployed runtime code.
         code_hash: B256,
     },
+    /// `ChangeApplied(address indexed account, uint64 sequence)`
+    ChangeApplied {
+        /// The account whose config was changed.
+        account: Address,
+        /// The sequence number that was consumed.
+        sequence: u64,
+    },
 }
 
 /// Converts an [`Eip8130ConfigLog`] into a revm [`Log`] emitted from
@@ -337,6 +360,17 @@ pub fn config_log_to_system_log(emitter: Address, event: &Eip8130ConfigLog) -> L
                 data: LogData::new_unchecked(
                     vec![account_created_log_topic(), address_to_topic(*account)],
                     Bytes::from(data),
+                ),
+            }
+        }
+        Eip8130ConfigLog::ChangeApplied { account, sequence } => {
+            let mut data = [0u8; 32];
+            data[24..32].copy_from_slice(&sequence.to_be_bytes());
+            Log {
+                address: emitter,
+                data: LogData::new_unchecked(
+                    vec![change_applied_log_topic(), address_to_topic(*account)],
+                    Bytes::from(data.to_vec()),
                 ),
             }
         }

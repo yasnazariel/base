@@ -14,12 +14,9 @@ use super::{
     account_change_units,
     constants::{
         MAX_ACCOUNT_CHANGES_PER_TX, MAX_AUTHORIZATIONS_PER_TX, MAX_CALLS_PER_TX,
-        MAX_CONFIG_OPS_PER_TX, MAX_SIGNATURE_SIZE,
+        MAX_CONFIG_OPS_PER_TX, MAX_SIGNATURE_SIZE, NONCE_KEY_MAX,
     },
-    predeploys::{
-        DELEGATE_VERIFIER_ADDRESS, K1_VERIFIER_ADDRESS, P256_RAW_VERIFIER_ADDRESS,
-        P256_WEBAUTHN_VERIFIER_ADDRESS,
-    },
+    predeploys::{K1_VERIFIER_ADDRESS, REVOKED_VERIFIER},
     tx::TxEip8130,
 };
 
@@ -108,6 +105,14 @@ pub enum ValidationError {
     #[error("nonce_key exceeds uint192")]
     NonceKeyTooLarge,
 
+    /// Nonce-free mode (`nonce_key == NONCE_KEY_MAX`) requires `nonce_sequence == 0`.
+    #[error("nonce-free mode requires nonce_sequence == 0")]
+    NonceFreeSequenceMustBeZero,
+
+    /// Nonce-free mode requires a non-zero `expiry` for replay protection.
+    #[error("nonce-free mode requires non-zero expiry")]
+    NonceFreeRequiresExpiry,
+
     /// The sender's owner is not authorized.
     #[error("sender owner not authorized")]
     SenderNotAuthorized,
@@ -155,9 +160,6 @@ pub enum ValidationError {
     Database(String),
 }
 
-/// Maximum value of a uint192.
-const UINT192_MAX: U256 = U256::from_limbs([u64::MAX, u64::MAX, u64::MAX, 0]);
-
 /// Validates structural constraints that don't require DB access.
 pub fn validate_structure(tx: &TxEip8130) -> Result<(), ValidationError> {
     if tx.sender_auth.len() > MAX_SIGNATURE_SIZE {
@@ -166,8 +168,17 @@ pub fn validate_structure(tx: &TxEip8130) -> Result<(), ValidationError> {
     if tx.payer_auth.len() > MAX_SIGNATURE_SIZE {
         return Err(ValidationError::PayerAuthTooLarge(tx.payer_auth.len()));
     }
-    if tx.nonce_key > UINT192_MAX {
+    if tx.nonce_key > NONCE_KEY_MAX {
         return Err(ValidationError::NonceKeyTooLarge);
+    }
+
+    if tx.nonce_key == NONCE_KEY_MAX {
+        if tx.nonce_sequence != 0 {
+            return Err(ValidationError::NonceFreeSequenceMustBeZero);
+        }
+        if tx.expiry == 0 {
+            return Err(ValidationError::NonceFreeRequiresExpiry);
+        }
     }
 
     validate_authorizations_limit(tx)?;
@@ -217,6 +228,7 @@ fn validate_account_changes_structure(tx: &TxEip8130) -> Result<(), ValidationEr
                     ));
                 }
             }
+            AccountChangeEntry::Delegation(_) => {}
         }
     }
     Ok(())
@@ -252,7 +264,7 @@ fn validate_config_operations_limit(tx: &TxEip8130) -> Result<(), ValidationErro
         .iter()
         .map(|entry| match entry {
             AccountChangeEntry::ConfigChange(cc) => cc.operations.len(),
-            AccountChangeEntry::Create(_) => 0,
+            AccountChangeEntry::Create(_) | AccountChangeEntry::Delegation(_) => 0,
         })
         .sum();
     if total_ops > MAX_CONFIG_OPS_PER_TX {
@@ -328,6 +340,10 @@ pub fn check_sender_authorization<DB: Database>(
     let (verifier, scope) = read_owner_config(db, account, owner_id)
         .map_err(|e| ValidationError::Database(format!("{e:?}")))?;
 
+    if verifier == REVOKED_VERIFIER {
+        return Err(ValidationError::SenderNotAuthorized);
+    }
+
     if verifier != Address::ZERO {
         if scope != 0 && (scope & OwnerScope::SENDER) == 0 {
             return Err(ValidationError::SenderScopeMissing);
@@ -335,6 +351,7 @@ pub fn check_sender_authorization<DB: Database>(
         return Ok((verifier, scope));
     }
 
+    // verifier == address(0): empty slot, implicit EOA rule.
     let implicit_owner_id = implicit_eoa_owner_id(account);
     if owner_id == implicit_owner_id {
         return Ok((K1_VERIFIER_ADDRESS, 0));
@@ -352,6 +369,10 @@ pub fn check_payer_authorization<DB: Database>(
     let (verifier, scope) = read_owner_config(db, payer, owner_id)
         .map_err(|e| ValidationError::Database(format!("{e:?}")))?;
 
+    if verifier == REVOKED_VERIFIER {
+        return Err(ValidationError::PayerNotAuthorized);
+    }
+
     if verifier != Address::ZERO {
         if scope != 0 && (scope & OwnerScope::PAYER) == 0 {
             return Err(ValidationError::PayerScopeMissing);
@@ -359,6 +380,7 @@ pub fn check_payer_authorization<DB: Database>(
         return Ok((verifier, scope));
     }
 
+    // verifier == address(0): empty slot, implicit EOA rule.
     let implicit_owner_id = implicit_eoa_owner_id(payer);
     if owner_id == implicit_owner_id {
         return Ok((K1_VERIFIER_ADDRESS, 0));
@@ -368,13 +390,16 @@ pub fn check_payer_authorization<DB: Database>(
 }
 
 /// Checks lock state before config changes.
+///
+/// An account is locked when `block.timestamp < unlocks_at`.
 pub fn check_lock_state<DB: Database>(
     db: &mut DB,
     account: Address,
+    block_timestamp: u64,
 ) -> Result<(), ValidationError> {
     let lock =
         read_lock_state(db, account).map_err(|e| ValidationError::Database(format!("{e:?}")))?;
-    if lock.locked {
+    if block_timestamp < lock.unlocks_at {
         return Err(ValidationError::AccountLocked);
     }
     Ok(())
@@ -407,17 +432,6 @@ pub fn implicit_eoa_owner_id(account: Address) -> B256 {
     B256::from(bytes)
 }
 
-/// Maps a verifier type byte to the corresponding predeploy address.
-pub fn verifier_type_to_address(verifier_type: u8) -> Option<Address> {
-    match verifier_type {
-        0x01 => Some(K1_VERIFIER_ADDRESS),
-        0x02 => Some(P256_RAW_VERIFIER_ADDRESS),
-        0x03 => Some(P256_WEBAUTHN_VERIFIER_ADDRESS),
-        0x04 => Some(DELEGATE_VERIFIER_ADDRESS),
-        _ => None,
-    }
-}
-
 /// Encodes a STATICCALL to `IVerifier.verify(hash, data)`.
 pub fn encode_verify_call(hash: B256, data: &Bytes) -> Bytes {
     use super::abi::IVerifier;
@@ -437,6 +451,7 @@ mod tests {
     use alloy_primitives::{Address, U256};
 
     use super::*;
+    use super::super::constants::NONCE_KEY_MAX;
     use alloy_primitives::address;
 
     fn sample_authorization() -> SignedAuthorization {
@@ -461,16 +476,6 @@ mod tests {
     }
 
     #[test]
-    fn verifier_type_mapping() {
-        assert_eq!(verifier_type_to_address(0x01), Some(K1_VERIFIER_ADDRESS));
-        assert_eq!(verifier_type_to_address(0x02), Some(P256_RAW_VERIFIER_ADDRESS));
-        assert_eq!(verifier_type_to_address(0x03), Some(P256_WEBAUTHN_VERIFIER_ADDRESS));
-        assert_eq!(verifier_type_to_address(0x04), Some(DELEGATE_VERIFIER_ADDRESS));
-        assert_eq!(verifier_type_to_address(0x00), None);
-        assert_eq!(verifier_type_to_address(0x05), None);
-    }
-
-    #[test]
     fn structure_validation_empty_tx() {
         let tx = TxEip8130::default();
         assert!(validate_structure(&tx).is_ok());
@@ -487,7 +492,7 @@ mod tests {
 
     #[test]
     fn structure_validation_nonce_key_too_large() {
-        let tx = TxEip8130 { nonce_key: UINT192_MAX + U256::from(1), ..Default::default() };
+        let tx = TxEip8130 { nonce_key: NONCE_KEY_MAX + U256::from(1), ..Default::default() };
         assert!(matches!(validate_structure(&tx), Err(ValidationError::NonceKeyTooLarge)));
     }
 
@@ -718,5 +723,44 @@ mod tests {
         let data = Bytes::from(vec![1, 2, 3, 4]);
         let encoded = encode_verify_call(hash, &data);
         assert!(!encoded.is_empty());
+    }
+
+    #[test]
+    fn structure_validation_nonce_free_requires_zero_sequence() {
+        let tx = TxEip8130 {
+            nonce_key: NONCE_KEY_MAX,
+            nonce_sequence: 1,
+            expiry: 100,
+            ..Default::default()
+        };
+        assert!(matches!(
+            validate_structure(&tx),
+            Err(ValidationError::NonceFreeSequenceMustBeZero)
+        ));
+    }
+
+    #[test]
+    fn structure_validation_nonce_free_requires_expiry() {
+        let tx = TxEip8130 {
+            nonce_key: NONCE_KEY_MAX,
+            nonce_sequence: 0,
+            expiry: 0,
+            ..Default::default()
+        };
+        assert!(matches!(
+            validate_structure(&tx),
+            Err(ValidationError::NonceFreeRequiresExpiry)
+        ));
+    }
+
+    #[test]
+    fn structure_validation_nonce_free_valid() {
+        let tx = TxEip8130 {
+            nonce_key: NONCE_KEY_MAX,
+            nonce_sequence: 0,
+            expiry: 100,
+            ..Default::default()
+        };
+        assert!(validate_structure(&tx).is_ok());
     }
 }

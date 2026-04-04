@@ -17,6 +17,47 @@
 //! the upgrade deposit transactions at block 0.
 
 use alloy_primitives::{Address, address};
+use core::sync::atomic::{AtomicBool, Ordering};
+
+/// Sentinel verifier address written on self-ownerId revocation.
+///
+/// When the implicit EOA owner (`ownerId == bytes32(bytes20(account))`) is
+/// revoked, the contract writes `OwnerConfig{verifier: address(1), scopes: 0}`
+/// instead of deleting the slot. This prevents the protocol's implicit EOA
+/// rule from re-authorizing the account on an empty slot. Non-self owners
+/// are simply deleted back to `address(0)`.
+///
+/// Storage interpretation:
+///   - `verifier == address(0)` → empty slot (implicit EOA rule may apply)
+///   - `verifier == address(1)` → explicitly revoked sentinel
+///   - `verifier >  address(1)` → registered owner
+pub const REVOKED_VERIFIER: Address = address!("0x0000000000000000000000000000000000000001");
+
+// ── AccountConfiguration deployment cache ─────────────────────────
+//
+// The AccountConfiguration contract is deployed via CREATE2 (not a
+// precompile). Before it has real bytecode, storage reads return zeros
+// and the implicit EOA rule handles sender/payer authorization. Config
+// changes must be rejected until the contract is deployed.
+//
+// This flag is monotonic: once set to `true` it never reverts to `false`.
+// A stale `false` just triggers one extra DB code-existence check.
+
+static ACCOUNT_CONFIG_DEPLOYED: AtomicBool = AtomicBool::new(false);
+
+/// Returns `true` if AccountConfiguration has been detected as deployed.
+///
+/// Callers should fall back to a DB code check when this returns `false`,
+/// then call [`mark_account_config_deployed`] on a positive result.
+pub fn is_account_config_known_deployed() -> bool {
+    ACCOUNT_CONFIG_DEPLOYED.load(Ordering::Relaxed)
+}
+
+/// Records that AccountConfiguration has real bytecode. Future calls to
+/// [`is_account_config_known_deployed`] return `true` without a DB lookup.
+pub fn mark_account_config_deployed() {
+    ACCOUNT_CONFIG_DEPLOYED.store(true, Ordering::Relaxed);
+}
 
 // ── Precompiles (native, fixed addresses) ─────────────────────────
 
@@ -39,23 +80,44 @@ pub const TX_CONTEXT_ADDRESS: Address = address!("0x0000000000000000000000000000
 
 /// Default account (wallet) implementation contract. Bare EOAs that submit
 /// AA transactions are auto-delegated to this address via EIP-7702.
-pub const DEFAULT_ACCOUNT_ADDRESS: Address = address!("0xb080bA38C82F824137A12Db1Ac53baeDa70e4a03");
+pub const DEFAULT_ACCOUNT_ADDRESS: Address = address!("0x19E994e7Fe4a114A3E40a989Cc5F5f2324E7E21d");
 
 /// Account configuration system contract.
 /// Manages owner registrations, account creation, config changes, and locks.
-pub const ACCOUNT_CONFIG_ADDRESS: Address = address!("0x0F127193b72E0f8546A6F4E471b6F8241900932B");
+pub const ACCOUNT_CONFIG_ADDRESS: Address = address!("0x47B8020ea35AbeBD959cEEf7a0D1bEae19d8cA21");
 
 /// K1 (secp256k1 ECDSA) verifier contract.
-pub const K1_VERIFIER_ADDRESS: Address = address!("0x167Ad053B3d786C6a6dC90aCa456DE98625EE31C");
+pub const K1_VERIFIER_ADDRESS: Address = address!("0x6E03196230De715554734a73058dA27AdfE2A7A9");
 
 /// P256 raw ECDSA verifier contract.
 pub const P256_RAW_VERIFIER_ADDRESS: Address =
-    address!("0x0D8D9D476D39764D9C0eC19449497FE1F39c673B");
+    address!("0x75E9779603e826f2D8d4dD7Edee3F0a737e4228d");
 
 /// P256 WebAuthn verifier contract.
 pub const P256_WEBAUTHN_VERIFIER_ADDRESS: Address =
-    address!("0x895650b7dd7C5Bd1c31006A7790b353A8dB73F7D");
+    address!("0xb2c8b7ec119882fBcc32FDe1be1341e19a5Bd53E");
 
 /// Delegate verifier contract (1-hop delegation).
 pub const DELEGATE_VERIFIER_ADDRESS: Address =
-    address!("0x1Bc0F6e1496420590fD4981Dd7b844525F32B1D1");
+    address!("0x149A439e8ea89541d8A1d2Ab046E39b0A91D0843");
+
+/// Default high-rate account variant. Blocks outbound ETH value transfers
+/// when locked, enabling higher mempool rate limits.
+pub const DEFAULT_HIGH_RATE_ACCOUNT_ADDRESS: Address =
+    address!("0x028aBeF556850D3BC0Dbd2c203D979bf44fE7E0b");
+
+/// Sentinel verifier address for external caller authorization in
+/// `DefaultAccount`. Deterministic: `address(uint160(uint256(keccak256("externalCaller"))))`.
+/// No contract exists at this address; registered as a verifier to mark
+/// EntryPoints, PolicyManagers, and other authorized external callers.
+pub const EXTERNAL_CALLER_VERIFIER: Address =
+    address!("0x345249274ee98994abbf79ef955319e4cb3f6849");
+
+/// Returns `true` if the given address is a known native verifier
+/// (K1, P256 raw, P256 WebAuthn, or Delegate).
+pub fn is_native_verifier(addr: Address) -> bool {
+    addr == K1_VERIFIER_ADDRESS
+        || addr == P256_RAW_VERIFIER_ADDRESS
+        || addr == P256_WEBAUTHN_VERIFIER_ADDRESS
+        || addr == DELEGATE_VERIFIER_ADDRESS
+}

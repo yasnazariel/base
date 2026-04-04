@@ -91,5 +91,8 @@ pub const MAX_CALLS_PER_TX: usize = 100;
 /// Mirrors `base_alloy_consensus::MAX_ACCOUNT_CHANGES_PER_TX`.
 pub const MAX_ACCOUNT_CHANGES_PER_TX: usize = 10;
 
-/// DELEGATE verifier type byte.
-pub const VERIFIER_DELEGATE: u8 = 0x04;
+/// Delegate verifier contract address (1-hop delegation).
+///
+/// Mirrors `base_alloy_consensus::DELEGATE_VERIFIER_ADDRESS`.
+pub const DELEGATE_VERIFIER_ADDRESS: Address =
+    address!("0x149A439e8ea89541d8A1d2Ab046E39b0A91D0843");

@@ -189,12 +189,15 @@ impl Decodable for ConfigOperation {
 pub const CHANGE_TYPE_CREATE: u8 = 0x00;
 /// Config change type byte.
 pub const CHANGE_TYPE_CONFIG: u8 = 0x01;
+/// Delegation type byte.
+pub const CHANGE_TYPE_DELEGATION: u8 = 0x02;
 
-/// An entry in `account_changes`: either a new account creation or a config change.
+/// An entry in `account_changes`: account creation, config change, or delegation.
 ///
 /// RLP:
 /// - Create:       `[0x00, user_salt, bytecode, [owner, ...]]`
 /// - ConfigChange: `[0x01, chain_id, sequence, [op, ...], authorizer_auth]`
+/// - Delegation:   `[0x02, target]`
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(tag = "type"))]
@@ -204,6 +207,8 @@ pub enum AccountChangeEntry {
     Create(CreateEntry),
     /// Apply a batch of owner configuration changes.
     ConfigChange(ConfigChangeEntry),
+    /// Set EIP-7702-style code delegation (or clear with `Address::ZERO`).
+    Delegation(DelegationEntry),
 }
 
 /// Account creation entry.
@@ -234,6 +239,16 @@ pub struct ConfigChangeEntry {
     pub operations: Vec<ConfigOperation>,
     /// Auth data from the authorizer (must have CONFIG scope).
     pub authorizer_auth: Bytes,
+}
+
+/// Delegation entry: set or clear EIP-7702-style code delegation.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct DelegationEntry {
+    /// Target implementation contract, or `Address::ZERO` to clear.
+    pub target: Address,
 }
 
 impl Encodable for AccountChangeEntry {
@@ -277,6 +292,12 @@ impl Encodable for AccountChangeEntry {
                 }
                 cc.authorizer_auth.encode(out);
             }
+            Self::Delegation(d) => {
+                let payload = CHANGE_TYPE_DELEGATION.length() + d.target.length();
+                Header { list: true, payload_length: payload }.encode(out);
+                CHANGE_TYPE_DELEGATION.encode(out);
+                d.target.encode(out);
+            }
         }
     }
 
@@ -299,6 +320,10 @@ impl Encodable for AccountChangeEntry {
                     + length_of_length(ops_payload)
                     + ops_payload
                     + cc.authorizer_auth.length();
+                payload + length_of_length(payload)
+            }
+            Self::Delegation(d) => {
+                let payload = CHANGE_TYPE_DELEGATION.length() + d.target.length();
                 payload + length_of_length(payload)
             }
         }
@@ -358,6 +383,15 @@ impl Decodable for AccountChangeEntry {
                     operations,
                     authorizer_auth,
                 }))
+            }
+            CHANGE_TYPE_DELEGATION => {
+                let target = Decodable::decode(buf)?;
+
+                if buf.len() + header.payload_length != remaining {
+                    return Err(alloy_rlp::Error::UnexpectedLength);
+                }
+
+                Ok(Self::Delegation(DelegationEntry { target }))
             }
             _ => Err(alloy_rlp::Error::Custom("invalid account change type byte")),
         }
