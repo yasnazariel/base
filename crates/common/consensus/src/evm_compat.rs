@@ -133,10 +133,10 @@ fn build_authorizer_validations(
         let verifier = Address::from_slice(&cc.authorizer_auth[..20]);
 
         let ops: Vec<Eip8130ConfigOp> = cc
-            .operations
+            .owner_changes
             .iter()
             .map(|op| Eip8130ConfigOp {
-                op_type: op.op_type,
+                change_type: op.change_type,
                 verifier: op.verifier,
                 owner_id: op.owner_id,
                 scope: op.scope,
@@ -150,7 +150,7 @@ fn build_authorizer_validations(
                 verifier: Address::ZERO,
                 owner_id: B256::ZERO,
                 verify_call,
-                operations: ops,
+                owner_changes: ops,
             });
         } else {
             let data = Bytes::copy_from_slice(&cc.authorizer_auth[20..]);
@@ -162,7 +162,7 @@ fn build_authorizer_validations(
                 verifier: Address::ZERO,
                 owner_id,
                 verify_call: None,
-                operations: ops,
+                owner_changes: ops,
             });
         }
     }
@@ -189,10 +189,10 @@ fn build_authorizer_validations(
         let verifier = Address::from_slice(&cc.authorizer_auth[..20]);
 
         let ops: Vec<Eip8130ConfigOp> = cc
-            .operations
+            .owner_changes
             .iter()
             .map(|op| Eip8130ConfigOp {
-                op_type: op.op_type,
+                change_type: op.change_type,
                 verifier: op.verifier,
                 owner_id: op.owner_id,
                 scope: op.scope,
@@ -209,7 +209,7 @@ fn build_authorizer_validations(
             verifier: Address::ZERO,
             owner_id: B256::ZERO,
             verify_call,
-            operations: ops,
+            owner_changes: ops,
         });
     }
     validations
@@ -304,8 +304,8 @@ pub fn build_eip8130_parts_with_costs(
                     new_value: seq.new_value,
                 });
 
-                for op in &cc.operations {
-                    match op.op_type {
+                for op in &cc.owner_changes {
+                    match op.change_type {
                         OP_AUTHORIZE_OWNER => {
                             config_change_logs.push(Eip8130ConfigLog::OwnerAuthorized {
                                 account: sender,

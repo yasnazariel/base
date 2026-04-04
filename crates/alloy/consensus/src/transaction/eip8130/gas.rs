@@ -220,7 +220,7 @@ pub fn account_changes_cost(tx: &TxEip8130, chain_id: u64) -> u64 {
             }
             AccountChangeEntry::ConfigChange(cc) => {
                 if cc.chain_id == 0 || cc.chain_id == chain_id {
-                    gas += CONFIG_CHANGE_OP_GAS * cc.operations.len() as u64;
+                    gas += CONFIG_CHANGE_OP_GAS * cc.owner_changes.len() as u64;
                 } else {
                     gas += CONFIG_CHANGE_SKIP_GAS;
                 }
@@ -244,7 +244,7 @@ pub fn account_change_units(tx: &TxEip8130) -> usize {
         .iter()
         .map(|entry| match entry {
             AccountChangeEntry::Create(create) => 1 + create.initial_owners.len(),
-            AccountChangeEntry::ConfigChange(cc) => cc.operations.len(),
+            AccountChangeEntry::ConfigChange(cc) => cc.owner_changes.len(),
             AccountChangeEntry::Delegation(_) => 1,
         })
         .sum()
@@ -265,7 +265,7 @@ mod tests {
             DELEGATE_VERIFIER_ADDRESS, K1_VERIFIER_ADDRESS, P256_RAW_VERIFIER_ADDRESS,
             P256_WEBAUTHN_VERIFIER_ADDRESS,
         },
-        types::{ConfigChangeEntry, ConfigOperation, CreateEntry, Owner},
+        types::{ConfigChangeEntry, CreateEntry, Owner, OwnerChange},
     };
 
     #[test]
@@ -310,15 +310,15 @@ mod tests {
                 AccountChangeEntry::ConfigChange(ConfigChangeEntry {
                     chain_id: 8453,
                     sequence: 0,
-                    operations: vec![
-                        ConfigOperation {
-                            op_type: 0x01,
+                    owner_changes: vec![
+                        OwnerChange {
+                            change_type: 0x01,
                             verifier: Address::repeat_byte(1),
                             owner_id: Default::default(),
                             scope: 0,
                         },
-                        ConfigOperation {
-                            op_type: 0x01,
+                        OwnerChange {
+                            change_type: 0x01,
                             verifier: Address::repeat_byte(2),
                             owner_id: Default::default(),
                             scope: 0,
@@ -329,8 +329,8 @@ mod tests {
                 AccountChangeEntry::ConfigChange(ConfigChangeEntry {
                     chain_id: 1, // different chain — will be skipped
                     sequence: 0,
-                    operations: vec![ConfigOperation {
-                        op_type: 0x01,
+                    owner_changes: vec![OwnerChange {
+                        change_type: 0x01,
                         verifier: Address::repeat_byte(3),
                         owner_id: Default::default(),
                         scope: 0,
@@ -392,15 +392,15 @@ mod tests {
                 AccountChangeEntry::ConfigChange(ConfigChangeEntry {
                     chain_id: 8453,
                     sequence: 0,
-                    operations: vec![
-                        ConfigOperation {
-                            op_type: 0x01,
+                    owner_changes: vec![
+                        OwnerChange {
+                            change_type: 0x01,
                             verifier: Address::repeat_byte(3),
                             owner_id: B256::repeat_byte(0x12),
                             scope: 0,
                         },
-                        ConfigOperation {
-                            op_type: 0x02,
+                        OwnerChange {
+                            change_type: 0x02,
                             verifier: Address::repeat_byte(4),
                             owner_id: B256::repeat_byte(0x13),
                             scope: 0,

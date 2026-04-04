@@ -668,10 +668,10 @@ fn validate_authorizer_chain(
         };
 
         // Track pending additions/revocations for chaining.
-        for op in &cc.operations {
-            if op.op_type == 0x01 {
+        for op in &cc.owner_changes {
+            if op.change_type == 0x01 {
                 pending_owners.insert(op.owner_id, (op.verifier, op.scope));
-            } else if op.op_type == 0x02 {
+            } else if op.change_type == 0x02 {
                 pending_owners.remove(&op.owner_id);
             }
         }
@@ -866,7 +866,7 @@ where
         .account_changes
         .iter()
         .filter_map(|e| match e {
-            AccountChangeEntry::ConfigChange(cc) => Some(cc.operations.len()),
+            AccountChangeEntry::ConfigChange(cc) => Some(cc.owner_changes.len()),
             _ => None,
         })
         .sum();

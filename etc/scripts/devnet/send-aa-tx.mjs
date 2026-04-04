@@ -106,7 +106,7 @@ const PAYER_KEY  = '0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cd
 const DELEGATE_KEY = '0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a';
 
 const CONFIG_CHANGE_TYPEHASH = keccak256(
-  toHex('ConfigChange(address account,uint64 chainId,uint64 sequence,ConfigOperation[] operations)ConfigOperation(uint8 opType,address verifier,bytes32 ownerId,uint8 scope)')
+  toHex('SignedOwnerChanges(address account,uint64 chainId,uint64 sequence,OwnerChange[] ownerChanges)OwnerChange(uint8 changeType,address verifier,bytes32 ownerId,uint8 scope)')
 );
 
 const PROBE_ABI = [
@@ -201,18 +201,18 @@ function sequenceSlot(accountAddr) {
   ]));
 }
 
-function configChangeDigest(accountAddr, chainId, sequence, operations) {
-  const opHashes = operations.map(op => keccak256(
+function configChangeDigest(accountAddr, chainId, sequence, ownerChanges) {
+  const changeHashes = ownerChanges.map(oc => keccak256(
     encodeAbiParameters(
       parseAbiParameters('uint8, address, bytes32, uint8'),
-      [op.opType, op.verifier, op.ownerId, op.scope]
+      [oc.changeType, oc.verifier, oc.ownerId, oc.scope]
     )
   ));
-  const operationsHash = keccak256(concat(opHashes));
+  const ownerChangesHash = keccak256(concat(changeHashes));
   return keccak256(
     encodeAbiParameters(
       parseAbiParameters('bytes32, address, uint64, uint64, bytes32'),
-      [CONFIG_CHANGE_TYPEHASH, accountAddr, chainId, sequence, operationsHash]
+      [CONFIG_CHANGE_TYPEHASH, accountAddr, chainId, sequence, ownerChangesHash]
     )
   );
 }
@@ -323,7 +323,6 @@ function baseTxFields(nonce, callsRlp, accountChangesRlp = [], payerAddress = '0
     encodeUint(1000000n),
     encodeUint(1000000000n),
     encodeUint(500000n),
-    [],
     accountChangesRlp,
     callsRlp,
     encodeAddress(payerAddress),
@@ -523,7 +522,7 @@ async function runConfigChange() {
   console.log(`Multichain sequence: ${currentSeq}`);
 
   const operation = {
-    opType: 1,
+    changeType: 1,
     verifier: K1_VERIFIER_ADDRESS,
     ownerId: newOwnerId,
     scope: 0,
@@ -633,7 +632,7 @@ async function runP256() {
   console.log(`Multichain sequence: ${currentSeq}`);
 
   const operation = {
-    opType: 1,
+    changeType: 1,
     verifier: P256_VERIFIER_ADDRESS,
     ownerId: p256OwnerId,
     scope: 0,
@@ -759,7 +758,7 @@ async function runWebAuthn() {
   const currentSeq = BigInt(packedSeq || '0x0') & ((1n << 64n) - 1n);
 
   const operation = {
-    opType: 1,
+    changeType: 1,
     verifier: WEBAUTHN_VERIFIER_ADDRESS,
     ownerId: p256OwnerId,
     scope: 0,
@@ -1248,7 +1247,7 @@ async function runCustomVerifier() {
   const currentSeq = BigInt(packedSeq || '0x0') & ((1n << 64n) - 1n);
 
   const operation = {
-    opType: 1,
+    changeType: 1,
     verifier: ALWAYS_VALID_VERIFIER_ADDRESS,
     ownerId: ALWAYS_VALID_OWNER_ID,
     scope: SCOPE_SENDER_PAYER,
@@ -1329,7 +1328,7 @@ async function runDelegateNative() {
   const currentSeq = BigInt(packedSeq || '0x0') & ((1n << 64n) - 1n);
 
   const operation = {
-    opType: 1,
+    changeType: 1,
     verifier: DELEGATE_VERIFIER_ADDRESS,
     ownerId: delegateOwnerId,
     scope: 0, // unrestricted
@@ -1424,7 +1423,7 @@ async function runDelegateP256() {
   const seq1 = BigInt(packedSeq1 || '0x0') & ((1n << 64n) - 1n);
 
   const p256Op = {
-    opType: 1,
+    changeType: 1,
     verifier: DELEGATE_VERIFIER_ADDRESS,
     ownerId: p256OwnerId,
     scope: 0, // unrestricted
@@ -1545,7 +1544,7 @@ async function runLockedConfig() {
   const packedSeq = await client.getStorageAt({ address: ACCOUNT_CONFIG_ADDRESS, slot: seqSlotHash });
   const currentSeq = BigInt(packedSeq || '0x0') & ((1n << 64n) - 1n);
 
-  const operation = { opType: 1, verifier: K1_VERIFIER_ADDRESS, ownerId: newOwnerId, scope: 0 };
+  const operation = { changeType: 1, verifier: K1_VERIFIER_ADDRESS, ownerId: newOwnerId, scope: 0 };
   const digest = configChangeDigest(account.address, 0n, currentSeq, [operation]);
   const authSig = await account.sign({ hash: digest });
   const authorizerAuth = concat([K1_VERIFIER_ADDRESS, authSig]);
@@ -1599,7 +1598,7 @@ async function runLockedConfig() {
 // Mode: nonceless
 // ─────────────────────────────────────────────────
 async function runNonceless() {
-  const NONCE_KEY_MAX = (1n << 192n) - 1n;
+  const NONCE_KEY_MAX = (1n << 256n) - 1n;
 
   console.log('\n--- Nonceless Transaction Test (NONCE_KEY_MAX) ---');
   console.log(`Sender: ${account.address}`);

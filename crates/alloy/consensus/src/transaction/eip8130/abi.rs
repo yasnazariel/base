@@ -25,7 +25,7 @@ sol! {
 
     /// Config operation tuple used in config changes.
     struct ConfigOpTuple {
-        uint8 opType;
+        uint8 changeType;
         address verifier;
         bytes32 ownerId;
         uint8 scope;
@@ -44,7 +44,7 @@ sol! {
         function getAddress(bytes32 userSalt, bytes calldata bytecode, OwnerTuple[] calldata initialOwners) external view returns (address);
 
         /// Applies a portable config change batch to an account.
-        function applyConfigChange(address account, uint64 chainId, uint64 sequence, ConfigOpTuple[] calldata operations, bytes calldata authorizerAuth) external;
+        function applyConfigChange(address account, uint64 chainId, uint64 sequence, ConfigOpTuple[] calldata ownerChanges, bytes calldata authorizerAuth) external;
 
         /// Returns the current change sequence for an account on a given chain.
         function getChangeSequence(address account, uint64 chainId) external view returns (uint64);
@@ -77,7 +77,7 @@ sol! {
     /// Writes are protocol-only (performed by the node during execution).
     interface INonceManager {
         /// Returns the current nonce sequence for an account's nonce channel.
-        function getNonce(address account, uint192 nonceKey) external view returns (uint64);
+        function getNonce(address account, uint256 nonceKey) external view returns (uint64);
     }
 }
 

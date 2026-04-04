@@ -3,11 +3,7 @@
 use alloc::vec::Vec;
 
 use alloy_consensus::{Sealable, Transaction, Typed2718};
-use alloy_eips::{
-    eip2718::{Decodable2718, Eip2718Error, Eip2718Result, Encodable2718, IsTyped2718},
-    eip2930::AccessList,
-    eip7702::SignedAuthorization,
-};
+use alloy_eips::eip2718::{Decodable2718, Eip2718Error, Eip2718Result, Encodable2718, IsTyped2718};
 use alloy_primitives::{Address, B256, Bytes, ChainId, TxKind, U256, keccak256};
 use alloy_rlp::{BufMut, Decodable, Encodable, Header, length_of_length};
 
@@ -20,7 +16,7 @@ use super::{AccountChangeEntry, Call, constants::AA_TX_TYPE_ID};
 ///
 /// RLP: `[chain_id, from, nonce_key, nonce_sequence, expiry,
 ///        max_priority_fee_per_gas, max_fee_per_gas, gas_limit,
-///        authorization_list, account_changes, calls, payer,
+///        account_changes, calls, payer,
 ///        sender_auth, payer_auth]`
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -32,7 +28,7 @@ pub struct TxEip8130 {
     pub chain_id: u64,
     /// Sender address. `Address::ZERO` means the sender is derived via ecrecover.
     pub from: Address,
-    /// 2D nonce channel selector (uint192 in the spec, validated at acceptance time).
+    /// 2D nonce channel selector (uint256).
     pub nonce_key: U256,
     /// Sequence number within the nonce channel.
     #[cfg_attr(feature = "serde", serde(with = "alloy_serde::quantity"))]
@@ -52,8 +48,6 @@ pub struct TxEip8130 {
         serde(with = "alloy_serde::quantity", rename = "gas", alias = "gasLimit")
     )]
     pub gas_limit: u64,
-    /// EIP-7702 authorization list.
-    pub authorization_list: Vec<SignedAuthorization>,
     /// Account creation and/or configuration change entries.
     pub account_changes: Vec<AccountChangeEntry>,
     /// Phased call batches. Each inner `Vec` is one atomic phase.
@@ -109,7 +103,6 @@ impl TxEip8130 {
         self.max_priority_fee_per_gas.encode(out);
         self.max_fee_per_gas.encode(out);
         self.gas_limit.encode(out);
-        encode_list(&self.authorization_list, out);
         encode_list(&self.account_changes, out);
         encode_nested_calls(&self.calls, out);
         self.payer.encode(out);
@@ -127,7 +120,6 @@ impl TxEip8130 {
             + self.max_priority_fee_per_gas.length()
             + self.max_fee_per_gas.length()
             + self.gas_limit.length()
-            + list_len(&self.authorization_list)
             + list_len(&self.account_changes)
             + nested_calls_len(&self.calls)
             + self.payer.length()
@@ -146,7 +138,6 @@ impl TxEip8130 {
             max_priority_fee_per_gas: Decodable::decode(buf)?,
             max_fee_per_gas: Decodable::decode(buf)?,
             gas_limit: Decodable::decode(buf)?,
-            authorization_list: Decodable::decode(buf)?,
             account_changes: Decodable::decode(buf)?,
             calls: decode_nested_calls(buf)?,
             payer: Decodable::decode(buf)?,
@@ -221,7 +212,7 @@ impl TxEip8130 {
     ///
     /// `keccak256(AA_TX_TYPE || rlp([chain_id, from, nonce_key, nonce_sequence, expiry,
     ///   max_priority_fee_per_gas, max_fee_per_gas, gas_limit,
-    ///   authorization_list, account_changes, calls, payer]))`
+    ///   account_changes, calls, payer]))`
     pub fn encode_for_sender_signing(&self, out: &mut dyn BufMut) {
         let payload_len = self.chain_id.length()
             + self.from.length()
@@ -231,7 +222,6 @@ impl TxEip8130 {
             + self.max_priority_fee_per_gas.length()
             + self.max_fee_per_gas.length()
             + self.gas_limit.length()
-            + list_len(&self.authorization_list)
             + list_len(&self.account_changes)
             + nested_calls_len(&self.calls)
             + self.payer.length();
@@ -246,7 +236,6 @@ impl TxEip8130 {
         self.max_priority_fee_per_gas.encode(out);
         self.max_fee_per_gas.encode(out);
         self.gas_limit.encode(out);
-        encode_list(&self.authorization_list, out);
         encode_list(&self.account_changes, out);
         encode_nested_calls(&self.calls, out);
         self.payer.encode(out);
@@ -256,7 +245,7 @@ impl TxEip8130 {
     ///
     /// `keccak256(AA_PAYER_TYPE || rlp([chain_id, from, nonce_key, nonce_sequence, expiry,
     ///   max_priority_fee_per_gas, max_fee_per_gas, gas_limit,
-    ///   authorization_list, account_changes, calls]))`
+    ///   account_changes, calls]))`
     pub fn encode_for_payer_signing(&self, out: &mut dyn BufMut) {
         let payload_len = self.chain_id.length()
             + self.from.length()
@@ -266,7 +255,6 @@ impl TxEip8130 {
             + self.max_priority_fee_per_gas.length()
             + self.max_fee_per_gas.length()
             + self.gas_limit.length()
-            + list_len(&self.authorization_list)
             + list_len(&self.account_changes)
             + nested_calls_len(&self.calls);
 
@@ -280,7 +268,6 @@ impl TxEip8130 {
         self.max_priority_fee_per_gas.encode(out);
         self.max_fee_per_gas.encode(out);
         self.gas_limit.encode(out);
-        encode_list(&self.authorization_list, out);
         encode_list(&self.account_changes, out);
         encode_nested_calls(&self.calls, out);
     }
@@ -429,7 +416,7 @@ impl Transaction for TxEip8130 {
         &EMPTY
     }
 
-    fn access_list(&self) -> Option<&AccessList> {
+    fn access_list(&self) -> Option<&alloy_eips::eip2930::AccessList> {
         None
     }
 
@@ -437,8 +424,8 @@ impl Transaction for TxEip8130 {
         None
     }
 
-    fn authorization_list(&self) -> Option<&[SignedAuthorization]> {
-        Some(&self.authorization_list)
+    fn authorization_list(&self) -> Option<&[alloy_eips::eip7702::SignedAuthorization]> {
+        None
     }
 
     fn effective_tip_per_gas(&self, base_fee: u64) -> Option<u128> {
@@ -523,7 +510,6 @@ mod tests {
             max_priority_fee_per_gas: 1_000_000_000,
             max_fee_per_gas: 10_000_000_000,
             gas_limit: 100_000,
-            authorization_list: vec![],
             account_changes: vec![],
             calls: vec![vec![Call {
                 to: Address::repeat_byte(0xBB),

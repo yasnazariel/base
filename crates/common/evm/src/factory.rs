@@ -60,7 +60,7 @@ fn make_tx_context_precompile() -> DynPrecompile {
 fn make_nonce_manager_precompile() -> DynPrecompile {
     DynPrecompile::new_stateful(PrecompileId::custom("nonce_manager"), |mut input| {
         let data = input.data;
-        let get_nonce_sel = selector(b"getNonce(address,uint192)");
+        let get_nonce_sel = selector(b"getNonce(address,uint256)");
 
         if data.len() < 4 || data[0..4] != get_nonce_sel {
             return Err(PrecompileError::Other("unknown nonce manager selector".into()));

@@ -199,9 +199,9 @@ pub struct Eip8130AuthorizerValidation {
     pub owner_id: B256,
     /// STATICCALL data for custom verifiers. `None` for native verifiers.
     pub verify_call: Option<Eip8130VerifyCall>,
-    /// The operations in this config change (needed for chained validation
+    /// The owner changes in this config change (needed for chained validation
     /// where earlier additions become visible to later authorizers).
-    pub operations: Vec<Eip8130ConfigOp>,
+    pub owner_changes: Vec<Eip8130ConfigOp>,
 }
 
 /// Simplified config operation for the handler's in-memory chaining logic.
@@ -209,7 +209,7 @@ pub struct Eip8130AuthorizerValidation {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Eip8130ConfigOp {
     /// `0x01` = authorize, `0x02` = revoke.
-    pub op_type: u8,
+    pub change_type: u8,
     /// Verifier contract address.
     pub verifier: Address,
     /// Owner identifier.

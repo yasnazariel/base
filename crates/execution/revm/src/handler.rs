@@ -534,12 +534,12 @@ where
         }
 
         // Record pending additions from this entry for chaining.
-        for op in &validation.operations {
-            if op.op_type == 0x01 {
+        for op in &validation.owner_changes {
+            if op.change_type == 0x01 {
                 // AUTHORIZE
                 pending_owners
                     .insert(U256::from_be_bytes(op.owner_id.0), (op.verifier, op.scope));
-            } else if op.op_type == 0x02 {
+            } else if op.change_type == 0x02 {
                 // REVOKE
                 pending_owners.remove(&U256::from_be_bytes(op.owner_id.0));
             }

@@ -120,7 +120,7 @@ impl OwnerScope {
 }
 
 // ---------------------------------------------------------------------------
-// ConfigOperation
+// OwnerChange
 // ---------------------------------------------------------------------------
 
 /// Operation type bytes for account configuration changes.
@@ -128,14 +128,14 @@ pub const OP_AUTHORIZE_OWNER: u8 = 0x01;
 /// Revoke owner operation type.
 pub const OP_REVOKE_OWNER: u8 = 0x02;
 
-/// A single configuration operation: `[op_type, verifier, ownerId, scope]`.
+/// A single owner change: `[change_type, verifier, ownerId, scope]`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
-pub struct ConfigOperation {
+pub struct OwnerChange {
     /// `0x01` = authorize, `0x02` = revoke.
-    pub op_type: u8,
+    pub change_type: u8,
     /// Verifier contract address (ignored for revoke).
     pub verifier: Address,
     /// Owner identifier.
@@ -144,21 +144,21 @@ pub struct ConfigOperation {
     pub scope: u8,
 }
 
-impl Encodable for ConfigOperation {
+impl Encodable for OwnerChange {
     fn encode(&self, out: &mut dyn BufMut) {
-        let payload = self.op_type.length()
+        let payload = self.change_type.length()
             + self.verifier.length()
             + self.owner_id.length()
             + self.scope.length();
         Header { list: true, payload_length: payload }.encode(out);
-        self.op_type.encode(out);
+        self.change_type.encode(out);
         self.verifier.encode(out);
         self.owner_id.encode(out);
         self.scope.encode(out);
     }
 
     fn length(&self) -> usize {
-        let payload = self.op_type.length()
+        let payload = self.change_type.length()
             + self.verifier.length()
             + self.owner_id.length()
             + self.scope.length();
@@ -166,14 +166,14 @@ impl Encodable for ConfigOperation {
     }
 }
 
-impl Decodable for ConfigOperation {
+impl Decodable for OwnerChange {
     fn decode(buf: &mut &[u8]) -> alloy_rlp::Result<Self> {
         let header = Header::decode(buf)?;
         if !header.list {
             return Err(alloy_rlp::Error::UnexpectedString);
         }
         Ok(Self {
-            op_type: Decodable::decode(buf)?,
+            change_type: Decodable::decode(buf)?,
             verifier: Decodable::decode(buf)?,
             owner_id: Decodable::decode(buf)?,
             scope: Decodable::decode(buf)?,
@@ -235,8 +235,8 @@ pub struct ConfigChangeEntry {
     pub chain_id: u64,
     /// Expected change sequence number.
     pub sequence: u64,
-    /// Operations to apply.
-    pub operations: Vec<ConfigOperation>,
+    /// Owner changes to apply.
+    pub owner_changes: Vec<OwnerChange>,
     /// Auth data from the authorizer (must have CONFIG scope).
     pub authorizer_auth: Bytes,
 }
@@ -273,7 +273,7 @@ impl Encodable for AccountChangeEntry {
                 }
             }
             Self::ConfigChange(cc) => {
-                let ops_payload: usize = cc.operations.iter().map(Encodable::length).sum();
+                let ops_payload: usize = cc.owner_changes.iter().map(Encodable::length).sum();
 
                 let payload = CHANGE_TYPE_CONFIG.length()
                     + cc.chain_id.length()
@@ -287,7 +287,7 @@ impl Encodable for AccountChangeEntry {
                 cc.chain_id.encode(out);
                 cc.sequence.encode(out);
                 Header { list: true, payload_length: ops_payload }.encode(out);
-                for op in &cc.operations {
+                for op in &cc.owner_changes {
                     op.encode(out);
                 }
                 cc.authorizer_auth.encode(out);
@@ -313,7 +313,7 @@ impl Encodable for AccountChangeEntry {
                 payload + length_of_length(payload)
             }
             Self::ConfigChange(cc) => {
-                let ops_payload: usize = cc.operations.iter().map(Encodable::length).sum();
+                let ops_payload: usize = cc.owner_changes.iter().map(Encodable::length).sum();
                 let payload = CHANGE_TYPE_CONFIG.length()
                     + cc.chain_id.length()
                     + cc.sequence.length()
@@ -367,9 +367,9 @@ impl Decodable for AccountChangeEntry {
                     return Err(alloy_rlp::Error::UnexpectedString);
                 }
                 let ops_end = buf.len() - ops_header.payload_length;
-                let mut operations = Vec::new();
+                let mut owner_changes = Vec::new();
                 while buf.len() > ops_end {
-                    operations.push(Decodable::decode(buf)?);
+                    owner_changes.push(Decodable::decode(buf)?);
                 }
                 let authorizer_auth = Decodable::decode(buf)?;
 
@@ -380,7 +380,7 @@ impl Decodable for AccountChangeEntry {
                 Ok(Self::ConfigChange(ConfigChangeEntry {
                     chain_id,
                     sequence,
-                    operations,
+                    owner_changes,
                     authorizer_auth,
                 }))
             }
@@ -446,8 +446,8 @@ mod tests {
         let entry = AccountChangeEntry::ConfigChange(ConfigChangeEntry {
             chain_id: 8453,
             sequence: 3,
-            operations: vec![ConfigOperation {
-                op_type: OP_AUTHORIZE_OWNER,
+            owner_changes: vec![OwnerChange {
+                change_type: OP_AUTHORIZE_OWNER,
                 verifier: Address::repeat_byte(0x01),
                 owner_id: B256::repeat_byte(0x99),
                 scope: OwnerScope::SENDER,

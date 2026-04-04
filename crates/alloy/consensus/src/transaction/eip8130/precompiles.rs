@@ -24,7 +24,7 @@ pub const NONCE_MANAGER_GAS: u64 = 2_100;
 
 /// Handles a call to the NonceManager precompile.
 ///
-/// Decodes `getNonce(address, uint192)` and returns the current nonce.
+/// Decodes `getNonce(address, uint256)` and returns the current nonce.
 pub fn handle_nonce_manager<DB: Database>(
     db: &mut DB,
     input: &[u8],

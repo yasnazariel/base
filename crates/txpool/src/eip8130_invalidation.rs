@@ -406,7 +406,7 @@ pub async fn maintain_eip8130_invalidation<P, N, T>(
 mod tests {
     use alloy_primitives::{Address, B256, Bytes, U256};
     use base_alloy_consensus::{
-        ACCOUNT_CONFIG_ADDRESS, AccountChangeEntry, ConfigChangeEntry, ConfigOperation,
+        ACCOUNT_CONFIG_ADDRESS, AccountChangeEntry, ConfigChangeEntry, OwnerChange,
         CreateEntry, NONCE_MANAGER_ADDRESS, OP_AUTHORIZE_OWNER, TxEip8130, nonce_slot,
     };
 
@@ -465,8 +465,8 @@ mod tests {
             account_changes: vec![AccountChangeEntry::ConfigChange(ConfigChangeEntry {
                 chain_id: 1,
                 sequence: 0,
-                operations: vec![ConfigOperation {
-                    op_type: OP_AUTHORIZE_OWNER,
+                owner_changes: vec![OwnerChange {
+                    change_type: OP_AUTHORIZE_OWNER,
                     verifier: Address::repeat_byte(0x01),
                     owner_id: B256::repeat_byte(0x02),
                     scope: 0,

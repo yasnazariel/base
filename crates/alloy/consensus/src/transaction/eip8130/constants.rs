@@ -62,11 +62,6 @@ pub const EOA_AUTH_GAS: u64 = 6_000;
 /// creating disproportionate mempool/inclusion validation work.
 pub const MAX_CALLS_PER_TX: usize = 100;
 
-/// Maximum number of EIP-7702 authorizations in one AA transaction.
-///
-/// Kept intentionally small during rollout to bound ingress verification work.
-pub const MAX_AUTHORIZATIONS_PER_TX: usize = 1;
-
 /// Maximum number of account-change units in one transaction.
 ///
 /// Counting rules:
@@ -75,7 +70,7 @@ pub const MAX_AUTHORIZATIONS_PER_TX: usize = 1;
 /// - each config operation counts as 1.
 pub const MAX_ACCOUNT_CHANGES_PER_TX: usize = 10;
 
-/// Maximum number of total `ConfigOperation`s across all `ConfigChangeEntry`s
+/// Maximum number of total `OwnerChange`s across all `ConfigChangeEntry`s
 /// in a single transaction. Bounds the DoS surface of owner change validation.
 pub const MAX_CONFIG_OPS_PER_TX: usize = 5;
 
@@ -87,7 +82,7 @@ pub const MAX_CONFIG_OPS_PER_TX: usize = 5;
 /// contracts.
 pub const CUSTOM_VERIFIER_GAS_CAP: u64 = 100_000;
 
-/// Maximum nonce key value (`2^192 - 1`), enabling nonce-free mode.
+/// Maximum nonce key value (`2^256 - 1`), enabling nonce-free mode.
 ///
 /// When `nonce_key == NONCE_KEY_MAX`, the protocol enters nonce-free mode:
 /// no nonce state is read or incremented. `nonce_sequence` must be `0` and
@@ -96,7 +91,7 @@ pub const CUSTOM_VERIFIER_GAS_CAP: u64 = 100_000;
 ///
 /// Nodes should reject nonce-free transactions whose `expiry` exceeds a
 /// short window (e.g. 30 seconds from the current timestamp).
-pub const NONCE_KEY_MAX: U256 = U256::from_limbs([u64::MAX, u64::MAX, u64::MAX, 0]);
+pub const NONCE_KEY_MAX: U256 = U256::MAX;
 
 /// Maximum allowed expiry window (in seconds) for nonce-free transactions.
 ///
@@ -112,12 +107,9 @@ pub const EXPIRING_NONCE_SET_CAPACITY: u32 = 300_000;
 
 /// Intrinsic gas charged for expiring-nonce (nonce-free) transactions.
 ///
-/// Accounts for the on-chain circular-buffer operations:
-///   2 × cold SLOAD (seen\[txHash\], ring\[idx\])      = 2 × 2 100 = 4 200
-///   1 × warm SLOAD (seen\[oldHash\])                   =     100
-///   3 × SSTORE-RESET (seen\[old\]=0, ring\[idx\], seen\[new\]) = 3 × 2 900 = 8 700
-///   Total = 13 000
-pub const EXPIRING_NONCE_GAS: u64 = 13_000;
+/// Covers the on-chain circular-buffer replay protection state operations:
+/// 2 cold SLOADs + 1 warm SLOAD + 3 warm SSTORE resets = 14 000.
+pub const EXPIRING_NONCE_GAS: u64 = 14_000;
 
 // ---------------------------------------------------------------------------
 // Verifier gas cost table

@@ -13,8 +13,8 @@ use super::{
     accessors::{read_change_sequence, read_lock_state, read_nonce, read_owner_config},
     account_change_units,
     constants::{
-        MAX_ACCOUNT_CHANGES_PER_TX, MAX_AUTHORIZATIONS_PER_TX, MAX_CALLS_PER_TX,
-        MAX_CONFIG_OPS_PER_TX, MAX_SIGNATURE_SIZE, NONCE_KEY_MAX,
+        MAX_ACCOUNT_CHANGES_PER_TX, MAX_CALLS_PER_TX, MAX_CONFIG_OPS_PER_TX, MAX_SIGNATURE_SIZE,
+        NONCE_KEY_MAX,
     },
     predeploys::{K1_VERIFIER_ADDRESS, REVOKED_VERIFIER},
     tx::TxEip8130,
@@ -46,15 +46,6 @@ pub enum ValidationError {
     /// `account_changes` has invalid structure (e.g. create not first).
     #[error("invalid account_changes structure: {0}")]
     InvalidAccountChanges(&'static str),
-
-    /// The transaction has too many EIP-7702 authorizations.
-    #[error("too many authorizations in transaction ({count} > {limit})")]
-    TooManyAuthorizations {
-        /// Number of authorizations in the transaction.
-        count: usize,
-        /// Maximum allowed authorizations.
-        limit: usize,
-    },
 
     /// The transaction has too many calls across all phases.
     #[error("too many calls in transaction ({count} > {limit})")]
@@ -100,10 +91,6 @@ pub enum ValidationError {
         /// The nonce in the transaction.
         got: u64,
     },
-
-    /// The nonce_key exceeds uint192 range.
-    #[error("nonce_key exceeds uint192")]
-    NonceKeyTooLarge,
 
     /// Nonce-free mode (`nonce_key == NONCE_KEY_MAX`) requires `nonce_sequence == 0`.
     #[error("nonce-free mode requires nonce_sequence == 0")]
@@ -168,9 +155,6 @@ pub fn validate_structure(tx: &TxEip8130) -> Result<(), ValidationError> {
     if tx.payer_auth.len() > MAX_SIGNATURE_SIZE {
         return Err(ValidationError::PayerAuthTooLarge(tx.payer_auth.len()));
     }
-    if tx.nonce_key > NONCE_KEY_MAX {
-        return Err(ValidationError::NonceKeyTooLarge);
-    }
 
     if tx.nonce_key == NONCE_KEY_MAX {
         if tx.nonce_sequence != 0 {
@@ -181,25 +165,12 @@ pub fn validate_structure(tx: &TxEip8130) -> Result<(), ValidationError> {
         }
     }
 
-    validate_authorizations_limit(tx)?;
     validate_account_changes_structure(tx)?;
     validate_calls_limit(tx)?;
     validate_account_changes_limit(tx)?;
     validate_config_operations_limit(tx)?;
     validate_authorizer_auth_sizes(tx)?;
 
-    Ok(())
-}
-
-/// Validates the EIP-7702 authorization list length.
-fn validate_authorizations_limit(tx: &TxEip8130) -> Result<(), ValidationError> {
-    let count = tx.authorization_list.len();
-    if count > MAX_AUTHORIZATIONS_PER_TX {
-        return Err(ValidationError::TooManyAuthorizations {
-            count,
-            limit: MAX_AUTHORIZATIONS_PER_TX,
-        });
-    }
     Ok(())
 }
 
@@ -222,7 +193,7 @@ fn validate_account_changes_structure(tx: &TxEip8130) -> Result<(), ValidationEr
                 seen_create = true;
             }
             AccountChangeEntry::ConfigChange(cc) => {
-                if cc.operations.is_empty() {
+                if cc.owner_changes.is_empty() {
                     return Err(ValidationError::InvalidAccountChanges(
                         "config change entry must include at least one operation",
                     ));
@@ -263,7 +234,7 @@ fn validate_config_operations_limit(tx: &TxEip8130) -> Result<(), ValidationErro
         .account_changes
         .iter()
         .map(|entry| match entry {
-            AccountChangeEntry::ConfigChange(cc) => cc.operations.len(),
+            AccountChangeEntry::ConfigChange(cc) => cc.owner_changes.len(),
             AccountChangeEntry::Create(_) | AccountChangeEntry::Delegation(_) => 0,
         })
         .sum();
@@ -447,25 +418,11 @@ pub fn decode_verify_return(output: &[u8]) -> Option<B256> {
 
 #[cfg(test)]
 mod tests {
-    use alloy_eips::eip7702::{Authorization, SignedAuthorization};
-    use alloy_primitives::{Address, U256};
+    use alloy_primitives::Address;
 
     use super::*;
     use super::super::constants::NONCE_KEY_MAX;
     use alloy_primitives::address;
-
-    fn sample_authorization() -> SignedAuthorization {
-        SignedAuthorization::new_unchecked(
-            Authorization {
-                chain_id: U256::from(8453),
-                address: address!("0x4444444444444444444444444444444444444444"),
-                nonce: 0,
-            },
-            0,
-            U256::from(1),
-            U256::from(2),
-        )
-    }
 
     #[test]
     fn implicit_eoa_owner_id_correct() {
@@ -488,12 +445,6 @@ mod tests {
             ..Default::default()
         };
         assert!(matches!(validate_structure(&tx), Err(ValidationError::SenderAuthTooLarge(_))));
-    }
-
-    #[test]
-    fn structure_validation_nonce_key_too_large() {
-        let tx = TxEip8130 { nonce_key: NONCE_KEY_MAX + U256::from(1), ..Default::default() };
-        assert!(matches!(validate_structure(&tx), Err(ValidationError::NonceKeyTooLarge)));
     }
 
     #[test]
@@ -523,28 +474,6 @@ mod tests {
                 count,
                 limit
             }) if count == MAX_CALLS_PER_TX + 1 && limit == MAX_CALLS_PER_TX
-        ));
-    }
-
-    #[test]
-    fn structure_validation_authorizations_limit() {
-        let tx =
-            TxEip8130 { authorization_list: vec![sample_authorization()], ..Default::default() };
-        assert!(validate_structure(&tx).is_ok());
-    }
-
-    #[test]
-    fn structure_validation_too_many_authorizations() {
-        let tx = TxEip8130 {
-            authorization_list: vec![sample_authorization(), sample_authorization()],
-            ..Default::default()
-        };
-        assert!(matches!(
-            validate_structure(&tx),
-            Err(ValidationError::TooManyAuthorizations {
-                count,
-                limit
-            }) if count == 2 && limit == MAX_AUTHORIZATIONS_PER_TX
         ));
     }
 
@@ -614,7 +543,7 @@ mod tests {
                 super::super::types::ConfigChangeEntry {
                     chain_id: 8453,
                     sequence: 0,
-                    operations: vec![],
+                    owner_changes: vec![],
                     authorizer_auth: Bytes::new(),
                 },
             )],
@@ -631,8 +560,8 @@ mod tests {
     #[test]
     fn structure_validation_rejects_too_many_config_operations() {
         let ops = (0..(MAX_CONFIG_OPS_PER_TX + 1))
-            .map(|_| super::super::types::ConfigOperation {
-                op_type: 0x01,
+            .map(|_| super::super::types::OwnerChange {
+                change_type: 0x01,
                 verifier: address!("0x5555555555555555555555555555555555555555"),
                 owner_id: B256::ZERO,
                 scope: 0,
@@ -643,7 +572,7 @@ mod tests {
                 super::super::types::ConfigChangeEntry {
                     chain_id: 8453,
                     sequence: 0,
-                    operations: ops,
+                    owner_changes: ops,
                     authorizer_auth: Bytes::new(),
                 },
             )],
@@ -665,8 +594,8 @@ mod tests {
                 super::super::types::ConfigChangeEntry {
                     chain_id: 8453,
                     sequence: 0,
-                    operations: vec![super::super::types::ConfigOperation {
-                        op_type: 0x01,
+                    owner_changes: vec![super::super::types::OwnerChange {
+                        change_type: 0x01,
                         verifier: address!("0x6666666666666666666666666666666666666666"),
                         owner_id: B256::ZERO,
                         scope: 0,

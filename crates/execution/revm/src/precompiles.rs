@@ -397,7 +397,7 @@ fn run_nonce_manager_precompile<CTX>(
 where
     CTX: ContextTr<Cfg: Cfg<Spec = OpSpecId>, Tx: OpTxTr>,
 {
-    let get_nonce_selector = selector(b"getNonce(address,uint192)");
+    let get_nonce_selector = selector(b"getNonce(address,uint256)");
     if input.len() < 4 || input[0..4] != get_nonce_selector {
         return Err("unknown nonce manager selector".to_string());
     }

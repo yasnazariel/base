@@ -8,8 +8,7 @@
 //! 1. Check lock state (reject config changes if locked)
 //! 2. Deduct gas from payer
 //! 3. Increment nonce in NonceManager
-//! 4. Process `authorization_list` (EIP-7702)
-//! 5. Auto-delegate bare EOAs to DEFAULT_ACCOUNT_ADDRESS
+//! 4. Auto-delegate bare EOAs to DEFAULT_ACCOUNT_ADDRESS
 //! 6. Process `account_changes` (create + config changes)
 //! 7. Populate TX context precompile
 //! 8. Execute `calls` (phased atomic batching)
@@ -121,9 +120,9 @@ pub fn config_change_writes(account: Address, change: &ConfigChangeEntry) -> Vec
     let mut writes = Vec::new();
 
     let self_owner_id = implicit_eoa_owner_id(account);
-    for op in &change.operations {
+    for op in &change.owner_changes {
         let slot = owner_config_slot(account, op.owner_id);
-        let value = match op.op_type {
+        let value = match op.change_type {
             OP_AUTHORIZE_OWNER => encode_owner_config(op.verifier, op.scope),
             OP_REVOKE_OWNER => {
                 if op.owner_id == self_owner_id {

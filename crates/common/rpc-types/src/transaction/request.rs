@@ -21,7 +21,7 @@ pub struct OpTransactionRequest {
     #[serde(flatten)]
     inner: TransactionRequest,
 
-    /// EIP-8130 2D nonce key (uint192).
+    /// EIP-8130 2D nonce key (uint256).
     #[serde(default, skip_serializing_if = "Option::is_none", rename = "nonceKey")]
     pub nonce_key: Option<U256>,
 
@@ -81,11 +81,6 @@ impl OpTransactionRequest {
             max_priority_fee_per_gas: self.inner.max_priority_fee_per_gas.unwrap_or_default(),
             max_fee_per_gas: self.inner.max_fee_per_gas.unwrap_or_default(),
             gas_limit: self.inner.gas.unwrap_or_default(),
-            authorization_list: self
-                .inner
-                .authorization_list
-                .clone()
-                .unwrap_or_default(),
             account_changes: self.account_changes.clone().unwrap_or_default(),
             calls: self.calls.clone().unwrap_or_default(),
             payer: self.payer.unwrap_or_default(),

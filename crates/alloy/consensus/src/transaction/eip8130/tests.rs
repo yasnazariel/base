@@ -10,8 +10,8 @@ mod integration {
     use alloy_primitives::{Address, B256, Bytes, U256};
 
     use crate::transaction::eip8130::{
-        AA_BASE_COST, AA_TX_TYPE_ID, AccountChangeEntry, Call, ConfigChangeEntry, ConfigOperation,
-        CreateEntry, Owner, OwnerScope, TxEip8130,
+        AA_BASE_COST, AA_TX_TYPE_ID, AccountChangeEntry, Call, ConfigChangeEntry, CreateEntry,
+        Owner, OwnerChange, OwnerScope, TxEip8130,
         address::create2_address,
         gas::intrinsic_gas,
         signature::{parse_sender_auth, payer_signature_hash, sender_signature_hash},
@@ -27,7 +27,6 @@ mod integration {
             max_priority_fee_per_gas: 1_000_000_000,
             max_fee_per_gas: 2_000_000_000,
             gas_limit: 100_000,
-            authorization_list: vec![],
             account_changes: vec![],
             calls: vec![vec![Call {
                 to: Address::repeat_byte(0xBB),
@@ -144,15 +143,15 @@ mod integration {
             account_changes: vec![AccountChangeEntry::ConfigChange(ConfigChangeEntry {
                 chain_id: 8453,
                 sequence: 3,
-                operations: vec![
-                    ConfigOperation {
-                        op_type: 0x01,
+                owner_changes: vec![
+                    OwnerChange {
+                        change_type: 0x01,
                         verifier: Address::repeat_byte(0x01),
                         owner_id: B256::repeat_byte(0x99),
                         scope: OwnerScope::SENDER,
                     },
-                    ConfigOperation {
-                        op_type: 0x02,
+                    OwnerChange {
+                        change_type: 0x02,
                         verifier: Address::ZERO,
                         owner_id: B256::repeat_byte(0x88),
                         scope: 0,
@@ -412,31 +411,6 @@ mod integration {
     }
 
     // -----------------------------------------------------------------------
-    // Scenario 19: EIP-7702 authorization list
-    // -----------------------------------------------------------------------
-
-    #[test]
-    fn authorization_list_roundtrip() {
-        use alloy_eips::eip7702::SignedAuthorization;
-        let auth = SignedAuthorization::new_unchecked(
-            alloy_eips::eip7702::Authorization {
-                chain_id: U256::from(8453),
-                address: Address::repeat_byte(0xDD),
-                nonce: 0,
-            },
-            0,
-            U256::from(1),
-            U256::from(2),
-        );
-        let tx =
-            TxEip8130 { authorization_list: vec![auth], ..simple_tx(Address::repeat_byte(0xAA)) };
-
-        let mut buf = Vec::new();
-        tx.rlp_encode(&mut buf);
-        assert_eq!(TxEip8130::rlp_decode(&mut buf.as_slice()).unwrap().authorization_list.len(), 1);
-    }
-
-    // -----------------------------------------------------------------------
     // Scenario 20: Tx hash uniqueness
     // -----------------------------------------------------------------------
 
@@ -465,7 +439,6 @@ mod integration {
             max_priority_fee_per_gas: 1_000_000_000,
             max_fee_per_gas: 50_000_000_000,
             gas_limit: 5_000_000,
-            authorization_list: vec![],
             account_changes: vec![
                 AccountChangeEntry::Create(CreateEntry {
                     user_salt: B256::repeat_byte(0xAA),
@@ -479,8 +452,8 @@ mod integration {
                 AccountChangeEntry::ConfigChange(ConfigChangeEntry {
                     chain_id: 0,
                     sequence: 1,
-                    operations: vec![ConfigOperation {
-                        op_type: 0x01,
+                    owner_changes: vec![OwnerChange {
+                        change_type: 0x01,
                         verifier: Address::repeat_byte(0x03),
                         owner_id: B256::repeat_byte(0x04),
                         scope: OwnerScope::SENDER | OwnerScope::CONFIG,
@@ -532,7 +505,6 @@ mod evm_integration {
             max_priority_fee_per_gas: 1_000_000_000,
             max_fee_per_gas: 2_000_000_000,
             gas_limit: 100_000,
-            authorization_list: vec![],
             account_changes: vec![],
             calls: vec![vec![Call {
                 to: Address::repeat_byte(0xBB),
