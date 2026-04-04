@@ -106,11 +106,16 @@ pub trait EthApiOverride {
     -> RpcResult<U256>;
 
     /// Returns transaction count for an address.
+    ///
+    /// When `nonce_key` is provided, reads the 2D nonce from the EIP-8130
+    /// Nonce Manager precompile. When omitted, returns the standard account
+    /// nonce (with flashblock pending-state support).
     #[method(name = "getTransactionCount")]
     async fn get_transaction_count(
         &self,
         address: Address,
         block_number: Option<BlockId>,
+        nonce_key: Option<U256>,
     ) -> RpcResult<U256>;
 
     /// Returns transaction by hash, checking flashblocks first.
@@ -264,11 +269,16 @@ where
         &self,
         address: Address,
         block_number: Option<BlockId>,
+        nonce_key: Option<U256>,
     ) -> RpcResult<U256> {
         debug!(
             message = "rpc::get_transaction_count",
             address = %address,
         );
+
+        if let Some(key) = nonce_key {
+            return base_execution_rpc::read_2d_nonce(self.eth_api.provider(), address, key);
+        }
 
         let block_id = block_number.unwrap_or_default();
         if block_id.is_pending() {

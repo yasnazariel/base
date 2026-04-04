@@ -16,7 +16,7 @@ use base_execution_payload_builder::{
     config::{OpBuilderConfig, OpDAConfig, OpGasLimitConfig},
 };
 use base_execution_rpc::{
-    Eip8130ApiImpl, Eip8130ApiServer,
+    TransactionCountOverrideImpl, TransactionCountOverrideServer,
     config::{BaseEthConfigApiServer, BaseEthConfigHandler},
     eth::OpEthApiBuilder,
     miner::{MinerApiExtServer, OpMinerExtApi},
@@ -591,7 +591,8 @@ where
             builder,
         );
         let miner_ext = OpMinerExtApi::new(da_config, gas_limit_config);
-        let eip8130_api = Eip8130ApiImpl::new(ctx.node.provider().clone());
+        let tx_count_override =
+            TransactionCountOverrideImpl::new(ctx.node.provider().clone());
 
         rpc_add_ons
             .launch_add_ons_with(ctx, move |container| {
@@ -600,8 +601,9 @@ where
 
                 modules.merge_if_module_configured(RethRpcModule::Eth, eth_config.into_rpc())?;
 
-                debug!(target: "reth::cli", "Installing EIP-8130 nonce RPC");
-                modules.merge_configured(eip8130_api.into_rpc())?;
+                debug!(target: "reth::cli", "Installing EIP-8130 transaction count override");
+                modules
+                    .merge_if_module_configured(RethRpcModule::Eth, tx_count_override.into_rpc())?;
 
                 debug!(target: "reth::cli", "Installing debug payload witness rpc endpoint");
                 modules.merge_if_module_configured(RethRpcModule::Debug, debug_ext.into_rpc())?;

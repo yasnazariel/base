@@ -13,14 +13,14 @@
  *   webauthn     Register WebAuthn owner + send WebAuthn-signed tx (P256 + assertion envelope)
  *   receipt-test Verify receipt fields (status, payer, phaseStatuses) across scenarios
  *   deploy       Creates a new smart account via account_changes (CREATE entry)
- *   nonce-rpc    Verify base_getEip8130Nonce RPC matches storage reads + increments
+ *   nonce-rpc    Verify eth_getTransactionCount(nonceKey) RPC matches storage reads + increments
  *   estimate-gas Verify eth_estimateGas / eth_call work with type 0x7B AA requests
  *   custom-verifier  Deploy + register AlwaysValidVerifier as custom EVM verifier (scope=SENDER+PAYER)
  *   delegate-native  Delegate verifier with K1 inner (native path, no on-chain call)
  *   delegate-p256    Delegate verifier with P256 inner (native delegation + P256 signature)
- *   locked-config    Lock an account then verify config changes are rejected
  *   nonceless        Send a nonce-free tx (NONCE_KEY_MAX + expiry), verify no replay
  *   delegation       Set/change EIP-7702 code delegation via account_changes entry (type 0x02)
+ *   locked-config    Lock an account then verify config changes are rejected (run last — locks account for 600s)
  *
  * Options:
  *   --probe <addr>    OwnerIdProbe contract address
@@ -180,8 +180,8 @@ async function getAaNonce() {
 
 async function getAaNonceViaRpc(address, nonceKey = 0n) {
   const result = await client.request({
-    method: 'base_getEip8130Nonce',
-    params: [address, numberToHex(nonceKey)],
+    method: 'eth_getTransactionCount',
+    params: [address, 'latest', numberToHex(nonceKey)],
   });
   return BigInt(result);
 }
@@ -1084,7 +1084,7 @@ async function runDeploy() {
 // Mode: nonce-rpc
 // ─────────────────────────────────────────────────
 async function runNonceRpc() {
-  console.log('\n--- base_getEip8130Nonce RPC Verification ---');
+  console.log('\n--- eth_getTransactionCount(nonceKey) RPC Verification ---');
   const senderAddr = account.address;
 
   const storageBefore = await getAaNonce();
@@ -1844,17 +1844,17 @@ switch (opts.mode) {
   case 'delegate-p256':
     await runDelegateP256();
     break;
-  case 'locked-config':
-    await runLockedConfig();
-    break;
   case 'nonceless':
     await runNonceless();
     break;
   case 'delegation':
     await runDelegation();
     break;
+  case 'locked-config':
+    await runLockedConfig();
+    break;
   default:
     console.error(`Unknown mode: ${opts.mode}`);
-    console.error('Available modes: probe, multi-call, sponsor, config-change, p256, webauthn, receipt-test, deploy, nonce-rpc, estimate-gas, custom-verifier, delegate-native, delegate-p256, locked-config, nonceless, delegation');
+    console.error('Available modes: probe, multi-call, sponsor, config-change, p256, webauthn, receipt-test, deploy, nonce-rpc, estimate-gas, custom-verifier, delegate-native, delegate-p256, nonceless, delegation, locked-config');
     process.exit(1);
 }
