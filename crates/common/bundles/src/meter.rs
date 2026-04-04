@@ -3,6 +3,41 @@
 use alloy_primitives::{Address, B256, TxHash, U256};
 use serde::{Deserialize, Serialize};
 
+/// Configuration for computing state root gas from state root time.
+///
+/// State root gas is a synthetic resource that penalizes transactions whose
+/// simulated state root cost is disproportionate to their gas usage:
+/// `sr_gas = gas_used × (1 + K × max(0, SR_ms - anchor_ms))`.
+#[derive(Debug, Clone, Copy)]
+pub struct StateRootGasConfig {
+    /// Coefficient K. Controls how aggressively excess SR time inflates the
+    /// state root gas cost. Default: 0.02.
+    pub coefficient: f64,
+    /// Anchor threshold in microseconds. SR time below this produces no
+    /// penalty (multiplier = 1.0). Default: 5000 (5 ms).
+    pub anchor_us: u128,
+}
+
+impl Default for StateRootGasConfig {
+    fn default() -> Self {
+        Self { coefficient: 0.02, anchor_us: 5000 }
+    }
+}
+
+/// Computes state root gas from gas used and state root time.
+///
+/// `sr_gas = gas_used × (1 + K × max(0, SR_ms - anchor_ms))`
+pub fn compute_state_root_gas(
+    gas_used: u64,
+    state_root_time_us: u128,
+    config: &StateRootGasConfig,
+) -> u64 {
+    let excess_us = state_root_time_us.saturating_sub(config.anchor_us);
+    let excess_ms = excess_us as f64 / 1000.0;
+    let multiplier = 1.0 + config.coefficient * excess_ms;
+    (gas_used as f64 * multiplier) as u64
+}
+
 /// Result of simulating a single transaction within a bundle.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]

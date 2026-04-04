@@ -4987,6 +4987,7 @@ name = "base-reth-node"
 version = "0.0.0"
 dependencies = [
  "base-bundle-extension",
+ "base-bundles",
  "base-cli-utils",
  "base-execution-cli",
  "base-flashblocks",

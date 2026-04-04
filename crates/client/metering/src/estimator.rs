@@ -34,7 +34,7 @@ pub enum EstimateError {
 ///
 /// Execution time resets for each flashblock, matching the builder's
 /// `flashblock_execution_time_limit_us` and `reset_flashblock_execution_time()`.
-/// Gas, DA bytes, and state root time accumulate across the block against
+/// Gas, DA bytes, and state root gas accumulate across the block against
 /// cumulative per-flashblock targets derived from the whole-block budget.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ResourceLimits {
@@ -42,8 +42,8 @@ pub struct ResourceLimits {
     pub gas_used: Option<u64>,
     /// Execution time budget per flashblock in microseconds.
     pub execution_time_us: Option<u128>,
-    /// State root computation budget for the whole block in microseconds.
-    pub state_root_time_us: Option<u128>,
+    /// State root gas budget for the whole block.
+    pub state_root_gas: Option<u64>,
     /// Data availability byte budget for the whole block.
     pub data_availability_bytes: Option<u64>,
 }
@@ -54,7 +54,7 @@ impl ResourceLimits {
         match resource {
             ResourceKind::GasUsed => self.gas_used.map(|v| v as u128),
             ResourceKind::ExecutionTime => self.execution_time_us,
-            ResourceKind::StateRootTime => self.state_root_time_us,
+            ResourceKind::StateRootGas => self.state_root_gas.map(|v| v as u128),
             ResourceKind::DataAvailability => self.data_availability_bytes.map(|v| v as u128),
         }
     }
@@ -67,8 +67,8 @@ pub enum ResourceKind {
     GasUsed,
     /// Execution time.
     ExecutionTime,
-    /// State root computation time.
-    StateRootTime,
+    /// State root gas (synthetic resource derived from gas used and SR time).
+    StateRootGas,
     /// Data availability bytes.
     DataAvailability,
 }
@@ -82,18 +82,18 @@ enum ResourceBudgetBehavior {
 impl ResourceKind {
     /// Returns all resource kinds in a fixed order.
     pub const fn all() -> [Self; 4] {
-        [Self::GasUsed, Self::ExecutionTime, Self::StateRootTime, Self::DataAvailability]
+        [Self::GasUsed, Self::ExecutionTime, Self::StateRootGas, Self::DataAvailability]
     }
 
     /// Returns how this resource budget behaves in the builder.
     ///
-    /// Execution time resets each flashblock, while gas, DA bytes, and state root time
+    /// Execution time resets each flashblock, while gas, DA bytes, and state root gas
     /// accumulate across the block against growing cumulative targets in the tx-pool
     /// flashblock loop.
     const fn budget_behavior(self) -> ResourceBudgetBehavior {
         match self {
             Self::ExecutionTime => ResourceBudgetBehavior::ResetsEachFlashblock,
-            Self::GasUsed | Self::StateRootTime | Self::DataAvailability => {
+            Self::GasUsed | Self::StateRootGas | Self::DataAvailability => {
                 ResourceBudgetBehavior::AccumulatesUntilBlockEnd
             }
         }
@@ -104,7 +104,7 @@ impl ResourceKind {
         match self {
             Self::GasUsed => "gas",
             Self::ExecutionTime => "execution time",
-            Self::StateRootTime => "state root time",
+            Self::StateRootGas => "state root gas",
             Self::DataAvailability => "data availability",
         }
     }
@@ -114,7 +114,7 @@ impl ResourceKind {
         match self {
             Self::GasUsed => "gasUsed",
             Self::ExecutionTime => "executionTime",
-            Self::StateRootTime => "stateRootTime",
+            Self::StateRootGas => "stateRootGas",
             Self::DataAvailability => "dataAvailability",
         }
     }
@@ -127,8 +127,8 @@ pub struct ResourceDemand {
     pub gas_used: Option<u64>,
     /// Execution time demand in microseconds.
     pub execution_time_us: Option<u128>,
-    /// State root time demand in microseconds.
-    pub state_root_time_us: Option<u128>,
+    /// State root gas demand.
+    pub state_root_gas: Option<u64>,
     /// Data availability bytes demand.
     pub data_availability_bytes: Option<u64>,
 }
@@ -139,7 +139,7 @@ impl ResourceDemand {
         match resource {
             ResourceKind::GasUsed => self.gas_used.map(|v| v as u128),
             ResourceKind::ExecutionTime => self.execution_time_us,
-            ResourceKind::StateRootTime => self.state_root_time_us,
+            ResourceKind::StateRootGas => self.state_root_gas.map(|v| v as u128),
             ResourceKind::DataAvailability => self.data_availability_bytes.map(|v| v as u128),
         }
     }
@@ -175,8 +175,8 @@ pub struct ResourceEstimates {
     pub gas_used: Option<ResourceEstimate>,
     /// Execution time estimate.
     pub execution_time: Option<ResourceEstimate>,
-    /// State root time estimate.
-    pub state_root_time: Option<ResourceEstimate>,
+    /// State root gas estimate.
+    pub state_root_gas: Option<ResourceEstimate>,
     /// Data availability estimate.
     pub data_availability: Option<ResourceEstimate>,
 }
@@ -187,7 +187,7 @@ impl ResourceEstimates {
         match kind {
             ResourceKind::GasUsed => self.gas_used.as_ref(),
             ResourceKind::ExecutionTime => self.execution_time.as_ref(),
-            ResourceKind::StateRootTime => self.state_root_time.as_ref(),
+            ResourceKind::StateRootGas => self.state_root_gas.as_ref(),
             ResourceKind::DataAvailability => self.data_availability.as_ref(),
         }
     }
@@ -197,7 +197,7 @@ impl ResourceEstimates {
         match kind {
             ResourceKind::GasUsed => self.gas_used = Some(estimate),
             ResourceKind::ExecutionTime => self.execution_time = Some(estimate),
-            ResourceKind::StateRootTime => self.state_root_time = Some(estimate),
+            ResourceKind::StateRootGas => self.state_root_gas = Some(estimate),
             ResourceKind::DataAvailability => self.data_availability = Some(estimate),
         }
     }
@@ -207,7 +207,7 @@ impl ResourceEstimates {
         [
             (ResourceKind::GasUsed, &self.gas_used),
             (ResourceKind::ExecutionTime, &self.execution_time),
-            (ResourceKind::StateRootTime, &self.state_root_time),
+            (ResourceKind::StateRootGas, &self.state_root_gas),
             (ResourceKind::DataAvailability, &self.data_availability),
         ]
         .into_iter()
@@ -884,7 +884,7 @@ fn usage_extractor(resource: ResourceKind) -> fn(&MeteredTransaction) -> u128 {
     match resource {
         ResourceKind::GasUsed => |tx: &MeteredTransaction| tx.gas_used as u128,
         ResourceKind::ExecutionTime => |tx: &MeteredTransaction| tx.execution_time_us,
-        ResourceKind::StateRootTime => |tx: &MeteredTransaction| tx.state_root_time_us,
+        ResourceKind::StateRootGas => |tx: &MeteredTransaction| tx.state_root_gas as u128,
         ResourceKind::DataAvailability => {
             |tx: &MeteredTransaction| tx.data_availability_bytes as u128
         }
@@ -907,7 +907,7 @@ mod tests {
             priority_fee_per_gas: U256::from(priority),
             gas_used: usage,
             execution_time_us: usage as u128,
-            state_root_time_us: usage as u128,
+            state_root_gas: usage,
             data_availability_bytes: usage,
         }
     }
@@ -917,7 +917,7 @@ mod tests {
         priority: u64,
         gas: u64,
         exec_us: u128,
-        state_root_us: u128,
+        state_root_gas: u64,
         da_bytes: u64,
     ) -> MeteredTransaction {
         let mut hash_bytes = [0u8; 32];
@@ -927,7 +927,7 @@ mod tests {
             priority_fee_per_gas: U256::from(priority),
             gas_used: gas,
             execution_time_us: exec_us,
-            state_root_time_us: state_root_us,
+            state_root_gas,
             data_availability_bytes: da_bytes,
         }
     }
@@ -1091,7 +1091,7 @@ mod tests {
     const DEFAULT_LIMITS: ResourceLimits = ResourceLimits {
         gas_used: Some(25),
         execution_time_us: Some(100),
-        state_root_time_us: None,
+        state_root_gas: None,
         data_availability_bytes: Some(100),
     };
 
@@ -1280,7 +1280,7 @@ mod tests {
         let limits = ResourceLimits {
             gas_used: Some(50),
             execution_time_us: Some(200),
-            state_root_time_us: None,
+            state_root_gas: None,
             data_availability_bytes: Some(200),
         };
         let (cache, estimator) = setup_estimator(limits);
@@ -1359,7 +1359,7 @@ mod tests {
         let limits = ResourceLimits {
             gas_used: None,
             execution_time_us: Some(30),
-            state_root_time_us: None,
+            state_root_gas: None,
             data_availability_bytes: None,
         };
         let (cache, estimator) = setup_estimator_with_target(limits, 2);
@@ -1396,7 +1396,7 @@ mod tests {
         let limits = ResourceLimits {
             gas_used: None,
             execution_time_us: Some(100),
-            state_root_time_us: None,
+            state_root_gas: None,
             data_availability_bytes: None,
         };
         let (cache, estimator) = setup_estimator_with_target(limits, 4);
@@ -1422,7 +1422,7 @@ mod tests {
         let limits = ResourceLimits {
             gas_used: None,
             execution_time_us: Some(100),
-            state_root_time_us: None,
+            state_root_gas: None,
             data_availability_bytes: None,
         };
         let (cache, estimator) = setup_estimator_with_target(limits, 4);
@@ -1447,7 +1447,7 @@ mod tests {
         let limits = ResourceLimits {
             gas_used: Some(100),
             execution_time_us: None,
-            state_root_time_us: None,
+            state_root_gas: None,
             data_availability_bytes: None,
         };
         let (cache, estimator) = setup_estimator_with_target(limits, 4);
@@ -1480,7 +1480,7 @@ mod tests {
         let limits = ResourceLimits {
             gas_used: Some(100),
             execution_time_us: None,
-            state_root_time_us: None,
+            state_root_gas: None,
             data_availability_bytes: None,
         };
         let (cache, estimator) = setup_estimator_with_target(limits, 4);
@@ -1506,7 +1506,7 @@ mod tests {
         let limits = ResourceLimits {
             gas_used: Some(20),
             execution_time_us: None,
-            state_root_time_us: None,
+            state_root_gas: None,
             data_availability_bytes: None,
         };
         let (cache, estimator) = setup_estimator(limits);

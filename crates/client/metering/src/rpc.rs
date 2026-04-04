@@ -10,7 +10,9 @@ use alloy_eips::BlockNumberOrTag;
 use alloy_primitives::{B256, TxHash, U256};
 use base_alloy_consensus::BaseBlock;
 use base_alloy_flz::flz_compress_len;
-use base_bundles::{Bundle, MeterBundleResponse, ParsedBundle};
+use base_bundles::{
+    Bundle, MeterBundleResponse, ParsedBundle, StateRootGasConfig, compute_state_root_gas,
+};
 use base_execution_chainspec::OpChainSpec;
 use base_execution_evm::extract_l1_info_from_tx;
 use base_flashblocks::{FlashblocksAPI, PendingBlocksAPI};
@@ -40,6 +42,8 @@ pub struct MeteringApiImpl<Provider, FB> {
     priority_fee_estimator: Option<Arc<PriorityFeeEstimator>>,
     /// Shared cache for externally-submitted state root times.
     state_root_cache: Option<Arc<RwLock<PendingStateRootTimes>>>,
+    /// Configuration for computing state root gas from state root time.
+    state_root_gas_config: StateRootGasConfig,
     /// Whether metering data collection is enabled.
     metering_enabled: Arc<AtomicBool>,
 }
@@ -70,6 +74,7 @@ where
             pending_trie_cache: PendingTrieCache::new(),
             priority_fee_estimator: None,
             state_root_cache: None,
+            state_root_gas_config: StateRootGasConfig::default(),
             metering_enabled: Arc::new(AtomicBool::new(true)),
         }
     }
@@ -80,6 +85,7 @@ where
         flashblocks_api: Arc<FB>,
         estimator: Arc<PriorityFeeEstimator>,
         state_root_cache: Arc<RwLock<PendingStateRootTimes>>,
+        state_root_gas_config: StateRootGasConfig,
     ) -> Self {
         Self {
             provider,
@@ -87,6 +93,7 @@ where
             pending_trie_cache: PendingTrieCache::new(),
             priority_fee_estimator: Some(estimator),
             state_root_cache: Some(state_root_cache),
+            state_root_gas_config,
             metering_enabled: Arc::new(AtomicBool::new(true)),
         }
     }
@@ -383,7 +390,8 @@ where
         let meter_bundle_response = self.meter_bundle(bundle.clone()).await?;
 
         // Compute resource demand from metering results
-        let demand = compute_resource_demand(&bundle, &meter_bundle_response);
+        let demand =
+            compute_resource_demand(&bundle, &meter_bundle_response, &self.state_root_gas_config);
 
         // Get rolling estimate from the estimator
         let rolling_estimate = estimator.estimate_rolling(demand).map_err(|e| {
@@ -512,15 +520,25 @@ where
 }
 
 /// Computes resource demand from bundle metering results.
-fn compute_resource_demand(bundle: &Bundle, meter_result: &MeterBundleResponse) -> ResourceDemand {
+fn compute_resource_demand(
+    bundle: &Bundle,
+    meter_result: &MeterBundleResponse,
+    state_root_gas_config: &StateRootGasConfig,
+) -> ResourceDemand {
     // Calculate DA bytes from bundle transactions
     let da_bytes: u64 =
         bundle.txs.iter().fold(0u64, |acc, tx| acc.saturating_add(flz_compress_len(tx) as u64));
 
+    let state_root_gas = compute_state_root_gas(
+        meter_result.total_gas_used,
+        meter_result.state_root_time_us,
+        state_root_gas_config,
+    );
+
     ResourceDemand {
         gas_used: Some(meter_result.total_gas_used),
         execution_time_us: Some(meter_result.total_execution_time_us),
-        state_root_time_us: Some(meter_result.state_root_time_us),
+        state_root_gas: Some(state_root_gas),
         data_availability_bytes: Some(da_bytes),
     }
 }
@@ -1076,7 +1094,7 @@ mod tests {
             .with_resource_limits(MeteringResourceLimits {
                 gas_limit: Some(30_000_000),
                 execution_time_us: Some(1_000_000),
-                state_root_time_us: None,
+                state_root_gas: None,
                 da_bytes: Some(1_000_000),
             })
             .with_target_flashblocks_per_block(4);
@@ -1086,7 +1104,7 @@ mod tests {
     }
 
     #[test]
-    fn compute_resource_demand_preserves_execution_and_state_root_dimensions() {
+    fn compute_resource_demand_computes_state_root_gas() {
         let tx = Bytes::from_static(&[0x02, 0x01, 0x02, 0x03]);
         let bundle = create_bundle(vec![tx.clone()], 0, None);
         let meter_result = MeterBundleResponse {
@@ -1098,11 +1116,13 @@ mod tests {
             ..Default::default()
         };
 
-        let demand = compute_resource_demand(&bundle, &meter_result);
+        let config = StateRootGasConfig::default();
+        let demand = compute_resource_demand(&bundle, &meter_result, &config);
 
         assert_eq!(demand.gas_used, Some(21_000));
         assert_eq!(demand.execution_time_us, Some(123));
-        assert_eq!(demand.state_root_time_us, Some(45));
+        // SR time 45us is below default anchor of 5000us, so sr_gas == gas_used
+        assert_eq!(demand.state_root_gas, Some(21_000));
         assert_eq!(demand.data_availability_bytes, Some(flz_compress_len(&tx) as u64));
     }
 

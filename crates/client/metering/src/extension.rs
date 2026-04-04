@@ -4,6 +4,7 @@
 use std::{num::NonZeroUsize, sync::Arc};
 
 use alloy_primitives::U256;
+use base_bundles::StateRootGasConfig;
 use base_flashblocks::{FlashblocksAPI, FlashblocksConfig, FlashblocksState};
 use base_node_runner::{BaseNodeExtension, FromExtensionConfig, NodeHooks};
 use parking_lot::RwLock;
@@ -32,11 +33,11 @@ pub struct MeteringResourceLimits {
     /// This matches the builder's flashblock execution budget, which resets each
     /// flashblock instead of accumulating across the block.
     pub execution_time_us: Option<u64>,
-    /// Total state root computation budget for the block in microseconds.
+    /// Block-level state root gas limit.
     ///
     /// Like the builder, the estimator treats this as a cumulative budget that
     /// later flashblocks can consume if earlier ones underuse it.
-    pub state_root_time_us: Option<u64>,
+    pub state_root_gas: Option<u64>,
     /// Total data-availability byte budget for the block.
     pub da_bytes: Option<u64>,
 }
@@ -47,14 +48,14 @@ impl MeteringResourceLimits {
         ResourceLimits {
             gas_used: self.gas_limit,
             execution_time_us: self.execution_time_us.map(|v| v as u128),
-            state_root_time_us: self.state_root_time_us.map(|v| v as u128),
+            state_root_gas: self.state_root_gas,
             data_availability_bytes: self.da_bytes,
         }
     }
 
     /// Returns true if any resource uses the builder's cumulative multi-flashblock budget.
     const fn uses_accumulating_resource_limits(&self) -> bool {
-        self.gas_limit.is_some() || self.state_root_time_us.is_some() || self.da_bytes.is_some()
+        self.gas_limit.is_some() || self.state_root_gas.is_some() || self.da_bytes.is_some()
     }
 }
 
@@ -67,6 +68,8 @@ pub struct MeteringExtension {
     pub flashblocks_config: Option<FlashblocksConfig>,
     /// Resource limits for priority fee estimation.
     pub resource_limits: MeteringResourceLimits,
+    /// Configuration for computing state root gas from state root time.
+    pub state_root_gas_config: StateRootGasConfig,
     /// Percentile for priority fee estimation (e.g., 0.5 for median).
     pub priority_fee_percentile: f64,
     /// Default priority fee when resources are uncongested (in wei).
@@ -78,7 +81,7 @@ pub struct MeteringExtension {
     /// Target number of tx-pool flashblocks the builder budgets each block against.
     ///
     /// This excludes the initial base flashblock at index `0`.
-    /// Must be greater than zero when set. Required when gas, state root time,
+    /// Must be greater than zero when set. Required when gas, state root gas,
     /// or DA priority fee estimation is enabled.
     pub target_flashblocks_per_block: Option<usize>,
 }
@@ -89,6 +92,7 @@ impl Default for MeteringExtension {
             enabled: false,
             flashblocks_config: None,
             resource_limits: MeteringResourceLimits::default(),
+            state_root_gas_config: StateRootGasConfig::default(),
             priority_fee_percentile: 0.5,
             uncongested_priority_fee: 1_000_000,
             cache_size: 12,
@@ -106,9 +110,10 @@ impl MeteringExtension {
             resource_limits: MeteringResourceLimits {
                 gas_limit: None,
                 execution_time_us: None,
-                state_root_time_us: None,
+                state_root_gas: None,
                 da_bytes: None,
             },
+            state_root_gas_config: StateRootGasConfig { coefficient: 0.02, anchor_us: 5000 },
             priority_fee_percentile: 0.5,
             uncongested_priority_fee: 1_000_000,
             cache_size: 12,
@@ -147,11 +152,17 @@ impl MeteringExtension {
         self
     }
 
+    /// Sets the state root gas configuration.
+    pub const fn with_state_root_gas_config(mut self, config: StateRootGasConfig) -> Self {
+        self.state_root_gas_config = config;
+        self
+    }
+
     /// Returns true if priority fee estimation is configured (has resource limits).
     const fn has_estimator_config(&self) -> bool {
         self.resource_limits.gas_limit.is_some()
             || self.resource_limits.execution_time_us.is_some()
-            || self.resource_limits.state_root_time_us.is_some()
+            || self.resource_limits.state_root_gas.is_some()
             || self.resource_limits.da_bytes.is_some()
     }
 
@@ -169,7 +180,7 @@ impl MeteringExtension {
             }
             None if requires_target_flashblocks => {
                 panic!(
-                    "target_flashblocks_per_block must be configured when gas, state root time, or data availability priority fee estimation is enabled"
+                    "target_flashblocks_per_block must be configured when gas, state root gas, or data availability priority fee estimation is enabled"
                 )
             }
             None => 1,
@@ -187,6 +198,7 @@ impl BaseNodeExtension for MeteringExtension {
         let has_estimator = self.has_estimator_config();
         let requires_target_flashblocks = self.resource_limits.uses_accumulating_resource_limits();
         let resource_limits = self.resource_limits.to_resource_limits();
+        let state_root_gas_config = self.state_root_gas_config;
         let percentile = self.priority_fee_percentile;
         let default_fee = U256::from(self.uncongested_priority_fee);
         let cache_size = has_estimator.then(|| self.resolved_cache_size());
@@ -233,6 +245,7 @@ impl BaseNodeExtension for MeteringExtension {
                     let collector = MeteringCollector::new(
                         Arc::clone(&cache),
                         Arc::clone(&state_root_cache),
+                        state_root_gas_config,
                         flashblock_rx,
                     );
                     let collector_handle = tokio::spawn(collector.run());
@@ -254,6 +267,7 @@ impl BaseNodeExtension for MeteringExtension {
                     fb_state,
                     estimator,
                     state_root_cache,
+                    state_root_gas_config,
                 )
             } else {
                 info!(message = "Starting Metering RPC (priority fee estimation disabled)");
@@ -276,6 +290,8 @@ pub struct MeteringConfig {
     pub flashblocks_config: Option<FlashblocksConfig>,
     /// Resource limits for priority fee estimation.
     pub resource_limits: MeteringResourceLimits,
+    /// Configuration for computing state root gas from state root time.
+    pub state_root_gas_config: StateRootGasConfig,
     /// Percentile for priority fee estimation.
     pub priority_fee_percentile: f64,
     /// Default priority fee when uncongested.
@@ -286,7 +302,7 @@ pub struct MeteringConfig {
     pub cache_size: usize,
     /// Target number of tx-pool flashblocks the builder budgets per block.
     ///
-    /// Must be greater than zero when set. Required when gas, state root time,
+    /// Must be greater than zero when set. Required when gas, state root gas,
     /// or DA priority fee estimation is enabled.
     pub target_flashblocks_per_block: Option<usize>,
 }
@@ -305,9 +321,10 @@ impl MeteringConfig {
             resource_limits: MeteringResourceLimits {
                 gas_limit: None,
                 execution_time_us: None,
-                state_root_time_us: None,
+                state_root_gas: None,
                 da_bytes: None,
             },
+            state_root_gas_config: StateRootGasConfig { coefficient: 0.02, anchor_us: 5000 },
             priority_fee_percentile: 0.5,
             uncongested_priority_fee: 1_000_000,
             cache_size: 12,
@@ -323,9 +340,10 @@ impl MeteringConfig {
             resource_limits: MeteringResourceLimits {
                 gas_limit: None,
                 execution_time_us: None,
-                state_root_time_us: None,
+                state_root_gas: None,
                 da_bytes: None,
             },
+            state_root_gas_config: StateRootGasConfig { coefficient: 0.02, anchor_us: 5000 },
             priority_fee_percentile: 0.5,
             uncongested_priority_fee: 1_000_000,
             cache_size: 12,
@@ -363,6 +381,12 @@ impl MeteringConfig {
         self.target_flashblocks_per_block = Some(count);
         self
     }
+
+    /// Sets the state root gas configuration.
+    pub const fn with_state_root_gas_config(mut self, config: StateRootGasConfig) -> Self {
+        self.state_root_gas_config = config;
+        self
+    }
 }
 
 impl FromExtensionConfig for MeteringExtension {
@@ -374,6 +398,7 @@ impl FromExtensionConfig for MeteringExtension {
             enabled: config.enabled,
             flashblocks_config: config.flashblocks_config,
             resource_limits: config.resource_limits,
+            state_root_gas_config: config.state_root_gas_config,
             priority_fee_percentile: config.priority_fee_percentile,
             uncongested_priority_fee: config.uncongested_priority_fee,
             cache_size: config.cache_size,
@@ -402,7 +427,7 @@ mod tests {
 
     #[test]
     #[should_panic(
-        expected = "target_flashblocks_per_block must be configured when gas, state root time, or data availability priority fee estimation is enabled"
+        expected = "target_flashblocks_per_block must be configured when gas, state root gas, or data availability priority fee estimation is enabled"
     )]
     fn missing_required_target_flashblocks_panics() {
         let extension = MeteringExtension::default();

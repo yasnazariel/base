@@ -5,6 +5,7 @@ use std::{collections::HashMap, fmt, sync::Arc};
 use alloy_consensus::BlockHeader;
 use alloy_primitives::{Bytes, U256, keccak256};
 use base_alloy_flz::flz_compress_len;
+use base_bundles::{StateRootGasConfig, compute_state_root_gas};
 use base_flashblocks::PendingBlocks;
 use parking_lot::RwLock;
 use tokio::sync::broadcast;
@@ -29,6 +30,7 @@ impl FlashblockPosition {
 pub struct MeteringCollector {
     cache: Arc<RwLock<MeteringCache>>,
     state_root_cache: Arc<RwLock<PendingStateRootTimes>>,
+    state_root_gas_config: StateRootGasConfig,
     flashblock_rx: broadcast::Receiver<Arc<PendingBlocks>>,
     last_earliest_block: Option<u64>,
     last_processed: Option<FlashblockPosition>,
@@ -48,11 +50,13 @@ impl MeteringCollector {
     pub const fn new(
         cache: Arc<RwLock<MeteringCache>>,
         state_root_cache: Arc<RwLock<PendingStateRootTimes>>,
+        state_root_gas_config: StateRootGasConfig,
         flashblock_rx: broadcast::Receiver<Arc<PendingBlocks>>,
     ) -> Self {
         Self {
             cache,
             state_root_cache,
+            state_root_gas_config,
             flashblock_rx,
             last_earliest_block: None,
             last_processed: None,
@@ -208,12 +212,15 @@ impl MeteringCollector {
                 .or_else(|| self.state_root_cache.write().pop(&tx_hash))
                 .unwrap_or(0);
 
+            let state_root_gas =
+                compute_state_root_gas(gas_used, state_root_time_us, &self.state_root_gas_config);
+
             metered_transactions.push(MeteredTransaction {
                 tx_hash,
                 priority_fee_per_gas: U256::from(priority_fee),
                 gas_used,
                 execution_time_us,
-                state_root_time_us,
+                state_root_gas,
                 data_availability_bytes: da_bytes,
             });
         }
@@ -462,7 +469,12 @@ mod tests {
             Arc::new(RwLock::new(PendingStateRootTimes::new(NonZeroUsize::new(8).unwrap())));
         let (_, rx) = broadcast::channel::<Arc<PendingBlocks>>(1);
 
-        let mut collector = MeteringCollector::new(Arc::clone(&cache), state_root_cache, rx);
+        let mut collector = MeteringCollector::new(
+            Arc::clone(&cache),
+            state_root_cache,
+            StateRootGasConfig::default(),
+            rx,
+        );
         collector.handle_pending_blocks(&pending);
 
         assert!(cache.read().contains_block(100));
@@ -484,8 +496,12 @@ mod tests {
         state_root_cache.write().push(tx_hash, 1234);
 
         let (_, rx) = broadcast::channel::<Arc<PendingBlocks>>(1);
-        let mut collector =
-            MeteringCollector::new(Arc::clone(&cache), Arc::clone(&state_root_cache), rx);
+        let mut collector = MeteringCollector::new(
+            Arc::clone(&cache),
+            Arc::clone(&state_root_cache),
+            StateRootGasConfig::default(),
+            rx,
+        );
         collector.handle_pending_blocks(&pending);
 
         // State root cache entry should have been consumed
@@ -505,7 +521,12 @@ mod tests {
             Arc::new(RwLock::new(PendingStateRootTimes::new(NonZeroUsize::new(8).unwrap())));
         let (_, rx) = broadcast::channel::<Arc<PendingBlocks>>(1);
 
-        let mut collector = MeteringCollector::new(Arc::clone(&cache), state_root_cache, rx);
+        let mut collector = MeteringCollector::new(
+            Arc::clone(&cache),
+            state_root_cache,
+            StateRootGasConfig::default(),
+            rx,
+        );
 
         // Process once
         collector.handle_pending_blocks(&pending);
@@ -562,7 +583,12 @@ mod tests {
         let state_root_cache =
             Arc::new(RwLock::new(PendingStateRootTimes::new(NonZeroUsize::new(8).unwrap())));
         let (_, rx) = broadcast::channel::<Arc<PendingBlocks>>(1);
-        let mut collector = MeteringCollector::new(Arc::clone(&cache), state_root_cache, rx);
+        let mut collector = MeteringCollector::new(
+            Arc::clone(&cache),
+            state_root_cache,
+            StateRootGasConfig::default(),
+            rx,
+        );
 
         collector.handle_pending_blocks(&pending_0);
         collector.handle_pending_blocks(&pending_2);
@@ -613,7 +639,12 @@ mod tests {
         let state_root_cache =
             Arc::new(RwLock::new(PendingStateRootTimes::new(NonZeroUsize::new(8).unwrap())));
         let (_, rx) = broadcast::channel::<Arc<PendingBlocks>>(1);
-        let mut collector = MeteringCollector::new(Arc::clone(&cache), state_root_cache, rx);
+        let mut collector = MeteringCollector::new(
+            Arc::clone(&cache),
+            state_root_cache,
+            StateRootGasConfig::default(),
+            rx,
+        );
 
         collector.handle_pending_blocks(&pending_1);
         collector.handle_pending_blocks(&pending_0);

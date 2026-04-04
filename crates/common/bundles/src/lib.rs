@@ -17,7 +17,9 @@ mod cancel;
 pub use cancel::{BundleHash, CancelBundle};
 
 mod meter;
-pub use meter::{MeterBundleResponse, TransactionResult};
+pub use meter::{
+    MeterBundleResponse, StateRootGasConfig, TransactionResult, compute_state_root_gas,
+};
 
 mod parsed;
 pub use parsed::ParsedBundle;

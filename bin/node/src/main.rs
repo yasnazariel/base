@@ -6,6 +6,7 @@
 pub mod cli;
 
 use base_bundle_extension::BundleExtension;
+use base_bundles::StateRootGasConfig;
 use base_execution_cli::{Cli, chainspec::OpChainSpecParser};
 use base_flashblocks::FlashblocksConfig;
 use base_flashblocks_node::FlashblocksExtension;
@@ -45,14 +46,19 @@ fn main() {
         let resource_limits = MeteringResourceLimits {
             gas_limit: args.metering_gas_limit,
             execution_time_us: args.metering_execution_time_us,
-            state_root_time_us: args.metering_state_root_time_us,
+            state_root_gas: args.metering_state_root_gas_limit,
             da_bytes: args.metering_da_bytes,
+        };
+        let state_root_gas_config = StateRootGasConfig {
+            coefficient: args.metering_state_root_gas_coefficient,
+            anchor_us: args.metering_state_root_gas_anchor_us,
         };
         let metering_config = if args.enable_metering {
             let mut config = flashblocks_config
                 .clone()
                 .map_or_else(MeteringConfig::enabled, MeteringConfig::with_flashblocks)
-                .with_resource_limits(resource_limits);
+                .with_resource_limits(resource_limits)
+                .with_state_root_gas_config(state_root_gas_config);
             if let Some(target_flashblocks_per_block) = args.metering_target_flashblocks_per_block {
                 config = config.with_target_flashblocks_per_block(target_flashblocks_per_block);
             }

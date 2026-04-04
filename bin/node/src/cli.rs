@@ -8,7 +8,7 @@ use base_tx_forwarding::{
 use url::Url;
 
 /// CLI Arguments
-#[derive(Debug, Clone, PartialEq, Eq, clap::Args)]
+#[derive(Debug, Clone, clap::Args)]
 #[command(next_help_heading = "Rollup")]
 pub struct Args {
     /// Rollup arguments
@@ -60,12 +60,20 @@ pub struct Args {
     #[arg(long = "metering.execution-time-us", requires = "enable_metering")]
     pub metering_execution_time_us: Option<u64>,
 
-    /// Whole-block state root computation budget in microseconds for priority fee estimation.
+    /// Block-level state root gas limit for priority fee estimation.
     #[arg(
-        long = "metering.state-root-time-us",
+        long = "metering.state-root-gas-limit",
         requires_all = ["enable_metering", "metering_target_flashblocks_per_block"]
     )]
-    pub metering_state_root_time_us: Option<u64>,
+    pub metering_state_root_gas_limit: Option<u64>,
+
+    /// State root gas coefficient (K) for priority fee estimation.
+    #[arg(long = "metering.state-root-gas-coefficient", default_value = "0.02")]
+    pub metering_state_root_gas_coefficient: f64,
+
+    /// State root gas anchor in microseconds for priority fee estimation.
+    #[arg(long = "metering.state-root-gas-anchor-us", default_value = "5000")]
+    pub metering_state_root_gas_anchor_us: u128,
 
     /// Whole-block data availability byte budget for priority fee estimation.
     #[arg(
@@ -77,7 +85,7 @@ pub struct Args {
     /// Target number of tx-pool flashblocks the builder budgets per block.
     ///
     /// This excludes the base flashblock at index `0` and is required when gas, state root
-    /// time, or DA estimation is enabled.
+    /// gas, or DA estimation is enabled.
     #[arg(long = "metering.target-flashblocks-per-block", requires = "enable_metering")]
     pub metering_target_flashblocks_per_block: Option<usize>,
 

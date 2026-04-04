@@ -716,14 +716,14 @@ impl OpPayloadBuilderCtx {
             // Compute state root gas from metering data:
             // sr_gas = gas_used × (1 + K × max(0, SR_ms - anchor_ms))
             let state_root_gas = resource_usage.as_ref().map(|m| {
-                let gas_used = m.total_gas_used;
-                let sr_us = m.state_root_time_us;
-                let anchor_us = self.builder_config.state_root_gas_anchor_us;
-                let k = self.builder_config.state_root_gas_coefficient;
-                let excess_us = sr_us.saturating_sub(anchor_us);
-                let excess_ms = excess_us as f64 / 1000.0;
-                let multiplier = 1.0 + k * excess_ms;
-                (gas_used as f64 * multiplier) as u64
+                base_bundles::compute_state_root_gas(
+                    m.total_gas_used,
+                    m.state_root_time_us,
+                    &base_bundles::StateRootGasConfig {
+                        coefficient: self.builder_config.state_root_gas_coefficient,
+                        anchor_us: self.builder_config.state_root_gas_anchor_us,
+                    },
+                )
             });
 
             // Build tx resources struct
