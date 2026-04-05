@@ -13,14 +13,15 @@ use jsonrpsee::proc_macros::rpc;
 use reth_storage_api::StateProviderFactory;
 
 /// Reads the 2D nonce for `(address, nonce_key)` from the Nonce Manager
-/// precompile's storage at the latest state.
+/// precompile's storage at the requested block state.
 pub fn read_2d_nonce<P: StateProviderFactory>(
     provider: &P,
     address: Address,
+    block_id: BlockId,
     nonce_key: U256,
 ) -> RpcResult<U256> {
     let slot = nonce_slot(address, nonce_key);
-    let state = provider.latest().map_err(|e| {
+    let state = provider.state_by_block_id(block_id).map_err(|e| {
         jsonrpsee::types::ErrorObjectOwned::owned(
             jsonrpsee::types::error::INTERNAL_ERROR_CODE,
             format!("state access error: {e}"),
@@ -83,7 +84,10 @@ where
         nonce_key: Option<U256>,
     ) -> RpcResult<U256> {
         match nonce_key {
-            Some(key) => read_2d_nonce(&self.provider, address, key),
+            Some(key) => {
+                let block_id = block_number.unwrap_or_default();
+                read_2d_nonce(&self.provider, address, block_id, key)
+            }
             None => {
                 let block_id = block_number.unwrap_or_default();
                 let state = self.provider.state_by_block_id(block_id).map_err(|e| {

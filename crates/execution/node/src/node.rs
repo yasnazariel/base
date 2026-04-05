@@ -602,8 +602,10 @@ where
                 modules.merge_if_module_configured(RethRpcModule::Eth, eth_config.into_rpc())?;
 
                 debug!(target: "reth::cli", "Installing EIP-8130 transaction count override");
-                modules
-                    .merge_if_module_configured(RethRpcModule::Eth, tx_count_override.into_rpc())?;
+                modules.add_or_replace_if_module_configured(
+                    RethRpcModule::Eth,
+                    tx_count_override.into_rpc(),
+                )?;
 
                 debug!(target: "reth::cli", "Installing debug payload witness rpc endpoint");
                 modules.merge_if_module_configured(RethRpcModule::Debug, debug_ext.into_rpc())?;

@@ -285,15 +285,6 @@ where
                         }
                     }
 
-                    if !outcome.invalidation_keys.is_empty() {
-                        let tx_hash = *transaction.hash();
-                        self.invalidation_index.write().insert(
-                            tx_hash,
-                            outcome.invalidation_keys,
-                            outcome.sponsored_payer,
-                        );
-                    }
-
                     if self.requires_l1_data_gas_fee() {
                         let mut l1_info = self.block_info.l1_block_info.read().clone();
                         let encoded = transaction.encoded_2718();
@@ -352,6 +343,15 @@ where
                                 ),
                             );
                         }
+                    }
+
+                    if !outcome.invalidation_keys.is_empty() {
+                        let tx_hash = *transaction.hash();
+                        self.invalidation_index.write().insert(
+                            tx_hash,
+                            outcome.invalidation_keys.clone(),
+                            outcome.sponsored_payer,
+                        );
                     }
 
                     TransactionValidationOutcome::Valid {

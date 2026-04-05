@@ -276,11 +276,30 @@ where
             address = %address,
         );
 
+        let block_id = block_number.unwrap_or_default();
         if let Some(key) = nonce_key {
-            return base_execution_rpc::read_2d_nonce(self.eth_api.provider(), address, key);
+            if block_id.is_pending() {
+                Metrics::rpc_get_transaction_count().increment(1);
+                let pending_blocks = self.flashblocks_state.get_pending_blocks();
+                let canon_block = pending_blocks.get_canonical_block_number();
+                let canon_nonce = base_execution_rpc::read_2d_nonce(
+                    self.eth_api.provider(),
+                    address,
+                    canon_block.into(),
+                    key,
+                )?;
+                let delta = pending_blocks.get_aa_nonce_delta(address, key);
+                return Ok(canon_nonce + U256::from(delta));
+            }
+
+            return base_execution_rpc::read_2d_nonce(
+                self.eth_api.provider(),
+                address,
+                block_id,
+                key,
+            );
         }
 
-        let block_id = block_number.unwrap_or_default();
         if block_id.is_pending() {
             Metrics::rpc_get_transaction_count().increment(1);
             let pending_blocks = self.flashblocks_state.get_pending_blocks();

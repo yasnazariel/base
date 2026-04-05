@@ -134,7 +134,7 @@ mod tests {
     use alloy_consensus::TxEip1559;
     use alloy_primitives::{Address, Signature, TxKind, U256};
     use base_alloy_consensus::OpTypedTransaction;
-    use base_execution_primitives::OpTransactionSigned;
+    use base_alloy_consensus::OpTransactionSigned;
     use reth_primitives_traits::Recovered;
     use reth_transaction_pool::{
         EthPoolTransaction, TransactionOrigin, ValidPoolTransaction,

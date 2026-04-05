@@ -12,8 +12,7 @@ use alloy_eips::{
     eip7702::SignedAuthorization,
 };
 use alloy_primitives::{Address, B256, Bytes, TxHash, TxKind, U256};
-use base_alloy_consensus::{OpEip8130Transaction, TxEip8130};
-use base_execution_primitives::OpTransactionSigned;
+use base_alloy_consensus::{OpEip8130Transaction, OpTransactionSigned, TxEip8130};
 use c_kzg::KzgSettings;
 use reth_primitives_traits::{InMemorySize, SignedTransaction};
 use reth_transaction_pool::{

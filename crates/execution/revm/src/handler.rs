@@ -433,7 +433,14 @@ where
     let mut pending_owners: HashMap<U256, (Address, u8)> = HashMap::new();
 
     for validation in &eip8130.authorizer_validations {
-        if validation.verifier == Address::ZERO && validation.verify_call.is_none() {
+        // Placeholder entries (no auth payload) are used for empty/malformed
+        // config-change auth blobs and should be ignored here. Native-authorized
+        // entries also have `verify_call == None`, so we only skip the true
+        // placeholder shape.
+        if validation.verify_call.is_none()
+            && validation.owner_id == B256::ZERO
+            && validation.owner_changes.is_empty()
+        {
             continue;
         }
 

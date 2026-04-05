@@ -432,30 +432,36 @@ impl<T: PoolTransaction> Eip8130Pool<T> {
             .map(|c| c.tier);
 
         let effective_tier = cached_tier.unwrap_or(SenderThroughputTier::Default).max(tier);
-        inner.sender_tiers.insert(sender, CachedTier { tier: effective_tier, cached_at: now });
-        inner.lock_slot_to_sender.entry(lock_slot(sender)).or_insert(sender);
-
         let sender_count = inner.txs_by_sender.get(&sender).copied().unwrap_or(0);
         if sender_count >= self.config.max_txs_for_tier(effective_tier) {
             return Err(Eip8130PoolError::SenderCapacityExceeded(sender));
         }
 
         let seq_id = id.sequence_id();
-        let seq = inner.sequences.entry(seq_id.clone()).or_default();
+        {
+            let seq = inner.sequences.entry(seq_id.clone()).or_default();
+            if seq.pending.len() >= self.config.max_txs_per_sequence {
+                return Err(Eip8130PoolError::SequenceFull);
+            }
 
-        if seq.pending.len() >= self.config.max_txs_per_sequence {
-            return Err(Eip8130PoolError::SequenceFull);
+            if seq.pending.contains_key(&id.nonce_sequence) {
+                return Err(Eip8130PoolError::NonceAlreadyPending {
+                    sender,
+                    nonce_key: id.nonce_key,
+                    nonce_sequence: id.nonce_sequence,
+                });
+            }
         }
 
-        if seq.pending.contains_key(&id.nonce_sequence) {
-            return Err(Eip8130PoolError::NonceAlreadyPending {
-                sender,
-                nonce_key: id.nonce_key,
-                nonce_sequence: id.nonce_sequence,
-            });
-        }
+        // Only persist cached sender metadata after all admission checks pass.
+        inner.sender_tiers.insert(sender, CachedTier { tier: effective_tier, cached_at: now });
+        inner.lock_slot_to_sender.entry(lock_slot(sender)).or_insert(sender);
 
         let entry = PooledEntry { id: id.clone(), transaction, origin, timestamp: Instant::now() };
+        let seq = inner
+            .sequences
+            .get_mut(&seq_id)
+            .expect("sequence must exist after entry insertion");
         seq.pending.insert(id.nonce_sequence, entry);
         inner.by_hash.insert(hash, id);
         inner.slot_to_seq.entry(nonce_storage_slot).or_insert(seq_id);
@@ -737,7 +743,7 @@ mod tests {
     use alloy_consensus::TxEip1559;
     use alloy_primitives::{Signature, TxKind};
     use base_alloy_consensus::OpTypedTransaction;
-    use base_execution_primitives::OpTransactionSigned;
+    use base_alloy_consensus::OpTransactionSigned;
     use reth_primitives_traits::Recovered;
     use reth_transaction_pool::EthPoolTransaction;
 
