@@ -97,20 +97,36 @@ impl<T> Default for SequenceState<T> {
     }
 }
 
-/// Throughput tier for a sender, determined during validation from on-chain
-/// state (account lock status + payer bytecode).
+/// Throughput tier for an account, determined lazily by the pool when an
+/// account is about to breach the default cap.
 ///
-/// Each tier maps to a different per-sender transaction cap, configured via
-/// [`Eip8130PoolConfig`].
+/// The tier controls separate limits for the sender and payer roles:
+/// - [`Default`](Self::Default): base limits for both roles.
+/// - [`Locked`](Self::Locked): elevated **sender** limit (account code is
+///   immutable).
+/// - [`LockedTrustedBytecode`](Self::LockedTrustedBytecode): elevated limits
+///   for **both** sender and payer (locked + bytecode in the trusted set).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub enum SenderThroughputTier {
-    /// Sender is not locked — default throughput.
+pub enum ThroughputTier {
+    /// Account has not been checked or does not qualify — default throughput.
     #[default]
     Default,
-    /// Sender account is locked — elevated throughput.
+    /// Account is locked — elevated sender throughput.
     Locked,
-    /// Sender is locked and the payer has trusted bytecode — highest throughput.
-    LockedTrustedPayer,
+    /// Account is locked and has trusted bytecode — elevated sender and payer
+    /// throughput.
+    LockedTrustedBytecode,
+}
+
+/// Result of a lazy tier check, returned by the `check_tier` closure.
+#[derive(Debug, Clone, Copy)]
+pub struct TierCheckResult {
+    /// The resolved throughput tier for the account.
+    pub tier: ThroughputTier,
+    /// Suggested cache lifetime based on the on-chain unlock deadline. `None`
+    /// means the account is not locked and the pool should use its default
+    /// TTL. When `Some`, the pool caches for `min(duration, config.tier_cache_ttl)`.
+    pub cache_for: Option<Duration>,
 }
 
 /// Configuration for the EIP-8130 2D nonce pool.
@@ -120,16 +136,18 @@ pub struct Eip8130PoolConfig {
     pub max_txs_per_sequence: usize,
     /// Maximum total transactions in the pool.
     pub max_pool_size: usize,
-    /// Per-sender cap when the sender is **not** locked.
-    pub default_max_txs_per_sender: usize,
-    /// Per-sender cap when the sender account is **locked**.
-    pub locked_max_txs_per_sender: usize,
-    /// Per-sender cap when the sender is locked **and** the payer has trusted
-    /// bytecode.
-    pub locked_trusted_payer_max_txs_per_sender: usize,
-    /// How long a cached throughput tier remains valid before the pool
-    /// re-evaluates on the next insertion. Account locks can change (e.g.
-    /// an unlock request completing), so entries must expire periodically.
+    /// Sender-role limit for accounts at the default tier.
+    pub default_max_sender_txs: usize,
+    /// Sender-role limit for locked accounts.
+    pub locked_max_sender_txs: usize,
+    /// Sender-role limit for locked accounts with trusted bytecode.
+    pub trusted_max_sender_txs: usize,
+    /// Payer-role limit for accounts at the default (and locked) tier.
+    pub default_max_payer_txs: usize,
+    /// Payer-role limit for locked accounts with trusted bytecode.
+    pub trusted_max_payer_txs: usize,
+    /// Maximum time a cached tier remains valid. The actual expiry may be
+    /// shorter when the on-chain unlock deadline is sooner.
     pub tier_cache_ttl: Duration,
 }
 
@@ -138,32 +156,40 @@ impl Default for Eip8130PoolConfig {
         Self {
             max_txs_per_sequence: 16,
             max_pool_size: 4096,
-            default_max_txs_per_sender: 16,
-            locked_max_txs_per_sender: 64,
-            locked_trusted_payer_max_txs_per_sender: 128,
+            default_max_sender_txs: 8,
+            locked_max_sender_txs: 64,
+            trusted_max_sender_txs: 128,
+            default_max_payer_txs: 8,
+            trusted_max_payer_txs: 128,
             tier_cache_ttl: Duration::from_secs(300),
         }
     }
 }
 
 impl Eip8130PoolConfig {
-    /// Returns the per-sender transaction cap for the given tier.
-    pub fn max_txs_for_tier(&self, tier: SenderThroughputTier) -> usize {
+    /// Returns the sender-role transaction cap for the given tier.
+    pub fn max_sender_txs_for_tier(&self, tier: ThroughputTier) -> usize {
         match tier {
-            SenderThroughputTier::Default => self.default_max_txs_per_sender,
-            SenderThroughputTier::Locked => self.locked_max_txs_per_sender,
-            SenderThroughputTier::LockedTrustedPayer => {
-                self.locked_trusted_payer_max_txs_per_sender
-            }
+            ThroughputTier::Default => self.default_max_sender_txs,
+            ThroughputTier::Locked => self.locked_max_sender_txs,
+            ThroughputTier::LockedTrustedBytecode => self.trusted_max_sender_txs,
+        }
+    }
+
+    /// Returns the payer-role transaction cap for the given tier.
+    pub fn max_payer_txs_for_tier(&self, tier: ThroughputTier) -> usize {
+        match tier {
+            ThroughputTier::Default | ThroughputTier::Locked => self.default_max_payer_txs,
+            ThroughputTier::LockedTrustedBytecode => self.trusted_max_payer_txs,
         }
     }
 }
 
-/// Cached throughput tier with an expiry timestamp.
+/// Cached throughput tier with a monotonic expiry.
 #[derive(Debug, Clone, Copy)]
 struct CachedTier {
-    tier: SenderThroughputTier,
-    cached_at: Instant,
+    tier: ThroughputTier,
+    expires_at: Instant,
 }
 
 struct PoolInner<T> {
@@ -173,16 +199,24 @@ struct PoolInner<T> {
     /// Populated at insertion time so that block-maintenance can map
     /// `NONCE_MANAGER_ADDRESS` storage diffs back to sequence lanes.
     slot_to_seq: HashMap<B256, Eip8130SequenceId>,
-    /// Per-sender transaction count for DoS protection.
-    txs_by_sender: HashMap<Address, usize>,
-    /// Cached throughput tier per sender with TTL, populated on first
-    /// insertion and invalidated when the sender's lock slot changes
-    /// on-chain or when the TTL expires.
-    sender_tiers: HashMap<Address, CachedTier>,
-    /// Reverse map: lock storage slot → sender address. Used by the
-    /// maintenance task to identify which senders need tier
+    /// Per-account count of pool txs where the account acts as **sender**.
+    /// Self-pay transactions do **not** increment this counter — they
+    /// increment `payer_txs` instead (payer is the more privileged role).
+    sender_txs: HashMap<Address, usize>,
+    /// Per-account count of pool txs where the account acts as **payer**.
+    /// Includes self-pay transactions.
+    payer_txs: HashMap<Address, usize>,
+    /// Payer address for each tx hash, used to decrement the correct
+    /// counter on removal.
+    payer_by_hash: HashMap<B256, Address>,
+    /// Cached throughput tier per account, populated lazily when an
+    /// account is about to breach the default cap. Invalidated when the
+    /// account's lock slot changes on-chain or when the entry expires.
+    account_tiers: HashMap<Address, CachedTier>,
+    /// Reverse map: lock storage slot → account address. Used by the
+    /// maintenance task to identify which accounts need tier
     /// invalidation when `ACCOUNT_CONFIG_ADDRESS` lock slots change.
-    lock_slot_to_sender: HashMap<B256, Address>,
+    lock_slot_to_account: HashMap<B256, Address>,
 }
 
 impl<T: core::fmt::Debug> core::fmt::Debug for PoolInner<T> {
@@ -191,7 +225,8 @@ impl<T: core::fmt::Debug> core::fmt::Debug for PoolInner<T> {
             .field("sequences", &self.sequences)
             .field("by_hash_len", &self.by_hash.len())
             .field("slot_to_seq_len", &self.slot_to_seq.len())
-            .field("txs_by_sender_len", &self.txs_by_sender.len())
+            .field("sender_txs_len", &self.sender_txs.len())
+            .field("payer_txs_len", &self.payer_txs.len())
             .finish()
     }
 }
@@ -202,9 +237,11 @@ impl<T> Default for PoolInner<T> {
             sequences: HashMap::new(),
             by_hash: HashMap::new(),
             slot_to_seq: HashMap::new(),
-            txs_by_sender: HashMap::new(),
-            sender_tiers: HashMap::new(),
-            lock_slot_to_sender: HashMap::new(),
+            sender_txs: HashMap::new(),
+            payer_txs: HashMap::new(),
+            payer_by_hash: HashMap::new(),
+            account_tiers: HashMap::new(),
+            lock_slot_to_account: HashMap::new(),
         }
     }
 }
@@ -284,26 +321,26 @@ impl<T> Eip8130Pool<T> {
         self.inner.read().slot_to_seq.get(slot).cloned()
     }
 
-    /// Resets the cached throughput tier for a sender, forcing re-evaluation
-    /// on the next insertion.
+    /// Resets the cached throughput tier for an account, forcing re-evaluation
+    /// on the next insertion that would breach the default cap.
     ///
-    /// Called by the invalidation task when the sender's lock slot changes
+    /// Called by the invalidation task when the account's lock slot changes
     /// on-chain (e.g. the account was unlocked).
-    pub fn invalidate_sender_tier(&self, sender: &Address) {
-        self.inner.write().sender_tiers.remove(sender);
+    pub fn invalidate_account_tier(&self, account: &Address) {
+        self.inner.write().account_tiers.remove(account);
     }
 
     /// Checks a set of changed `ACCOUNT_CONFIG_ADDRESS` storage slots against
     /// the pool's lock-slot reverse map and invalidates the cached throughput
-    /// tier for any matching senders.
+    /// tier for any matching accounts.
     ///
-    /// Returns the number of senders whose tiers were invalidated.
+    /// Returns the number of accounts whose tiers were invalidated.
     pub fn invalidate_tiers_for_lock_slots(&self, changed_slots: &[B256]) -> usize {
         let mut inner = self.inner.write();
         let mut invalidated = 0;
         for slot in changed_slots {
-            if let Some(sender) = inner.lock_slot_to_sender.get(slot).copied() {
-                if inner.sender_tiers.remove(&sender).is_some() {
+            if let Some(account) = inner.lock_slot_to_account.get(slot).copied() {
+                if inner.account_tiers.remove(&account).is_some() {
                     invalidated += 1;
                 }
             }
@@ -350,12 +387,24 @@ impl<T> Eip8130Pool<T> {
             }
         }
 
+        let sender = seq_id.sender;
+        let mut sponsored_count = 0usize;
         for hash in &removed_hashes {
             inner.by_hash.remove(hash);
+            if let Some(payer) = inner.payer_by_hash.remove(hash) {
+                Self::decrement_counter(&mut inner.payer_txs, &payer, 1);
+                if payer != sender {
+                    sponsored_count += 1;
+                    Self::maybe_clear_tier(&mut inner, &payer);
+                }
+            }
         }
 
+        if sponsored_count > 0 {
+            Self::decrement_counter(&mut inner.sender_txs, &sender, sponsored_count);
+        }
         if !removed_hashes.is_empty() {
-            Self::decrement_sender_count(&mut inner, &seq_id.sender, removed_hashes.len());
+            Self::maybe_clear_tier(&mut inner, &sender);
         }
 
         if inner.sequences.get(seq_id).is_some_and(|s| s.pending.is_empty()) {
@@ -370,7 +419,19 @@ impl<T> Eip8130Pool<T> {
         let id = inner.by_hash.remove(hash)?;
         let seq_id = id.sequence_id();
         inner.sequences.get_mut(&seq_id)?.pending.remove(&id.nonce_sequence);
-        Self::decrement_sender_count(inner, &id.sender, 1);
+
+        let sender = id.sender;
+        if let Some(payer) = inner.payer_by_hash.remove(hash) {
+            Self::decrement_counter(&mut inner.payer_txs, &payer, 1);
+            if payer != sender {
+                Self::decrement_counter(&mut inner.sender_txs, &sender, 1);
+                Self::maybe_clear_tier(inner, &payer);
+            }
+        } else {
+            Self::decrement_counter(&mut inner.sender_txs, &sender, 1);
+        }
+        Self::maybe_clear_tier(inner, &sender);
+
         if inner.sequences.get(&seq_id).is_some_and(|s| s.pending.is_empty()) {
             inner.sequences.remove(&seq_id);
             inner.slot_to_seq.retain(|_, v| v != &seq_id);
@@ -378,18 +439,26 @@ impl<T> Eip8130Pool<T> {
         Some(id)
     }
 
-    /// Decrements the transaction count for a sender, removing the entry (and
-    /// the cached tier) when it reaches zero.
-    fn decrement_sender_count(inner: &mut PoolInner<T>, sender: &Address, n: usize) {
+    /// Decrements a counter map entry, removing it when it reaches zero.
+    fn decrement_counter(map: &mut HashMap<Address, usize>, account: &Address, n: usize) {
         use std::collections::hash_map::Entry;
-        if let Entry::Occupied(mut entry) = inner.txs_by_sender.entry(*sender) {
+        if let Entry::Occupied(mut entry) = map.entry(*account) {
             let count = entry.get_mut();
             *count = count.saturating_sub(n);
             if *count == 0 {
                 entry.remove();
-                inner.sender_tiers.remove(sender);
-                inner.lock_slot_to_sender.remove(&lock_slot(*sender));
             }
+        }
+    }
+
+    /// Removes the cached tier and lock-slot reverse entry when an account
+    /// has no remaining sender or payer transactions.
+    fn maybe_clear_tier(inner: &mut PoolInner<T>, account: &Address) {
+        let has_sender = inner.sender_txs.contains_key(account);
+        let has_payer = inner.payer_txs.contains_key(account);
+        if !has_sender && !has_payer {
+            inner.account_tiers.remove(account);
+            inner.lock_slot_to_account.remove(&lock_slot(*account));
         }
     }
 }
@@ -397,16 +466,28 @@ impl<T> Eip8130Pool<T> {
 impl<T: PoolTransaction> Eip8130Pool<T> {
     /// Attempts to add a validated transaction to the pool.
     ///
-    /// The caller must provide the `nonce_storage_slot` (output of
-    /// `nonce_slot(sender, nonce_key)`) so the pool can build the reverse
-    /// index used during block-maintenance nonce updates.
+    /// The caller must provide:
+    /// - `nonce_storage_slot` (output of `nonce_slot(sender, nonce_key)`) so
+    ///   the pool can build the reverse index used during block-maintenance
+    ///   nonce updates.
+    /// - `payer` — the address paying for this transaction (equal to sender for
+    ///   self-pay transactions).
+    /// - `check_tier` — a callback that reads on-chain state to determine an
+    ///   account's [`ThroughputTier`]. The pool only invokes this when an
+    ///   account is about to exceed the default cap, keeping the common path
+    ///   free of state reads.
+    ///
+    /// **Counting rules:** a self-pay transaction (payer == sender) increments
+    /// the payer counter only. A sponsored transaction increments the sender's
+    /// sender counter and the payer's payer counter.
     pub fn add_transaction(
         &self,
         id: Eip8130TxId,
         transaction: T,
+        payer: Address,
         origin: TransactionOrigin,
         nonce_storage_slot: B256,
-        tier: SenderThroughputTier,
+        check_tier: &dyn Fn(Address) -> TierCheckResult,
     ) -> Result<(), Eip8130PoolError> {
         let hash = *transaction.hash();
         let mut inner = self.inner.write();
@@ -420,21 +501,26 @@ impl<T: PoolTransaction> Eip8130Pool<T> {
         }
 
         let sender = id.sender;
-        let now = Instant::now();
+        let is_self_pay = payer == sender;
 
-        // Check cached tier — if it exists and hasn't expired, use the
-        // max of cached vs incoming tier. Otherwise, start fresh from
-        // the tier provided by the validator.
-        let cached_tier = inner
-            .sender_tiers
-            .get(&sender)
-            .filter(|c| now.duration_since(c.cached_at) < self.config.tier_cache_ttl)
-            .map(|c| c.tier);
+        // Sender-role check (only for sponsored txs — self-pay uses payer role).
+        if !is_self_pay {
+            let sender_count = inner.sender_txs.get(&sender).copied().unwrap_or(0);
+            if sender_count >= self.config.default_max_sender_txs {
+                let tier = self.resolve_tier(&mut inner, sender, check_tier);
+                if sender_count >= self.config.max_sender_txs_for_tier(tier) {
+                    return Err(Eip8130PoolError::AccountCapacityExceeded(sender));
+                }
+            }
+        }
 
-        let effective_tier = cached_tier.unwrap_or(SenderThroughputTier::Default).max(tier);
-        let sender_count = inner.txs_by_sender.get(&sender).copied().unwrap_or(0);
-        if sender_count >= self.config.max_txs_for_tier(effective_tier) {
-            return Err(Eip8130PoolError::SenderCapacityExceeded(sender));
+        // Payer-role check (always — self-pay and sponsored).
+        let payer_count = inner.payer_txs.get(&payer).copied().unwrap_or(0);
+        if payer_count >= self.config.default_max_payer_txs {
+            let tier = self.resolve_tier(&mut inner, payer, check_tier);
+            if payer_count >= self.config.max_payer_txs_for_tier(tier) {
+                return Err(Eip8130PoolError::AccountCapacityExceeded(payer));
+            }
         }
 
         let seq_id = id.sequence_id();
@@ -453,21 +539,44 @@ impl<T: PoolTransaction> Eip8130Pool<T> {
             }
         }
 
-        // Only persist cached sender metadata after all admission checks pass.
-        inner.sender_tiers.insert(sender, CachedTier { tier: effective_tier, cached_at: now });
-        inner.lock_slot_to_sender.entry(lock_slot(sender)).or_insert(sender);
-
         let entry = PooledEntry { id: id.clone(), transaction, origin, timestamp: Instant::now() };
-        let seq = inner
-            .sequences
-            .get_mut(&seq_id)
-            .expect("sequence must exist after entry insertion");
+        let seq =
+            inner.sequences.get_mut(&seq_id).expect("sequence must exist after entry insertion");
         seq.pending.insert(id.nonce_sequence, entry);
         inner.by_hash.insert(hash, id);
+        inner.payer_by_hash.insert(hash, payer);
         inner.slot_to_seq.entry(nonce_storage_slot).or_insert(seq_id);
-        *inner.txs_by_sender.entry(sender).or_insert(0) += 1;
+        *inner.payer_txs.entry(payer).or_insert(0) += 1;
+        if !is_self_pay {
+            *inner.sender_txs.entry(sender).or_insert(0) += 1;
+        }
 
         Ok(())
+    }
+
+    /// Resolves the throughput tier for `account`, using the cache when fresh
+    /// and falling back to `check_tier` otherwise.
+    fn resolve_tier(
+        &self,
+        inner: &mut PoolInner<T>,
+        account: Address,
+        check_tier: &dyn Fn(Address) -> TierCheckResult,
+    ) -> ThroughputTier {
+        let now = Instant::now();
+        if let Some(cached) = inner.account_tiers.get(&account) {
+            if now < cached.expires_at {
+                return cached.tier;
+            }
+        }
+        let result = check_tier(account);
+        let ttl = result
+            .cache_for
+            .map_or(self.config.tier_cache_ttl, |d| d.min(self.config.tier_cache_ttl));
+        inner
+            .account_tiers
+            .insert(account, CachedTier { tier: result.tier, expires_at: now + ttl });
+        inner.lock_slot_to_account.entry(lock_slot(account)).or_insert(account);
+        result.tier
     }
 
     /// Returns the validated pool transaction for the given hash, if present.
@@ -504,16 +613,16 @@ impl<T: PoolTransaction> Eip8130Pool<T> {
         (pending, queued)
     }
 
-    /// Returns the count of transactions from a specific sender across all
-    /// nonce-key lanes.
-    pub fn sender_tx_count(&self, sender: &Address) -> usize {
-        let inner = self.inner.read();
-        inner
-            .sequences
-            .iter()
-            .filter(|(seq_id, _)| &seq_id.sender == sender)
-            .map(|(_, state)| state.pending.len())
-            .sum()
+    /// Returns how many pool transactions list `account` as the sender
+    /// (excludes self-pay, which counts under payer only).
+    pub fn sender_tx_count(&self, account: &Address) -> usize {
+        self.inner.read().sender_txs.get(account).copied().unwrap_or(0)
+    }
+
+    /// Returns how many pool transactions list `account` as the payer
+    /// (includes self-pay).
+    pub fn payer_tx_count(&self, account: &Address) -> usize {
+        self.inner.read().payer_txs.get(account).copied().unwrap_or(0)
     }
 
     /// Returns all transactions from a specific sender across all nonce lanes.
@@ -700,9 +809,9 @@ pub enum Eip8130PoolError {
     },
     /// Pool has reached its maximum capacity.
     PoolFull,
-    /// Sender already has the maximum number of pending transactions across
-    /// all nonce-key lanes.
-    SenderCapacityExceeded(Address),
+    /// Account (sender or payer) already has the maximum number of pending
+    /// transactions.
+    AccountCapacityExceeded(Address),
 }
 
 impl core::fmt::Display for Eip8130PoolError {
@@ -716,8 +825,8 @@ impl core::fmt::Display for Eip8130PoolError {
                  nonce_sequence={nonce_sequence}"
             ),
             Self::PoolFull => write!(f, "2D nonce pool is full"),
-            Self::SenderCapacityExceeded(sender) => {
-                write!(f, "sender {sender} exceeded per-sender capacity")
+            Self::AccountCapacityExceeded(account) => {
+                write!(f, "account {account} exceeded per-account capacity")
             }
         }
     }
@@ -742,8 +851,8 @@ pub type SharedEip8130Pool<T> = Arc<Eip8130Pool<T>>;
 mod tests {
     use alloy_consensus::TxEip1559;
     use alloy_primitives::{Signature, TxKind};
-    use base_alloy_consensus::OpTypedTransaction;
     use base_alloy_consensus::OpTransactionSigned;
+    use base_alloy_consensus::OpTypedTransaction;
     use reth_primitives_traits::Recovered;
     use reth_transaction_pool::EthPoolTransaction;
 
@@ -754,6 +863,18 @@ mod tests {
 
     fn cfg() -> Eip8130PoolConfig {
         Eip8130PoolConfig::default()
+    }
+
+    fn default_result(_: Address) -> TierCheckResult {
+        TierCheckResult { tier: ThroughputTier::Default, cache_for: None }
+    }
+
+    fn locked_result(_: Address) -> TierCheckResult {
+        TierCheckResult { tier: ThroughputTier::Locked, cache_for: None }
+    }
+
+    fn trusted_result(_: Address) -> TierCheckResult {
+        TierCheckResult { tier: ThroughputTier::LockedTrustedBytecode, cache_for: None }
     }
 
     fn make_id(sender_byte: u8, nonce_key: u64, nonce_sequence: u64) -> Eip8130TxId {
@@ -795,6 +916,28 @@ mod tests {
         BasePooledTransaction::new(recovered, len)
     }
 
+    fn add_self_pay(
+        pool: &TestPool,
+        id: Eip8130TxId,
+        tx: BasePooledTransaction,
+        slot: B256,
+        check_tier: &dyn Fn(Address) -> TierCheckResult,
+    ) -> Result<(), Eip8130PoolError> {
+        let payer = id.sender;
+        pool.add_transaction(id, tx, payer, TransactionOrigin::External, slot, check_tier)
+    }
+
+    fn add_sponsored(
+        pool: &TestPool,
+        id: Eip8130TxId,
+        tx: BasePooledTransaction,
+        payer: Address,
+        slot: B256,
+        check_tier: &dyn Fn(Address) -> TierCheckResult,
+    ) -> Result<(), Eip8130PoolError> {
+        pool.add_transaction(id, tx, payer, TransactionOrigin::External, slot, check_tier)
+    }
+
     // ------------------------------------------------------------------ //
     //  Basic identity / routing
     // ------------------------------------------------------------------ //
@@ -828,7 +971,7 @@ mod tests {
     }
 
     // ------------------------------------------------------------------ //
-    //  add_transaction
+    //  add_transaction — basic
     // ------------------------------------------------------------------ //
 
     #[test]
@@ -839,14 +982,7 @@ mod tests {
         let hash = *tx.hash();
         let slot = make_slot(0x01, 1);
 
-        pool.add_transaction(
-            id,
-            tx,
-            TransactionOrigin::External,
-            slot,
-            SenderThroughputTier::Default,
-        )
-        .unwrap();
+        add_self_pay(&pool, id, tx, slot, &default_result).unwrap();
 
         assert_eq!(pool.len(), 1);
         assert!(pool.contains(&hash));
@@ -860,22 +996,9 @@ mod tests {
         let id = make_id(0x01, 1, 0);
         let slot = make_slot(0x01, 1);
 
-        pool.add_transaction(
-            id.clone(),
-            tx.clone(),
-            TransactionOrigin::External,
-            slot,
-            SenderThroughputTier::Default,
-        )
-        .unwrap();
+        add_self_pay(&pool, id.clone(), tx.clone(), slot, &default_result).unwrap();
 
-        let result = pool.add_transaction(
-            id,
-            tx,
-            TransactionOrigin::External,
-            slot,
-            SenderThroughputTier::Default,
-        );
+        let result = add_self_pay(&pool, id, tx, slot, &default_result);
         assert!(matches!(result, Err(Eip8130PoolError::DuplicateHash(_))));
     }
 
@@ -886,24 +1009,11 @@ mod tests {
 
         let tx1 = make_tx(0x01, 0, 10);
         let id1 = make_id(0x01, 1, 0);
-        pool.add_transaction(
-            id1,
-            tx1,
-            TransactionOrigin::External,
-            slot,
-            SenderThroughputTier::Default,
-        )
-        .unwrap();
+        add_self_pay(&pool, id1, tx1, slot, &default_result).unwrap();
 
         let tx2 = make_tx(0x01, 100, 20);
         let id2 = make_id(0x01, 1, 0);
-        let result = pool.add_transaction(
-            id2,
-            tx2,
-            TransactionOrigin::External,
-            slot,
-            SenderThroughputTier::Default,
-        );
+        let result = add_self_pay(&pool, id2, tx2, slot, &default_result);
         assert!(matches!(result, Err(Eip8130PoolError::NonceAlreadyPending { .. })));
     }
 
@@ -916,209 +1026,272 @@ mod tests {
         for seq in 0..c.max_txs_per_sequence as u64 {
             let tx = make_tx(0x01, seq, 10);
             let id = make_id(0x01, 1, seq);
-            pool.add_transaction(
-                id,
-                tx,
-                TransactionOrigin::External,
-                slot,
-                SenderThroughputTier::Default,
-            )
-            .unwrap();
+            add_self_pay(&pool, id, tx, slot, &trusted_result).unwrap();
         }
 
         let tx = make_tx(0x01, c.max_txs_per_sequence as u64, 10);
         let id = make_id(0x01, 1, c.max_txs_per_sequence as u64);
-        let result = pool.add_transaction(
-            id,
-            tx,
-            TransactionOrigin::External,
-            slot,
-            SenderThroughputTier::Default,
-        );
+        let result = add_self_pay(&pool, id, tx, slot, &trusted_result);
         assert!(matches!(result, Err(Eip8130PoolError::SequenceFull)));
     }
 
+    // ------------------------------------------------------------------ //
+    //  Dual-counter semantics
+    // ------------------------------------------------------------------ //
+
     #[test]
-    fn per_sender_limit_rejects_excess() {
-        let c = cfg();
+    fn self_pay_increments_payer_only() {
         let pool = TestPool::new();
+        let sender = Address::repeat_byte(0x01);
 
-        for key in 1..=c.default_max_txs_per_sender as u64 {
-            let tx = make_tx(0x01, key, 10);
-            let id = make_id(0x01, key, 0);
-            let slot = make_slot(0x01, key);
-            pool.add_transaction(
-                id,
-                tx,
-                TransactionOrigin::External,
-                slot,
-                SenderThroughputTier::Default,
-            )
-            .unwrap();
-        }
+        let tx = make_tx(0x01, 0, 10);
+        let id = make_id(0x01, 1, 0);
+        let slot = make_slot(0x01, 1);
+        add_self_pay(&pool, id, tx, slot, &default_result).unwrap();
 
-        let key = c.default_max_txs_per_sender as u64 + 1;
-        let tx = make_tx(0x01, key, 10);
-        let id = make_id(0x01, key, 0);
-        let slot = make_slot(0x01, key);
-        let result = pool.add_transaction(
-            id,
-            tx,
-            TransactionOrigin::External,
-            slot,
-            SenderThroughputTier::Default,
-        );
-        assert!(matches!(result, Err(Eip8130PoolError::SenderCapacityExceeded(_))));
+        assert_eq!(pool.sender_tx_count(&sender), 0, "self-pay should not bump sender counter");
+        assert_eq!(pool.payer_tx_count(&sender), 1, "self-pay should bump payer counter");
     }
 
     #[test]
-    fn per_sender_limit_freed_after_removal() {
+    fn sponsored_increments_sender_and_payer() {
+        let pool = TestPool::new();
+        let sender = Address::repeat_byte(0x01);
+        let payer = Address::repeat_byte(0xBB);
+
+        let tx = make_tx(0x01, 0, 10);
+        let id = make_id(0x01, 1, 0);
+        let slot = make_slot(0x01, 1);
+        add_sponsored(&pool, id, tx, payer, slot, &default_result).unwrap();
+
+        assert_eq!(pool.sender_tx_count(&sender), 1);
+        assert_eq!(pool.payer_tx_count(&sender), 0, "sender should not get payer bump");
+        assert_eq!(pool.payer_tx_count(&payer), 1);
+        assert_eq!(pool.sender_tx_count(&payer), 0, "payer should not get sender bump");
+    }
+
+    // ------------------------------------------------------------------ //
+    //  Per-account payer limit (self-pay)
+    // ------------------------------------------------------------------ //
+
+    #[test]
+    fn payer_limit_blocks_excess_self_pay() {
+        let c = cfg();
+        let pool = TestPool::new();
+
+        for key in 1..=c.default_max_payer_txs as u64 {
+            let tx = make_tx(0x01, key, 10);
+            let id = make_id(0x01, key, 0);
+            let slot = make_slot(0x01, key);
+            add_self_pay(&pool, id, tx, slot, &default_result).unwrap();
+        }
+
+        let key = c.default_max_payer_txs as u64 + 1;
+        let tx = make_tx(0x01, key, 10);
+        let id = make_id(0x01, key, 0);
+        let slot = make_slot(0x01, key);
+        let result = add_self_pay(&pool, id, tx, slot, &default_result);
+        assert!(matches!(result, Err(Eip8130PoolError::AccountCapacityExceeded(_))));
+    }
+
+    #[test]
+    fn payer_limit_freed_after_removal() {
         let c = cfg();
         let pool = TestPool::new();
 
         let mut hashes = Vec::new();
-        for key in 1..=c.default_max_txs_per_sender as u64 {
+        for key in 1..=c.default_max_payer_txs as u64 {
             let tx = make_tx(0x01, key, 10);
             hashes.push(*tx.hash());
             let id = make_id(0x01, key, 0);
             let slot = make_slot(0x01, key);
-            pool.add_transaction(
-                id,
-                tx,
-                TransactionOrigin::External,
-                slot,
-                SenderThroughputTier::Default,
-            )
-            .unwrap();
+            add_self_pay(&pool, id, tx, slot, &default_result).unwrap();
         }
 
         pool.remove_transaction(&hashes[0]);
 
-        let key = c.default_max_txs_per_sender as u64 + 1;
+        let key = c.default_max_payer_txs as u64 + 1;
         let tx = make_tx(0x01, key, 10);
         let id = make_id(0x01, key, 0);
         let slot = make_slot(0x01, key);
-        pool.add_transaction(
-            id,
-            tx,
-            TransactionOrigin::External,
-            slot,
-            SenderThroughputTier::Default,
-        )
-        .expect("should succeed after freeing a slot");
+        add_self_pay(&pool, id, tx, slot, &default_result)
+            .expect("should succeed after freeing a slot");
     }
 
     #[test]
-    fn per_sender_limit_independent_across_senders() {
+    fn payer_limit_independent_across_accounts() {
         let c = cfg();
         let pool = TestPool::new();
 
-        for key in 1..=c.default_max_txs_per_sender as u64 {
+        for key in 1..=c.default_max_payer_txs as u64 {
             let tx = make_tx(0x01, key, 10);
             let id = make_id(0x01, key, 0);
             let slot = make_slot(0x01, key);
-            pool.add_transaction(
-                id,
-                tx,
-                TransactionOrigin::External,
-                slot,
-                SenderThroughputTier::Default,
-            )
-            .unwrap();
+            add_self_pay(&pool, id, tx, slot, &default_result).unwrap();
         }
 
         let tx = make_tx(0x02, 1, 10);
         let id = make_id(0x02, 1, 0);
         let slot = make_slot(0x02, 1);
-        pool.add_transaction(
-            id,
-            tx,
-            TransactionOrigin::External,
-            slot,
-            SenderThroughputTier::Default,
-        )
-        .expect("different sender should not be affected");
+        add_self_pay(&pool, id, tx, slot, &default_result)
+            .expect("different account should not be affected");
     }
 
     // ------------------------------------------------------------------ //
-    //  Throughput tiers
+    //  Per-account sender limit (sponsored)
     // ------------------------------------------------------------------ //
 
     #[test]
-    fn locked_tier_allows_more_than_default() {
+    fn sender_limit_blocks_excess_sponsored() {
         let c = cfg();
         let pool = TestPool::new();
 
-        for key in 1..=c.default_max_txs_per_sender as u64 {
+        for key in 1..=c.default_max_sender_txs as u64 {
+            let payer = Address::repeat_byte(key as u8 + 0x80);
             let tx = make_tx(0x01, key, 10);
             let id = make_id(0x01, key, 0);
             let slot = make_slot(0x01, key);
-            pool.add_transaction(
-                id,
-                tx,
-                TransactionOrigin::External,
-                slot,
-                SenderThroughputTier::Locked,
-            )
-            .unwrap();
+            add_sponsored(&pool, id, tx, payer, slot, &default_result).unwrap();
         }
 
-        let key = c.default_max_txs_per_sender as u64 + 1;
+        let key = c.default_max_sender_txs as u64 + 1;
+        let payer = Address::repeat_byte(key as u8 + 0x80);
         let tx = make_tx(0x01, key, 10);
         let id = make_id(0x01, key, 0);
         let slot = make_slot(0x01, key);
-        pool.add_transaction(
-            id,
-            tx,
-            TransactionOrigin::External,
-            slot,
-            SenderThroughputTier::Locked,
-        )
-        .expect("locked sender should accept more than the default limit");
+        let result = add_sponsored(&pool, id, tx, payer, slot, &default_result);
+        assert!(
+            matches!(result, Err(Eip8130PoolError::AccountCapacityExceeded(addr)) if addr == Address::repeat_byte(0x01)),
+            "sender should be rejected"
+        );
     }
 
+    // ------------------------------------------------------------------ //
+    //  Payer limit for a shared payer across senders
+    // ------------------------------------------------------------------ //
+
     #[test]
-    fn tier_promotes_to_highest_seen() {
+    fn shared_payer_limit_blocks_excess() {
+        let c = cfg();
+        let pool = TestPool::new();
+        let payer = Address::repeat_byte(0xBB);
+
+        for key in 1..=c.default_max_payer_txs as u64 {
+            let sender_byte = key as u8;
+            let tx = make_tx(sender_byte, 1, 10);
+            let id = make_id(sender_byte, 1, 0);
+            let slot = make_slot(sender_byte, 1);
+            add_sponsored(&pool, id, tx, payer, slot, &default_result).unwrap();
+        }
+
+        let over = c.default_max_payer_txs as u8 + 1;
+        let tx = make_tx(over, 1, 10);
+        let id = make_id(over, 1, 0);
+        let slot = make_slot(over, 1);
+        let result = add_sponsored(&pool, id, tx, payer, slot, &default_result);
+        assert!(
+            matches!(result, Err(Eip8130PoolError::AccountCapacityExceeded(addr)) if addr == payer),
+            "payer at limit should block new txs"
+        );
+    }
+
+    // ------------------------------------------------------------------ //
+    //  3-tier throughput
+    // ------------------------------------------------------------------ //
+
+    #[test]
+    fn trusted_tier_allows_more_self_pay() {
         let c = cfg();
         let pool = TestPool::new();
 
-        let tx1 = make_tx(0x01, 1, 10);
-        let id1 = make_id(0x01, 1, 0);
-        let slot1 = make_slot(0x01, 1);
-        pool.add_transaction(
-            id1,
-            tx1,
-            TransactionOrigin::External,
-            slot1,
-            SenderThroughputTier::Default,
-        )
-        .unwrap();
-
-        for key in 2..=c.default_max_txs_per_sender as u64 + 1 {
+        for key in 1..=c.default_max_payer_txs as u64 {
             let tx = make_tx(0x01, key, 10);
             let id = make_id(0x01, key, 0);
             let slot = make_slot(0x01, key);
-            pool.add_transaction(
-                id,
-                tx,
-                TransactionOrigin::External,
-                slot,
-                SenderThroughputTier::Locked,
-            )
-            .unwrap();
+            add_self_pay(&pool, id, tx, slot, &trusted_result).unwrap();
         }
 
+        let key = c.default_max_payer_txs as u64 + 1;
+        let tx = make_tx(0x01, key, 10);
+        let id = make_id(0x01, key, 0);
+        let slot = make_slot(0x01, key);
+        add_self_pay(&pool, id, tx, slot, &trusted_result)
+            .expect("trusted account should accept more than the default payer limit");
+    }
+
+    #[test]
+    fn locked_tier_increases_sender_limit_only() {
+        let c = cfg();
+        let pool = TestPool::new();
+
+        for key in 1..=c.default_max_sender_txs as u64 {
+            let payer = Address::repeat_byte(key as u8 + 0x80);
+            let tx = make_tx(0x01, key, 10);
+            let id = make_id(0x01, key, 0);
+            let slot = make_slot(0x01, key);
+            add_sponsored(&pool, id, tx, payer, slot, &locked_result).unwrap();
+        }
+
+        let key = c.default_max_sender_txs as u64 + 1;
+        let payer = Address::repeat_byte(key as u8 + 0x80);
+        let tx = make_tx(0x01, key, 10);
+        let id = make_id(0x01, key, 0);
+        let slot = make_slot(0x01, key);
+        add_sponsored(&pool, id, tx, payer, slot, &locked_result)
+            .expect("locked sender should accept more sponsored txs than default");
+    }
+
+    #[test]
+    fn locked_tier_does_not_increase_payer_limit() {
+        let c = cfg();
+        let pool = TestPool::new();
+
+        for key in 1..=c.default_max_payer_txs as u64 {
+            let tx = make_tx(0x01, key, 10);
+            let id = make_id(0x01, key, 0);
+            let slot = make_slot(0x01, key);
+            add_self_pay(&pool, id, tx, slot, &locked_result).unwrap();
+        }
+
+        let key = c.default_max_payer_txs as u64 + 1;
+        let tx = make_tx(0x01, key, 10);
+        let id = make_id(0x01, key, 0);
+        let slot = make_slot(0x01, key);
+        let result = add_self_pay(&pool, id, tx, slot, &locked_result);
         assert!(
-            pool.len() > c.default_max_txs_per_sender,
-            "tier promotion should allow exceeding default limit"
+            matches!(result, Err(Eip8130PoolError::AccountCapacityExceeded(_))),
+            "Locked tier should not increase payer limit"
         );
+    }
+
+    #[test]
+    fn trusted_tier_allows_more_for_payer() {
+        let c = cfg();
+        let pool = TestPool::new();
+        let payer = Address::repeat_byte(0xBB);
+
+        for key in 1..=c.default_max_payer_txs as u64 {
+            let sender_byte = key as u8;
+            let tx = make_tx(sender_byte, 1, 10);
+            let id = make_id(sender_byte, 1, 0);
+            let slot = make_slot(sender_byte, 1);
+            add_sponsored(&pool, id, tx, payer, slot, &trusted_result).unwrap();
+        }
+
+        let over = c.default_max_payer_txs as u8 + 1;
+        let tx = make_tx(over, 1, 10);
+        let id = make_id(over, 1, 0);
+        let slot = make_slot(over, 1);
+        add_sponsored(&pool, id, tx, payer, slot, &trusted_result)
+            .expect("trusted payer should accept more than the default limit");
     }
 
     #[test]
     fn tier_defaults_ordered() {
         let c = cfg();
-        assert!(c.default_max_txs_per_sender < c.locked_max_txs_per_sender);
-        assert!(c.locked_max_txs_per_sender < c.locked_trusted_payer_max_txs_per_sender);
+        assert!(c.default_max_sender_txs < c.locked_max_sender_txs);
+        assert!(c.locked_max_sender_txs <= c.trusted_max_sender_txs);
+        assert!(c.default_max_payer_txs < c.trusted_max_payer_txs);
     }
 
     #[test]
@@ -1133,80 +1306,88 @@ mod tests {
             let tx = make_tx(sender, i as u64, 10);
             let id = make_id(sender, key, 0);
             let slot = make_slot(sender, key);
-            pool.add_transaction(
-                id,
-                tx,
-                TransactionOrigin::External,
-                slot,
-                SenderThroughputTier::Default,
-            )
-            .unwrap();
+            add_self_pay(&pool, id, tx, slot, &trusted_result).unwrap();
         }
 
         assert_eq!(pool.len(), c.max_pool_size);
         let tx = make_tx(0xFF, 9999, 10);
         let id = make_id(0xFF, 9999, 0);
         let slot = make_slot(0xFF, 9999);
-        let result = pool.add_transaction(
-            id,
-            tx,
-            TransactionOrigin::External,
-            slot,
-            SenderThroughputTier::Default,
-        );
+        let result = add_self_pay(&pool, id, tx, slot, &trusted_result);
         assert!(matches!(result, Err(Eip8130PoolError::PoolFull)));
     }
 
     #[test]
     fn tier_cache_expires() {
         let config = Eip8130PoolConfig {
+            default_max_payer_txs: 2,
+            trusted_max_payer_txs: 10,
             tier_cache_ttl: Duration::from_millis(50),
             ..Eip8130PoolConfig::default()
         };
-        let pool = Eip8130Pool::<BasePooledTransaction>::with_config(config.clone());
+        let pool = Eip8130Pool::<BasePooledTransaction>::with_config(config);
 
-        let tx = make_tx(0x01, 1, 10);
-        let id = make_id(0x01, 1, 0);
-        let slot = make_slot(0x01, 1);
-        pool.add_transaction(
-            id,
-            tx,
-            TransactionOrigin::External,
-            slot,
-            SenderThroughputTier::Locked,
-        )
-        .unwrap();
+        for key in 1..=3u64 {
+            let tx = make_tx(0x01, key, 10);
+            let id = make_id(0x01, key, 0);
+            let slot = make_slot(0x01, key);
+            add_self_pay(&pool, id, tx, slot, &trusted_result).unwrap();
+        }
 
         {
             let inner = pool.inner.read();
             assert_eq!(
-                inner.sender_tiers.get(&Address::repeat_byte(0x01)).unwrap().tier,
-                SenderThroughputTier::Locked,
+                inner.account_tiers.get(&Address::repeat_byte(0x01)).unwrap().tier,
+                ThroughputTier::LockedTrustedBytecode,
             );
         }
 
         std::thread::sleep(Duration::from_millis(60));
 
-        let tx2 = make_tx(0x01, 2, 10);
-        let id2 = make_id(0x01, 2, 0);
-        let slot2 = make_slot(0x01, 2);
-        pool.add_transaction(
-            id2,
-            tx2,
-            TransactionOrigin::External,
-            slot2,
-            SenderThroughputTier::Default,
-        )
-        .unwrap();
+        let tx = make_tx(0x01, 4, 10);
+        let id = make_id(0x01, 4, 0);
+        let slot = make_slot(0x01, 4);
+        let result = add_self_pay(&pool, id, tx, slot, &default_result);
+        assert!(
+            matches!(result, Err(Eip8130PoolError::AccountCapacityExceeded(_))),
+            "after TTL expiry, default tier check should reject at the default limit"
+        );
+    }
 
-        {
-            let inner = pool.inner.read();
-            assert_eq!(
-                inner.sender_tiers.get(&Address::repeat_byte(0x01)).unwrap().tier,
-                SenderThroughputTier::Default,
-                "after TTL expiry, the lower tier from the new tx should take effect"
-            );
+    #[test]
+    fn tier_cache_uses_min_of_cache_for_and_config_ttl() {
+        let config = Eip8130PoolConfig {
+            default_max_payer_txs: 2,
+            trusted_max_payer_txs: 10,
+            tier_cache_ttl: Duration::from_secs(600),
+            ..Eip8130PoolConfig::default()
+        };
+        let pool = Eip8130Pool::<BasePooledTransaction>::with_config(config);
+
+        let short_ttl = |_: Address| -> TierCheckResult {
+            TierCheckResult {
+                tier: ThroughputTier::LockedTrustedBytecode,
+                cache_for: Some(Duration::from_millis(40)),
+            }
+        };
+
+        for key in 1..=3u64 {
+            let tx = make_tx(0x01, key, 10);
+            let id = make_id(0x01, key, 0);
+            let slot = make_slot(0x01, key);
+            add_self_pay(&pool, id, tx, slot, &short_ttl).unwrap();
         }
+
+        std::thread::sleep(Duration::from_millis(60));
+
+        let tx = make_tx(0x01, 4, 10);
+        let id = make_id(0x01, 4, 0);
+        let slot = make_slot(0x01, 4);
+        let result = add_self_pay(&pool, id, tx, slot, &default_result);
+        assert!(
+            matches!(result, Err(Eip8130PoolError::AccountCapacityExceeded(_))),
+            "cache_for should override longer config TTL"
+        );
     }
 
     // ------------------------------------------------------------------ //
@@ -1221,14 +1402,7 @@ mod tests {
         let id = make_id(0x01, 1, 0);
         let slot = make_slot(0x01, 1);
 
-        pool.add_transaction(
-            id,
-            tx,
-            TransactionOrigin::External,
-            slot,
-            SenderThroughputTier::Default,
-        )
-        .unwrap();
+        add_self_pay(&pool, id, tx, slot, &default_result).unwrap();
         assert_eq!(pool.len(), 1);
 
         let removed_id = pool.remove_transaction(&hash);
@@ -1256,20 +1430,51 @@ mod tests {
             let tx = make_tx(0x01, seq, 10);
             hashes.push(*tx.hash());
             let id = make_id(0x01, 1, seq);
-            pool.add_transaction(
-                id,
-                tx,
-                TransactionOrigin::External,
-                slot,
-                SenderThroughputTier::Default,
-            )
-            .unwrap();
+            add_self_pay(&pool, id, tx, slot, &default_result).unwrap();
         }
 
         let removed = pool.remove_transactions(&hashes[..2]);
         assert_eq!(removed.len(), 2);
         assert_eq!(pool.len(), 1);
         assert!(pool.contains(&hashes[2]));
+    }
+
+    #[test]
+    fn remove_sponsored_tx_decrements_correct_counters() {
+        let pool = TestPool::new();
+        let sender = Address::repeat_byte(0x01);
+        let payer = Address::repeat_byte(0xBB);
+
+        let tx = make_tx(0x01, 0, 10);
+        let hash = *tx.hash();
+        let id = make_id(0x01, 1, 0);
+        let slot = make_slot(0x01, 1);
+        add_sponsored(&pool, id, tx, payer, slot, &default_result).unwrap();
+
+        assert_eq!(pool.sender_tx_count(&sender), 1);
+        assert_eq!(pool.payer_tx_count(&payer), 1);
+
+        pool.remove_transaction(&hash);
+
+        assert_eq!(pool.sender_tx_count(&sender), 0);
+        assert_eq!(pool.payer_tx_count(&payer), 0);
+    }
+
+    #[test]
+    fn remove_self_pay_tx_decrements_payer_only() {
+        let pool = TestPool::new();
+        let sender = Address::repeat_byte(0x01);
+
+        let tx = make_tx(0x01, 0, 10);
+        let hash = *tx.hash();
+        let id = make_id(0x01, 1, 0);
+        let slot = make_slot(0x01, 1);
+        add_self_pay(&pool, id, tx, slot, &default_result).unwrap();
+
+        pool.remove_transaction(&hash);
+
+        assert_eq!(pool.sender_tx_count(&sender), 0);
+        assert_eq!(pool.payer_tx_count(&sender), 0);
     }
 
     // ------------------------------------------------------------------ //
@@ -1284,14 +1489,7 @@ mod tests {
         for seq in 0..5u64 {
             let tx = make_tx(0x01, seq, 10);
             let id = make_id(0x01, 1, seq);
-            pool.add_transaction(
-                id,
-                tx,
-                TransactionOrigin::External,
-                slot,
-                SenderThroughputTier::Default,
-            )
-            .unwrap();
+            add_self_pay(&pool, id, tx, slot, &default_result).unwrap();
         }
         assert_eq!(pool.len(), 5);
 
@@ -1309,14 +1507,7 @@ mod tests {
 
         let tx = make_tx(0x01, 0, 10);
         let id = make_id(0x01, 1, 0);
-        pool.add_transaction(
-            id,
-            tx,
-            TransactionOrigin::External,
-            slot,
-            SenderThroughputTier::Default,
-        )
-        .unwrap();
+        add_self_pay(&pool, id, tx, slot, &default_result).unwrap();
 
         let seq_id =
             Eip8130SequenceId { sender: Address::repeat_byte(0x01), nonce_key: U256::from(1) };
@@ -1340,14 +1531,7 @@ mod tests {
         for seq in [0, 1, 3, 4] {
             let tx = make_tx(0x01, seq, 10);
             let id = make_id(0x01, 1, seq);
-            pool.add_transaction(
-                id,
-                tx,
-                TransactionOrigin::External,
-                slot,
-                SenderThroughputTier::Default,
-            )
-            .unwrap();
+            add_self_pay(&pool, id, tx, slot, &default_result).unwrap();
         }
 
         let (pending, queued) = pool.pending_and_queued_count();
@@ -1366,26 +1550,12 @@ mod tests {
         let tx_low = make_tx(0x01, 0, 5);
         let id_low = make_id(0x01, 1, 0);
         let slot1 = make_slot(0x01, 1);
-        pool.add_transaction(
-            id_low,
-            tx_low,
-            TransactionOrigin::External,
-            slot1,
-            SenderThroughputTier::Default,
-        )
-        .unwrap();
+        add_self_pay(&pool, id_low, tx_low, slot1, &default_result).unwrap();
 
         let tx_high = make_tx(0x02, 0, 50);
         let id_high = make_id(0x02, 2, 0);
         let slot2 = make_slot(0x02, 2);
-        pool.add_transaction(
-            id_high,
-            tx_high,
-            TransactionOrigin::External,
-            slot2,
-            SenderThroughputTier::Default,
-        )
-        .unwrap();
+        add_self_pay(&pool, id_high, tx_high, slot2, &default_result).unwrap();
 
         let mut best = pool.best_transactions();
         let first = best.next().unwrap();
@@ -1404,14 +1574,7 @@ mod tests {
 
         let tx = make_tx(0x01, 2, 10);
         let id = make_id(0x01, 1, 2);
-        pool.add_transaction(
-            id,
-            tx,
-            TransactionOrigin::External,
-            slot,
-            SenderThroughputTier::Default,
-        )
-        .unwrap();
+        add_self_pay(&pool, id, tx, slot, &default_result).unwrap();
 
         let mut best = pool.best_transactions();
         assert!(best.next().is_none(), "nonce 2 has a gap from next_nonce=0");
@@ -1424,37 +1587,16 @@ mod tests {
         let tx1 = make_tx(0x01, 0, 50);
         let id1 = make_id(0x01, 1, 0);
         let slot1 = make_slot(0x01, 1);
-        pool.add_transaction(
-            id1,
-            tx1,
-            TransactionOrigin::External,
-            slot1,
-            SenderThroughputTier::Default,
-        )
-        .unwrap();
+        add_self_pay(&pool, id1, tx1, slot1, &default_result).unwrap();
 
         let tx2 = make_tx(0x01, 1, 40);
         let id2 = make_id(0x01, 1, 1);
-        pool.add_transaction(
-            id2,
-            tx2,
-            TransactionOrigin::External,
-            slot1,
-            SenderThroughputTier::Default,
-        )
-        .unwrap();
+        add_self_pay(&pool, id2, tx2, slot1, &default_result).unwrap();
 
         let tx3 = make_tx(0x02, 0, 30);
         let id3 = make_id(0x02, 2, 0);
         let slot2 = make_slot(0x02, 2);
-        pool.add_transaction(
-            id3,
-            tx3,
-            TransactionOrigin::External,
-            slot2,
-            SenderThroughputTier::Default,
-        )
-        .unwrap();
+        add_self_pay(&pool, id3, tx3, slot2, &default_result).unwrap();
 
         let mut best = pool.best_transactions();
         let first = best.next().unwrap();
@@ -1487,14 +1629,7 @@ mod tests {
         let tx = make_tx(0x01, 0, 10);
         let id = make_id(0x01, 1, 0);
 
-        pool.add_transaction(
-            id,
-            tx,
-            TransactionOrigin::External,
-            slot,
-            SenderThroughputTier::Default,
-        )
-        .unwrap();
+        add_self_pay(&pool, id, tx, slot, &default_result).unwrap();
 
         let seq_id = pool.seq_id_for_slot(&slot).unwrap();
         assert_eq!(seq_id.sender, Address::repeat_byte(0x01));
@@ -1502,38 +1637,24 @@ mod tests {
     }
 
     // ------------------------------------------------------------------ //
-    //  sender queries
+    //  Counter queries across lanes
     // ------------------------------------------------------------------ //
 
     #[test]
-    fn sender_tx_count_across_lanes() {
+    fn payer_count_across_lanes() {
         let pool = TestPool::new();
 
         let tx1 = make_tx(0x01, 0, 10);
         let id1 = make_id(0x01, 1, 0);
         let slot1 = make_slot(0x01, 1);
-        pool.add_transaction(
-            id1,
-            tx1,
-            TransactionOrigin::External,
-            slot1,
-            SenderThroughputTier::Default,
-        )
-        .unwrap();
+        add_self_pay(&pool, id1, tx1, slot1, &default_result).unwrap();
 
         let tx2 = make_tx(0x01, 1, 10);
         let id2 = make_id(0x01, 2, 0);
         let slot2 = make_slot(0x01, 2);
-        pool.add_transaction(
-            id2,
-            tx2,
-            TransactionOrigin::External,
-            slot2,
-            SenderThroughputTier::Default,
-        )
-        .unwrap();
+        add_self_pay(&pool, id2, tx2, slot2, &default_result).unwrap();
 
-        assert_eq!(pool.sender_tx_count(&Address::repeat_byte(0x01)), 2);
-        assert_eq!(pool.sender_tx_count(&Address::repeat_byte(0x02)), 0);
+        assert_eq!(pool.payer_tx_count(&Address::repeat_byte(0x01)), 2);
+        assert_eq!(pool.payer_tx_count(&Address::repeat_byte(0x02)), 0);
     }
 }

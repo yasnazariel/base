@@ -16,11 +16,11 @@ use revm::context::TxEnv;
 use crate::{
     ACCOUNT_CONFIG_ADDRESS, AccountChangeEntry, CUSTOM_VERIFIER_GAS_CAP, K1_VERIFIER_ADDRESS,
     NONCE_KEY_MAX, OP_AUTHORIZE_OWNER, OP_REVOKE_OWNER, OpTxEnvelope, OwnerScope, TxDeposit,
-    TxEip8130, VerifierGasCosts, account_change_units, auto_delegation_code,
-    config_change_digest, config_change_sequence, config_change_writes,
-    delegate_inner_verifier, derive_account_address, encode_verify_call,
-    intrinsic_gas_with_costs, is_native_verifier, owner_registration_writes, payer_auth_cost,
-    payer_signature_hash, payer_verification_gas, sender_signature_hash, total_verification_gas,
+    TxEip8130, VerifierGasCosts, account_change_units, auto_delegation_code, config_change_digest,
+    config_change_sequence, config_change_writes, delegate_inner_verifier, derive_account_address,
+    encode_verify_call, intrinsic_gas_with_costs, is_native_verifier, owner_registration_writes,
+    payer_auth_cost, payer_signature_hash, payer_verification_gas, sender_signature_hash,
+    total_verification_gas,
 };
 #[cfg(feature = "native-verifier")]
 use crate::{NativeVerifyResult, ParsedSenderAuth, parse_sender_auth, try_native_verify};
@@ -373,11 +373,8 @@ pub fn build_eip8130_parts_with_costs(
 
     let authorizer_validations = build_authorizer_validations(tx, sender);
 
-    let nonce_free_hash = if tx.nonce_key == NONCE_KEY_MAX {
-        Some(sender_signature_hash(tx))
-    } else {
-        None
-    };
+    let nonce_free_hash =
+        if tx.nonce_key == NONCE_KEY_MAX { Some(sender_signature_hash(tx)) } else { None };
 
     let delegation_target = tx.account_changes.iter().find_map(|e| match e {
         AccountChangeEntry::Delegation(d) => Some(d.target),

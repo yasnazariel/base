@@ -356,13 +356,11 @@ impl OpReceiptBuilder {
 
         let eip8130_fields = tx_signed.as_eip8130().map(|tx| {
             let tx = tx.inner();
-            let phase_statuses = extract_phase_statuses_from_logs(
-                core_receipt.inner.logs(),
-                TX_CONTEXT_ADDRESS,
-            )
-            .or_else(|| {
-                infer_eip8130_phase_statuses(tx.calls.len(), core_receipt.inner.status())
-            });
+            let phase_statuses =
+                extract_phase_statuses_from_logs(core_receipt.inner.logs(), TX_CONTEXT_ADDRESS)
+                    .or_else(|| {
+                        infer_eip8130_phase_statuses(tx.calls.len(), core_receipt.inner.status())
+                    });
             Eip8130ReceiptFields { payer: tx.effective_payer(), phase_statuses }
         });
 

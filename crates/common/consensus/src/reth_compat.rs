@@ -23,8 +23,8 @@ use reth_codecs::{
 use reth_ethereum_primitives as _;
 
 use crate::{
-    AA_TX_TYPE_ID, BaseBlock, DEPOSIT_TX_TYPE_ID, OpDepositReceipt, OpPooledTransaction,
-    OpReceipt, OpTxEnvelope, OpTxType, OpTypedTransaction, TxDeposit, TxEip8130,
+    AA_TX_TYPE_ID, BaseBlock, DEPOSIT_TX_TYPE_ID, OpDepositReceipt, OpPooledTransaction, OpReceipt,
+    OpTxEnvelope, OpTxType, OpTypedTransaction, TxDeposit, TxEip8130,
 };
 
 // ---------------------------------------------------------------------------

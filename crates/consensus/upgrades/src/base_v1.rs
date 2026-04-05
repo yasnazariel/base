@@ -49,10 +49,8 @@ impl BaseV1 {
 
     /// Account Configuration deployment source hash.
     pub fn deploy_account_configuration_source() -> B256 {
-        UpgradeDepositSource {
-            intent: String::from("Base V1: Account Configuration Deployment"),
-        }
-        .source_hash()
+        UpgradeDepositSource { intent: String::from("Base V1: Account Configuration Deployment") }
+            .source_hash()
     }
 
     /// Delegate Verifier deployment source hash.
@@ -98,11 +96,9 @@ impl BaseV1 {
     }
 
     fn k1_verifier_bytecode() -> Bytes {
-        hex::decode(
-            include_str!("./bytecode/base-v1-k1-verifier-deployment.hex").replace('\n', ""),
-        )
-        .expect("valid hex")
-        .into()
+        hex::decode(include_str!("./bytecode/base-v1-k1-verifier-deployment.hex").replace('\n', ""))
+            .expect("valid hex")
+            .into()
     }
 
     fn p256_verifier_bytecode() -> Bytes {
@@ -286,10 +282,7 @@ mod tests {
     #[test]
     fn bytecodes_are_non_empty() {
         for (i, tx) in BaseV1::deposits().enumerate() {
-            assert!(
-                !tx.input.is_empty(),
-                "deposit {i} has empty bytecode"
-            );
+            assert!(!tx.input.is_empty(), "deposit {i} has empty bytecode");
         }
     }
 }

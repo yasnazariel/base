@@ -298,8 +298,8 @@ mod tx_serde {
         }
     }
 
-    impl<T: TransactionTrait + OpTransaction + OpEip8130Transaction> TryFrom<TransactionSerdeHelper<T>>
-        for Transaction<T>
+    impl<T: TransactionTrait + OpTransaction + OpEip8130Transaction>
+        TryFrom<TransactionSerdeHelper<T>> for Transaction<T>
     {
         type Error = serde_json::Error;
 

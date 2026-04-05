@@ -1,7 +1,7 @@
 use alloy_evm::Database;
 use alloy_primitives::{Address, Bytes};
-use base_alloy_consensus::{NONCE_MANAGER_ADDRESS, TX_CONTEXT_ADDRESS};
 use base_alloy_chains::BaseUpgrades;
+use base_alloy_consensus::{NONCE_MANAGER_ADDRESS, TX_CONTEXT_ADDRESS};
 use revm::{DatabaseCommit, primitives::HashMap, state::Bytecode};
 
 /// Precompile addresses that need stub bytecode to prevent EIP-161 cleanup.

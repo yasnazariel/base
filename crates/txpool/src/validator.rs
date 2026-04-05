@@ -13,7 +13,7 @@ use std::{
 };
 
 use alloy_consensus::{BlockHeader, Transaction};
-use alloy_primitives::B256;
+use alloy_primitives::{Address, B256};
 use base_alloy_chains::BaseUpgrades;
 use base_execution_evm::RethL1BlockInfo;
 use base_revm::L1BlockInfo;
@@ -78,10 +78,10 @@ pub struct OpTransactionValidator<Client, Tx, Evm> {
     /// These transactions bypass the standard Reth pool (which would collide
     /// on `(sender, nonce_sequence)`) and are stored here instead.
     eip8130_pool: SharedEip8130Pool<Tx>,
-    /// Set of keccak256 bytecode hashes considered "trusted" for payer
-    /// accounts. When the sender is locked and the payer's deployed bytecode
-    /// matches one of these hashes, the sender gets the highest throughput
-    /// tier in the 2D nonce pool.
+    /// Set of keccak256 bytecode hashes considered "trusted". When an account
+    /// (sender or payer) is locked and its deployed bytecode matches one of
+    /// these hashes, it qualifies for the elevated throughput tier in the 2D
+    /// nonce pool.
     trusted_payer_bytecodes: HashSet<B256>,
 }
 
@@ -121,11 +121,11 @@ impl<Client, Tx, Evm> OpTransactionValidator<Client, Tx, Evm> {
         Self { verifier_allowlist: Some(Arc::new(allowlist)), ..self }
     }
 
-    /// Sets the trusted payer bytecode hashes for elevated throughput tiers.
+    /// Sets the trusted bytecode hashes for elevated throughput tiers.
     ///
-    /// When a sender is locked and the payer's deployed bytecode hash matches
-    /// one of these, the sender qualifies for the highest throughput tier in
-    /// the 2D nonce pool.
+    /// When an account is locked and its deployed bytecode hash matches one
+    /// of these, it qualifies for the elevated throughput tier in the 2D
+    /// nonce pool.
     pub fn with_trusted_payer_bytecodes(self, hashes: HashSet<B256>) -> Self {
         Self { trusted_payer_bytecodes: hashes, ..self }
     }
@@ -269,22 +269,6 @@ where
                 &self.trusted_payer_bytecodes,
             ) {
                 Ok(outcome) => {
-                    if let Some(payer) = outcome.sponsored_payer {
-                        let count = self.invalidation_index.read().payer_pending_count(&payer);
-                        if count >= crate::DEFAULT_MAX_PAYER_PENDING {
-                            return TransactionValidationOutcome::Invalid(
-                                transaction,
-                                reth_transaction_pool::error::InvalidPoolTransactionError::other(
-                                    crate::Eip8130ValidationError::PayerPendingLimitExceeded {
-                                        payer,
-                                        count,
-                                        limit: crate::DEFAULT_MAX_PAYER_PENDING,
-                                    },
-                                ),
-                            );
-                        }
-                    }
-
                     if self.requires_l1_data_gas_fee() {
                         let mut l1_info = self.block_info.l1_block_info.read().clone();
                         let encoded = transaction.encoded_2718();
@@ -321,15 +305,35 @@ where
                     let nonce_key = outcome.nonce_key;
                     if is_2d_nonce(nonce_key) {
                         let sender = transaction.sender();
+                        let payer =
+                            outcome.sponsored_payer.unwrap_or(sender);
                         let nonce_storage_slot = nonce_slot(sender, nonce_key);
                         let id =
                             Eip8130TxId { sender, nonce_key, nonce_sequence: outcome.state_nonce };
+                        let client = self.client();
+                        let trusted = &self.trusted_payer_bytecodes;
+                        let block_ts = self.block_timestamp();
+                        let check_tier = |account: Address| -> crate::TierCheckResult {
+                            let state = match client.latest() {
+                                Ok(s) => s,
+                                Err(_) => {
+                                    return crate::TierCheckResult {
+                                        tier: crate::ThroughputTier::Default,
+                                        cache_for: None,
+                                    }
+                                }
+                            };
+                            crate::compute_account_tier(
+                                account, &*state, trusted, block_ts,
+                            )
+                        };
                         if let Err(err) = self.eip8130_pool.add_transaction(
                             id,
                             transaction.clone(),
+                            payer,
                             origin,
                             nonce_storage_slot,
-                            outcome.sender_throughput_tier,
+                            &check_tier,
                         ) {
                             tracing::debug!(
                                 target: "txpool",

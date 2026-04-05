@@ -9,14 +9,14 @@
 
 mod eip8130_invalidation;
 pub use eip8130_invalidation::{
-    DEFAULT_MAX_PAYER_PENDING, Eip8130InvalidationIndex, InvalidationKey,
-    compute_invalidation_keys, maintain_eip8130_invalidation, process_fal,
+    Eip8130InvalidationIndex, InvalidationKey, compute_invalidation_keys,
+    maintain_eip8130_invalidation, process_fal,
 };
 
 mod eip8130_pool;
 pub use eip8130_pool::{
     BestEip8130Transactions, Eip8130Pool, Eip8130PoolConfig, Eip8130PoolError, Eip8130SequenceId,
-    Eip8130TxId, SenderThroughputTier, SharedEip8130Pool, is_2d_nonce,
+    Eip8130TxId, SharedEip8130Pool, ThroughputTier, TierCheckResult, is_2d_nonce,
 };
 
 mod best;
@@ -25,7 +25,8 @@ pub use best::MergedBestTransactions;
 mod eip8130_validate;
 pub use eip8130_validate::{
     DEFAULT_CUSTOM_VERIFIER_GAS_LIMIT, Eip8130ValidationError, Eip8130ValidationOutcome,
-    MAX_AA_TX_ENCODED_BYTES, VerifierAllowlist, validate_eip8130_transaction,
+    MAX_AA_TX_ENCODED_BYTES, VerifierAllowlist, compute_account_tier,
+    validate_eip8130_transaction,
 };
 
 mod validator;

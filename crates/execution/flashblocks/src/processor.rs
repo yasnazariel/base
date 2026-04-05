@@ -466,10 +466,7 @@ where
 
                 pending_blocks_builder.with_transaction_sender(tx_hash, sender);
                 if let Some(aa_tx) = transaction.as_eip8130() {
-                    pending_blocks_builder.increment_aa_nonce(
-                        sender,
-                        U256::from(aa_tx.nonce_key),
-                    );
+                    pending_blocks_builder.increment_aa_nonce(sender, U256::from(aa_tx.nonce_key));
                 } else {
                     pending_blocks_builder.increment_nonce(sender);
                 }

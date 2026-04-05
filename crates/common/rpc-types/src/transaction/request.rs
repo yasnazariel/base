@@ -1,13 +1,14 @@
 use alloc::vec::Vec;
 
-use alloy_consensus::{Sealed, SignableTransaction, Signed, TxEip1559, TxEip4844, TypedTransaction};
+use alloy_consensus::{
+    Sealed, SignableTransaction, Signed, TxEip1559, TxEip4844, TypedTransaction,
+};
 use alloy_eips::eip7702::SignedAuthorization;
 use alloy_network_primitives::TransactionBuilder7702;
 use alloy_primitives::{Address, Bytes, ChainId, Signature, TxKind, U256};
 use alloy_rpc_types_eth::{AccessList, TransactionInput, TransactionRequest};
 use base_alloy_consensus::{
-    AA_TX_TYPE_ID, AccountChangeEntry, Call, OpTxEnvelope, OpTypedTransaction, TxDeposit,
-    TxEip8130,
+    AA_TX_TYPE_ID, AccountChangeEntry, Call, OpTxEnvelope, OpTypedTransaction, TxDeposit, TxEip8130,
 };
 use serde::{Deserialize, Serialize};
 
@@ -26,11 +27,7 @@ pub struct OpTransactionRequest {
     pub nonce_key: Option<U256>,
 
     /// Block timestamp after which this transaction is invalid. `0` = no expiry.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "alloy_serde::quantity::opt"
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "alloy_serde::quantity::opt")]
     pub expiry: Option<u64>,
 
     /// EIP-8130 payer address. `Address::ZERO` means self-pay.

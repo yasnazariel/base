@@ -187,12 +187,10 @@ impl Deployers {
         address!("4210000000000000000000000000000000000007");
 
     /// Base V1 K1 Verifier deployer address.
-    pub const BASE_V1_K1_VERIFIER: Address =
-        address!("4210000000000000000000000000000000000008");
+    pub const BASE_V1_K1_VERIFIER: Address = address!("4210000000000000000000000000000000000008");
 
     /// Base V1 P256 Verifier deployer address.
-    pub const BASE_V1_P256_VERIFIER: Address =
-        address!("4210000000000000000000000000000000000009");
+    pub const BASE_V1_P256_VERIFIER: Address = address!("4210000000000000000000000000000000000009");
 
     /// Base V1 WebAuthn Verifier deployer address.
     pub const BASE_V1_WEBAUTHN_VERIFIER: Address =

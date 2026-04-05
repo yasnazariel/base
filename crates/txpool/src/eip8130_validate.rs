@@ -8,7 +8,10 @@
 //! the verifier contract. This ensures no unverified transactions enter
 //! the mempool.
 
-use std::collections::HashSet;
+use std::{
+    collections::{HashMap, HashSet},
+    time::Duration,
+};
 
 use alloy_consensus::Transaction;
 use alloy_primitives::{Address, B256, Bytes, U256};
@@ -18,15 +21,15 @@ use base_alloy_consensus::{
     ACCOUNT_CONFIG_ADDRESS, AccountChangeEntry, CUSTOM_VERIFIER_GAS_CAP, DELEGATE_VERIFIER_ADDRESS,
     K1_VERIFIER_ADDRESS, MAX_CONFIG_OPS_PER_TX, NONCE_FREE_MAX_EXPIRY_WINDOW, NONCE_KEY_MAX,
     NONCE_MANAGER_ADDRESS, NativeVerifyResult, OwnerScope, P256_RAW_VERIFIER_ADDRESS,
-    P256_WEBAUTHN_VERIFIER_ADDRESS, ParsedSenderAuth, REVOKED_VERIFIER, TxEip8130,
-    ValidationError, config_change_digest, encode_verify_call, expiring_seen_slot,
-    implicit_eoa_owner_id, intrinsic_gas, is_native_verifier, lock_slot, nonce_slot,
-    owner_config_slot, parse_owner_config, parse_sender_auth, payer_signature_hash, read_sequence,
+    P256_WEBAUTHN_VERIFIER_ADDRESS, ParsedSenderAuth, REVOKED_VERIFIER, TxEip8130, ValidationError,
+    config_change_digest, encode_verify_call, expiring_seen_slot, implicit_eoa_owner_id,
+    intrinsic_gas, is_native_verifier, lock_slot, nonce_slot, owner_config_slot,
+    parse_owner_config, parse_sender_auth, payer_signature_hash, read_sequence,
     sender_signature_hash, sequence_base_slot, try_native_verify, validate_expiry,
     validate_structure,
 };
 
-use crate::{InvalidationKey, OpPooledTx, SenderThroughputTier, compute_invalidation_keys};
+use crate::{InvalidationKey, OpPooledTx, ThroughputTier, TierCheckResult, compute_invalidation_keys};
 
 /// Controls which verifier contracts the mempool will accept in AA transactions.
 ///
@@ -76,9 +79,6 @@ pub struct Eip8130ValidationOutcome {
     /// The resolved payer address. `None` for self-pay transactions.
     /// Used for payer pending count tracking.
     pub sponsored_payer: Option<Address>,
-    /// Throughput tier for the sender, derived from the sender's lock state
-    /// and the payer's bytecode trustworthiness.
-    pub sender_throughput_tier: SenderThroughputTier,
 }
 
 /// Errors from AA transaction validation.
@@ -175,15 +175,6 @@ pub enum Eip8130ValidationError {
     },
     /// Nonce-free transaction hash already recorded in the on-chain seen set.
     NonceFreeReplay,
-    /// Payer has too many pending sponsored transactions.
-    PayerPendingLimitExceeded {
-        /// The payer address.
-        payer: Address,
-        /// Current pending count.
-        count: usize,
-        /// Maximum allowed.
-        limit: usize,
-    },
     /// Error reading on-chain state.
     StateError(String),
 }
@@ -239,9 +230,6 @@ impl std::fmt::Display for Eip8130ValidationError {
             }
             Self::NonceFreeReplay => {
                 write!(f, "nonce-free transaction replay: hash already seen")
-            }
-            Self::PayerPendingLimitExceeded { payer, count, limit } => {
-                write!(f, "payer {payer} pending limit exceeded ({count}/{limit})")
             }
             Self::StateError(e) => write!(f, "state access error: {e}"),
         }
@@ -366,6 +354,7 @@ fn verify_custom_via_evm(
     required_scope: u8,
     role: OwnerRole,
     gas_limit: u64,
+    pending_owners: Option<&HashMap<B256, PendingOwnerState>>,
 ) -> Result<B256, Eip8130ValidationError> {
     use reth_revm::database::StateProviderDatabase;
     use revm::{
@@ -410,7 +399,19 @@ fn verify_custom_via_evm(
 
     let owner_id = B256::from_slice(&output[..32]);
 
-    check_owner_authorized(state, account, owner_id, verifier, required_scope, role)?;
+    if let Some(pending) = pending_owners {
+        check_owner_authorized_with_pending(
+            state,
+            account,
+            owner_id,
+            verifier,
+            required_scope,
+            pending,
+            role,
+        )?;
+    } else {
+        check_owner_authorized(state, account, owner_id, verifier, required_scope, role)?;
+    }
 
     Ok(owner_id)
 }
@@ -426,16 +427,29 @@ fn validate_sender_authorization(
     eoa_owner_id: B256,
     state: &dyn reth_storage_api::StateProvider,
     custom_verifier_gas_limit: u64,
+    pending_owners: Option<&HashMap<B256, PendingOwnerState>>,
 ) -> Result<B256, Eip8130ValidationError> {
     if tx.is_eoa() {
-        check_owner_authorized(
-            state,
-            sender,
-            eoa_owner_id,
-            K1_VERIFIER_ADDRESS,
-            OwnerScope::SENDER,
-            OwnerRole::Sender,
-        )?;
+        if let Some(pending) = pending_owners {
+            check_owner_authorized_with_pending(
+                state,
+                sender,
+                eoa_owner_id,
+                K1_VERIFIER_ADDRESS,
+                OwnerScope::SENDER,
+                pending,
+                OwnerRole::Sender,
+            )?;
+        } else {
+            check_owner_authorized(
+                state,
+                sender,
+                eoa_owner_id,
+                K1_VERIFIER_ADDRESS,
+                OwnerScope::SENDER,
+                OwnerRole::Sender,
+            )?;
+        }
         return Ok(eoa_owner_id);
     }
 
@@ -449,14 +463,26 @@ fn validate_sender_authorization(
             let result = try_native_verify(verifier, &data, sig_hash);
             match result {
                 NativeVerifyResult::Verified(owner_id) => {
-                    check_owner_authorized(
-                        state,
-                        sender,
-                        owner_id,
-                        verifier,
-                        OwnerScope::SENDER,
-                        OwnerRole::Sender,
-                    )?;
+                    if let Some(pending) = pending_owners {
+                        check_owner_authorized_with_pending(
+                            state,
+                            sender,
+                            owner_id,
+                            verifier,
+                            OwnerScope::SENDER,
+                            pending,
+                            OwnerRole::Sender,
+                        )?;
+                    } else {
+                        check_owner_authorized(
+                            state,
+                            sender,
+                            owner_id,
+                            verifier,
+                            OwnerScope::SENDER,
+                            OwnerRole::Sender,
+                        )?;
+                    }
                     Ok(owner_id)
                 }
                 NativeVerifyResult::Invalid(e) => {
@@ -471,6 +497,7 @@ fn validate_sender_authorization(
                     OwnerScope::SENDER,
                     OwnerRole::Sender,
                     custom_verifier_gas_limit,
+                    pending_owners,
                 ),
             }
         }
@@ -485,6 +512,7 @@ fn validate_payer(
     payer: Address,
     state: &dyn reth_storage_api::StateProvider,
     custom_verifier_gas_limit: u64,
+    pending_owners: Option<&HashMap<B256, PendingOwnerState>>,
 ) -> Result<B256, Eip8130ValidationError> {
     if tx.payer_auth.len() < 20 {
         return Err(Eip8130ValidationError::PayerAuthInvalid(
@@ -500,14 +528,26 @@ fn validate_payer(
     let result = try_native_verify(verifier, &data, sig_hash);
     match result {
         NativeVerifyResult::Verified(owner_id) => {
-            check_owner_authorized(
-                state,
-                payer,
-                owner_id,
-                verifier,
-                OwnerScope::PAYER,
-                OwnerRole::Payer,
-            )?;
+            if let Some(pending) = pending_owners {
+                check_owner_authorized_with_pending(
+                    state,
+                    payer,
+                    owner_id,
+                    verifier,
+                    OwnerScope::PAYER,
+                    pending,
+                    OwnerRole::Payer,
+                )?;
+            } else {
+                check_owner_authorized(
+                    state,
+                    payer,
+                    owner_id,
+                    verifier,
+                    OwnerScope::PAYER,
+                    OwnerRole::Payer,
+                )?;
+            }
             Ok(owner_id)
         }
         NativeVerifyResult::Invalid(e) => {
@@ -522,6 +562,7 @@ fn validate_payer(
             OwnerScope::PAYER,
             OwnerRole::Payer,
             custom_verifier_gas_limit,
+            pending_owners,
         ),
     }
 }
@@ -575,6 +616,13 @@ enum OwnerRole {
     Authorizer,
 }
 
+/// Effective in-transaction owner state produced by ordered config changes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PendingOwnerState {
+    Authorized { verifier: Address, scope: u8 },
+    Revoked,
+}
+
 impl OwnerRole {
     fn not_authorized(self, detail: String) -> Eip8130ValidationError {
         match self {
@@ -601,10 +649,8 @@ fn validate_authorizer_chain(
     state: &dyn reth_storage_api::StateProvider,
     verifier_allowlist: Option<&VerifierAllowlist>,
     custom_verifier_gas_limit: u64,
-) -> Result<(), Eip8130ValidationError> {
-    use std::collections::HashMap;
-
-    let mut pending_owners: HashMap<B256, (Address, u8)> = HashMap::new();
+) -> Result<HashMap<B256, PendingOwnerState>, Eip8130ValidationError> {
+    let mut pending_owners: HashMap<B256, PendingOwnerState> = HashMap::new();
 
     for entry in &tx.account_changes {
         let cc = match entry {
@@ -649,6 +695,7 @@ fn validate_authorizer_chain(
                     verifier,
                     OwnerScope::CONFIG,
                     &pending_owners,
+                    OwnerRole::Authorizer,
                 )?;
                 id
             }
@@ -664,22 +711,26 @@ fn validate_authorizer_chain(
                 OwnerScope::CONFIG,
                 OwnerRole::Authorizer,
                 custom_verifier_gas_limit,
+                Some(&pending_owners),
             )?,
         };
 
         // Track pending additions/revocations for chaining.
         for op in &cc.owner_changes {
             if op.change_type == 0x01 {
-                pending_owners.insert(op.owner_id, (op.verifier, op.scope));
+                pending_owners.insert(
+                    op.owner_id,
+                    PendingOwnerState::Authorized { verifier: op.verifier, scope: op.scope },
+                );
             } else if op.change_type == 0x02 {
-                pending_owners.remove(&op.owner_id);
+                pending_owners.insert(op.owner_id, PendingOwnerState::Revoked);
             }
         }
 
         let _ = owner_id; // used for scope check above
     }
 
-    Ok(())
+    Ok(pending_owners)
 }
 
 /// Like [`check_owner_authorized`] but also checks pending additions from
@@ -691,30 +742,32 @@ fn check_owner_authorized_with_pending(
     owner_id: B256,
     expected_verifier: Address,
     required_scope: u8,
-    pending_owners: &std::collections::HashMap<B256, (Address, u8)>,
+    pending_owners: &HashMap<B256, PendingOwnerState>,
+    role: OwnerRole,
 ) -> Result<(), Eip8130ValidationError> {
-    if let Some((verifier, scope)) = pending_owners.get(&owner_id) {
-        if *verifier != expected_verifier {
-            return Err(Eip8130ValidationError::AuthorizerNotAuthorized(format!(
-                "pending owner verifier mismatch: expected {expected_verifier}, got {verifier}"
-            )));
+    if let Some(state_override) = pending_owners.get(&owner_id) {
+        match state_override {
+            PendingOwnerState::Revoked => {
+                return Err(role
+                    .not_authorized("owner explicitly revoked in pending config changes".into()));
+            }
+            PendingOwnerState::Authorized { verifier, scope } => {
+                if *verifier != expected_verifier {
+                    return Err(role.not_authorized(format!(
+                        "pending owner verifier mismatch: expected {expected_verifier}, got {verifier}",
+                    )));
+                }
+                if *scope != 0 && (*scope & required_scope) == 0 {
+                    return Err(role.not_authorized(format!(
+                        "pending owner lacks required scope 0x{required_scope:02x}",
+                    )));
+                }
+                return Ok(());
+            }
         }
-        if *scope != 0 && (*scope & required_scope) == 0 {
-            return Err(Eip8130ValidationError::AuthorizerNotAuthorized(format!(
-                "pending owner lacks required scope 0x{required_scope:02x}"
-            )));
-        }
-        return Ok(());
     }
 
-    check_owner_authorized(
-        state,
-        account,
-        owner_id,
-        expected_verifier,
-        required_scope,
-        OwnerRole::Authorizer,
-    )
+    check_owner_authorized(state, account, owner_id, expected_verifier, required_scope, role)
 }
 
 /// Full AA transaction validation pipeline for the mempool.
@@ -729,7 +782,7 @@ pub fn validate_eip8130_transaction<Tx, Client>(
     client: &Client,
     verifier_allowlist: Option<&VerifierAllowlist>,
     custom_verifier_gas_limit: u64,
-    trusted_payer_bytecodes: &HashSet<B256>,
+    _trusted_payer_bytecodes: &HashSet<B256>,
 ) -> Result<Eip8130ValidationOutcome, Eip8130ValidationError>
 where
     Tx: OpPooledTx + Transaction,
@@ -773,7 +826,10 @@ where
                 return Err(Eip8130ValidationError::VerifierNotAllowed(addr));
             }
         }
-        if tx.payer != Address::ZERO && tx.payer != tx.effective_sender() && tx.payer_auth.len() >= 20 {
+        if tx.payer != Address::ZERO
+            && tx.payer != tx.effective_sender()
+            && tx.payer_auth.len() >= 20
+        {
             let addr = Address::from_slice(&tx.payer_auth[..20]);
             if !allowlist.is_allowed(&addr) {
                 return Err(Eip8130ValidationError::VerifierNotAllowed(addr));
@@ -826,8 +882,7 @@ where
         // Pre-check the on-chain expiring-nonce seen set for replay
         let sig_hash = sender_signature_hash(&tx);
         let seen_slot = expiring_seen_slot(sig_hash);
-        let seen_expiry =
-            read_storage(&*state, NONCE_MANAGER_ADDRESS, seen_slot)?.to::<u64>();
+        let seen_expiry = read_storage(&*state, NONCE_MANAGER_ADDRESS, seen_slot)?.to::<u64>();
         if seen_expiry != 0 && seen_expiry > block_timestamp {
             return Err(Eip8130ValidationError::NonceFreeReplay);
         }
@@ -907,15 +962,17 @@ where
     }
 
     // 7b. Authorizer chain validation for config changes.
-    if has_config_changes {
+    let pending_owner_overrides = if has_config_changes {
         validate_authorizer_chain(
             &tx,
             sender,
             &*state,
             verifier_allowlist,
             custom_verifier_gas_limit,
-        )?;
-    }
+        )?
+    } else {
+        HashMap::new()
+    };
 
     // 8. Compute intrinsic gas for the balance check. `gas_limit` is the
     //    sender's execution-only budget, so we don't compare it against
@@ -930,12 +987,13 @@ where
         eoa_owner_id,
         &*state,
         custom_verifier_gas_limit,
+        Some(&pending_owner_overrides),
     )?;
 
     // 10. Payer resolution and authorization
     let payer = if tx.is_self_pay() { sender } else { tx.payer };
     let payer_owner_id = if payer != sender {
-        Some(validate_payer(&tx, payer, &*state, custom_verifier_gas_limit)?)
+        Some(validate_payer(&tx, payer, &*state, custom_verifier_gas_limit, None)?)
     } else {
         None
     };
@@ -979,12 +1037,6 @@ where
 
     let sponsored_payer = if payer != sender { Some(payer) } else { None };
 
-    // 13. Determine sender throughput tier for the 2D nonce pool.
-    //     Read the lock state only when we haven't already (step 6 reads it
-    //     only when there are config changes).
-    let sender_throughput_tier =
-        compute_sender_throughput_tier(sender, payer, &*state, trusted_payer_bytecodes);
-
     Ok(Eip8130ValidationOutcome {
         balance,
         state_nonce: tx.nonce_sequence,
@@ -992,61 +1044,68 @@ where
         sender_owner_id,
         invalidation_keys,
         sponsored_payer,
-        sender_throughput_tier,
     })
 }
 
-/// Determines the [`SenderThroughputTier`] by reading the sender's lock state
-/// and, when the sender is locked, checking whether the payer has trusted
-/// bytecode.
+/// Determines the [`ThroughputTier`] for a single account by checking its
+/// lock state and bytecode against the trusted set.
 ///
-/// Returns [`SenderThroughputTier::Default`] on any state-read error so that
-/// failures degrade gracefully to the standard limit.
-fn compute_sender_throughput_tier(
-    sender: Address,
-    payer: Address,
+/// Called lazily by the pool only when `account` is about to exceed the
+/// default cap. Returns [`ThroughputTier::Default`] on any state-read error
+/// so that failures degrade gracefully to the standard limit.
+///
+/// The returned [`TierCheckResult::cache_for`] is derived from the on-chain
+/// unlock deadline so that the cache entry expires no later than the moment
+/// the account becomes unlockable.
+pub fn compute_account_tier(
+    account: Address,
     state: &dyn reth_storage_api::StateProvider,
-    trusted_payer_bytecodes: &HashSet<B256>,
-) -> SenderThroughputTier {
-    let lock_slot_key = lock_slot(sender);
+    trusted_bytecodes: &HashSet<B256>,
+    block_timestamp: u64,
+) -> TierCheckResult {
+    let default_result =
+        TierCheckResult { tier: ThroughputTier::Default, cache_for: None };
+
+    let lock_slot_key = lock_slot(account);
     let lock_value = match read_storage(state, ACCOUNT_CONFIG_ADDRESS, lock_slot_key) {
         Ok(v) => v,
-        Err(_) => return SenderThroughputTier::Default,
+        Err(_) => return default_result,
     };
 
     let lock_bytes = lock_value.to_be_bytes::<32>();
     let mut ua = [0u8; 8];
     ua[3..8].copy_from_slice(&lock_bytes[11..16]);
     let unlocks_at = u64::from_be_bytes(ua);
-    // We don't have the exact block timestamp here, so use the current
-    // `unlocksAt != 0` as a heuristic. A zero value means no lock was
-    // ever set; any non-zero value means the account was locked (or is
-    // in the process of unlocking). This over-classifies slightly for
-    // accounts that have fully unlocked but haven't cleared storage yet,
-    // which is safe — it only upgrades the throughput tier.
+    // `unlocksAt != 0` is a heuristic: any non-zero value means the account
+    // was locked (or is in the process of unlocking). This over-classifies
+    // slightly for accounts that have fully unlocked but haven't cleared
+    // storage yet, which is safe — it only upgrades the throughput tier.
     if unlocks_at == 0 {
-        return SenderThroughputTier::Default;
+        return default_result;
     }
 
-    if trusted_payer_bytecodes.is_empty() {
-        return SenderThroughputTier::Locked;
+    let cache_for =
+        Some(Duration::from_secs(unlocks_at.saturating_sub(block_timestamp)));
+
+    if trusted_bytecodes.is_empty() {
+        return TierCheckResult { tier: ThroughputTier::Locked, cache_for };
     }
 
-    // For the highest tier, check the payer's bytecode hash against the
-    // trusted set. In the self-pay case the payer IS the sender.
-    let payer_code_hash = match state.account_code(&payer) {
+    let code_hash = match state.account_code(&account) {
         Ok(Some(code)) => {
             use alloy_primitives::keccak256;
             keccak256(code.original_bytes())
         }
-        _ => return SenderThroughputTier::Locked,
+        _ => return TierCheckResult { tier: ThroughputTier::Locked, cache_for },
     };
 
-    if trusted_payer_bytecodes.contains(&payer_code_hash) {
-        SenderThroughputTier::LockedTrustedPayer
+    let tier = if trusted_bytecodes.contains(&code_hash) {
+        ThroughputTier::LockedTrustedBytecode
     } else {
-        SenderThroughputTier::Locked
-    }
+        ThroughputTier::Locked
+    };
+
+    TierCheckResult { tier, cache_for }
 }
 
 #[cfg(test)]

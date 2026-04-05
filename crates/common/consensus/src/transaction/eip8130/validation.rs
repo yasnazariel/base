@@ -420,8 +420,8 @@ pub fn decode_verify_return(output: &[u8]) -> Option<B256> {
 mod tests {
     use alloy_primitives::Address;
 
-    use super::*;
     use super::super::constants::NONCE_KEY_MAX;
+    use super::*;
     use alloy_primitives::address;
 
     #[test]
@@ -676,10 +676,7 @@ mod tests {
             expiry: 0,
             ..Default::default()
         };
-        assert!(matches!(
-            validate_structure(&tx),
-            Err(ValidationError::NonceFreeRequiresExpiry)
-        ));
+        assert!(matches!(validate_structure(&tx), Err(ValidationError::NonceFreeRequiresExpiry)));
     }
 
     #[test]

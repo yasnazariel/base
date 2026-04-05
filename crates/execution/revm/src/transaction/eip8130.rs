@@ -188,7 +188,7 @@ pub struct Eip8130Parts {
 /// Authorizer validation data for a single config change entry.
 ///
 /// The handler uses this to re-validate that the config change was authorized
-/// by an owner with CONFIG scope before applying the pre-writes.
+/// by an owner with CONFIG scope before applying `config_writes`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Eip8130AuthorizerValidation {
@@ -383,10 +383,7 @@ pub fn config_log_to_system_log(emitter: Address, event: &Eip8130ConfigLog) -> L
 /// phase statuses survive in the receipt's log list and can be recovered at RPC time.
 pub fn phase_statuses_system_log(emitter: Address, results: &[Eip8130PhaseResult]) -> Log {
     let data = Bytes::from(results.iter().map(|r| u8::from(r.success)).collect::<Vec<_>>());
-    Log {
-        address: emitter,
-        data: LogData::new_unchecked(vec![phase_statuses_log_topic()], data),
-    }
+    Log { address: emitter, data: LogData::new_unchecked(vec![phase_statuses_log_topic()], data) }
 }
 
 /// Extracts per-phase statuses from a system log emitted during EIP-8130 execution.
@@ -543,5 +540,4 @@ mod tests {
         assert_eq!(&log.data.data[..32], user_salt.as_slice());
         assert_eq!(&log.data.data[32..64], code_hash.as_slice());
     }
-
 }

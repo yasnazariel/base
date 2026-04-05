@@ -511,10 +511,7 @@ mod tests {
         let data = Bytes::from(vec![0u8; 65]);
         let hash = B256::repeat_byte(0xAA);
 
-        assert_eq!(
-            try_native_verify(Address::ZERO, &data, hash),
-            NativeVerifyResult::Unsupported,
-        );
+        assert_eq!(try_native_verify(Address::ZERO, &data, hash), NativeVerifyResult::Unsupported,);
         assert_eq!(
             try_native_verify(Address::repeat_byte(0xFF), &data, hash),
             NativeVerifyResult::Unsupported,
@@ -758,7 +755,8 @@ mod tests {
         let mut tampered = pk_b_raw.to_vec();
         tampered.extend_from_slice(&data[P256_PUBKEY_LEN..]);
 
-        let result = try_native_verify(P256_WEBAUTHN_VERIFIER_ADDRESS, &Bytes::from(tampered), hash);
+        let result =
+            try_native_verify(P256_WEBAUTHN_VERIFIER_ADDRESS, &Bytes::from(tampered), hash);
         assert!(matches!(
             result,
             NativeVerifyResult::Invalid(NativeVerifyError::WebAuthnSignatureInvalid(_)),

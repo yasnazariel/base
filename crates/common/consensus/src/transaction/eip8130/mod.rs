@@ -52,8 +52,8 @@ pub use predeploys::{
     ACCOUNT_CONFIG_ADDRESS, DEFAULT_ACCOUNT_ADDRESS, DEFAULT_HIGH_RATE_ACCOUNT_ADDRESS,
     DELEGATE_VERIFIER_ADDRESS, EXTERNAL_CALLER_VERIFIER, K1_VERIFIER_ADDRESS,
     NONCE_MANAGER_ADDRESS, P256_RAW_VERIFIER_ADDRESS, P256_WEBAUTHN_VERIFIER_ADDRESS,
-    REVOKED_VERIFIER, TX_CONTEXT_ADDRESS, is_account_config_known_deployed,
-    is_native_verifier, mark_account_config_deployed,
+    REVOKED_VERIFIER, TX_CONTEXT_ADDRESS, is_account_config_known_deployed, is_native_verifier,
+    mark_account_config_deployed,
 };
 
 mod storage;

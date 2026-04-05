@@ -18,6 +18,7 @@
  *   custom-verifier  Deploy + register AlwaysValidVerifier as custom EVM verifier (scope=SENDER+PAYER)
  *   delegate-native  Delegate verifier with K1 inner (native path, no on-chain call)
  *   delegate-p256    Delegate verifier with P256 inner (native delegation + P256 signature)
+ *   owner-change-signing  Revoke EOA + add P256 in owner_changes; revoked signer fails, new P256 signer passes
  *   nonceless        Send a nonce-free tx (NONCE_KEY_MAX + expiry), verify no replay
  *   delegation       Set/change EIP-7702 code delegation via account_changes entry (type 0x02)
  *   locked-config    Lock an account then verify config changes are rejected (run last — locks account for 600s)
@@ -217,7 +218,12 @@ function configChangeDigest(accountAddr, chainId, sequence, ownerChanges) {
   );
 }
 
-async function signAndSend(unsignedRlpFields, { accountChanges = [], trace = true, payerAccount = null, customSenderAuth = null } = {}) {
+async function signAndSend(unsignedRlpFields, {
+  trace = true,
+  payerAccount = null,
+  customSenderAuth = null,
+  exitOnError = true,
+} = {}) {
   const signingPayload = concat([
     toHex(AA_TX_TYPE, { size: 1 }),
     toRlp(unsignedRlpFields),
@@ -275,7 +281,10 @@ async function signAndSend(unsignedRlpFields, { accountChanges = [], trace = tru
   } catch (err) {
     console.log(`\nRPC error: ${err.shortMessage || err.message}`);
     if (err.details) console.log(`Details: ${err.details}`);
-    process.exit(1);
+    if (exitOnError) {
+      process.exit(1);
+    }
+    throw err;
   }
 
   console.log('Waiting for receipt (5s)...');
@@ -1496,6 +1505,276 @@ async function runDelegateP256() {
 }
 
 // ─────────────────────────────────────────────────
+// Mode: owner-change-signing
+// ─────────────────────────────────────────────────
+async function runOwnerChangeSigning() {
+  const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+  const REVOKED_VERIFIER_ADDRESS = '0x0000000000000000000000000000000000000001';
+  const AUTHORIZE_OWNER = 1;
+  const REVOKE_OWNER = 2;
+
+  const eoaOwnerId = padHex(account.address.toLowerCase(), { size: 32, dir: 'right' });
+  // Keep this deterministic so repeated runs can always clean up prior state.
+  const p256PrivateKey = createHash('sha256')
+    .update('owner-change-signing-fixed-key')
+    .digest();
+  const p256PubUncompressed = p256curve.getPublicKey(p256PrivateKey, false);
+  const p256PubRaw = p256PubUncompressed.slice(1);
+  const p256OwnerId = keccak256(toHex(p256PubRaw));
+
+  console.log('\n--- Owner Change Signing Test (revoke EOA + add P256) ---');
+  console.log(`Sender: ${account.address}`);
+  console.log(`EOA owner_id:  ${eoaOwnerId}`);
+  console.log(`P256 owner_id: ${p256OwnerId}`);
+  console.log('This mode restores K1 ownership at the end.');
+
+  const probeCalldata = encodeFunctionData({ abi: PROBE_ABI, functionName: 'probe' });
+  const callsRlp = [[[encodeAddress(opts.probeAddr), probeCalldata]]];
+  const seqSlotHash = sequenceSlot(account.address);
+
+  const readSequence = async () => {
+    const packedSeq = await client.getStorageAt({
+      address: ACCOUNT_CONFIG_ADDRESS,
+      slot: seqSlotHash,
+    });
+    return BigInt(packedSeq || '0x0') & ((1n << 64n) - 1n);
+  };
+
+  const toVerifierAddress = (storageWord) => {
+    if (!storageWord || storageWord === '0x') return ZERO_ADDRESS;
+    const clean = storageWord.slice(2).padStart(64, '0');
+    return `0x${clean.slice(-40)}`;
+  };
+
+  const aaSigHash = (unsignedRlpFields) =>
+    keccak256(concat([toHex(AA_TX_TYPE, { size: 1 }), toRlp(unsignedRlpFields)]));
+
+  const encodeSignedTx = (unsignedRlpFields, senderAuth, payerAuth = '0x') =>
+    concat([toHex(AA_TX_TYPE, { size: 1 }), toRlp([...unsignedRlpFields, senderAuth, payerAuth])]);
+
+  const k1AuthForHash = async (hash) => {
+    const sig = await account.sign({ hash });
+    return concat([K1_VERIFIER_ADDRESS, sig]);
+  };
+
+  const p256AuthForHash = (hash) => {
+    const hashArr = new Uint8Array(hash.slice(2).match(/.{2}/g).map((b) => parseInt(b, 16)));
+    const sig = p256curve.sign(hashArr, p256PrivateKey, { lowS: true });
+    const rBytes = sig.r.toString(16).padStart(64, '0');
+    const sBytes = sig.s.toString(16).padStart(64, '0');
+    return concat([
+      P256_VERIFIER_ADDRESS,
+      toHex(p256PubRaw),
+      `0x${rBytes}${sBytes}`,
+    ]);
+  };
+
+  const ownerChangeToRlp = (change) => [
+    toHex(change.changeType, { size: 1 }),
+    encodeAddress(change.verifier),
+    change.ownerId,
+    '0x',
+  ];
+
+  const buildConfigChangeRlp = async (ownerChanges, authorizerAuthForDigest) => {
+    const seq = await readSequence();
+    const digest = configChangeDigest(account.address, 0n, seq, ownerChanges);
+    const authorizerAuth = await Promise.resolve(authorizerAuthForDigest(digest));
+    return [
+      toHex(0x01, { size: 1 }),
+      encodeUint(0n),
+      encodeUint(seq),
+      ownerChanges.map(ownerChangeToRlp),
+      authorizerAuth,
+    ];
+  };
+
+  const waitForReceipt = async (txHash, attempts = 12, delayMs = 1000) => {
+    for (let i = 0; i < attempts; i++) {
+      const receipt = await client.request({
+        method: 'eth_getTransactionReceipt',
+        params: [txHash],
+      });
+      if (receipt) return receipt;
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+    return null;
+  };
+
+  const rotationChanges = [
+    { changeType: AUTHORIZE_OWNER, verifier: P256_VERIFIER_ADDRESS, ownerId: p256OwnerId, scope: 0 },
+    { changeType: REVOKE_OWNER, verifier: ZERO_ADDRESS, ownerId: eoaOwnerId, scope: 0 },
+  ];
+  const p256Slot = ownerConfigSlot(account.address, p256OwnerId);
+  const eoaSlot = ownerConfigSlot(account.address, eoaOwnerId);
+  const readOwnerVerifiers = async () => {
+    const [p256Config, eoaConfig] = await Promise.all([
+      client.getStorageAt({ address: ACCOUNT_CONFIG_ADDRESS, slot: p256Slot }),
+      client.getStorageAt({ address: ACCOUNT_CONFIG_ADDRESS, slot: eoaSlot }),
+    ]);
+    return {
+      p256Config,
+      eoaConfig,
+      p256Verifier: toVerifierAddress(p256Config).toLowerCase(),
+      eoaVerifier: toVerifierAddress(eoaConfig).toLowerCase(),
+    };
+  };
+  const isRotationState = ({ p256Verifier, eoaVerifier }) =>
+    p256Verifier === P256_VERIFIER_ADDRESS.toLowerCase() &&
+    eoaVerifier === REVOKED_VERIFIER_ADDRESS.toLowerCase();
+  const isRestoredState = ({ p256Verifier, eoaVerifier }) =>
+    p256Verifier === ZERO_ADDRESS.toLowerCase() &&
+    eoaVerifier === K1_VERIFIER_ADDRESS.toLowerCase();
+  const toErrorMessage = (err) => err?.details || err?.shortMessage || err?.message || String(err);
+
+  let hadFailure = false;
+  let rotationApplied = false;
+  let revokedSignerRejected = false;
+  const initialState = await readOwnerVerifiers();
+  const trySignAndSend = async (unsignedFields, sendOpts, failurePrefix) => {
+    try {
+      return await signAndSend(unsignedFields, { ...sendOpts, exitOnError: false });
+    } catch (err) {
+      console.log(`FAILED: ${failurePrefix}: ${toErrorMessage(err)}`);
+      hadFailure = true;
+      return null;
+    }
+  };
+
+  // Step 1: revoked signer should fail (submission reject or on-chain revert).
+  console.log('\n--- Step 1: Tx signed by soon-to-be-revoked EOA should fail ---');
+  const step1NonceKey = 1n;
+  const nonce1 = await getAaNonceViaRpc(account.address, step1NonceKey);
+  const blockBeforeStep1 = await client.getBlockNumber();
+  console.log(`AA nonce (key=${step1NonceKey}): ${nonce1}`);
+  const configChangeRlp1 = await buildConfigChangeRlp(rotationChanges, k1AuthForHash);
+  const unsigned1 = baseTxFields(nonce1, callsRlp, [configChangeRlp1], ZERO_ADDRESS, { nonceKey: step1NonceKey });
+  const senderAuth1 = await k1AuthForHash(aaSigHash(unsigned1));
+  const encodedTx1 = encodeSignedTx(unsigned1, senderAuth1);
+
+  try {
+    const txHash1 = await client.request({
+      method: 'eth_sendRawTransaction',
+      params: [encodedTx1],
+    });
+    console.log(`Tx accepted for propagation (${txHash1}); waiting for receipt...`);
+    const receipt1 = await waitForReceipt(txHash1);
+    if (!receipt1) {
+      const blockAfterStep1 = await client.getBlockNumber();
+      const stateAfterNoReceipt = await readOwnerVerifiers();
+      const stateUnchanged =
+        stateAfterNoReceipt.p256Config === initialState.p256Config &&
+        stateAfterNoReceipt.eoaConfig === initialState.eoaConfig;
+      if (blockAfterStep1 > blockBeforeStep1 && stateUnchanged) {
+        console.log('SUCCESS: Revoked-signer tx accepted by txpool but stayed unmined (invalid at inclusion)');
+        revokedSignerRejected = true;
+      } else {
+        console.log('FAILED: Revoked-signer tx had no receipt and owner state changed unexpectedly');
+        hadFailure = true;
+      }
+    } else if (receipt1.status === '0x1') {
+      console.log('FAILED: Revoked-signer tx succeeded unexpectedly');
+      hadFailure = true;
+      rotationApplied = true;
+    } else {
+      console.log('SUCCESS: Revoked-signer tx reverted on-chain as expected');
+      revokedSignerRejected = true;
+    }
+  } catch (err) {
+    console.log(`SUCCESS: Revoked-signer tx rejected at submission: ${toErrorMessage(err)}`);
+    revokedSignerRejected = true;
+  }
+
+  // Step 2: newly-added P256 signer should pass in the same tx that adds it.
+  if (revokedSignerRejected) {
+    console.log('\n--- Step 2: Tx signed by newly-added P256 owner should pass ---');
+    const nonce2 = await getAaNonce();
+    console.log(`AA nonce (key=0): ${nonce2}`);
+    const configChangeRlp2 = await buildConfigChangeRlp(rotationChanges, k1AuthForHash);
+    const unsigned2 = baseTxFields(nonce2, callsRlp, [configChangeRlp2]);
+    const sent2 = await trySignAndSend(
+      unsigned2,
+      { trace: opts.trace, customSenderAuth: p256AuthForHash },
+      'Newly-added P256 signer tx rejected',
+    );
+    const receipt2 = sent2?.receipt ?? null;
+
+    if (receipt2) {
+      if (receipt2.status !== '0x1') {
+        console.log(`FAILED: Newly-added P256 signer tx failed (status ${receipt2.status || 'unknown'})`);
+        hadFailure = true;
+      } else {
+        console.log('SUCCESS: Tx signed by owner added in owner_changes executed');
+      }
+    }
+
+    const stateAfterRotation = await readOwnerVerifiers();
+
+    if (stateAfterRotation.p256Verifier !== P256_VERIFIER_ADDRESS.toLowerCase()) {
+      console.log(`FAILED: P256 owner verifier mismatch (got ${stateAfterRotation.p256Verifier})`);
+      hadFailure = true;
+    }
+    if (stateAfterRotation.eoaVerifier !== REVOKED_VERIFIER_ADDRESS.toLowerCase()) {
+      console.log(`FAILED: EOA owner not revoked (got ${stateAfterRotation.eoaVerifier})`);
+      hadFailure = true;
+    }
+    rotationApplied = isRotationState(stateAfterRotation);
+    if (rotationApplied) {
+      console.log('SUCCESS: Post-state matches expected rotation (P256 added, EOA revoked)');
+    }
+  } else {
+    console.log('\n--- Step 2: Skipped ---');
+    console.log('Skipped because step 1 did not confirm revoked-signer rejection.');
+  }
+
+  // Step 3: cleanup to restore original sender for subsequent script modes.
+  if (rotationApplied) {
+    console.log('\n--- Step 3: Cleanup (restore EOA, remove temporary P256 owner) ---');
+    const restoreChanges = [
+      { changeType: AUTHORIZE_OWNER, verifier: K1_VERIFIER_ADDRESS, ownerId: eoaOwnerId, scope: 0 },
+      { changeType: REVOKE_OWNER, verifier: ZERO_ADDRESS, ownerId: p256OwnerId, scope: 0 },
+    ];
+    const nonce3 = await getAaNonce();
+    console.log(`AA nonce (key=0): ${nonce3}`);
+    const configChangeRlp3 = await buildConfigChangeRlp(restoreChanges, p256AuthForHash);
+    const unsigned3 = baseTxFields(nonce3, callsRlp, [configChangeRlp3]);
+    const sent3 = await trySignAndSend(
+      unsigned3,
+      { trace: false, customSenderAuth: k1AuthForHash },
+      'Cleanup tx rejected',
+    );
+    const receipt3 = sent3?.receipt ?? null;
+
+    if (receipt3 && receipt3.status !== '0x1') {
+      console.log(`FAILED: Cleanup tx failed (status ${receipt3.status || 'unknown'})`);
+      hadFailure = true;
+    }
+
+    const stateAfterCleanup = await readOwnerVerifiers();
+
+    if (stateAfterCleanup.eoaVerifier !== K1_VERIFIER_ADDRESS.toLowerCase()) {
+      console.log(`FAILED: Cleanup did not restore EOA owner (got ${stateAfterCleanup.eoaVerifier})`);
+      hadFailure = true;
+    }
+    if (stateAfterCleanup.p256Verifier !== ZERO_ADDRESS.toLowerCase()) {
+      console.log(`FAILED: Cleanup did not remove temporary P256 owner (got ${stateAfterCleanup.p256Verifier})`);
+      hadFailure = true;
+    }
+
+    if (isRestoredState(stateAfterCleanup)) {
+      console.log('SUCCESS: Cleanup restored original K1 owner configuration');
+    }
+  } else {
+    console.log('\n--- Step 3: Cleanup skipped ---');
+    console.log('No owner rotation was applied, so no cleanup was required.');
+  }
+
+  if (hadFailure) {
+    process.exit(1);
+  }
+}
+
+// ─────────────────────────────────────────────────
 // Mode: locked-config
 // ─────────────────────────────────────────────────
 async function runLockedConfig() {
@@ -1843,6 +2122,9 @@ switch (opts.mode) {
   case 'delegate-p256':
     await runDelegateP256();
     break;
+  case 'owner-change-signing':
+    await runOwnerChangeSigning();
+    break;
   case 'nonceless':
     await runNonceless();
     break;
@@ -1854,6 +2136,6 @@ switch (opts.mode) {
     break;
   default:
     console.error(`Unknown mode: ${opts.mode}`);
-    console.error('Available modes: probe, multi-call, sponsor, config-change, p256, webauthn, receipt-test, deploy, nonce-rpc, estimate-gas, custom-verifier, delegate-native, delegate-p256, nonceless, delegation, locked-config');
+    console.error('Available modes: probe, multi-call, sponsor, config-change, p256, webauthn, receipt-test, deploy, nonce-rpc, estimate-gas, custom-verifier, delegate-native, delegate-p256, owner-change-signing, nonceless, delegation, locked-config');
     process.exit(1);
 }

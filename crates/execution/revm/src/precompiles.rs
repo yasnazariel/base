@@ -428,11 +428,8 @@ where
     }
 
     let tx = context.tx();
-    let eip8130 = if tx.tx_type() == EIP8130_TX_TYPE {
-        Some(tx.eip8130_parts().clone())
-    } else {
-        None
-    };
+    let eip8130 =
+        if tx.tx_type() == EIP8130_TX_TYPE { Some(tx.eip8130_parts().clone()) } else { None };
 
     let selector_bytes = &input[0..4];
     let output = if selector_bytes == selector(b"getSender()") {
@@ -442,12 +439,10 @@ where
     } else if selector_bytes == selector(b"getOwnerId()") {
         encode_b256(eip8130.as_ref().map_or([0u8; 32], |p| p.owner_id.0))
     } else if selector_bytes == selector(b"getMaxCost()") {
-        let max_cost = get_eip8130_tx_context()
-            .map_or(U256::ZERO, |ctx| ctx.max_cost);
+        let max_cost = get_eip8130_tx_context().map_or(U256::ZERO, |ctx| ctx.max_cost);
         encode_u256(max_cost)
     } else if selector_bytes == selector(b"getGasLimit()") {
-        let gas_limit = get_eip8130_tx_context()
-            .map_or(0u64, |ctx| ctx.gas_limit);
+        let gas_limit = get_eip8130_tx_context().map_or(0u64, |ctx| ctx.gas_limit);
         encode_u256(U256::from(gas_limit))
     } else if selector_bytes == selector(b"getCalls()") {
         let phases = eip8130.as_ref().map_or(&[][..], |p| &p.call_phases);

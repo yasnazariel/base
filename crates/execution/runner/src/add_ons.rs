@@ -227,8 +227,7 @@ where
             builder,
         );
         let miner_ext = OpMinerExtApi::new(da_config, gas_limit_config);
-        let tx_count_override =
-            TransactionCountOverrideImpl::new(ctx.node.provider().clone());
+        let tx_count_override = TransactionCountOverrideImpl::new(ctx.node.provider().clone());
 
         rpc_add_ons
             .launch_add_ons_with(ctx, move |container| {

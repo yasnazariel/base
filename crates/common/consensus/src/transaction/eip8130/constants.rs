@@ -156,11 +156,7 @@ impl VerifierGasCosts {
     ///   the delegate overhead is returned.
     /// - For custom verifiers (any other address): returns 0 (metered at
     ///   runtime via STATICCALL).
-    pub fn gas_for_verifier(
-        &self,
-        verifier: Address,
-        inner_verifier: Option<Address>,
-    ) -> u64 {
+    pub fn gas_for_verifier(&self, verifier: Address, inner_verifier: Option<Address>) -> u64 {
         if verifier == K1_VERIFIER_ADDRESS {
             self.k1
         } else if verifier == P256_RAW_VERIFIER_ADDRESS {
@@ -168,8 +164,7 @@ impl VerifierGasCosts {
         } else if verifier == P256_WEBAUTHN_VERIFIER_ADDRESS {
             self.p256_webauthn
         } else if verifier == DELEGATE_VERIFIER_ADDRESS {
-            let inner_cost =
-                inner_verifier.map(|v| self.gas_for_verifier(v, None)).unwrap_or(0);
+            let inner_cost = inner_verifier.map(|v| self.gas_for_verifier(v, None)).unwrap_or(0);
             self.delegate + inner_cost
         } else {
             0

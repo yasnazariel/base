@@ -150,7 +150,9 @@ mod tests {
         precompiles::{Precompile, PrecompileInput},
     };
     use alloy_primitives::{Address, Bytes, U256, bytes};
-    use base_revm::{Eip8130Call, Eip8130Parts, OpTransaction, bls12_381, bn254_pair, decode_phase_statuses};
+    use base_revm::{
+        Eip8130Call, Eip8130Parts, OpTransaction, bls12_381, bn254_pair, decode_phase_statuses,
+    };
     use revm::{
         bytecode::Bytecode,
         context::{CfgEnv, TxEnv},
@@ -246,14 +248,19 @@ mod tests {
         tx.eip8130 = Eip8130Parts {
             sender,
             payer: sender,
-            call_phases: vec![vec![Eip8130Call { to: target, data: Bytes::new(), value: U256::ZERO }]],
+            call_phases: vec![vec![Eip8130Call {
+                to: target,
+                data: Bytes::new(),
+                value: U256::ZERO,
+            }]],
             ..Default::default()
         };
 
         let result = evm.transact_raw(tx).expect("EIP-8130 tx should execute");
         assert!(result.result.is_success(), "AA phase execution should succeed");
-        let statuses =
-            decode_phase_statuses(result.result.output().expect("AA tx should return phase status"));
+        let statuses = decode_phase_statuses(
+            result.result.output().expect("AA tx should return phase status"),
+        );
         assert_eq!(statuses, vec![true]);
     }
 
@@ -287,10 +294,7 @@ mod tests {
         );
         db.insert_account_info(
             NONCE_MANAGER_ADDRESS,
-            AccountInfo {
-                code: Some(Bytecode::new_legacy(bytes!("FE"))),
-                ..Default::default()
-            },
+            AccountInfo { code: Some(Bytecode::new_legacy(bytes!("FE"))), ..Default::default() },
         );
 
         let mut evm = OpEvmFactory::default().create_evm(
@@ -323,8 +327,9 @@ mod tests {
         let result = evm.transact_raw(tx).expect("EIP-8130 tx should execute");
         assert!(result.result.is_success(), "probe() phase should succeed");
 
-        let statuses =
-            decode_phase_statuses(result.result.output().expect("AA tx should return phase status"));
+        let statuses = decode_phase_statuses(
+            result.result.output().expect("AA tx should return phase status"),
+        );
         assert_eq!(statuses, vec![true], "single phase should succeed");
 
         let target_state = result.state.get(&target).expect("target should have state changes");

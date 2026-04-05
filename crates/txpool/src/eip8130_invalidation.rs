@@ -406,8 +406,8 @@ pub async fn maintain_eip8130_invalidation<P, N, T>(
 mod tests {
     use alloy_primitives::{Address, B256, Bytes, U256};
     use base_alloy_consensus::{
-        ACCOUNT_CONFIG_ADDRESS, AccountChangeEntry, ConfigChangeEntry, OwnerChange,
-        CreateEntry, NONCE_MANAGER_ADDRESS, OP_AUTHORIZE_OWNER, TxEip8130, nonce_slot,
+        ACCOUNT_CONFIG_ADDRESS, AccountChangeEntry, ConfigChangeEntry, CreateEntry,
+        NONCE_MANAGER_ADDRESS, OP_AUTHORIZE_OWNER, OwnerChange, TxEip8130, nonce_slot,
     };
 
     use super::*;

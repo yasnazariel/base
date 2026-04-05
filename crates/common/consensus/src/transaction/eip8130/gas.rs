@@ -507,10 +507,7 @@ mod tests {
             ..Default::default()
         };
         let costs = VerifierGasCosts::BASE_V1;
-        assert_eq!(
-            sender_verification_gas(&tx, &costs, Some(K1_VERIFIER_ADDRESS)),
-            3_000 + 6_000,
-        );
+        assert_eq!(sender_verification_gas(&tx, &costs, Some(K1_VERIFIER_ADDRESS)), 3_000 + 6_000,);
     }
 
     #[test]

@@ -11,8 +11,7 @@ use base_alloy_consensus::OpTransaction;
 use base_protocol::Predeploys;
 use base_revm::{L1_BLOCK_CONTRACT, L1BlockInfo};
 use base_txpool::{
-    MergedBestTransactions, OpPooledTx, SharedEip8130Pool,
-    estimated_da_size::DataAvailabilitySized,
+    MergedBestTransactions, OpPooledTx, SharedEip8130Pool, estimated_da_size::DataAvailabilitySized,
 };
 use reth_basic_payload_builder::{
     BuildArguments, BuildOutcome, BuildOutcomeKind, MissingPayloadBehaviour, PayloadBuilder,

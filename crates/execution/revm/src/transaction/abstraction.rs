@@ -13,8 +13,8 @@ use revm::{
 };
 
 use super::{
-    eip8130::Eip8130Parts,
     deposit::{DEPOSIT_TRANSACTION_TYPE, DepositTransactionParts},
+    eip8130::Eip8130Parts,
 };
 
 /// Base Transaction trait.
@@ -318,7 +318,12 @@ impl OpTransactionBuilder {
 
         let base = self.base.build_fill();
 
-        OpTransaction { base, enveloped_tx: self.enveloped_tx, deposit: self.deposit, eip8130: Eip8130Parts::default() }
+        OpTransaction {
+            base,
+            enveloped_tx: self.enveloped_tx,
+            deposit: self.deposit,
+            eip8130: Eip8130Parts::default(),
+        }
     }
 
     /// Build the [`OpTransaction`] instance, return error if the transaction is not valid.
@@ -345,7 +350,12 @@ impl OpTransactionBuilder {
 
         let base = self.base.build()?;
 
-        Ok(OpTransaction { base, enveloped_tx: self.enveloped_tx, deposit: self.deposit, eip8130: Eip8130Parts::default() })
+        Ok(OpTransaction {
+            base,
+            enveloped_tx: self.enveloped_tx,
+            deposit: self.deposit,
+            eip8130: Eip8130Parts::default(),
+        })
     }
 }
 

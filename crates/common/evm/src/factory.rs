@@ -85,10 +85,7 @@ fn make_nonce_manager_precompile() -> DynPrecompile {
         if input.gas < NONCE_MANAGER_GAS {
             return Err(PrecompileError::OutOfGas);
         }
-        Ok(PrecompileOutput::new(
-            NONCE_MANAGER_GAS,
-            alloy_primitives::Bytes::from(out.to_vec()),
-        ))
+        Ok(PrecompileOutput::new(NONCE_MANAGER_GAS, alloy_primitives::Bytes::from(out.to_vec())))
     })
 }
 
