@@ -165,27 +165,6 @@ pub fn write_sequence(current: U256, is_multichain: bool, new_value: u64) -> U25
     }
 }
 
-/// Legacy helper: computes the slot as if it were a nested mapping.
-///
-/// **Deprecated** – use [`sequence_base_slot`] + [`read_sequence`]/[`write_sequence`]
-/// for compatibility with the deployed AccountConfiguration contract.
-#[deprecated(note = "use sequence_base_slot + read_sequence/write_sequence instead")]
-pub fn sequence_slot(account: Address, chain_id: u64) -> B256 {
-    let inner = {
-        let mut buf = [0u8; 64];
-        buf[12..32].copy_from_slice(account.as_slice());
-        SEQUENCE_BASE_SLOT.to_be_bytes::<32>().as_slice().iter().enumerate().for_each(|(i, &b)| {
-            buf[32 + i] = b;
-        });
-        keccak256(buf)
-    };
-
-    let mut buf = [0u8; 64];
-    buf[24..32].copy_from_slice(&chain_id.to_be_bytes());
-    buf[32..64].copy_from_slice(inner.as_slice());
-    keccak256(buf)
-}
-
 /// Parses an `owner_config` storage slot value into `(verifier, scope)`.
 ///
 /// Solidity right-aligned packing for `OwnerConfig { address verifier; uint8 scope; }`:

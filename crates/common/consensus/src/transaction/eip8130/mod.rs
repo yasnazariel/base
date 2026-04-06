@@ -57,8 +57,6 @@ pub use predeploys::{
 };
 
 mod storage;
-#[allow(deprecated)]
-pub use storage::sequence_slot;
 pub use storage::{
     EXPIRING_RING_BASE_SLOT, EXPIRING_RING_PTR_SLOT, EXPIRING_SEEN_BASE_SLOT, LOCK_BASE_SLOT,
     NONCE_BASE_SLOT, OWNER_CONFIG_BASE_SLOT, SEQUENCE_BASE_SLOT, encode_owner_config,

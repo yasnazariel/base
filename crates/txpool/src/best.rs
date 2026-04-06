@@ -131,13 +131,14 @@ mod tests {
     use std::collections::VecDeque;
     use std::time::Instant;
 
-    use alloy_consensus::TxEip1559;
+    use alloy_consensus::{Transaction, TxEip1559};
+    use alloy_eips::Encodable2718;
     use alloy_primitives::{Address, Signature, TxKind, U256};
     use base_alloy_consensus::OpTransactionSigned;
     use base_alloy_consensus::OpTypedTransaction;
     use reth_primitives_traits::Recovered;
     use reth_transaction_pool::{
-        EthPoolTransaction, TransactionOrigin, ValidPoolTransaction,
+        TransactionOrigin, ValidPoolTransaction,
         identifier::{SenderId, TransactionId},
     };
 
@@ -168,7 +169,7 @@ mod tests {
         );
         let signed = OpTransactionSigned::new_unhashed(OpTypedTransaction::Eip1559(tx), sig);
         let recovered = Recovered::new_unchecked(signed, sender);
-        let len = recovered.encoded_2718_len();
+        let len = recovered.encode_2718_len();
         let pooled = BasePooledTransaction::new(recovered, len);
 
         Arc::new(ValidPoolTransaction {
@@ -219,10 +220,10 @@ mod tests {
         let mut merged = MergedBestTransactions::new(left, right);
 
         let first = merged.next().unwrap();
-        assert_eq!(first.max_priority_fee_per_gas(), Some(50));
+        assert_eq!(first.transaction.max_priority_fee_per_gas(), Some(50));
 
         let second = merged.next().unwrap();
-        assert_eq!(second.max_priority_fee_per_gas(), Some(10));
+        assert_eq!(second.transaction.max_priority_fee_per_gas(), Some(10));
 
         assert!(merged.next().is_none());
     }
@@ -243,8 +244,9 @@ mod tests {
         let right = VecBest::new(vec![make_valid_tx(0x02, 0, 30), make_valid_tx(0x02, 1, 10)]);
         let merged = MergedBestTransactions::new(left, right);
 
-        let priorities: Vec<u128> =
-            merged.map(|tx| tx.max_priority_fee_per_gas().unwrap_or_default()).collect();
+        let priorities: Vec<u128> = merged
+            .map(|tx| tx.transaction.max_priority_fee_per_gas().unwrap_or_default())
+            .collect();
         assert_eq!(priorities, vec![50, 30, 20, 10]);
     }
 

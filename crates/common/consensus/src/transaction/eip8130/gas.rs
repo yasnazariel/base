@@ -46,8 +46,8 @@ pub fn delegate_inner_verifier(auth: &[u8]) -> Option<Address> {
 ///
 /// **Custom verifiers** (non-native addresses) contribute 0 to
 /// `verification_gas` here because their cost is determined at runtime via
-/// STATICCALL, capped at [`CUSTOM_VERIFIER_GAS_CAP`], and charged to the
-/// payer separately.
+/// STATICCALL, capped by the node's configured custom-verifier gas budget, and
+/// charged to the payer separately.
 ///
 /// The `nonce_key_is_warm` parameter indicates whether the nonce channel has been
 /// used before (affects the SSTORE cost). Verification gas uses the default
@@ -168,7 +168,7 @@ pub fn total_verification_gas(
 /// Each `ConfigChangeEntry` has an `authorizer_auth` blob signed by an owner
 /// with CONFIG scope. For native verifiers the gas is included in intrinsic;
 /// for custom verifiers (non-native addresses) it returns 0 (metered at
-/// runtime via the shared `CUSTOM_VERIFIER_GAS_CAP` budget).
+/// runtime via the shared custom-verifier gas budget).
 ///
 /// Also charges an SLOAD per config change for the owner_config read.
 pub fn authorizer_verification_gas(tx: &TxEip8130, costs: &VerifierGasCosts) -> u64 {

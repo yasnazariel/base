@@ -156,6 +156,7 @@ pub fn config_change_sequence(account: Address, change: &ConfigChangeEntry) -> S
 }
 
 /// Pre-computed info for a read-modify-write sequence update.
+#[derive(Debug)]
 pub struct SequenceUpdateInfo {
     /// Storage slot for `_changeSequences[account]`.
     pub slot: U256,

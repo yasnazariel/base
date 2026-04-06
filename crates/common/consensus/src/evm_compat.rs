@@ -9,14 +9,14 @@ use alloy_primitives::{Address, B256, Bytes, U256, keccak256};
 use base_revm::{
     DepositTransactionParts, Eip8130AuthorizerValidation, Eip8130Call, Eip8130CodePlacement,
     Eip8130ConfigLog, Eip8130ConfigOp, Eip8130Parts, Eip8130SequenceUpdate, Eip8130StorageWrite,
-    Eip8130VerifyCall, OpTransaction,
+    Eip8130VerifyCall, OpTransaction, custom_verifier_gas_cap,
 };
 use revm::context::TxEnv;
 
 use crate::{
-    ACCOUNT_CONFIG_ADDRESS, AccountChangeEntry, CUSTOM_VERIFIER_GAS_CAP, K1_VERIFIER_ADDRESS,
-    NONCE_KEY_MAX, OP_AUTHORIZE_OWNER, OP_REVOKE_OWNER, OpTxEnvelope, OwnerScope, TxDeposit,
-    TxEip8130, VerifierGasCosts, account_change_units, auto_delegation_code, config_change_digest,
+    ACCOUNT_CONFIG_ADDRESS, AccountChangeEntry, K1_VERIFIER_ADDRESS, NONCE_KEY_MAX,
+    OP_AUTHORIZE_OWNER, OP_REVOKE_OWNER, OpTxEnvelope, OwnerScope, TxDeposit, TxEip8130,
+    VerifierGasCosts, account_change_units, auto_delegation_code, config_change_digest,
     config_change_sequence, config_change_writes, delegate_inner_verifier, derive_account_address,
     encode_verify_call, intrinsic_gas_with_costs, is_native_verifier, owner_registration_writes,
     payer_auth_cost, payer_signature_hash, payer_verification_gas, sender_signature_hash,
@@ -381,10 +381,8 @@ pub fn build_eip8130_parts_with_costs(
         _ => None,
     });
 
-    let has_custom_authorizer = authorizer_validations.iter().any(|v| v.verify_call.is_some());
-    let has_custom_verifier =
-        sender_verify_call.is_some() || payer_verify_call.is_some() || has_custom_authorizer;
-    let custom_verifier_gas_cap = if has_custom_verifier { CUSTOM_VERIFIER_GAS_CAP } else { 0 };
+    let has_custom_verifier = tx.has_custom_verifier();
+    let custom_verifier_gas_cap = if has_custom_verifier { custom_verifier_gas_cap() } else { 0 };
 
     let sender_verifier = if tx.is_eoa() {
         K1_VERIFIER_ADDRESS
@@ -461,17 +459,8 @@ impl FromRecoveredTx<OpTxEnvelope> for TxEnv {
                     inner.chain_id,
                     &VerifierGasCosts::BASE_V1,
                 );
-                let has_custom =
-                    (!inner.is_eoa() && inner.sender_auth.len() >= 20
-                        && !is_native_verifier(Address::from_slice(&inner.sender_auth[..20])))
-                    || (!inner.is_self_pay() && inner.payer_auth.len() >= 20
-                        && !is_native_verifier(Address::from_slice(&inner.payer_auth[..20])))
-                    || inner.account_changes.iter().any(|entry| {
-                        matches!(entry, AccountChangeEntry::ConfigChange(cc)
-                            if cc.authorizer_auth.len() >= 20
-                                && !is_native_verifier(Address::from_slice(&cc.authorizer_auth[..20])))
-                    });
-                let verifier_cap = if has_custom { CUSTOM_VERIFIER_GAS_CAP } else { 0 };
+                let has_custom = inner.has_custom_verifier();
+                let verifier_cap = if has_custom { custom_verifier_gas_cap() } else { 0 };
                 Self {
                     tx_type: inner.ty(),
                     caller,

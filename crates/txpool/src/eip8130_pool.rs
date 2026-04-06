@@ -849,15 +849,14 @@ pub type SharedEip8130Pool<T> = Arc<Eip8130Pool<T>>;
 
 #[cfg(test)]
 mod tests {
-    use alloy_consensus::TxEip1559;
+    use super::*;
+    use crate::BasePooledTransaction;
+    use alloy_consensus::{Transaction, TxEip1559};
+    use alloy_eips::Encodable2718;
     use alloy_primitives::{Signature, TxKind};
     use base_alloy_consensus::OpTransactionSigned;
     use base_alloy_consensus::OpTypedTransaction;
     use reth_primitives_traits::Recovered;
-    use reth_transaction_pool::EthPoolTransaction;
-
-    use super::*;
-    use crate::BasePooledTransaction;
 
     type TestPool = Eip8130Pool<BasePooledTransaction>;
 
@@ -912,7 +911,7 @@ mod tests {
         );
         let signed = OpTransactionSigned::new_unhashed(OpTypedTransaction::Eip1559(tx), sig);
         let recovered = Recovered::new_unchecked(signed, sender);
-        let len = recovered.encoded_2718_len();
+        let len = recovered.encode_2718_len();
         BasePooledTransaction::new(recovered, len)
     }
 
@@ -1299,20 +1298,60 @@ mod tests {
         let c = cfg();
         let pool = TestPool::new();
 
+        fn sender_from_index(i: usize) -> Address {
+            let mut bytes = [0u8; 20];
+            bytes[12..20].copy_from_slice(&(i as u64).to_be_bytes());
+            Address::from(bytes)
+        }
+
+        fn make_tx_for_sender(
+            sender: Address,
+            nonce: u64,
+            priority_fee: u128,
+        ) -> BasePooledTransaction {
+            let tx = TxEip1559 {
+                chain_id: 1,
+                nonce,
+                gas_limit: 21_000,
+                max_fee_per_gas: 1000,
+                max_priority_fee_per_gas: priority_fee,
+                to: TxKind::Call(Address::repeat_byte(0xFF)),
+                value: U256::ZERO,
+                access_list: Default::default(),
+                input: Default::default(),
+            };
+            let sig = Signature::new(
+                U256::from(nonce.saturating_add(1)),
+                U256::from(priority_fee),
+                false,
+            );
+            let signed = OpTransactionSigned::new_unhashed(OpTypedTransaction::Eip1559(tx), sig);
+            let recovered = Recovered::new_unchecked(signed, sender);
+            let len = recovered.encode_2718_len();
+            BasePooledTransaction::new(recovered, len)
+        }
+
+        fn make_slot_for(sender: Address, nonce_key: u64) -> B256 {
+            let mut buf = [0u8; 32];
+            buf[..20].copy_from_slice(sender.as_slice());
+            buf[24..32].copy_from_slice(&nonce_key.to_be_bytes());
+            B256::from(buf)
+        }
+
         for i in 0..c.max_pool_size {
-            let sender = (i / 256) as u8;
-            let nonce = (i % 256) as u64;
-            let key = nonce + 1;
-            let tx = make_tx(sender, i as u64, 10);
-            let id = make_id(sender, key, 0);
-            let slot = make_slot(sender, key);
+            let sender = sender_from_index(i);
+            let nonce_key = i as u64 + 1;
+            let tx = make_tx_for_sender(sender, i as u64, 10);
+            let id = Eip8130TxId { sender, nonce_key: U256::from(nonce_key), nonce_sequence: 0 };
+            let slot = make_slot_for(sender, nonce_key);
             add_self_pay(&pool, id, tx, slot, &trusted_result).unwrap();
         }
 
         assert_eq!(pool.len(), c.max_pool_size);
-        let tx = make_tx(0xFF, 9999, 10);
-        let id = make_id(0xFF, 9999, 0);
-        let slot = make_slot(0xFF, 9999);
+        let sender = sender_from_index(c.max_pool_size + 1);
+        let tx = make_tx_for_sender(sender, 9999, 10);
+        let id = Eip8130TxId { sender, nonce_key: U256::from(9999), nonce_sequence: 0 };
+        let slot = make_slot_for(sender, 9999);
         let result = add_self_pay(&pool, id, tx, slot, &trusted_result);
         assert!(matches!(result, Err(Eip8130PoolError::PoolFull)));
     }
@@ -1561,8 +1600,8 @@ mod tests {
         let first = best.next().unwrap();
         let second = best.next().unwrap();
 
-        let first_prio = first.max_priority_fee_per_gas().unwrap_or_default();
-        let second_prio = second.max_priority_fee_per_gas().unwrap_or_default();
+        let first_prio = first.transaction.max_priority_fee_per_gas().unwrap_or_default();
+        let second_prio = second.transaction.max_priority_fee_per_gas().unwrap_or_default();
         assert!(first_prio >= second_prio, "first={first_prio}, second={second_prio}");
         assert!(best.next().is_none());
     }
@@ -1603,10 +1642,7 @@ mod tests {
         assert_eq!(first.sender(), Address::repeat_byte(0x01));
 
         use reth_transaction_pool::BestTransactions;
-        let err = InvalidPoolTransactionError::Other(Box::new(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "test",
-        )));
+        let err = InvalidPoolTransactionError::Other(Box::new(Eip8130PoolError::PoolFull));
         best.mark_invalid(&first, &err);
 
         let next = best.next().unwrap();

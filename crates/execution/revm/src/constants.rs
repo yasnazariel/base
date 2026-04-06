@@ -1,4 +1,6 @@
 //! Base constants used in the Base EVM.
+use core::sync::atomic::{AtomicU64, Ordering};
+
 use revm::primitives::{Address, U256, address, uint};
 
 /// The cost of a non-zero byte in the EVM.
@@ -96,3 +98,19 @@ pub const MAX_ACCOUNT_CHANGES_PER_TX: usize = 10;
 /// Mirrors `base_alloy_consensus::DELEGATE_VERIFIER_ADDRESS`.
 pub const DELEGATE_VERIFIER_ADDRESS: Address =
     address!("0x149A439e8ea89541d8A1d2Ab046E39b0A91D0843");
+
+/// Default cap for aggregate gas spent across custom verifier STATICCALLs.
+pub const DEFAULT_CUSTOM_VERIFIER_GAS_CAP: u64 = 100_000;
+
+/// Runtime-configurable cap for aggregate custom verifier STATICCALL gas.
+static CUSTOM_VERIFIER_GAS_CAP: AtomicU64 = AtomicU64::new(DEFAULT_CUSTOM_VERIFIER_GAS_CAP);
+
+/// Returns the configured aggregate custom verifier STATICCALL gas cap.
+pub fn custom_verifier_gas_cap() -> u64 {
+    CUSTOM_VERIFIER_GAS_CAP.load(Ordering::Relaxed)
+}
+
+/// Sets the aggregate custom verifier STATICCALL gas cap.
+pub fn set_custom_verifier_gas_cap(gas_cap: u64) {
+    CUSTOM_VERIFIER_GAS_CAP.store(gas_cap, Ordering::Relaxed);
+}

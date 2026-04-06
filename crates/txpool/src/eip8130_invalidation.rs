@@ -42,9 +42,6 @@ pub struct InvalidationKey {
     pub slot: B256,
 }
 
-/// Default maximum number of pending sponsored AA transactions per payer address.
-pub const DEFAULT_MAX_PAYER_PENDING: usize = 16;
-
 /// Index that maps invalidation keys to the set of transaction hashes that
 /// depend on them. Also tracks per-payer pending counts for sponsored AA txs.
 #[derive(Debug, Default)]
@@ -416,7 +413,7 @@ mod tests {
         TxEip8130 {
             chain_id: 1,
             from,
-            nonce_key,
+            nonce_key: U256::from(nonce_key),
             nonce_sequence: 0,
             gas_limit: 100_000,
             max_fee_per_gas: 1_000_000_000,

@@ -23,9 +23,10 @@ use base_execution_rpc::{
     witness::{DebugExecutionWitnessApiServer, OpDebugWitnessApi},
 };
 use base_execution_storage::OpStorage;
+use base_revm::set_custom_verifier_gas_cap;
 use base_txpool::{
-    BaseOrdering, BasePooledTransaction, HasEip8130Pool, OpPooledTx, OpTransactionPool,
-    OpTransactionValidator, TimestampedTransaction,
+    BaseOrdering, BasePooledTransaction, DEFAULT_CUSTOM_VERIFIER_GAS_LIMIT, HasEip8130Pool,
+    OpPooledTx, OpTransactionPool, OpTransactionValidator, TimestampedTransaction,
 };
 use reth_chainspec::{
     BaseFeeParams, ChainSpecProvider, EthChainSpec, EthereumHardforks, Hardforks,
@@ -858,6 +859,13 @@ pub struct OpPoolBuilder<T = BasePooledTransaction> {
     pub pool_config_overrides: PoolBuilderConfigOverrides,
     /// The ordering strategy for the transaction pool.
     pub ordering: BaseOrdering<T>,
+    /// Optional custom verifier gas cap override for txpool admission.
+    pub txpool_custom_verifier_gas_limit: Option<u64>,
+    /// Optional custom verifier gas cap override for block inclusion.
+    ///
+    /// When unset, inclusion defaults to the txpool value so both paths stay
+    /// aligned by default.
+    pub inclusion_custom_verifier_gas_limit: Option<u64>,
     /// Marker for the pooled transaction type.
     _pd: core::marker::PhantomData<T>,
 }
@@ -867,6 +875,8 @@ impl<T> Default for OpPoolBuilder<T> {
         Self {
             pool_config_overrides: Default::default(),
             ordering: BaseOrdering::default(),
+            txpool_custom_verifier_gas_limit: None,
+            inclusion_custom_verifier_gas_limit: None,
             _pd: Default::default(),
         }
     }
@@ -877,6 +887,8 @@ impl<T> Clone for OpPoolBuilder<T> {
         Self {
             pool_config_overrides: self.pool_config_overrides.clone(),
             ordering: self.ordering.clone(),
+            txpool_custom_verifier_gas_limit: self.txpool_custom_verifier_gas_limit,
+            inclusion_custom_verifier_gas_limit: self.inclusion_custom_verifier_gas_limit,
             _pd: core::marker::PhantomData,
         }
     }
@@ -897,6 +909,26 @@ impl<T> OpPoolBuilder<T> {
         self.ordering = ordering;
         self
     }
+
+    /// Sets the txpool custom verifier STATICCALL gas cap.
+    pub const fn with_txpool_custom_verifier_gas_limit(mut self, gas_limit: u64) -> Self {
+        self.txpool_custom_verifier_gas_limit = Some(gas_limit);
+        self
+    }
+
+    /// Sets the block-inclusion custom verifier STATICCALL gas cap.
+    pub const fn with_inclusion_custom_verifier_gas_limit(mut self, gas_limit: u64) -> Self {
+        self.inclusion_custom_verifier_gas_limit = Some(gas_limit);
+        self
+    }
+
+    /// Sets a shared custom verifier STATICCALL gas cap for both txpool and
+    /// block inclusion.
+    pub const fn with_shared_custom_verifier_gas_limit(mut self, gas_limit: u64) -> Self {
+        self.txpool_custom_verifier_gas_limit = Some(gas_limit);
+        self.inclusion_custom_verifier_gas_limit = Some(gas_limit);
+        self
+    }
 }
 
 impl<Node, T, Evm> PoolBuilder<Node, Evm> for OpPoolBuilder<T>
@@ -912,7 +944,17 @@ where
         ctx: &BuilderContext<Node>,
         evm_config: Evm,
     ) -> eyre::Result<Self::Pool> {
-        let Self { pool_config_overrides, ordering, .. } = self;
+        let Self {
+            pool_config_overrides,
+            ordering,
+            txpool_custom_verifier_gas_limit,
+            inclusion_custom_verifier_gas_limit,
+            ..
+        } = self;
+        let txpool_cap =
+            txpool_custom_verifier_gas_limit.unwrap_or(DEFAULT_CUSTOM_VERIFIER_GAS_LIMIT);
+        let inclusion_cap = inclusion_custom_verifier_gas_limit.unwrap_or(txpool_cap);
+        set_custom_verifier_gas_cap(inclusion_cap);
 
         let blob_store = reth_node_builder::components::create_blob_store(ctx)?;
         let validator =
@@ -934,6 +976,7 @@ where
                         // In --dev mode we can't require gas fees because we're unable to decode
                         // the L1 block info
                         .require_l1_data_gas_fee(!ctx.config().dev.dev)
+                        .with_custom_verifier_gas_limit(txpool_cap)
                 });
 
         let final_pool_config = pool_config_overrides.apply(ctx.pool_config());

@@ -7,7 +7,7 @@ use alloy_eips::eip2718::{Decodable2718, Eip2718Error, Eip2718Result, Encodable2
 use alloy_primitives::{Address, B256, Bytes, ChainId, TxKind, U256, keccak256};
 use alloy_rlp::{BufMut, Decodable, Encodable, Header, length_of_length};
 
-use super::{AccountChangeEntry, Call, constants::AA_TX_TYPE_ID};
+use super::{AccountChangeEntry, Call, constants::AA_TX_TYPE_ID, is_native_verifier};
 
 /// An EIP-8130 account-abstracted transaction.
 ///
@@ -69,6 +69,36 @@ impl TxEip8130 {
     /// Returns `true` if the sender pays for gas (no external payer).
     pub fn is_self_pay(&self) -> bool {
         self.payer == Address::ZERO
+    }
+
+    /// Returns `true` if sender authentication uses a custom verifier.
+    pub fn sender_has_custom_verifier(&self) -> bool {
+        !self.is_eoa()
+            && self.sender_auth.len() >= 20
+            && !is_native_verifier(Address::from_slice(&self.sender_auth[..20]))
+    }
+
+    /// Returns `true` if payer authentication uses a custom verifier.
+    pub fn payer_has_custom_verifier(&self) -> bool {
+        !self.is_self_pay()
+            && self.payer_auth.len() >= 20
+            && !is_native_verifier(Address::from_slice(&self.payer_auth[..20]))
+    }
+
+    /// Returns `true` if any config-change authorizer uses a custom verifier.
+    pub fn authorizer_has_custom_verifier(&self) -> bool {
+        self.account_changes.iter().any(|entry| {
+            matches!(entry, AccountChangeEntry::ConfigChange(cc)
+                if cc.authorizer_auth.len() >= 20
+                    && !is_native_verifier(Address::from_slice(&cc.authorizer_auth[..20])))
+        })
+    }
+
+    /// Returns `true` if any auth path uses a custom verifier.
+    pub fn has_custom_verifier(&self) -> bool {
+        self.sender_has_custom_verifier()
+            || self.payer_has_custom_verifier()
+            || self.authorizer_has_custom_verifier()
     }
 
     /// Computes and returns the transaction hash (EIP-2718 envelope hash).
@@ -500,6 +530,12 @@ mod tests {
 
     use super::*;
 
+    fn auth_blob(verifier: Address) -> Bytes {
+        let mut blob = verifier.as_slice().to_vec();
+        blob.push(0x01);
+        Bytes::from(blob)
+    }
+
     fn sample_tx() -> TxEip8130 {
         TxEip8130 {
             chain_id: 8453,
@@ -581,6 +617,32 @@ mod tests {
         tx.payer = Address::repeat_byte(0xCC);
         assert!(!tx.is_self_pay());
         assert_eq!(tx.effective_payer(), Address::repeat_byte(0xCC));
+    }
+
+    #[test]
+    fn custom_verifier_detection_paths() {
+        let custom = Address::repeat_byte(0xAB);
+        let mut tx = sample_tx();
+        tx.sender_auth = auth_blob(custom);
+        assert!(tx.sender_has_custom_verifier());
+        assert!(tx.has_custom_verifier());
+
+        tx.sender_auth = auth_blob(super::super::K1_VERIFIER_ADDRESS);
+        tx.payer = Address::repeat_byte(0x22);
+        tx.payer_auth = auth_blob(custom);
+        assert!(tx.payer_has_custom_verifier());
+        assert!(tx.has_custom_verifier());
+
+        tx.payer_auth = auth_blob(super::super::P256_RAW_VERIFIER_ADDRESS);
+        tx.account_changes =
+            vec![AccountChangeEntry::ConfigChange(super::super::ConfigChangeEntry {
+                chain_id: 0,
+                sequence: 0,
+                owner_changes: vec![],
+                authorizer_auth: auth_blob(custom),
+            })];
+        assert!(tx.authorizer_has_custom_verifier());
+        assert!(tx.has_custom_verifier());
     }
 
     #[test]

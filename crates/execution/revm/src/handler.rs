@@ -460,8 +460,9 @@ where
 /// single tx to chain: entry 1 authorized by existing owner adds new owner X,
 /// entry 2 authorized by X does further changes.
 ///
-/// Uses the shared `CUSTOM_VERIFIER_GAS_CAP` budget for custom authorizer
-/// STATICCALLs. `verification_gas_used` is updated to reflect gas consumed.
+/// Uses the transaction's `custom_verifier_gas_cap` budget for custom
+/// authorizer STATICCALLs. `verification_gas_used` is updated to reflect gas
+/// consumed.
 fn validate_authorizer_chain<EVM, ERROR, FRAME>(
     mainnet: &mut MainnetHandler<EVM, ERROR, FRAME>,
     evm: &mut EVM,

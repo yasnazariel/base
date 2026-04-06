@@ -305,8 +305,7 @@ where
                     let nonce_key = outcome.nonce_key;
                     if is_2d_nonce(nonce_key) {
                         let sender = transaction.sender();
-                        let payer =
-                            outcome.sponsored_payer.unwrap_or(sender);
+                        let payer = outcome.sponsored_payer.unwrap_or(sender);
                         let nonce_storage_slot = nonce_slot(sender, nonce_key);
                         let id =
                             Eip8130TxId { sender, nonce_key, nonce_sequence: outcome.state_nonce };
@@ -320,12 +319,10 @@ where
                                     return crate::TierCheckResult {
                                         tier: crate::ThroughputTier::Default,
                                         cache_for: None,
-                                    }
+                                    };
                                 }
                             };
-                            crate::compute_account_tier(
-                                account, &*state, trusted, block_ts,
-                            )
+                            crate::compute_account_tier(account, &*state, trusted, block_ts)
                         };
                         if let Err(err) = self.eip8130_pool.add_transaction(
                             id,

@@ -15,21 +15,23 @@ use std::{
 
 use alloy_consensus::Transaction;
 use alloy_primitives::{Address, B256, Bytes, U256};
+use base_revm::DEFAULT_CUSTOM_VERIFIER_GAS_CAP;
 use reth_storage_api::StateProviderFactory;
 
 use base_alloy_consensus::{
-    ACCOUNT_CONFIG_ADDRESS, AccountChangeEntry, CUSTOM_VERIFIER_GAS_CAP, DELEGATE_VERIFIER_ADDRESS,
-    K1_VERIFIER_ADDRESS, MAX_CONFIG_OPS_PER_TX, NONCE_FREE_MAX_EXPIRY_WINDOW, NONCE_KEY_MAX,
-    NONCE_MANAGER_ADDRESS, NativeVerifyResult, OwnerScope, P256_RAW_VERIFIER_ADDRESS,
-    P256_WEBAUTHN_VERIFIER_ADDRESS, ParsedSenderAuth, REVOKED_VERIFIER, TxEip8130, ValidationError,
-    config_change_digest, encode_verify_call, expiring_seen_slot, implicit_eoa_owner_id,
-    intrinsic_gas, is_native_verifier, lock_slot, nonce_slot, owner_config_slot,
-    parse_owner_config, parse_sender_auth, payer_signature_hash, read_sequence,
-    sender_signature_hash, sequence_base_slot, try_native_verify, validate_expiry,
-    validate_structure,
+    ACCOUNT_CONFIG_ADDRESS, AccountChangeEntry, DELEGATE_VERIFIER_ADDRESS, K1_VERIFIER_ADDRESS,
+    MAX_CONFIG_OPS_PER_TX, NONCE_FREE_MAX_EXPIRY_WINDOW, NONCE_KEY_MAX, NONCE_MANAGER_ADDRESS,
+    NativeVerifyResult, OwnerScope, P256_RAW_VERIFIER_ADDRESS, P256_WEBAUTHN_VERIFIER_ADDRESS,
+    ParsedSenderAuth, REVOKED_VERIFIER, TxEip8130, ValidationError, config_change_digest,
+    encode_verify_call, expiring_seen_slot, implicit_eoa_owner_id, intrinsic_gas,
+    is_native_verifier, lock_slot, nonce_slot, owner_config_slot, parse_owner_config,
+    parse_sender_auth, payer_signature_hash, read_sequence, sender_signature_hash,
+    sequence_base_slot, try_native_verify, validate_expiry, validate_structure,
 };
 
-use crate::{InvalidationKey, OpPooledTx, ThroughputTier, TierCheckResult, compute_invalidation_keys};
+use crate::{
+    InvalidationKey, OpPooledTx, ThroughputTier, TierCheckResult, compute_invalidation_keys,
+};
 
 /// Controls which verifier contracts the mempool will accept in AA transactions.
 ///
@@ -330,9 +332,9 @@ fn resolve_sender_address(tx: &TxEip8130) -> Result<(Address, B256), Eip8130Vali
 
 /// Default gas limit for custom verifier STATICCALLs in the txpool.
 ///
-/// Matches [`CUSTOM_VERIFIER_GAS_CAP`] from the consensus layer.
+/// Matches [`DEFAULT_CUSTOM_VERIFIER_GAS_CAP`] from the execution layer.
 /// Override via [`OpTransactionValidator::with_custom_verifier_gas_limit`].
-pub const DEFAULT_CUSTOM_VERIFIER_GAS_LIMIT: u64 = CUSTOM_VERIFIER_GAS_CAP;
+pub const DEFAULT_CUSTOM_VERIFIER_GAS_LIMIT: u64 = DEFAULT_CUSTOM_VERIFIER_GAS_CAP;
 
 /// Maximum EIP-2718 encoded size accepted for a single AA transaction at txpool ingress.
 ///
@@ -350,10 +352,11 @@ fn verify_custom_via_evm(
     verifier: Address,
     sig_hash: B256,
     auth_data: &Bytes,
+    caller: Address,
     account: Address,
     required_scope: u8,
     role: OwnerRole,
-    gas_limit: u64,
+    remaining_custom_verifier_gas: &mut u64,
     pending_owners: Option<&HashMap<B256, PendingOwnerState>>,
 ) -> Result<B256, Eip8130ValidationError> {
     use reth_revm::database::StateProviderDatabase;
@@ -364,12 +367,13 @@ fn verify_custom_via_evm(
 
     let calldata = encode_verify_call(sig_hash, auth_data);
 
+    let call_gas = *remaining_custom_verifier_gas;
     let db = CacheDB::new(StateProviderDatabase::new(state));
     let tx = TxEnv::builder()
-        .caller(account)
+        .caller(caller)
         .kind(TxKind::Call(verifier))
         .data(calldata)
-        .gas_limit(gas_limit)
+        .gas_limit(call_gas)
         .build()
         .map_err(|e| Eip8130ValidationError::CustomVerifierCallFailed(format!("{e:?}")))?;
 
@@ -380,6 +384,8 @@ fn verify_custom_via_evm(
     let exec_result = evm
         .replay()
         .map_err(|e| Eip8130ValidationError::CustomVerifierCallFailed(format!("{e:?}")))?;
+    let gas_used = exec_result.result.gas_used();
+    *remaining_custom_verifier_gas = remaining_custom_verifier_gas.saturating_sub(gas_used);
 
     if !exec_result.result.is_success() {
         return Err(role.not_authorized("custom verifier STATICCALL reverted".into()));
@@ -426,7 +432,7 @@ fn validate_sender_authorization(
     sender: Address,
     eoa_owner_id: B256,
     state: &dyn reth_storage_api::StateProvider,
-    custom_verifier_gas_limit: u64,
+    remaining_custom_verifier_gas: &mut u64,
     pending_owners: Option<&HashMap<B256, PendingOwnerState>>,
 ) -> Result<B256, Eip8130ValidationError> {
     if tx.is_eoa() {
@@ -494,9 +500,10 @@ fn validate_sender_authorization(
                     sig_hash,
                     &data,
                     sender,
+                    sender,
                     OwnerScope::SENDER,
                     OwnerRole::Sender,
-                    custom_verifier_gas_limit,
+                    remaining_custom_verifier_gas,
                     pending_owners,
                 ),
             }
@@ -509,9 +516,10 @@ fn validate_sender_authorization(
 /// Returns the authenticated payer `owner_id` on success.
 fn validate_payer(
     tx: &TxEip8130,
+    sender: Address,
     payer: Address,
     state: &dyn reth_storage_api::StateProvider,
-    custom_verifier_gas_limit: u64,
+    remaining_custom_verifier_gas: &mut u64,
     pending_owners: Option<&HashMap<B256, PendingOwnerState>>,
 ) -> Result<B256, Eip8130ValidationError> {
     if tx.payer_auth.len() < 20 {
@@ -558,10 +566,11 @@ fn validate_payer(
             verifier,
             sig_hash,
             &data,
+            sender,
             payer,
             OwnerScope::PAYER,
             OwnerRole::Payer,
-            custom_verifier_gas_limit,
+            remaining_custom_verifier_gas,
             pending_owners,
         ),
     }
@@ -648,7 +657,7 @@ fn validate_authorizer_chain(
     sender: Address,
     state: &dyn reth_storage_api::StateProvider,
     verifier_allowlist: Option<&VerifierAllowlist>,
-    custom_verifier_gas_limit: u64,
+    remaining_custom_verifier_gas: &mut u64,
 ) -> Result<HashMap<B256, PendingOwnerState>, Eip8130ValidationError> {
     let mut pending_owners: HashMap<B256, PendingOwnerState> = HashMap::new();
 
@@ -708,9 +717,10 @@ fn validate_authorizer_chain(
                 digest,
                 &data,
                 sender,
+                sender,
                 OwnerScope::CONFIG,
                 OwnerRole::Authorizer,
-                custom_verifier_gas_limit,
+                remaining_custom_verifier_gas,
                 Some(&pending_owners),
             )?,
         };
@@ -892,6 +902,9 @@ where
     // 6. Lock state — reject config changes on locked accounts
     let has_config_changes =
         tx.account_changes.iter().any(|e| matches!(e, AccountChangeEntry::ConfigChange(_)));
+    let has_custom_verifier = tx.has_custom_verifier();
+    let mut remaining_custom_verifier_gas =
+        if has_custom_verifier { custom_verifier_gas_limit } else { 0 };
     if has_config_changes {
         if !base_alloy_consensus::is_account_config_known_deployed() {
             let deployed = state
@@ -968,7 +981,7 @@ where
             sender,
             &*state,
             verifier_allowlist,
-            custom_verifier_gas_limit,
+            &mut remaining_custom_verifier_gas,
         )?
     } else {
         HashMap::new()
@@ -986,33 +999,21 @@ where
         sender,
         eoa_owner_id,
         &*state,
-        custom_verifier_gas_limit,
+        &mut remaining_custom_verifier_gas,
         Some(&pending_owner_overrides),
     )?;
 
     // 10. Payer resolution and authorization
     let payer = if tx.is_self_pay() { sender } else { tx.payer };
     let payer_owner_id = if payer != sender {
-        Some(validate_payer(&tx, payer, &*state, custom_verifier_gas_limit, None)?)
+        Some(validate_payer(&tx, sender, payer, &*state, &mut remaining_custom_verifier_gas, None)?)
     } else {
         None
     };
 
     // 11. Balance check — payer must cover max gas cost.
     //     Total = (intrinsic + custom_verifier_cap + execution_gas_limit) * max_fee_per_gas
-    let sender_is_custom = !tx.is_eoa()
-        && tx.sender_auth.len() >= 20
-        && !is_native_verifier(Address::from_slice(&tx.sender_auth[..20]));
-    let payer_is_custom = !tx.is_self_pay()
-        && tx.payer_auth.len() >= 20
-        && !is_native_verifier(Address::from_slice(&tx.payer_auth[..20]));
-    let authorizer_is_custom = tx.account_changes.iter().any(|e| {
-        matches!(e, AccountChangeEntry::ConfigChange(cc)
-            if cc.authorizer_auth.len() >= 20
-                && !is_native_verifier(Address::from_slice(&cc.authorizer_auth[..20])))
-    });
-    let has_custom_verifier = sender_is_custom || payer_is_custom || authorizer_is_custom;
-    let verifier_gas_cap = if has_custom_verifier { CUSTOM_VERIFIER_GAS_CAP } else { 0u64 };
+    let verifier_gas_cap = if has_custom_verifier { custom_verifier_gas_limit } else { 0u64 };
     let total_gas =
         U256::from(aa_intrinsic_gas) + U256::from(verifier_gas_cap) + U256::from(tx.gas_limit);
     let max_gas_cost = total_gas.saturating_mul(U256::from(tx.max_fee_per_gas));
@@ -1063,8 +1064,7 @@ pub fn compute_account_tier(
     trusted_bytecodes: &HashSet<B256>,
     block_timestamp: u64,
 ) -> TierCheckResult {
-    let default_result =
-        TierCheckResult { tier: ThroughputTier::Default, cache_for: None };
+    let default_result = TierCheckResult { tier: ThroughputTier::Default, cache_for: None };
 
     let lock_slot_key = lock_slot(account);
     let lock_value = match read_storage(state, ACCOUNT_CONFIG_ADDRESS, lock_slot_key) {
@@ -1084,8 +1084,7 @@ pub fn compute_account_tier(
         return default_result;
     }
 
-    let cache_for =
-        Some(Duration::from_secs(unlocks_at.saturating_sub(block_timestamp)));
+    let cache_for = Some(Duration::from_secs(unlocks_at.saturating_sub(block_timestamp)));
 
     if trusted_bytecodes.is_empty() {
         return TierCheckResult { tier: ThroughputTier::Locked, cache_for };
@@ -1110,7 +1109,15 @@ pub fn compute_account_tier(
 
 #[cfg(test)]
 mod tests {
+    use base_alloy_consensus::{AccountChangeEntry, ConfigChangeEntry, TxEip8130};
+
     use super::*;
+
+    fn auth_blob(verifier: Address) -> Bytes {
+        let mut blob = verifier.as_slice().to_vec();
+        blob.push(0x01);
+        Bytes::from(blob)
+    }
 
     #[test]
     fn allowlist_includes_native_verifiers() {
@@ -1133,5 +1140,62 @@ mod tests {
         let custom = Address::repeat_byte(0xAB);
         let allowlist = VerifierAllowlist::new([custom]);
         assert!(allowlist.is_allowed(&custom));
+    }
+
+    #[test]
+    fn detects_custom_sender_verifier() {
+        let custom = Address::repeat_byte(0xAB);
+        let mut tx = TxEip8130 { from: Address::repeat_byte(0x11), ..Default::default() };
+        tx.sender_auth = auth_blob(custom);
+
+        assert!(tx.has_custom_verifier());
+    }
+
+    #[test]
+    fn detects_custom_payer_verifier() {
+        let custom = Address::repeat_byte(0xAB);
+        let mut tx = TxEip8130 {
+            from: Address::repeat_byte(0x11),
+            payer: Address::repeat_byte(0x22),
+            ..Default::default()
+        };
+        tx.sender_auth = auth_blob(K1_VERIFIER_ADDRESS);
+        tx.payer_auth = auth_blob(custom);
+
+        assert!(tx.has_custom_verifier());
+    }
+
+    #[test]
+    fn detects_custom_authorizer_verifier() {
+        let custom = Address::repeat_byte(0xAB);
+        let mut tx = TxEip8130 { from: Address::repeat_byte(0x11), ..Default::default() };
+        tx.sender_auth = auth_blob(K1_VERIFIER_ADDRESS);
+        tx.account_changes = vec![AccountChangeEntry::ConfigChange(ConfigChangeEntry {
+            chain_id: 0,
+            sequence: 0,
+            owner_changes: vec![],
+            authorizer_auth: auth_blob(custom),
+        })];
+
+        assert!(tx.has_custom_verifier());
+    }
+
+    #[test]
+    fn ignores_native_verifiers() {
+        let mut tx = TxEip8130 {
+            from: Address::repeat_byte(0x11),
+            payer: Address::repeat_byte(0x22),
+            ..Default::default()
+        };
+        tx.sender_auth = auth_blob(K1_VERIFIER_ADDRESS);
+        tx.payer_auth = auth_blob(P256_RAW_VERIFIER_ADDRESS);
+        tx.account_changes = vec![AccountChangeEntry::ConfigChange(ConfigChangeEntry {
+            chain_id: 0,
+            sequence: 0,
+            owner_changes: vec![],
+            authorizer_auth: auth_blob(P256_WEBAUTHN_VERIFIER_ADDRESS),
+        })];
+
+        assert!(!tx.has_custom_verifier());
     }
 }

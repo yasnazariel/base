@@ -254,22 +254,22 @@ pub fn phase_statuses_log_topic() -> B256 {
 // ── AccountConfiguration contract event topics ───────────────────
 
 /// `keccak256("OwnerAuthorized(address,bytes32,address,uint8)")`
-pub fn owner_authorized_log_topic() -> B256 {
+pub(crate) fn owner_authorized_log_topic() -> B256 {
     keccak256(b"OwnerAuthorized(address,bytes32,address,uint8)")
 }
 
 /// `keccak256("OwnerRevoked(address,bytes32)")`
-pub fn owner_revoked_log_topic() -> B256 {
+pub(crate) fn owner_revoked_log_topic() -> B256 {
     keccak256(b"OwnerRevoked(address,bytes32)")
 }
 
 /// `keccak256("AccountCreated(address,bytes32,bytes32)")`
-pub fn account_created_log_topic() -> B256 {
+pub(crate) fn account_created_log_topic() -> B256 {
     keccak256(b"AccountCreated(address,bytes32,bytes32)")
 }
 
 /// `keccak256("ChangeApplied(address,uint64)")`
-pub fn change_applied_log_topic() -> B256 {
+pub(crate) fn change_applied_log_topic() -> B256 {
     keccak256(b"ChangeApplied(address,uint64)")
 }
 

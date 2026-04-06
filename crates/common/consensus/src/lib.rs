@@ -53,8 +53,8 @@ pub use transaction::{
     is_account_config_known_deployed, is_native_verifier, lock_slot, mark_account_config_deployed,
     nonce_key_cost, nonce_slot, owner_config_slot, parse_owner_config, parse_sender_auth,
     payer_auth_cost, payer_signature_hash, payer_verification_gas, read_sequence, sender_auth_cost,
-    sender_signature_hash, sender_verification_gas, sequence_base_slot, sequence_slot,
-    total_verification_gas, tx_payload_cost, write_sequence,
+    sender_signature_hash, sender_verification_gas, sequence_base_slot, total_verification_gas,
+    tx_payload_cost, write_sequence,
 };
 #[cfg(feature = "evm")]
 pub use transaction::{
