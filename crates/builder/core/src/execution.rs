@@ -8,9 +8,8 @@ use ExecutionMeteringLimitExceeded::{
     BlockStateRootGas, FlashblockExecutionTime, TransactionExecutionTime,
 };
 use alloy_primitives::{Address, U256};
-use base_alloy_consensus::OpReceipt;
+use base_alloy_consensus::{OpReceipt, OpTransactionSigned};
 use base_evm::OpTransactionError;
-use base_execution_primitives::OpTransactionSigned;
 use derive_more::Display;
 use thiserror::Error;
 

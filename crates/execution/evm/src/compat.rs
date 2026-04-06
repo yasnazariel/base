@@ -124,7 +124,7 @@ mod rpc_compat {
         rpc::{EthTxEnvError, TryIntoTxEnv},
     };
     use alloy_primitives::Bytes;
-    use base_alloy_rpc_types::OpTransactionRequest;
+    use base_common_rpc_types::OpTransactionRequest;
     use revm::context::TxEnv;
 
     use crate::OpTransaction;

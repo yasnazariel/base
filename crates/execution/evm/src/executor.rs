@@ -78,7 +78,7 @@ where
     R: OpReceiptBuilder,
     Spec: BaseUpgrades + Clone,
 {
-    /// Creates a new [`BaseBlockExecutor`].
+    /// Creates a new [`OpBlockExecutor`].
     pub fn new(evm: E, ctx: OpBlockExecutionCtx, spec: Spec, receipt_builder: R) -> Self {
         Self {
             is_regolith: spec

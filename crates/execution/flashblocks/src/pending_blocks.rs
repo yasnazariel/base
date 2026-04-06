@@ -14,7 +14,7 @@ use arc_swap::Guard;
 use base_alloy_consensus::OpTxType;
 use base_alloy_flashblocks::Flashblock;
 use base_alloy_network::Base;
-use base_alloy_rpc_types::{OpTransactionReceipt, Transaction};
+use base_common_rpc_types::{OpTransactionReceipt, Transaction};
 use base_evm::{OpHaltReason, OpTxResult};
 use reth_evm::eth::EthTxResult;
 use reth_revm::db::BundleState;

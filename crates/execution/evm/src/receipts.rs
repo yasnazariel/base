@@ -2,8 +2,7 @@
 
 use alloy_consensus::{Eip658Value, Receipt};
 use alloy_evm::eth::receipt_builder::ReceiptBuilderCtx;
-use base_alloy_consensus::{OpReceipt, OpTxType};
-use base_execution_primitives::OpTransactionSigned;
+use base_alloy_consensus::{OpReceipt, OpTransactionSigned, OpTxType};
 use reth_evm::Evm;
 
 use crate::OpReceiptBuilder;

@@ -49,7 +49,7 @@ where
     /// The trie database providing stateless access to L2 state via Merkle proofs.
     pub(crate) trie_db: TrieDB<P, H>,
     /// The block executor factory for creating Base execution environments.
-    pub(crate) factory: BaseBlockExecutorFactory<OpAlloyReceiptBuilder, RollupConfig, Evm>,
+    pub(crate) factory: OpBlockExecutorFactory<OpAlloyReceiptBuilder, RollupConfig, Evm>,
 }
 
 impl<'a, P, H, Evm> StatelessL2Builder<'a, P, H, Evm>
@@ -79,7 +79,7 @@ where
         parent_header: Sealed<Header>,
     ) -> Self {
         let trie_db = TrieDB::new(parent_header, provider, hinter);
-        let factory = BaseBlockExecutorFactory::new(
+        let factory = OpBlockExecutorFactory::new(
             OpAlloyReceiptBuilder::default(),
             config.clone(),
             evm_factory,
@@ -144,7 +144,7 @@ where
             .without_state_clear()
             .build();
         let evm = self.factory.evm_factory().create_evm(&mut state, evm_env);
-        let ctx = BaseBlockExecutionCtx {
+        let ctx = OpBlockExecutionCtx {
             parent_hash,
             parent_beacon_block_root: attrs.payload_attributes.parent_beacon_block_root,
             // This field is unused for individual block building jobs.

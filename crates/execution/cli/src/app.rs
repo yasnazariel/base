@@ -75,7 +75,7 @@ where
 
         let components = |spec: Arc<OpChainSpec>| {
             (
-                BaseExecutorProvider::optimism(Arc::clone(&spec)),
+                OpExecutorProvider::optimism(Arc::clone(&spec)),
                 Arc::new(OpBeaconConsensus::new(spec)),
             )
         };

@@ -35,7 +35,6 @@ metrics = { workspace = true, optional = true }
 base-alloy-flz.workspace = true
 base-alloy-chains.workspace = true
 base-alloy-consensus.workspace = true
-base-execution-primitives.workspace = true
 
 # misc
 futures.workspace = true

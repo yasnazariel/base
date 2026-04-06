@@ -8,13 +8,13 @@ use base_alloy_chains::{BaseChainUpgrades, BaseUpgrades};
 use revm::{Inspector, database::State};
 
 use crate::{
-    BaseBlockExecutionCtx, BaseBlockExecutor, OpAlloyReceiptBuilder, OpEvmFactory,
-    OpReceiptBuilder, OpTxEnv,
+    OpAlloyReceiptBuilder, OpBlockExecutionCtx, OpBlockExecutor, OpEvmFactory, OpReceiptBuilder,
+    OpTxEnv,
 };
 
 /// Ethereum block executor factory.
 #[derive(Debug, Clone, Default, Copy)]
-pub struct BaseBlockExecutorFactory<
+pub struct OpBlockExecutorFactory<
     R = OpAlloyReceiptBuilder,
     Spec = BaseChainUpgrades,
     EvmFactory = OpEvmFactory,
@@ -27,8 +27,8 @@ pub struct BaseBlockExecutorFactory<
     evm_factory: EvmFactory,
 }
 
-impl<R, Spec, EvmFactory> BaseBlockExecutorFactory<R, Spec, EvmFactory> {
-    /// Creates a new [`BaseBlockExecutorFactory`] with the given spec, [`EvmFactory`], and
+impl<R, Spec, EvmFactory> OpBlockExecutorFactory<R, Spec, EvmFactory> {
+    /// Creates a new [`OpBlockExecutorFactory`] with the given spec, [`EvmFactory`], and
     /// [`OpReceiptBuilder`].
     pub const fn new(receipt_builder: R, spec: Spec, evm_factory: EvmFactory) -> Self {
         Self { receipt_builder, spec, evm_factory }
@@ -50,7 +50,7 @@ impl<R, Spec, EvmFactory> BaseBlockExecutorFactory<R, Spec, EvmFactory> {
     }
 }
 
-impl<R, Spec, EvmF> BlockExecutorFactory for BaseBlockExecutorFactory<R, Spec, EvmF>
+impl<R, Spec, EvmF> BlockExecutorFactory for OpBlockExecutorFactory<R, Spec, EvmF>
 where
     R: OpReceiptBuilder<Transaction: Transaction + Encodable2718, Receipt: TxReceipt>,
     Spec: BaseUpgrades,
@@ -60,7 +60,7 @@ where
     Self: 'static,
 {
     type EvmFactory = EvmF;
-    type ExecutionCtx<'a> = BaseBlockExecutionCtx;
+    type ExecutionCtx<'a> = OpBlockExecutionCtx;
     type Transaction = R::Transaction;
     type Receipt = R::Receipt;
 
@@ -77,6 +77,6 @@ where
         DB: Database + 'a,
         I: Inspector<EvmF::Context<&'a mut State<DB>>> + 'a,
     {
-        BaseBlockExecutor::new(evm, ctx, &self.spec, &self.receipt_builder)
+        OpBlockExecutor::new(evm, ctx, &self.spec, &self.receipt_builder)
     }
 }

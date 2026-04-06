@@ -11,11 +11,10 @@ use alloy_primitives::{B256, BlockHash, Bytes, U256};
 use alloy_rpc_types_eth::Withdrawals;
 use base_access_lists::FBALBuilderDb;
 use base_alloy_chains::BaseUpgrades;
-use base_alloy_consensus::{OpDepositReceipt, OpReceipt, OpTxType};
+use base_alloy_consensus::{OpDepositReceipt, OpReceipt, OpTransactionSigned, OpTxType};
 use base_evm::{L1BlockInfo, OpEvmConfig, OpNextBlockEnvAttributes, OpReceiptBuilder, OpSpecId};
 use base_execution_chainspec::OpChainSpec;
 use base_execution_payload_builder::{OpPayloadBuilderAttributes, error::OpPayloadBuilderError};
-use base_execution_primitives::OpTransactionSigned;
 use base_txpool::{
     BundleTransaction, TimestampedTransaction, estimated_da_size::DataAvailabilitySized,
 };

@@ -7,9 +7,8 @@ use alloy_consensus::{BlockHeader, Header};
 use alloy_evm::{EvmFactory, FromRecoveredTx, FromTxWithEncoded};
 use alloy_primitives::U256;
 use base_alloy_chains::BaseUpgrades;
-use base_alloy_consensus::EIP1559ParamError;
+use base_alloy_consensus::{DepositReceipt, EIP1559ParamError, OpPrimitives};
 use base_execution_chainspec::OpChainSpec;
-use base_execution_primitives::{DepositReceipt, OpPrimitives};
 use reth_chainspec::EthChainSpec;
 #[cfg(feature = "std")]
 use reth_evm::{ConfigureEngineEvm, ExecutableTxIterator};
@@ -333,9 +332,10 @@ mod tests {
         Address, B256, LogData, Signature, StorageKey, StorageValue, U256, b256, bytes,
         map::{AddressMap, B256Map},
     };
-    use base_alloy_consensus::{OpBlock, OpReceipt, TxDeposit};
+    use base_alloy_consensus::{
+        BaseBlock, OpPrimitives, OpReceipt, OpTransactionSigned, TxDeposit,
+    };
     use base_execution_chainspec::{BASE_MAINNET, OpChainSpec, OpChainSpecBuilder};
-    use base_execution_primitives::{OpPrimitives, OpTransactionSigned};
     use reth_chainspec::{ChainSpec, MIN_TRANSACTION_GAS};
     use reth_evm::{
         ConfigureEvm, EvmEnv,
@@ -721,7 +721,7 @@ mod tests {
     #[test]
     fn receipts_by_block_hash() {
         // Create a default recovered block
-        let block: RecoveredBlock<OpBlock> = Default::default();
+        let block: RecoveredBlock<BaseBlock> = Default::default();
 
         // Define block hashes for block1 and block2
         let block1_hash = B256::new([0x01; 32]);

@@ -39,12 +39,11 @@ reth-execution-errors = { workspace = true, optional = true }
 reth-primitives-traits = { workspace = true, optional = true }
 base-execution-chainspec = { workspace = true, optional = true }
 base-execution-consensus = { workspace = true, optional = true }
-base-execution-primitives = { workspace = true, optional = true }
 base-alloy-rpc-types-engine = { workspace = true, optional = true }
 
 # rpc (optional)
 reth-rpc-eth-api = { workspace = true, optional = true }
-base-alloy-rpc-types = { workspace = true, optional = true }
+base-common-rpc-types = { workspace = true, optional = true }
 
 [dev-dependencies]
 rstest.workspace = true
@@ -58,12 +57,11 @@ alloy-primitives = { workspace = true, default-features = false }
 alloy-sol-types = { workspace = true, default-features = false }
 reth-primitives-traits.workspace = true
 base-alloy-chains.workspace = true
-base-alloy-consensus.workspace = true
+base-alloy-consensus = { workspace = true, features = ["arbitrary"] }
 base-execution-chainspec.workspace = true
 reth-evm = { workspace = true, features = ["test-utils"] }
 reth-revm = { workspace = true, features = ["test-utils"] }
 serde_json = { workspace = true, default-features = false, features = ["alloc", "preserve_order"] }
-base-execution-primitives = { workspace = true, features = ["arbitrary"] }
 
 [features]
 default = [ "blst", "c-kzg", "portable", "secp256k1", "std" ]
@@ -75,10 +73,9 @@ std = [
 	"base-alloy-consensus?/std",
 	"base-alloy-flz/std",
 	"base-alloy-rpc-types-engine?/std",
-	"base-alloy-rpc-types?/std",
+	"base-common-rpc-types?/std",
 	"base-execution-chainspec?/std",
 	"base-execution-consensus?/std",
-	"base-execution-primitives?/std",
 	"reth-chainspec?/std",
 	"reth-evm?/std",
 	"reth-execution-errors?/std",
@@ -113,7 +110,6 @@ reth = [
 	"dep:base-alloy-rpc-types-engine",
 	"dep:base-execution-chainspec",
 	"dep:base-execution-consensus",
-	"dep:base-execution-primitives",
 	"dep:reth-chainspec",
 	"dep:reth-evm",
 	"dep:reth-execution-errors",
@@ -124,7 +120,7 @@ reth = [
 ]
 rpc = [
 	"alloy-evm?/rpc",
-	"dep:base-alloy-rpc-types",
+	"dep:base-common-rpc-types",
 	"dep:reth-rpc-eth-api",
 	"reth",
 ]
