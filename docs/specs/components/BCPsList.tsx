@@ -16,6 +16,13 @@ const bcps: BcpEntry[] = [
     status: 'Final',
     link: '/bcps/bcp-0000',
   },
+  {
+    id: 'BCP-0002',
+    title: 'Feather Client',
+    description: 'Gossip-driven safe/finalized head attestations enabling full EL+CL nodes with no L1 RPC or Beacon API.',
+    status: 'Draft',
+    link: '/bcps/bcp-0002',
+  },
 ]
 
 const statusColor: Record<BcpStatus, { color: string; background: string }> = {
