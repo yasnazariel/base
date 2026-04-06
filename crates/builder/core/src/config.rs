@@ -79,6 +79,9 @@ pub struct BuilderConfig {
 
     /// Resource metering provider
     pub metering_provider: SharedMeteringProvider,
+
+    /// Whether to enable background state trie cache warming via state root calculation.
+    pub enable_state_trie_warming: bool,
 }
 
 impl BuilderConfig {
@@ -112,6 +115,7 @@ impl core::fmt::Debug for BuilderConfig {
             .field("max_uncompressed_block_size", &self.max_uncompressed_block_size)
             .field("metering_wait_duration", &self.metering_wait_duration)
             .field("metering_provider", &self.metering_provider)
+            .field("enable_state_trie_warming", &self.enable_state_trie_warming)
             .finish()
     }
 }
@@ -137,6 +141,7 @@ impl Default for BuilderConfig {
             max_uncompressed_block_size: None,
             metering_wait_duration: None,
             metering_provider: Arc::new(NoopMeteringProvider),
+            enable_state_trie_warming: false,
         }
     }
 }

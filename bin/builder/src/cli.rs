@@ -32,6 +32,16 @@ pub struct FlashblocksArgs {
     /// building time before calculating number of fbs.
     #[arg(long = "flashblocks.leeway-time", default_value = "75", env = "FLASHBLOCK_LEEWAY_TIME")]
     pub flashblocks_leeway_time: u64,
+
+    /// Whether to enable background state trie warming during block building.
+    /// When enabled, state root calculations are performed in the background
+    /// to warm OS/DB caches, improving final state root computation performance.
+    #[arg(
+        long = "flashblocks.enable-state-trie-warming",
+        default_value = "false",
+        env = "FLASHBLOCKS_ENABLE_STATE_TRIE_WARMING"
+    )]
+    pub flashblocks_enable_state_trie_warming: bool,
 }
 
 impl Default for FlashblocksArgs {
@@ -41,6 +51,7 @@ impl Default for FlashblocksArgs {
             flashblocks_addr: "127.0.0.1".to_string(),
             flashblocks_block_time: 250,
             flashblocks_leeway_time: 75,
+            flashblocks_enable_state_trie_warming: false,
         }
     }
 }
@@ -182,6 +193,7 @@ impl Args {
             max_uncompressed_block_size: self.max_uncompressed_block_size,
             metering_wait_duration: self.metering_wait_duration_ms.map(Duration::from_millis),
             metering_provider,
+            enable_state_trie_warming: self.flashblocks.flashblocks_enable_state_trie_warming,
         })
     }
 }
