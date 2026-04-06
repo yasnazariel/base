@@ -39,6 +39,7 @@ use tracing::{debug, error, trace, warn};
 use crate::{
     BuilderConfig, BuilderMetrics, ExecutionInfo, ExecutionMeteringLimitExceeded, PayloadTxsBounds,
     ResourceLimits, TxResources, TxnExecutionError, TxnOutcome,
+    flashblocks::state_trie_warmer::StateTrieHook,
 };
 
 /// Records the priority fee of a rejected transaction with the given reason as a label.
@@ -485,6 +486,7 @@ impl OpPayloadBuilderCtx {
     pub(super) fn execute_sequencer_transactions(
         &self,
         db: &mut State<impl Database>,
+        state_hook: &StateTrieHook,
     ) -> Result<ExecutionInfo, PayloadBuilderError> {
         let mut info = ExecutionInfo::with_capacity(self.attributes().transactions.len());
 
@@ -561,6 +563,9 @@ impl OpPayloadBuilderCtx {
 
             info.receipts.push(self.build_receipt(ctx, depositor_nonce));
 
+            // Send state to warming task before commit
+            state_hook.send_state_update(&state);
+
             // commit changes
             evm.db_mut().commit(state);
 
@@ -600,6 +605,7 @@ impl OpPayloadBuilderCtx {
         db: &mut State<impl Database>,
         best_txs: &mut impl PayloadTxsBounds,
         limits: &ResourceLimits,
+        state_hook: &StateTrieHook,
     ) -> Result<FlashblockDiagnostics, PayloadBuilderError> {
         let execute_txs_start_time = Instant::now();
         let mut num_txs_considered = 0;
@@ -935,6 +941,9 @@ impl OpPayloadBuilderCtx {
                 cumulative_gas_used: info.cumulative_gas_used,
             };
             info.receipts.push(self.build_receipt(ctx, None));
+
+            // Send state to warming task before commit
+            state_hook.send_state_update(&state);
 
             // commit changes
             evm.db_mut().commit(state);

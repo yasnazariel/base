@@ -199,6 +199,14 @@ base_metrics::define_metrics! {
     tx_accounts_modified: histogram,
     #[describe("Number of storage slots modified by a transaction (from EVM post-state)")]
     tx_storage_slots_modified: histogram,
+    #[describe("Number of state trie warming tasks started")]
+    state_trie_warming_started_count: counter,
+    #[describe("Number of state trie warming tasks completed successfully")]
+    state_trie_warming_completed_count: counter,
+    #[describe("Number of state trie warming tasks that encountered errors")]
+    state_trie_warming_error_count: counter,
+    #[describe("Histogram of state trie warming duration (completed tasks only)")]
+    state_trie_warming_duration: histogram,
 }
 
 impl BuilderMetrics {

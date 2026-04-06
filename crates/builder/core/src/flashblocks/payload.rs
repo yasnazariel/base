@@ -1,7 +1,10 @@
 use core::time::Duration;
 use std::{
     ops::{Div, Rem},
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     time::Instant,
 };
 
@@ -54,6 +57,7 @@ use crate::{
         best_txs::BestFlashblocksTxs,
         context::OpPayloadBuilderCtx,
         generator::{BlockCell, BuildArguments},
+        state_trie_warmer::{StateTrieHook, StateTrieWarmerTask},
     },
     traits::{ClientBounds, PoolBounds},
 };
@@ -250,12 +254,44 @@ where
         let state_provider = self.client.state_by_block_hash(ctx.parent().hash())?;
         let db = StateProviderDatabase::new(state_provider);
 
+        // Create state trie warming channel and task
+        let state_hook = if self.config.enable_state_trie_warming {
+            let warming_provider = self.client.state_by_block_hash(ctx.parent().hash())?;
+            let (warming_tx, warming_rx) = std::sync::mpsc::sync_channel(32);
+
+            // Bridge tokio CancellationToken → Arc<AtomicBool> for the blocking task.
+            let cancelled = Arc::new(AtomicBool::new(false));
+            let cancelled_flag = Arc::clone(&cancelled);
+            let cancel_token = block_cancel.clone();
+            tokio::spawn(async move {
+                cancel_token.cancelled().await;
+                cancelled_flag.store(true, Ordering::Relaxed);
+            });
+
+            let warming_task = StateTrieWarmerTask::new(
+                warming_rx,
+                warming_provider,
+                ctx.block_number(),
+                cancelled,
+            );
+            tokio::task::spawn_blocking(move || {
+                if let Err(e) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    warming_task.run();
+                })) {
+                    tracing::error!(error = ?e, "State trie warming task panicked");
+                }
+            });
+            StateTrieHook::new(warming_tx)
+        } else {
+            StateTrieHook::noop()
+        };
+
         // 1. execute the pre steps and seal an early block with that
         let sequencer_tx_start_time = Instant::now();
         let mut state =
             State::builder().with_database(cached_reads.as_db_mut(db)).with_bundle_update().build();
 
-        let mut info = execute_pre_steps(&mut state, &ctx)?;
+        let mut info = execute_pre_steps(&mut state, &ctx, &state_hook)?;
         let sequencer_tx_time = sequencer_tx_start_time.elapsed();
         BuilderMetrics::sequencer_tx_duration().record(sequencer_tx_time);
         BuilderMetrics::sequencer_tx_gauge().set(sequencer_tx_time);
@@ -460,6 +496,7 @@ where
                     &publish_guard,
                     &fb_span,
                     &mut executed_sender_nonces,
+                    &state_hook,
                 )
                 .await
             {
@@ -521,6 +558,7 @@ where
         publish_guard: &parking_lot::Mutex<()>,
         span: &tracing::Span,
         executed_sender_nonces: &mut HashMap<Address, u64>,
+        state_hook: &StateTrieHook,
     ) -> eyre::Result<Option<FlashblocksExtraCtx>> {
         let flashblock_index = ctx.flashblock_index();
         let target_gas_for_batch = ctx.extra.target_gas_for_batch;
@@ -590,7 +628,7 @@ where
             block_uncompressed_size_limit: ctx.builder_config.max_uncompressed_block_size,
         };
         let diag = ctx
-            .execute_best_transactions(info, state, best_txs, &limits)
+            .execute_best_transactions(info, state, best_txs, &limits, state_hook)
             .wrap_err("failed to execute best transactions")?;
 
         // Evict permanently rejected transactions from the iterator and pool.
@@ -924,6 +962,7 @@ struct FlashblocksMetadata {
 pub(crate) fn execute_pre_steps<DB>(
     state: &mut State<DB>,
     ctx: &OpPayloadBuilderCtx,
+    state_hook: &StateTrieHook,
 ) -> Result<ExecutionInfo, PayloadBuilderError>
 where
     DB: Database<Error = ProviderError> + std::fmt::Debug + revm::Database,
@@ -935,7 +974,7 @@ where
         .apply_pre_execution_changes()?;
 
     // 2. execute sequencer transactions
-    let info = ctx.execute_sequencer_transactions(state)?;
+    let info = ctx.execute_sequencer_transactions(state, state_hook)?;
 
     Ok(info)
 }

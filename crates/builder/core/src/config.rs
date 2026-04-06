@@ -83,6 +83,9 @@ pub struct BuilderConfig {
     /// Cache of permanently rejected transaction hashes, shared across blocks.
     /// Transactions in this cache are skipped by the iterator without re-evaluation.
     pub rejection_cache: RejectionCache,
+
+    /// Whether to enable background state trie cache warming via state root calculation.
+    pub enable_state_trie_warming: bool,
 }
 
 impl BuilderConfig {
@@ -117,6 +120,7 @@ impl core::fmt::Debug for BuilderConfig {
             .field("metering_wait_duration", &self.metering_wait_duration)
             .field("metering_provider", &self.metering_provider)
             .field("rejection_cache_size", &self.rejection_cache.entry_count())
+            .field("enable_state_trie_warming", &self.enable_state_trie_warming)
             .finish()
     }
 }
@@ -143,6 +147,7 @@ impl Default for BuilderConfig {
             metering_wait_duration: None,
             metering_provider: Arc::new(NoopMeteringProvider),
             rejection_cache: RejectionCache::new(100_000, Duration::from_secs(1800)),
+            enable_state_trie_warming: false,
         }
     }
 }
