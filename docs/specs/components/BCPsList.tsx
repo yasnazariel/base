@@ -16,6 +16,13 @@ const bcps: BcpEntry[] = [
     status: 'Final',
     link: '/bcps/bcp-0000',
   },
+  {
+    id: 'BCP-0001',
+    title: 'Byzantine-Fault-Tolerant Sequencer Consensus via Commonware Simplex',
+    description: 'Replaces op-conductor with an embedded BFT consensus engine using commonware\'s threshold_simplex protocol.',
+    status: 'Draft',
+    link: '/bcps/bcp-0001',
+  },
 ]
 
 const statusColor: Record<BcpStatus, { color: string; background: string }> = {
