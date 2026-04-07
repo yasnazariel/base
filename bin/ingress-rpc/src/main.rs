@@ -89,7 +89,7 @@ async fn main() -> anyhow::Result<()> {
 
     let audit_publisher =
         KafkaBundleEventPublisher::new(audit_producer, config.audit_topic.clone());
-    let (audit_tx, audit_rx) = mpsc::unbounded_channel::<BundleEvent>();
+    let (audit_tx, audit_rx) = mpsc::channel::<BundleEvent>(config.audit_channel_capacity);
     AuditConnector::connect(audit_rx, audit_publisher);
 
     let (builder_tx, _) =

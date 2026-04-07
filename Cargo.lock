@@ -1849,6 +1849,7 @@ dependencies = [
  "alloy-consensus",
  "alloy-primitives",
  "anyhow",
+ "async-channel",
  "async-trait",
  "aws-config",
  "aws-sdk-s3",

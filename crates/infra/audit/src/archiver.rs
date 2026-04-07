@@ -1,15 +1,12 @@
 use std::{
     fmt,
     marker::PhantomData,
-    sync::Arc,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::Result;
-use tokio::{
-    sync::{Mutex, mpsc},
-    time::sleep,
-};
+use async_channel::Sender;
+use tokio::time::sleep;
 use tracing::{error, info};
 
 use crate::{
@@ -25,7 +22,7 @@ where
     W: EventWriter + Clone + Send + 'static,
 {
     reader: R,
-    event_tx: mpsc::Sender<Event>,
+    event_tx: Sender<Event>,
     _phantom: PhantomData<W>,
 }
 
@@ -52,7 +49,7 @@ where
         channel_buffer_size: usize,
         noop_archive: bool,
     ) -> Self {
-        let (event_tx, event_rx) = mpsc::channel(channel_buffer_size);
+        let (event_tx, event_rx) = async_channel::bounded(channel_buffer_size);
 
         Self::spawn_workers(writer, event_rx, worker_pool_size, noop_archive);
 
@@ -61,25 +58,18 @@ where
 
     fn spawn_workers(
         writer: W,
-        event_rx: mpsc::Receiver<Event>,
+        event_rx: async_channel::Receiver<Event>,
         worker_pool_size: usize,
         noop_archive: bool,
     ) {
-        let event_rx = Arc::new(Mutex::new(event_rx));
-
         for worker_id in 0..worker_pool_size {
             let writer = writer.clone();
-            let event_rx = Arc::clone(&event_rx);
+            let event_rx = event_rx.clone();
 
             tokio::spawn(async move {
                 loop {
-                    let event = {
-                        let mut rx = event_rx.lock().await;
-                        rx.recv().await
-                    };
-
-                    match event {
-                        Some(event) => {
+                    match event_rx.recv().await {
+                        Ok(event) => {
                             let archive_start = Instant::now();
                             // tmp: only use this to clear kafka consumer offset
                             // TODO: use debug! later
@@ -105,7 +95,7 @@ where
                             }
                             Metrics::in_flight_archive_tasks().decrement(1.0);
                         }
-                        None => {
+                        Err(_) => {
                             info!(worker_id, "Worker stopped - channel closed");
                             break;
                         }

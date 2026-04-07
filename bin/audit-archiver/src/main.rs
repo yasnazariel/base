@@ -2,7 +2,8 @@
 
 use anyhow::Result;
 use audit_archiver_lib::{
-    KafkaAuditArchiver, KafkaAuditLogReader, S3EventReaderWriter, create_kafka_consumer,
+    KafkaAuditArchiver, KafkaAuditLogReader, S3EventReaderWriter, S3RetryConfig,
+    create_kafka_consumer,
 };
 use aws_config::{BehaviorVersion, Region};
 use aws_credential_types::Credentials;
@@ -61,6 +62,12 @@ struct Args {
 
     #[arg(long, env = "TIPS_AUDIT_NOOP_ARCHIVE", default_value = "false")]
     noop_archive: bool,
+
+    #[arg(long, env = "TIPS_AUDIT_S3_MAX_RETRIES", default_value = "5")]
+    s3_max_retries: usize,
+
+    #[arg(long, env = "TIPS_AUDIT_S3_RETRY_BASE_DELAY_MS", default_value = "100")]
+    s3_retry_base_delay_ms: u64,
 }
 
 #[tokio::main]
@@ -92,7 +99,11 @@ async fn main() -> Result<()> {
 
     let s3_client = create_s3_client(&args).await?;
     let s3_bucket = args.s3_bucket.clone();
-    let writer = S3EventReaderWriter::new(s3_client, s3_bucket);
+    let retry_config = S3RetryConfig {
+        max_retries: args.s3_max_retries,
+        base_delay_ms: args.s3_retry_base_delay_ms,
+    };
+    let writer = S3EventReaderWriter::with_retry_config(s3_client, s3_bucket, retry_config);
 
     let mut archiver = KafkaAuditArchiver::new(
         reader,

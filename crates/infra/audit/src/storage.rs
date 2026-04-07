@@ -213,17 +213,42 @@ pub trait BundleEventS3Reader {
     ) -> Result<Option<TransactionMetadata>>;
 }
 
+/// Retry configuration for S3 conditional writes.
+#[derive(Clone, Debug)]
+pub struct S3RetryConfig {
+    /// Maximum number of retry attempts on ETag conflict.
+    pub max_retries: usize,
+    /// Base delay in milliseconds for exponential backoff.
+    pub base_delay_ms: u64,
+}
+
+impl Default for S3RetryConfig {
+    fn default() -> Self {
+        Self { max_retries: 5, base_delay_ms: 100 }
+    }
+}
+
 /// S3-backed event reader and writer.
 #[derive(Clone, Debug)]
 pub struct S3EventReaderWriter {
     s3_client: S3Client,
     bucket: String,
+    retry_config: S3RetryConfig,
 }
 
 impl S3EventReaderWriter {
-    /// Creates a new S3 event reader/writer.
-    pub const fn new(s3_client: S3Client, bucket: String) -> Self {
-        Self { s3_client, bucket }
+    /// Creates a new S3 event reader/writer with default retry config.
+    pub fn new(s3_client: S3Client, bucket: String) -> Self {
+        Self { s3_client, bucket, retry_config: S3RetryConfig::default() }
+    }
+
+    /// Creates a new S3 event reader/writer with the given retry config.
+    pub fn with_retry_config(
+        s3_client: S3Client,
+        bucket: String,
+        retry_config: S3RetryConfig,
+    ) -> Self {
+        Self { s3_client, bucket, retry_config }
     }
 
     async fn update_bundle_history(&self, event: Event) -> Result<()> {
@@ -254,10 +279,10 @@ impl S3EventReaderWriter {
         T: for<'de> Deserialize<'de> + Serialize + Default + Debug,
         F: FnMut(T) -> Option<T>,
     {
-        const MAX_RETRIES: usize = 5;
-        const BASE_DELAY_MS: u64 = 100;
+        let max_retries = self.retry_config.max_retries;
+        let base_delay_ms = self.retry_config.base_delay_ms;
 
-        for attempt in 0..MAX_RETRIES {
+        for attempt in 0..max_retries {
             let get_start = Instant::now();
             let (current_value, etag) = self.get_object_with_etag::<T>(key).await?;
             Metrics::s3_get_duration().record(get_start.elapsed().as_secs_f64());
@@ -295,8 +320,8 @@ impl S3EventReaderWriter {
                         Err(e) => {
                             Metrics::s3_put_duration().record(put_start.elapsed().as_secs_f64());
 
-                            if attempt < MAX_RETRIES - 1 {
-                                let delay = BASE_DELAY_MS * 2_u64.pow(attempt as u32);
+                            if attempt < max_retries - 1 {
+                                let delay = base_delay_ms * 2_u64.pow(attempt as u32);
                                 info!(
                                     s3_key = %key,
                                     attempt = attempt + 1,
@@ -307,7 +332,7 @@ impl S3EventReaderWriter {
                                 tokio::time::sleep(tokio::time::Duration::from_millis(delay)).await;
                             } else {
                                 return Err(anyhow::anyhow!(
-                                    "Failed to write after {MAX_RETRIES} attempts: {e}"
+                                    "Failed to write after {max_retries} attempts: {e}"
                                 ));
                             }
                         }

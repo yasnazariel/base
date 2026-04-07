@@ -27,7 +27,7 @@ pub use reader::{
 mod storage;
 pub use storage::{
     BundleEventS3Reader, BundleHistory, BundleHistoryEvent, EventWriter, S3EventReaderWriter,
-    S3Key, TransactionMetadata,
+    S3Key, S3RetryConfig, TransactionMetadata,
 };
 
 mod types;
@@ -41,7 +41,7 @@ pub struct AuditConnector;
 
 impl AuditConnector {
     /// Connects a bundle event receiver to a publisher, spawning a task to forward events.
-    pub fn connect<P>(event_rx: mpsc::UnboundedReceiver<BundleEvent>, publisher: P)
+    pub fn connect<P>(event_rx: mpsc::Receiver<BundleEvent>, publisher: P)
     where
         P: BundleEventPublisher + 'static,
     {

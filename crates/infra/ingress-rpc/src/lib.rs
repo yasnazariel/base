@@ -144,6 +144,10 @@ pub struct Config {
     /// Enable sending to builder
     #[arg(long, env = "TIPS_INGRESS_SEND_TO_BUILDER", default_value = "false")]
     pub send_to_builder: bool,
+
+    /// Maximum number of audit events to buffer before dropping
+    #[arg(long, env = "TIPS_INGRESS_AUDIT_CHANNEL_CAPACITY", default_value = "10000")]
+    pub audit_channel_capacity: usize,
 }
 
 /// Connects ingress metering data to builder RPCs.
