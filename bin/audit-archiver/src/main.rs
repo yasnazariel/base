@@ -9,8 +9,7 @@ use aws_credential_types::Credentials;
 use aws_sdk_s3::{Client as S3Client, config::Builder as S3ConfigBuilder};
 use base_cli_utils::LogConfig;
 use clap::{Parser, ValueEnum};
-use rdkafka::consumer::Consumer;
-use tracing::info;
+use tracing::{error, info, warn};
 
 base_cli_utils::define_log_args!("TIPS_AUDIT");
 base_cli_utils::define_metrics_args!("TIPS_AUDIT", 9002);
@@ -88,7 +87,6 @@ async fn main() -> Result<()> {
     );
 
     let consumer = create_kafka_consumer(&args.kafka_properties_file)?;
-    consumer.subscribe(&[&args.kafka_topic])?;
 
     let reader = KafkaAuditLogReader::new(consumer, args.kafka_topic.clone())?;
 
@@ -106,7 +104,23 @@ async fn main() -> Result<()> {
 
     info!("Audit archiver initialized, starting main loop");
 
-    archiver.run().await
+    tokio::select! {
+        result = archiver.run() => {
+            if let Err(e) = result {
+                error!(error = %e, "Archiver loop exited with error");
+            }
+        }
+        _ = tokio::signal::ctrl_c() => {
+            warn!("Received shutdown signal, flushing offsets");
+        }
+    }
+
+    if let Err(e) = archiver.shutdown() {
+        error!(error = %e, "Failed to flush offsets during shutdown");
+    }
+
+    info!("Audit archiver shut down cleanly");
+    Ok(())
 }
 
 async fn create_s3_client(args: &Args) -> Result<S3Client> {

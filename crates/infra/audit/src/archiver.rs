@@ -148,4 +148,9 @@ where
             }
         }
     }
+
+    /// Flushes the last committed offset and leaves the consumer group.
+    pub fn shutdown(&mut self) -> Result<()> {
+        self.reader.shutdown()
+    }
 }

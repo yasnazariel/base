@@ -47,6 +47,9 @@ pub trait EventReader {
     async fn read_event(&mut self) -> Result<Event>;
     /// Commits the last read message.
     async fn commit(&mut self) -> Result<()>;
+    /// Performs a synchronous commit of the last read offset and leaves the consumer group.
+    /// Called during graceful shutdown to ensure the next consumer starts from a clean offset.
+    fn shutdown(&mut self) -> Result<()>;
 }
 
 /// Reads bundle audit events from Kafka.
@@ -131,6 +134,25 @@ impl EventReader for KafkaAuditLogReader {
             tpl.add_partition_offset(&self.topic, partition, rdkafka::Offset::Offset(offset + 1))?;
             self.consumer.commit(&tpl, rdkafka::consumer::CommitMode::Async)?;
         }
+        Ok(())
+    }
+
+    fn shutdown(&mut self) -> Result<()> {
+        if let (Some(offset), Some(partition)) =
+            (self.last_message_offset, self.last_message_partition)
+        {
+            let mut tpl = TopicPartitionList::new();
+            tpl.add_partition_offset(&self.topic, partition, rdkafka::Offset::Offset(offset + 1))?;
+            info!(
+                offset = offset + 1,
+                partition,
+                topic = %self.topic,
+                "Flushing final offset before shutdown"
+            );
+            self.consumer.commit(&tpl, rdkafka::consumer::CommitMode::Sync)?;
+        }
+        self.consumer.unsubscribe();
+        info!(topic = %self.topic, "Unsubscribed from consumer group");
         Ok(())
     }
 }
