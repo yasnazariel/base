@@ -6,8 +6,8 @@ use std::{
 
 use anyhow::Result;
 use async_channel::Sender;
-use tokio::time::sleep;
-use tracing::{error, info};
+use tokio::{task::JoinHandle, time::sleep};
+use tracing::{error, info, warn};
 
 use crate::{
     metrics::Metrics,
@@ -23,6 +23,7 @@ where
 {
     reader: R,
     event_tx: Sender<Event>,
+    worker_handles: Vec<JoinHandle<()>>,
     _phantom: PhantomData<W>,
 }
 
@@ -51,9 +52,9 @@ where
     ) -> Self {
         let (event_tx, event_rx) = async_channel::bounded(channel_buffer_size);
 
-        Self::spawn_workers(writer, event_rx, worker_pool_size, noop_archive);
+        let worker_handles = Self::spawn_workers(writer, event_rx, worker_pool_size, noop_archive);
 
-        Self { reader, event_tx, _phantom: PhantomData }
+        Self { reader, event_tx, worker_handles, _phantom: PhantomData }
     }
 
     fn spawn_workers(
@@ -61,12 +62,13 @@ where
         event_rx: async_channel::Receiver<Event>,
         worker_pool_size: usize,
         noop_archive: bool,
-    ) {
+    ) -> Vec<JoinHandle<()>> {
+        let mut handles = Vec::with_capacity(worker_pool_size);
         for worker_id in 0..worker_pool_size {
             let writer = writer.clone();
             let event_rx = event_rx.clone();
 
-            tokio::spawn(async move {
+            let handle = tokio::spawn(async move {
                 loop {
                     match event_rx.recv().await {
                         Ok(event) => {
@@ -102,7 +104,9 @@ where
                     }
                 }
             });
+            handles.push(handle);
         }
+        handles
     }
 
     /// Runs the archiver loop, reading events and writing them to storage.
@@ -140,8 +144,18 @@ where
         }
     }
 
-    /// Flushes the last committed offset and leaves the consumer group.
-    pub fn shutdown(&mut self) -> Result<()> {
+    /// Closes the event channel, waits for in-flight S3 writes to finish,
+    /// then flushes the last committed offset and leaves the consumer group.
+    pub async fn shutdown(&mut self) -> Result<()> {
+        self.event_tx.close();
+
+        for handle in self.worker_handles.drain(..) {
+            if let Err(e) = handle.await {
+                warn!(error = %e, "Worker task panicked during shutdown");
+            }
+        }
+
+        info!("All workers drained, flushing Kafka offsets");
         self.reader.shutdown()
     }
 }

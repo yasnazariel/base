@@ -126,7 +126,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    if let Err(e) = archiver.shutdown() {
+    if let Err(e) = archiver.shutdown().await {
         error!(error = %e, "Failed to flush offsets during shutdown");
     }
 

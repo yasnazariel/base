@@ -216,7 +216,7 @@ pub trait BundleEventS3Reader {
 /// Retry configuration for S3 conditional writes.
 #[derive(Clone, Debug)]
 pub struct S3RetryConfig {
-    /// Maximum number of retry attempts on ETag conflict.
+    /// Maximum number of retry attempts on `ETag` conflict.
     pub max_retries: usize,
     /// Base delay in milliseconds for exponential backoff.
     pub base_delay_ms: u64,
@@ -243,7 +243,7 @@ impl S3EventReaderWriter {
     }
 
     /// Creates a new S3 event reader/writer with the given retry config.
-    pub fn with_retry_config(
+    pub const fn with_retry_config(
         s3_client: S3Client,
         bucket: String,
         retry_config: S3RetryConfig,
