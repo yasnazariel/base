@@ -21,7 +21,8 @@ pub use publisher::{BundleEventPublisher, KafkaBundleEventPublisher, LoggingBund
 
 mod reader;
 pub use reader::{
-    Event, EventReader, KafkaAuditLogReader, assign_topic_partition, create_kafka_consumer,
+    Event, EventReader, KafkaAuditLogReader, SeekToLatestContext, assign_topic_partition,
+    create_kafka_consumer,
 };
 
 mod storage;
