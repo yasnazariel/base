@@ -97,6 +97,7 @@ where
                             }
                             if let Err(e) = writer.archive_event(event).await {
                                 error!(worker_id, error = %e, "Failed to write event");
+                                Metrics::failed_archive_tasks().increment(1);
                             } else {
                                 Metrics::archive_event_duration()
                                     .record(archive_start.elapsed().as_secs_f64());
