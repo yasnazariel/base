@@ -9,7 +9,7 @@
 //! **Deployed contracts** (Solidity, deployed at BASE_V1 activation via
 //! `TxDeposit` upgrade transactions — see `base_consensus_upgrades::BaseV1`):
 //!   - `AccountConfiguration` — owner registrations, account creation, locks
-//!   - `K1Verifier`, `P256Verifier`, `WebAuthnVerifier`, `DelegateVerifier`
+//!   - `P256Verifier`, `WebAuthnVerifier`, `DelegateVerifier`
 //!   - `DefaultAccount` — wallet implementation for EIP-7702 auto-delegation
 //!
 //! All deployed contract addresses are deterministic: `Deployers::BASE_V1_*.create(0)`.
@@ -22,16 +22,18 @@ use core::sync::atomic::{AtomicBool, Ordering};
 /// Sentinel verifier address written on self-ownerId revocation.
 ///
 /// When the implicit EOA owner (`ownerId == bytes32(bytes20(account))`) is
-/// revoked, the contract writes `OwnerConfig{verifier: address(1), scopes: 0}`
+/// revoked, the contract writes
+/// `OwnerConfig{verifier: address(type(uint160).max), scopes: 0}`
 /// instead of deleting the slot. This prevents the protocol's implicit EOA
 /// rule from re-authorizing the account on an empty slot. Non-self owners
 /// are simply deleted back to `address(0)`.
 ///
 /// Storage interpretation:
 ///   - `verifier == address(0)` → empty slot (implicit EOA rule may apply)
-///   - `verifier == address(1)` → explicitly revoked sentinel
-///   - `verifier >  address(1)` → registered owner
-pub const REVOKED_VERIFIER: Address = address!("0x0000000000000000000000000000000000000001");
+///   - `verifier == address(1)` → explicit native K1/ecrecover verifier
+///   - `verifier == address(type(uint160).max)` → explicitly revoked sentinel
+///   - `verifier` in `[2..max-1]` → registered custom verifier contract
+pub const REVOKED_VERIFIER: Address = address!("0xffffffffffffffffffffffffffffffffffffffff");
 
 // ── AccountConfiguration deployment cache ─────────────────────────
 //
@@ -80,14 +82,16 @@ pub const TX_CONTEXT_ADDRESS: Address = address!("0x0000000000000000000000000000
 
 /// Default account (wallet) implementation contract. Bare EOAs that submit
 /// AA transactions are auto-delegated to this address via EIP-7702.
-pub const DEFAULT_ACCOUNT_ADDRESS: Address = address!("0x19E994e7Fe4a114A3E40a989Cc5F5f2324E7E21d");
+pub const DEFAULT_ACCOUNT_ADDRESS: Address = address!("0x31914Dd8C3901448D787b2097744Bf7D3241E85A");
 
 /// Account configuration system contract.
 /// Manages owner registrations, account creation, config changes, and locks.
-pub const ACCOUNT_CONFIG_ADDRESS: Address = address!("0x47B8020ea35AbeBD959cEEf7a0D1bEae19d8cA21");
+pub const ACCOUNT_CONFIG_ADDRESS: Address = address!("0x4F20618Cf5c160e7AA385268721dA968F86F0e61");
 
-/// K1 (secp256k1 ECDSA) verifier contract.
-pub const K1_VERIFIER_ADDRESS: Address = address!("0x6E03196230De715554734a73058dA27AdfE2A7A9");
+/// Explicit native K1/ecrecover verifier sentinel.
+///
+/// `address(0)` remains the implicit EOA mode.
+pub const K1_VERIFIER_ADDRESS: Address = address!("0x0000000000000000000000000000000000000001");
 
 /// P256 raw ECDSA verifier contract.
 pub const P256_RAW_VERIFIER_ADDRESS: Address =
@@ -99,12 +103,12 @@ pub const P256_WEBAUTHN_VERIFIER_ADDRESS: Address =
 
 /// Delegate verifier contract (1-hop delegation).
 pub const DELEGATE_VERIFIER_ADDRESS: Address =
-    address!("0x149A439e8ea89541d8A1d2Ab046E39b0A91D0843");
+    address!("0x30A76831b27732087561372f6a1bef6Fc391d805");
 
 /// Default high-rate account variant. Blocks outbound ETH value transfers
 /// when locked, enabling higher mempool rate limits.
 pub const DEFAULT_HIGH_RATE_ACCOUNT_ADDRESS: Address =
-    address!("0x028aBeF556850D3BC0Dbd2c203D979bf44fE7E0b");
+    address!("0x42Ebc02d3D7aaff19226D96F83C376B304BD25Cf");
 
 /// Sentinel verifier address for external caller authorization in
 /// `DefaultAccount`. Deterministic: `address(uint160(uint256(keccak256("externalCaller"))))`.

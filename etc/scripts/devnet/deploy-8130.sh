@@ -125,14 +125,37 @@ else
   }
 fi
 
-ACCOUNT_CONFIG=$(extract_addr "AccountConfiguration")
-DEFAULT_ACCOUNT=$(extract_addr "DefaultAccount")
-DEFAULT_HIGH_RATE=$(extract_addr "DefaultHighRateAccount")
-K1_VERIFIER=$(extract_addr "K1Verifier")
-P256_VERIFIER=$(extract_addr "P256Verifier")
-WEBAUTHN_VERIFIER=$(extract_addr "WebAuthnVerifier")
-DELEGATE_VERIFIER=$(extract_addr "DelegateVerifier")
-ALWAYS_VALID_VERIFIER=$(extract_addr "AlwaysValidVerifier")
+# Deterministic CREATE2 deployments may skip emitting per-contract transactions
+# when bytecode already exists (e.g., contracts deployed during BASE_V1 upgrade).
+# Use the pure address preview as a fallback source of truth.
+PREVIEW_OUTPUT=$(forge script script/Deploy.s.sol:Deploy --sig "addresses()" 2>&1 || true)
+extract_preview_addr() {
+  echo "$PREVIEW_OUTPUT" | sed 's/\x1b\[[0-9;]*m//g' | grep -i "$1:" | tail -1 | awk '{print $NF}'
+}
+resolve_addr() {
+  local candidate="$1"
+  local label="$2"
+  if [ -n "$candidate" ] && [ "$candidate" != "null" ]; then
+    echo "$candidate"
+    return
+  fi
+  extract_preview_addr "$label"
+}
+
+ACCOUNT_CONFIG=$(resolve_addr "$(extract_addr "AccountConfiguration")" "AccountConfiguration")
+DEFAULT_ACCOUNT=$(resolve_addr "$(extract_addr "DefaultAccount")" "DefaultAccount")
+DEFAULT_HIGH_RATE=$(resolve_addr "$(extract_addr "DefaultHighRateAccount")" "DefaultHighRateAccount")
+
+# Verifier namespace update:
+#   - address(0): implicit EOA
+#   - address(1): explicit native K1/ecrecover
+#   - address(max): revoked sentinel
+K1_VERIFIER="0x0000000000000000000000000000000000000001"
+K1_VERIFIER_CONTRACT=$(resolve_addr "$(extract_addr "K1Verifier")" "K1Verifier")
+P256_VERIFIER=$(resolve_addr "$(extract_addr "P256Verifier")" "P256Verifier")
+WEBAUTHN_VERIFIER=$(resolve_addr "$(extract_addr "WebAuthnVerifier")" "WebAuthnVerifier")
+DELEGATE_VERIFIER=$(resolve_addr "$(extract_addr "DelegateVerifier")" "DelegateVerifier")
+ALWAYS_VALID_VERIFIER=$(resolve_addr "$(extract_addr "AlwaysValidVerifier")" "AlwaysValidVerifier")
 
 echo ""
 echo "=== Deployed Addresses ==="
@@ -140,6 +163,7 @@ echo "AccountConfiguration:   $ACCOUNT_CONFIG"
 echo "DefaultAccount:         $DEFAULT_ACCOUNT"
 echo "DefaultHighRateAccount: $DEFAULT_HIGH_RATE"
 echo "K1Verifier:             $K1_VERIFIER"
+echo "K1VerifierContract:     $K1_VERIFIER_CONTRACT"
 echo "P256Verifier:           $P256_VERIFIER"
 echo "WebAuthnVerifier:       $WEBAUTHN_VERIFIER"
 echo "DelegateVerifier:       $DELEGATE_VERIFIER"

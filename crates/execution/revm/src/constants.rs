@@ -97,7 +97,7 @@ pub const MAX_ACCOUNT_CHANGES_PER_TX: usize = 10;
 ///
 /// Mirrors `base_alloy_consensus::DELEGATE_VERIFIER_ADDRESS`.
 pub const DELEGATE_VERIFIER_ADDRESS: Address =
-    address!("0x149A439e8ea89541d8A1d2Ab046E39b0A91D0843");
+    address!("0x30A76831b27732087561372f6a1bef6Fc391d805");
 
 /// Default cap for aggregate gas spent across custom verifier STATICCALLs.
 pub const DEFAULT_CUSTOM_VERIFIER_GAS_CAP: u64 = 100_000;

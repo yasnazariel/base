@@ -67,22 +67,37 @@ const NONCE_MANAGER_ADDRESS = '0x000000000000000000000000000000000000Aa02';
 // Deployed contract addresses — loaded from deploy-8130.sh output if available,
 // otherwise fall back to provisional values matching predeploys.rs.
 const FALLBACK_ADDRESSES = {
-  accountConfiguration: '0x47B8020ea35AbeBD959cEEf7a0D1bEae19d8cA21',
-  defaultAccount:       '0x19E994e7Fe4a114A3E40a989Cc5F5f2324E7E21d',
-  k1Verifier:           '0x6E03196230De715554734a73058dA27AdfE2A7A9',
+  accountConfiguration: '0x4F20618Cf5c160e7AA385268721dA968F86F0e61',
+  defaultAccount:       '0x31914Dd8C3901448D787b2097744Bf7D3241E85A',
+  k1Verifier:           '0x0000000000000000000000000000000000000001',
   p256Verifier:         '0x75E9779603e826f2D8d4dD7Edee3F0a737e4228d',
   webAuthnVerifier:     '0xb2c8b7ec119882fBcc32FDe1be1341e19a5Bd53E',
-  delegateVerifier:     '0x149A439e8ea89541d8A1d2Ab046E39b0A91D0843',
+  delegateVerifier:     '0x30A76831b27732087561372f6a1bef6Fc391d805',
   alwaysValidVerifier:  '0x6812F1aab1dd53e3f6705de05b96D3b93f3503D8',
 };
+
+const K1_EXPLICIT_VERIFIER_SENTINEL = '0x0000000000000000000000000000000000000001';
+const REVOKED_VERIFIER_SENTINEL = '0xffffffffffffffffffffffffffffffffffffffff';
+
+function isAddress(value) {
+  return typeof value === 'string' && /^0x[0-9a-fA-F]{40}$/.test(value);
+}
 
 function loadDeployedAddresses() {
   const __dirname = dirname(fileURLToPath(import.meta.url));
   const addrFile = resolve(__dirname, '../../../.devnet/l2/8130-addresses.json');
   try {
     const json = JSON.parse(readFileSync(addrFile, 'utf-8'));
+    const merged = { ...FALLBACK_ADDRESSES, ...json };
+    for (const key of Object.keys(FALLBACK_ADDRESSES)) {
+      if (!isAddress(merged[key])) {
+        merged[key] = FALLBACK_ADDRESSES[key];
+      }
+    }
+    // New verifier namespace: address(1) is explicit native K1/ecrecover.
+    merged.k1Verifier = K1_EXPLICIT_VERIFIER_SENTINEL;
     console.log(`Loaded 8130 addresses from ${addrFile}`);
-    return json;
+    return merged;
   } catch {
     console.log('No 8130-addresses.json found, using provisional addresses.');
     console.log('Run deploy-8130.sh after devnet start to deploy system contracts.');
@@ -101,6 +116,11 @@ const ALWAYS_VALID_VERIFIER_ADDRESS = DEPLOYED.alwaysValidVerifier;
 
 // keccak256("ALWAYS_VALID") — fixed owner ID returned by AlwaysValidVerifier
 const ALWAYS_VALID_OWNER_ID = keccak256(toHex(new TextEncoder().encode('ALWAYS_VALID')));
+
+// Keep fee selection realistic and avoid underpriced txs as base fee drifts.
+const FALLBACK_PRIORITY_FEE_PER_GAS = 1_000_000n; // 0.001 gwei
+const ESTIMATE_GAS_BUFFER_BPS = 12_000n; // +20%
+const ESTIMATE_GAS_MIN_HEADROOM = 30_000n;
 
 const SENDER_KEY = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d';
 const PAYER_KEY  = '0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a';
@@ -218,15 +238,164 @@ function configChangeDigest(accountAddr, chainId, sequence, ownerChanges) {
   );
 }
 
+function parseHexQuantity(value) {
+  if (value == null || value === '0x') return 0n;
+  return BigInt(value);
+}
+
+function parseHexNumber(value) {
+  return Number(parseHexQuantity(value));
+}
+
+function callsRlpToRpc(callsRlp) {
+  return callsRlp.map((phase) =>
+    phase.map((call) => ({
+      to: call[0],
+      data: call[1] || '0x',
+    }))
+  );
+}
+
+function accountChangesRlpToRpc(accountChangesRlp) {
+  return accountChangesRlp.map((entry) => {
+    const changeType = parseHexNumber(entry[0]);
+    if (changeType === 0) {
+      const owners = (entry[3] || []).map((owner) => ({
+        verifier: owner[0],
+        ownerId: owner[1],
+        scope: parseHexNumber(owner[2]),
+      }));
+      return {
+        type: 'Create',
+        userSalt: entry[1],
+        bytecode: entry[2],
+        initialOwners: owners,
+      };
+    }
+    if (changeType === 1) {
+      const ownerChanges = (entry[3] || []).map((op) => ({
+        changeType: parseHexNumber(op[0]),
+        verifier: op[1],
+        ownerId: op[2],
+        scope: parseHexNumber(op[3]),
+      }));
+      return {
+        type: 'ConfigChange',
+        chainId: parseHexNumber(entry[1]),
+        sequence: parseHexNumber(entry[2]),
+        ownerChanges,
+        authorizerAuth: entry[4] || '0x',
+      };
+    }
+    if (changeType === 2) {
+      return {
+        type: 'Delegation',
+        target: entry[1],
+      };
+    }
+    throw new Error(`Unsupported account_change type: ${entry[0]}`);
+  });
+}
+
+function buildAaTxRequest(unsignedRlpFields, {
+  senderAuth = '0x',
+  payerAuth = '0x',
+} = {}) {
+  return {
+    type: '0x7b',
+    chainId: numberToHex(parseHexQuantity(unsignedRlpFields[0])),
+    from: unsignedRlpFields[1],
+    nonceKey: numberToHex(parseHexQuantity(unsignedRlpFields[2])),
+    nonce: numberToHex(parseHexQuantity(unsignedRlpFields[3])),
+    expiry: numberToHex(parseHexQuantity(unsignedRlpFields[4])),
+    maxPriorityFeePerGas: numberToHex(parseHexQuantity(unsignedRlpFields[5])),
+    maxFeePerGas: numberToHex(parseHexQuantity(unsignedRlpFields[6])),
+    gas: numberToHex(parseHexQuantity(unsignedRlpFields[7])),
+    accountChanges: accountChangesRlpToRpc(unsignedRlpFields[8] || []),
+    calls: callsRlpToRpc(unsignedRlpFields[9] || []),
+    payer: unsignedRlpFields[10],
+    senderAuth,
+    payerAuth,
+  };
+}
+
+async function suggestFeeParams() {
+  let maxPriorityFeePerGas = FALLBACK_PRIORITY_FEE_PER_GAS;
+  try {
+    const tip = await client.request({ method: 'eth_maxPriorityFeePerGas', params: [] });
+    maxPriorityFeePerGas = parseHexQuantity(tip);
+  } catch {
+    // Keep fallback if RPC does not implement maxPriorityFee endpoint.
+  }
+
+  let baseFeePerGas = 0n;
+  try {
+    const block = await client.getBlock();
+    baseFeePerGas = block.baseFeePerGas ?? 0n;
+  } catch {
+    // Keep zero if block lookup fails.
+  }
+
+  let maxFeePerGas = baseFeePerGas * 2n + maxPriorityFeePerGas;
+  if (maxFeePerGas < maxPriorityFeePerGas) {
+    maxFeePerGas = maxPriorityFeePerGas;
+  }
+  return { maxPriorityFeePerGas, maxFeePerGas, baseFeePerGas };
+}
+
+async function prepareUnsignedForSubmission(unsignedRlpFields) {
+  const prepared = [...unsignedRlpFields];
+  const fees = await suggestFeeParams();
+  prepared[5] = encodeUint(fees.maxPriorityFeePerGas);
+  prepared[6] = encodeUint(fees.maxFeePerGas);
+
+  let estimatedGas = null;
+  let estimatedWithBuffer = parseHexQuantity(prepared[7]);
+  try {
+    const txRequest = buildAaTxRequest(prepared, { senderAuth: '0x', payerAuth: '0x' });
+    estimatedGas = parseHexQuantity(
+      await client.request({
+        method: 'eth_estimateGas',
+        params: [txRequest],
+      })
+    );
+    const withPctBuffer = (estimatedGas * ESTIMATE_GAS_BUFFER_BPS + 9_999n) / 10_000n;
+    const withHeadroom = estimatedGas + ESTIMATE_GAS_MIN_HEADROOM;
+    estimatedWithBuffer = withPctBuffer > withHeadroom ? withPctBuffer : withHeadroom;
+    prepared[7] = encodeUint(estimatedWithBuffer);
+  } catch (err) {
+    console.log(`WARN: eth_estimateGas preflight failed: ${err.shortMessage || err.message}`);
+    if (err.details) console.log(`      details: ${err.details}`);
+    console.log(`      using provided gas limit: ${estimatedWithBuffer}`);
+  }
+
+  return { prepared, estimatedGas, estimatedWithBuffer, fees };
+}
+
 async function signAndSend(unsignedRlpFields, {
   trace = true,
   payerAccount = null,
   customSenderAuth = null,
   exitOnError = true,
+  preparedUnsignedRlpFields = null,
 } = {}) {
+  let effectiveUnsigned = preparedUnsignedRlpFields;
+  if (!effectiveUnsigned) {
+    const preflight = await prepareUnsignedForSubmission(unsignedRlpFields);
+    effectiveUnsigned = preflight.prepared;
+    console.log(
+      `Fee preflight: baseFee=${preflight.fees.baseFeePerGas} tip=${preflight.fees.maxPriorityFeePerGas} maxFee=${preflight.fees.maxFeePerGas}`
+    );
+    if (preflight.estimatedGas !== null) {
+      console.log(
+        `Gas preflight: estimate=${preflight.estimatedGas} bufferedLimit=${preflight.estimatedWithBuffer}`
+      );
+    }
+  }
+
   const signingPayload = concat([
     toHex(AA_TX_TYPE, { size: 1 }),
-    toRlp(unsignedRlpFields),
+    toRlp(effectiveUnsigned),
   ]);
   const sigHash = keccak256(signingPayload);
   console.log(`Sender signing hash: ${sigHash}`);
@@ -242,7 +411,7 @@ async function signAndSend(unsignedRlpFields, {
 
   let payerAuth = '0x';
   if (payerAccount) {
-    const payerSigningFields = unsignedRlpFields.slice(0, -1);
+    const payerSigningFields = effectiveUnsigned.slice(0, -1);
     const payerPayload = concat([
       toHex(AA_PAYER_TYPE, { size: 1 }),
       toRlp(payerSigningFields),
@@ -255,7 +424,7 @@ async function signAndSend(unsignedRlpFields, {
   }
 
   const signedRlpFields = [
-    ...unsignedRlpFields,
+    ...effectiveUnsigned,
     senderAuth,
     payerAuth,
   ];
@@ -319,7 +488,7 @@ async function signAndSend(unsignedRlpFields, {
     }
   }
 
-  return { nodeTxHash, receipt };
+  return { nodeTxHash, receipt, encodedTx, unsignedRlpFields: effectiveUnsigned };
 }
 
 function baseTxFields(nonce, callsRlp, accountChangesRlp = [], payerAddress = '0x0000000000000000000000000000000000000000', { nonceKey = 0n, expiry = 0n } = {}) {
@@ -1153,26 +1322,20 @@ async function runNonceRpc() {
 // ─────────────────────────────────────────────────
 async function runEstimateGas() {
   console.log('\n--- eth_estimateGas for EIP-8130 AA Transactions ---');
-  const senderAddr = account.address;
   const nonce = await getAaNonce();
 
   const probeCalldata = encodeFunctionData({ abi: PROBE_ABI, functionName: 'probe' });
-
-  // Build a type 0x7B transaction request with the new AA fields
-  const txRequest = {
-    type: '0x7b',
-    from: senderAddr,
-    nonce: numberToHex(nonce),
-    nonceKey: '0x0',
-    maxFeePerGas: numberToHex(1000000000n),
-    maxPriorityFeePerGas: numberToHex(1000000n),
-    gas: numberToHex(500000n),
-    calls: [[{ to: opts.probeAddr, data: probeCalldata }]],
-    accountChanges: [],
+  const callsRlp = [[[encodeAddress(opts.probeAddr), probeCalldata]]];
+  const unsigned = baseTxFields(nonce, callsRlp);
+  const preflight = await prepareUnsignedForSubmission(unsigned);
+  const txRequest = buildAaTxRequest(preflight.prepared, {
     senderAuth: '0x',
     payerAuth: '0x',
-  };
+  });
 
+  console.log(`Base fee:      ${preflight.fees.baseFeePerGas}`);
+  console.log(`Priority fee:  ${preflight.fees.maxPriorityFeePerGas}`);
+  console.log(`Max fee:       ${preflight.fees.maxFeePerGas}`);
   let pass = true;
 
   // 1. Call eth_estimateGas with the AA request
@@ -1197,9 +1360,10 @@ async function runEstimateGas() {
   }
 
   // 2. Submit the actual transaction and compare gas used
-  const callsRlp = [[[encodeAddress(opts.probeAddr), probeCalldata]]];
-  const unsigned = baseTxFields(nonce, callsRlp);
-  const { receipt } = await signAndSend(unsigned, { trace: false });
+  const { receipt } = await signAndSend(unsigned, {
+    trace: false,
+    preparedUnsignedRlpFields: preflight.prepared,
+  });
 
   if (receipt?.status !== '0x1') {
     console.log(`FAIL: tx status=${receipt?.status}, expected 0x1`);
@@ -1509,7 +1673,7 @@ async function runDelegateP256() {
 // ─────────────────────────────────────────────────
 async function runOwnerChangeSigning() {
   const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
-  const REVOKED_VERIFIER_ADDRESS = '0x0000000000000000000000000000000000000001';
+  const REVOKED_VERIFIER_ADDRESS = REVOKED_VERIFIER_SENTINEL;
   const AUTHORIZE_OWNER = 1;
   const REVOKE_OWNER = 2;
 
@@ -1839,15 +2003,16 @@ async function runLockedConfig() {
   const probeCalldata = encodeFunctionData({ abi: PROBE_ABI, functionName: 'probe' });
   const callsRlp2 = [[[encodeAddress(opts.probeAddr), probeCalldata]]];
   const unsigned2 = baseTxFields(nonce2, callsRlp2, [configChangeRlp]);
+  const preflight2 = await prepareUnsignedForSubmission(unsigned2);
 
   // Sign manually — we expect submission to fail
-  const sigPayload = concat([toHex(AA_TX_TYPE, { size: 1 }), toRlp(unsigned2)]);
+  const sigPayload = concat([toHex(AA_TX_TYPE, { size: 1 }), toRlp(preflight2.prepared)]);
   const sigHash = keccak256(sigPayload);
   const senderSig = await account.sign({ hash: sigHash });
   const senderAuth = concat([K1_VERIFIER_ADDRESS, senderSig]);
   const encodedTx = concat([
     toHex(AA_TX_TYPE, { size: 1 }),
-    toRlp([...unsigned2, senderAuth, '0x']),
+    toRlp([...preflight2.prepared, senderAuth, '0x']),
   ]);
 
   try {
@@ -1900,7 +2065,7 @@ async function runNonceless() {
 
   // Step 1: Send nonceless AA tx
   console.log('\n--- Step 1: Send nonceless AA tx ---');
-  const { receipt, nodeTxHash } = await signAndSend(unsigned, { trace: opts.trace });
+  const { receipt, nodeTxHash, encodedTx } = await signAndSend(unsigned, { trace: opts.trace });
 
   if (receipt?.status !== '0x1') {
     console.log(`FAILED: Nonceless tx failed (status ${receipt?.status || 'unknown'})`);
@@ -1911,14 +2076,6 @@ async function runNonceless() {
   // Step 2: Resubmit the exact same signed transaction (same hash)
   console.log('\n--- Step 2: Resubmit same nonceless tx (should be rejected) ---');
 
-  const sigPayload = concat([toHex(AA_TX_TYPE, { size: 1 }), toRlp(unsigned)]);
-  const sigHash = keccak256(sigPayload);
-  const sig = await account.sign({ hash: sigHash });
-  const senderAuth = concat([K1_VERIFIER_ADDRESS, sig]);
-  const encodedTx = concat([
-    toHex(AA_TX_TYPE, { size: 1 }),
-    toRlp([...unsigned, senderAuth, '0x']),
-  ]);
   const dupTxHash = keccak256(encodedTx);
   console.log(`Duplicate TX hash: ${dupTxHash}`);
 
