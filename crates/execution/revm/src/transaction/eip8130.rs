@@ -176,7 +176,7 @@ pub struct Eip8130Parts {
     pub account_creation_logs: Vec<Eip8130ConfigLog>,
     /// System log events for config changes. Emitted during execution
     /// after `config_writes` and `sequence_updates` are applied.
-    /// Contains `OwnerAuthorized`/`OwnerRevoked` per operation, then `ChangeApplied`.
+    /// Contains `OwnerAuthorized`/`OwnerRevoked` per operation.
     pub config_change_logs: Vec<Eip8130ConfigLog>,
     /// `true` when `sender_auth` was empty (e.g. during `eth_estimateGas`).
     /// The handler uses this to add calldata overhead during gas estimation.
@@ -268,11 +268,6 @@ pub(crate) fn account_created_log_topic() -> B256 {
     keccak256(b"AccountCreated(address,bytes32,bytes32)")
 }
 
-/// `keccak256("ChangeApplied(address,uint64)")`
-pub(crate) fn change_applied_log_topic() -> B256 {
-    keccak256(b"ChangeApplied(address,uint64)")
-}
-
 /// Pads an [`Address`] into a 32-byte indexed topic (left-padded with zeros).
 fn address_to_topic(addr: Address) -> B256 {
     let mut topic = B256::ZERO;
@@ -315,13 +310,6 @@ pub enum Eip8130ConfigLog {
         /// `keccak256(bytecode)` of the deployed runtime code.
         code_hash: B256,
     },
-    /// `ChangeApplied(address indexed account, uint64 sequence)`
-    ChangeApplied {
-        /// The account whose config was changed.
-        account: Address,
-        /// The sequence number that was consumed.
-        sequence: u64,
-    },
 }
 
 /// Converts an [`Eip8130ConfigLog`] into a revm [`Log`] emitted from
@@ -360,17 +348,6 @@ pub fn config_log_to_system_log(emitter: Address, event: &Eip8130ConfigLog) -> L
                 data: LogData::new_unchecked(
                     vec![account_created_log_topic(), address_to_topic(*account)],
                     Bytes::from(data),
-                ),
-            }
-        }
-        Eip8130ConfigLog::ChangeApplied { account, sequence } => {
-            let mut data = [0u8; 32];
-            data[24..32].copy_from_slice(&sequence.to_be_bytes());
-            Log {
-                address: emitter,
-                data: LogData::new_unchecked(
-                    vec![change_applied_log_topic(), address_to_topic(*account)],
-                    Bytes::from(data.to_vec()),
                 ),
             }
         }

@@ -323,10 +323,6 @@ pub fn build_eip8130_parts_with_costs(
                         _ => {}
                     }
                 }
-                config_change_logs.push(Eip8130ConfigLog::ChangeApplied {
-                    account: sender,
-                    sequence: cc.sequence,
-                });
             }
             AccountChangeEntry::Delegation(_) => {
                 // delegation_target is extracted below
