@@ -25,16 +25,18 @@ use revm::{
         interpreter::EthInterpreter,
         interpreter_action::{CallInput, CallInputs, CallScheme, CallValue, FrameInit, FrameInput},
     },
-    primitives::{Address, B256, U256, hardfork::SpecId, keccak256},
+    primitives::{Address, B256, Bytes, U256, hardfork::SpecId, keccak256},
 };
 
 use crate::{
     Eip8130Parts, Eip8130PhaseResult, Eip8130TxContext, L1BlockInfo, NONCE_MANAGER_ADDRESS,
-    OpContextTr, OpHaltReason, OpSpecId, TX_CONTEXT_ADDRESS, clear_eip8130_tx_context,
-    config_log_to_system_log,
+    OpContextTr, OpHaltReason, OpSpecId, PendingOwnerState, PendingOwnerValidationError,
+    TX_CONTEXT_ADDRESS, clear_eip8130_tx_context, config_log_to_system_log,
     constants::{BASE_FEE_RECIPIENT, L1_FEE_RECIPIENT, OPERATOR_FEE_RECIPIENT},
-    encode_phase_statuses, phase_statuses_system_log, set_eip8130_tx_context,
+    encode_phase_statuses, pending_owner_state_for_change, phase_statuses_system_log,
+    set_eip8130_tx_context,
     transaction::{DEPOSIT_TRANSACTION_TYPE, OpTransactionError, OpTxTr},
+    validate_pending_owner_state,
 };
 
 /// EIP-8130 AA transaction type byte.
@@ -59,6 +61,15 @@ const NONCE_COLD_WARM_DELTA: u64 = 17_100;
 const ACCOUNT_CONFIG_ADDRESS: Address = Address::new([
     0x47, 0xB8, 0x02, 0x0e, 0xa3, 0x5A, 0xbe, 0xBD, 0x95, 0x9c, 0xEE, 0xf7, 0xa0, 0xD1, 0xbE, 0xae,
     0x19, 0xd8, 0xCA, 0x21,
+]);
+
+/// K1 verifier contract address.
+///
+/// Mirrors `base_alloy_consensus::K1_VERIFIER_ADDRESS` to avoid a cyclic
+/// dependency.
+const K1_VERIFIER_ADDRESS: Address = Address::new([
+    0x6E, 0x03, 0x19, 0x62, 0x30, 0xDe, 0x71, 0x55, 0x54, 0x73, 0x4a, 0x73, 0x05, 0x8d, 0xA2, 0x7A,
+    0xdf, 0xE2, 0xA7, 0xA9,
 ]);
 
 /// Monotonic cache: once the AccountConfiguration contract is detected, we
@@ -172,13 +183,6 @@ fn parse_owner_config_word(word: U256) -> (Address, u8) {
     (verifier, scope)
 }
 
-/// In-memory overlay for owner config changes within a single transaction.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum PendingOwnerState {
-    Authorized { verifier: Address, scope: u8 },
-    Revoked,
-}
-
 /// Validates owner authorization against effective state:
 /// pending in-tx owner changes first, then on-chain storage.
 fn validate_owner_against_effective_config<EVM, ERROR>(
@@ -195,26 +199,21 @@ where
     ERROR: EvmTrError<EVM> + From<OpTransactionError>,
 {
     if let Some(state) = pending_owner_overrides.and_then(|m| m.get(&owner_id)) {
-        match state {
-            PendingOwnerState::Revoked => {
-                return Err(eip8130_invalid_tx::<ERROR>(
-                    "owner explicitly revoked in pending config changes",
-                ));
-            }
-            PendingOwnerState::Authorized { verifier, scope } => {
-                if *verifier != expected_verifier {
-                    return Err(eip8130_invalid_tx::<ERROR>(format!(
-                        "verifier mismatch: expected {expected_verifier}, got {verifier}",
-                    )));
+        validate_pending_owner_state(state, expected_verifier, required_scope).map_err(|err| {
+            let msg: std::borrow::Cow<'static, str> = match err {
+                PendingOwnerValidationError::Revoked => {
+                    "owner explicitly revoked in pending config changes".into()
                 }
-                if *scope != 0 && (*scope & required_scope) == 0 {
-                    return Err(eip8130_invalid_tx::<ERROR>(format!(
-                        "owner lacks required scope bit 0x{required_scope:02x}",
-                    )));
+                PendingOwnerValidationError::VerifierMismatch { expected, actual } => {
+                    format!("verifier mismatch: expected {expected}, got {actual}").into()
                 }
-                return Ok(());
-            }
-        }
+                PendingOwnerValidationError::MissingScope { required_scope } => {
+                    format!("owner lacks required scope bit 0x{required_scope:02x}").into()
+                }
+            };
+            eip8130_invalid_tx::<ERROR>(msg)
+        })?;
+        return Ok(());
     }
 
     evm.ctx().journal_mut().load_account(ACCOUNT_CONFIG_ADDRESS)?;
@@ -235,7 +234,7 @@ where
                 buf[..20].copy_from_slice(account.as_slice());
                 U256::from_be_bytes(buf)
             };
-            if owner_id == implicit_owner_id {
+            if owner_id == implicit_owner_id && expected_verifier == K1_VERIFIER_ADDRESS {
                 return Ok(());
             }
         }
@@ -446,6 +445,71 @@ where
     Ok(())
 }
 
+/// Runs a custom verifier STATICCALL and decodes the returned owner_id.
+///
+/// Charges gas against the transaction's custom-verifier budget via
+/// `verification_gas_used`.
+fn run_custom_verifier_staticcall<EVM, ERROR, FRAME>(
+    mainnet: &mut MainnetHandler<EVM, ERROR, FRAME>,
+    evm: &mut EVM,
+    verifier: Address,
+    calldata: &Bytes,
+    caller: Address,
+    verification_gas_cap: u64,
+    verification_gas_used: &mut u64,
+    call_failed_msg: &'static str,
+    invalid_owner_id_msg: &'static str,
+) -> Result<U256, ERROR>
+where
+    EVM: EvmTr<Context: OpContextTr, Frame = FRAME>,
+    ERROR: EvmTrError<EVM> + From<OpTransactionError>,
+    FRAME: FrameTr<FrameResult = FrameResult, FrameInit = FrameInit>,
+{
+    evm.ctx().journal_mut().load_account(verifier)?;
+
+    let call_gas = verification_gas_cap.saturating_sub(*verification_gas_used);
+    let call_inputs = CallInputs {
+        input: CallInput::Bytes(calldata.clone()),
+        return_memory_offset: 0..0,
+        gas_limit: call_gas,
+        bytecode_address: verifier,
+        known_bytecode: None,
+        target_address: verifier,
+        caller,
+        value: CallValue::Transfer(U256::ZERO),
+        scheme: CallScheme::StaticCall,
+        is_static: true,
+    };
+
+    let frame_init = FrameInit {
+        depth: 0,
+        memory: {
+            let ctx = evm.ctx();
+            let mut mem = SharedMemory::new_with_buffer(ctx.local().shared_memory_buffer().clone());
+            mem.set_memory_limit(ctx.cfg().memory_limit());
+            mem
+        },
+        frame_input: FrameInput::Call(Box::new(call_inputs)),
+    };
+
+    let result = mainnet.run_exec_loop(evm, frame_init)?;
+    let used = call_gas.saturating_sub(result.gas().remaining());
+    *verification_gas_used = verification_gas_used.saturating_add(used);
+
+    if !result.interpreter_result().result.is_ok() {
+        return Err(eip8130_invalid_tx::<ERROR>(call_failed_msg));
+    }
+
+    let output = result.interpreter_result().output.as_ref();
+    if output.len() < 32 {
+        return Err(eip8130_invalid_tx::<ERROR>(invalid_owner_id_msg));
+    }
+
+    let mut bytes = [0u8; 32];
+    bytes.copy_from_slice(&output[..32]);
+    Ok(U256::from_be_bytes(bytes))
+}
+
 /// Validates the config change authorizer chain.
 ///
 /// Iterates `authorizer_validations` in order. For each entry:
@@ -497,53 +561,17 @@ where
 
         let owner_id = if let Some(verify_call) = &validation.verify_call {
             // Custom verifier: STATICCALL to get owner_id.
-            evm.ctx().journal_mut().load_account(verify_call.verifier)?;
-
-            let call_gas = eip8130.custom_verifier_gas_cap.saturating_sub(*verification_gas_used);
-            let call_inputs = CallInputs {
-                input: CallInput::Bytes(verify_call.calldata.clone()),
-                return_memory_offset: 0..0,
-                gas_limit: call_gas,
-                bytecode_address: verify_call.verifier,
-                known_bytecode: None,
-                target_address: verify_call.verifier,
-                caller: sender,
-                value: CallValue::Transfer(U256::ZERO),
-                scheme: CallScheme::StaticCall,
-                is_static: true,
-            };
-
-            let frame_init = FrameInit {
-                depth: 0,
-                memory: {
-                    let ctx = evm.ctx();
-                    let mut mem =
-                        SharedMemory::new_with_buffer(ctx.local().shared_memory_buffer().clone());
-                    mem.set_memory_limit(ctx.cfg().memory_limit());
-                    mem
-                },
-                frame_input: FrameInput::Call(Box::new(call_inputs)),
-            };
-
-            let result = mainnet.run_exec_loop(evm, frame_init)?;
-            let used = call_gas.saturating_sub(result.gas().remaining());
-            *verification_gas_used = verification_gas_used.saturating_add(used);
-
-            if !result.interpreter_result().result.is_ok() {
-                return Err(eip8130_invalid_tx::<ERROR>(
-                    "config change authorizer STATICCALL failed",
-                ));
-            }
-
-            let output = result.interpreter_result().output.as_ref();
-            if output.len() < 32 {
-                return Err(eip8130_invalid_tx::<ERROR>(
-                    "config change authorizer returned invalid owner_id",
-                ));
-            }
-            let mut bytes = [0u8; 32];
-            bytes.copy_from_slice(&output[..32]);
-            U256::from_be_bytes(bytes)
+            run_custom_verifier_staticcall::<EVM, ERROR, FRAME>(
+                mainnet,
+                evm,
+                verify_call.verifier,
+                &verify_call.calldata,
+                sender,
+                eip8130.custom_verifier_gas_cap,
+                verification_gas_used,
+                "config change authorizer STATICCALL failed",
+                "config change authorizer returned invalid owner_id",
+            )?
         } else {
             // Native verifier: owner_id was pre-authenticated at conversion time.
             U256::from_be_bytes(validation.owner_id.0)
@@ -555,56 +583,23 @@ where
             ));
         }
 
-        // Check CONFIG scope: first in pending map, then on-chain.
-        let has_config_scope = if let Some(state) = pending_owners.get(&owner_id) {
-            match state {
-                PendingOwnerState::Revoked => {
-                    return Err(eip8130_invalid_tx::<ERROR>(
-                        "config change authorizer owner revoked",
-                    ));
-                }
-                PendingOwnerState::Authorized { scope, .. } => {
-                    *scope == 0 || (*scope & crate::constants::OWNER_SCOPE_CONFIG) != 0
-                }
-            }
-        } else {
-            evm.ctx().journal_mut().load_account(ACCOUNT_CONFIG_ADDRESS)?;
-            let slot = aa_owner_config_slot(sender, owner_id);
-            let config_word = evm.ctx().journal_mut().sload(ACCOUNT_CONFIG_ADDRESS, slot)?.data;
-
-            let (on_chain_verifier, scope) = parse_owner_config_word(config_word);
-            if on_chain_verifier == Address::with_last_byte(1) {
-                return Err(eip8130_invalid_tx::<ERROR>("config change authorizer owner revoked"));
-            }
-            if on_chain_verifier == Address::ZERO {
-                // Empty slot: implicit EOA rule
-                let implicit_owner_id = {
-                    let mut buf = [0u8; 32];
-                    buf[..20].copy_from_slice(sender.as_slice());
-                    U256::from_be_bytes(buf)
-                };
-                owner_id == implicit_owner_id
-            } else {
-                scope == 0 || (scope & crate::constants::OWNER_SCOPE_CONFIG) != 0
-            }
-        };
-
-        if !has_config_scope {
-            return Err(eip8130_invalid_tx::<ERROR>("config change authorizer lacks CONFIG scope"));
-        }
+        // Check CONFIG scope with pending overrides first, then on-chain.
+        validate_owner_against_effective_config::<EVM, ERROR>(
+            evm,
+            sender,
+            owner_id,
+            validation.verifier,
+            crate::constants::OWNER_SCOPE_CONFIG,
+            true,
+            Some(&pending_owners),
+        )?;
 
         // Record pending additions from this entry for chaining.
         for op in &validation.owner_changes {
-            if op.change_type == 0x01 {
-                // AUTHORIZE
-                pending_owners.insert(
-                    U256::from_be_bytes(op.owner_id.0),
-                    PendingOwnerState::Authorized { verifier: op.verifier, scope: op.scope },
-                );
-            } else if op.change_type == 0x02 {
-                // REVOKE
-                pending_owners
-                    .insert(U256::from_be_bytes(op.owner_id.0), PendingOwnerState::Revoked);
+            if let Some(state) =
+                pending_owner_state_for_change(op.change_type, op.verifier, op.scope)
+            {
+                pending_owners.insert(U256::from_be_bytes(op.owner_id.0), state);
             }
         }
     }
@@ -1156,53 +1151,17 @@ where
             let verify_calls =
                 [eip8130.sender_verify_call.as_ref(), eip8130.payer_verify_call.as_ref()];
             for verify_call in verify_calls.into_iter().flatten() {
-                evm.ctx().journal_mut().load_account(verify_call.verifier)?;
-
-                let call_gas =
-                    eip8130.custom_verifier_gas_cap.saturating_sub(verification_gas_used);
-                let call_inputs = CallInputs {
-                    input: CallInput::Bytes(verify_call.calldata.clone()),
-                    return_memory_offset: 0..0,
-                    gas_limit: call_gas,
-                    bytecode_address: verify_call.verifier,
-                    known_bytecode: None,
-                    target_address: verify_call.verifier,
-                    caller: sender,
-                    value: CallValue::Transfer(U256::ZERO),
-                    scheme: CallScheme::StaticCall,
-                    is_static: true,
-                };
-
-                let frame_init = FrameInit {
-                    depth: 0,
-                    memory: {
-                        let ctx = evm.ctx();
-                        let mut mem = SharedMemory::new_with_buffer(
-                            ctx.local().shared_memory_buffer().clone(),
-                        );
-                        mem.set_memory_limit(ctx.cfg().memory_limit());
-                        mem
-                    },
-                    frame_input: FrameInput::Call(Box::new(call_inputs)),
-                };
-
-                let result = self.mainnet.run_exec_loop(evm, frame_init)?;
-                let used = call_gas.saturating_sub(result.gas().remaining());
-                verification_gas_used = verification_gas_used.saturating_add(used);
-
-                if !result.interpreter_result().result.is_ok() {
-                    return Err(eip8130_invalid_tx::<ERROR>("custom verifier STATICCALL failed"));
-                }
-
-                let output = result.interpreter_result().output.as_ref();
-                if output.len() < 32 {
-                    return Err(eip8130_invalid_tx::<ERROR>(
-                        "custom verifier returned invalid owner_id (< 32 bytes)",
-                    ));
-                }
-                let mut owner_id_bytes = [0u8; 32];
-                owner_id_bytes.copy_from_slice(&output[..32]);
-                let owner_id = U256::from_be_bytes(owner_id_bytes);
+                let owner_id = run_custom_verifier_staticcall::<EVM, ERROR, FRAME>(
+                    &mut self.mainnet,
+                    evm,
+                    verify_call.verifier,
+                    &verify_call.calldata,
+                    sender,
+                    eip8130.custom_verifier_gas_cap,
+                    &mut verification_gas_used,
+                    "custom verifier STATICCALL failed",
+                    "custom verifier returned invalid owner_id (< 32 bytes)",
+                )?;
 
                 let pending_overrides = if verify_call.account == sender {
                     Some(&pending_sender_owner_overrides)
@@ -2641,7 +2600,7 @@ mod tests {
     fn test_eip8130_sender_auth_rejected_when_revoked_in_same_tx() {
         let sender = Address::from([0x11; 20]);
         let target = Address::from([0x22; 20]);
-        let k1_verifier = Address::from([0x33; 20]);
+        let k1_verifier = K1_VERIFIER_ADDRESS;
         let new_verifier = Address::from([0x44; 20]);
         let revoked_verifier = Address::with_last_byte(1);
 
@@ -2750,7 +2709,7 @@ mod tests {
     fn test_eip8130_sender_auth_accepts_owner_added_in_same_tx() {
         let sender = Address::from([0x11; 20]);
         let target = Address::from([0x22; 20]);
-        let k1_verifier = Address::from([0x33; 20]);
+        let k1_verifier = K1_VERIFIER_ADDRESS;
         let new_verifier = Address::from([0x44; 20]);
         let revoked_verifier = Address::with_last_byte(1);
 
@@ -2855,6 +2814,204 @@ mod tests {
         );
         let statuses = decode_phase_statuses(result.output().unwrap());
         assert_eq!(statuses, vec![true], "single STOP phase should succeed");
+    }
+
+    #[test]
+    fn test_eip8130_authorizer_native_verifier_field_mismatch_rejected() {
+        let sender = Address::from([0x11; 20]);
+        let target = Address::from([0x22; 20]);
+        let new_verifier = Address::from([0x44; 20]);
+        let revoked_verifier = Address::with_last_byte(1);
+
+        let mut implicit_owner = [0u8; 32];
+        implicit_owner[..20].copy_from_slice(sender.as_slice());
+        let eoa_owner_id = B256::from(implicit_owner);
+        let new_owner_id = B256::from([0x55; 32]);
+
+        let eoa_owner_slot = aa_owner_config_slot(sender, U256::from_be_bytes(eoa_owner_id.0));
+        let new_owner_slot = aa_owner_config_slot(sender, U256::from_be_bytes(new_owner_id.0));
+
+        let mut db = InMemoryDB::default();
+        db.insert_account_info(
+            sender,
+            AccountInfo { balance: U256::from(10_000_000), ..Default::default() },
+        );
+        db.insert_account_info(
+            NONCE_MANAGER_ADDRESS,
+            AccountInfo { code: Some(Bytecode::new_legacy(bytes!("FE"))), ..Default::default() },
+        );
+        db.insert_account_info(
+            target,
+            AccountInfo { code: Some(Bytecode::new_legacy(bytes!("00"))), ..Default::default() },
+        );
+        db.insert_account_info(
+            ACCOUNT_CONFIG_ADDRESS,
+            AccountInfo { code: Some(Bytecode::new_legacy(bytes!("FE"))), ..Default::default() },
+        );
+
+        let mut tx = OpTransaction::builder()
+            .base(
+                TxEnv::builder()
+                    .tx_type(Some(0x7B))
+                    .caller(sender)
+                    .gas_limit(300_000)
+                    .kind(TxKind::Call(sender)),
+            )
+            .enveloped_tx(Some(bytes!("7BFACADE")))
+            .build_fill();
+        tx.eip8130 = Eip8130Parts {
+            sender,
+            payer: sender,
+            sender_verifier: new_verifier,
+            owner_id: new_owner_id,
+            call_phases: vec![vec![Eip8130Call {
+                to: target,
+                data: Bytes::new(),
+                value: U256::ZERO,
+            }]],
+            authorizer_validations: vec![Eip8130AuthorizerValidation {
+                // Regression guard: if conversion accidentally zeroes this
+                // field, inclusion validation must reject.
+                verifier: Address::ZERO,
+                owner_id: eoa_owner_id,
+                verify_call: None,
+                owner_changes: vec![
+                    Eip8130ConfigOp {
+                        change_type: 0x01,
+                        verifier: new_verifier,
+                        owner_id: new_owner_id,
+                        scope: 0,
+                    },
+                    Eip8130ConfigOp {
+                        change_type: 0x02,
+                        verifier: Address::ZERO,
+                        owner_id: eoa_owner_id,
+                        scope: 0,
+                    },
+                ],
+            }],
+            config_writes: vec![
+                Eip8130StorageWrite {
+                    address: ACCOUNT_CONFIG_ADDRESS,
+                    slot: new_owner_slot,
+                    value: pack_owner_config(new_verifier, 0),
+                },
+                Eip8130StorageWrite {
+                    address: ACCOUNT_CONFIG_ADDRESS,
+                    slot: eoa_owner_slot,
+                    value: pack_owner_config(revoked_verifier, 0),
+                },
+            ],
+            ..Default::default()
+        };
+
+        let ctx = Context::op()
+            .with_db(db)
+            .with_tx(tx)
+            .with_chain(L1BlockInfo {
+                l2_block: Some(U256::ZERO),
+                operator_fee_scalar: Some(U256::ZERO),
+                operator_fee_constant: Some(U256::ZERO),
+                ..Default::default()
+            })
+            .with_cfg(CfgEnv::new_with_spec(OpSpecId::BASE_V1));
+        let mut evm = ctx.build_op();
+
+        let mut handler =
+            OpHandler::<_, EVMError<_, OpTransactionError>, EthFrame<EthInterpreter>>::new();
+        let result = handler.run(&mut evm);
+        assert!(result.is_err(), "authorizer verifier field mismatch must reject inclusion",);
+    }
+
+    #[test]
+    fn test_eip8130_custom_authorizer_staticcall_succeeds() {
+        let sender = Address::from([0x11; 20]);
+        let target = Address::from([0x22; 20]);
+        let custom_verifier = Address::from([0xAA; 20]);
+        let authorizer_owner_id = B256::from([0xBB; 32]);
+
+        let mut implicit_owner = [0u8; 32];
+        implicit_owner[..20].copy_from_slice(sender.as_slice());
+        let eoa_owner_id = B256::from(implicit_owner);
+
+        let owner_config_slot =
+            aa_owner_config_slot(sender, U256::from_be_bytes(authorizer_owner_id.0));
+
+        let mut db = InMemoryDB::default();
+        db.insert_account_info(
+            sender,
+            AccountInfo { balance: U256::from(10_000_000), ..Default::default() },
+        );
+        db.insert_account_info(
+            NONCE_MANAGER_ADDRESS,
+            AccountInfo { code: Some(Bytecode::new_legacy(bytes!("FE"))), ..Default::default() },
+        );
+        db.insert_account_info(
+            custom_verifier,
+            AccountInfo {
+                code: Some(make_verifier_bytecode(authorizer_owner_id)),
+                ..Default::default()
+            },
+        );
+        db.insert_account_info(
+            target,
+            AccountInfo { code: Some(Bytecode::new_legacy(bytes!("00"))), ..Default::default() },
+        );
+        db.insert_account_info(ACCOUNT_CONFIG_ADDRESS, AccountInfo::default());
+        let acfg = db.load_account(ACCOUNT_CONFIG_ADDRESS).unwrap();
+        acfg.storage.insert(owner_config_slot, pack_owner_config(custom_verifier, 0));
+
+        let mut tx = OpTransaction::builder()
+            .base(
+                TxEnv::builder()
+                    .tx_type(Some(0x7B))
+                    .caller(sender)
+                    .gas_limit(250_000)
+                    .kind(TxKind::Call(sender)),
+            )
+            .enveloped_tx(Some(bytes!("7BFACADE")))
+            .build_fill();
+        tx.eip8130 = Eip8130Parts {
+            sender,
+            payer: sender,
+            sender_verifier: K1_VERIFIER_ADDRESS,
+            owner_id: eoa_owner_id,
+            custom_verifier_gas_cap: 100_000,
+            call_phases: vec![vec![Eip8130Call {
+                to: target,
+                data: Bytes::new(),
+                value: U256::ZERO,
+            }]],
+            authorizer_validations: vec![Eip8130AuthorizerValidation {
+                verifier: custom_verifier,
+                owner_id: B256::ZERO,
+                verify_call: Some(Eip8130VerifyCall {
+                    verifier: custom_verifier,
+                    calldata: Bytes::from(vec![0xCA; 36]),
+                    account: sender,
+                    required_scope: crate::constants::OWNER_SCOPE_CONFIG,
+                }),
+                owner_changes: vec![],
+            }],
+            ..Default::default()
+        };
+
+        let ctx = Context::op()
+            .with_db(db)
+            .with_tx(tx)
+            .with_chain(L1BlockInfo {
+                l2_block: Some(U256::ZERO),
+                operator_fee_scalar: Some(U256::ZERO),
+                operator_fee_constant: Some(U256::ZERO),
+                ..Default::default()
+            })
+            .with_cfg(CfgEnv::new_with_spec(OpSpecId::BASE_V1));
+        let mut evm = ctx.build_op();
+
+        let mut handler =
+            OpHandler::<_, EVMError<_, OpTransactionError>, EthFrame<EthInterpreter>>::new();
+        let result = handler.run(&mut evm).expect("tx should execute");
+        assert!(result.is_success(), "custom authorizer STATICCALL should succeed at inclusion",);
     }
 
     #[test]

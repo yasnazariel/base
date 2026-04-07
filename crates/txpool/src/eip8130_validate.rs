@@ -15,7 +15,10 @@ use std::{
 
 use alloy_consensus::Transaction;
 use alloy_primitives::{Address, B256, Bytes, U256};
-use base_revm::DEFAULT_CUSTOM_VERIFIER_GAS_CAP;
+use base_revm::{
+    DEFAULT_CUSTOM_VERIFIER_GAS_CAP, PendingOwnerState, PendingOwnerValidationError,
+    pending_owner_state_for_change, validate_pending_owner_state,
+};
 use reth_storage_api::StateProviderFactory;
 
 use base_alloy_consensus::{
@@ -422,6 +425,53 @@ fn verify_custom_via_evm(
     Ok(owner_id)
 }
 
+/// Verifies an auth blob (native first, then custom EVM path) and validates
+/// the resolved owner against effective owner config state.
+fn verify_auth_with_scope(
+    state: &dyn reth_storage_api::StateProvider,
+    verifier: Address,
+    data: &Bytes,
+    sig_hash: B256,
+    caller: Address,
+    account: Address,
+    required_scope: u8,
+    role: OwnerRole,
+    remaining_custom_verifier_gas: &mut u64,
+    pending_owners: Option<&HashMap<B256, PendingOwnerState>>,
+) -> Result<B256, Eip8130ValidationError> {
+    match try_native_verify(verifier, data, sig_hash) {
+        NativeVerifyResult::Verified(owner_id) => {
+            if let Some(pending) = pending_owners {
+                check_owner_authorized_with_pending(
+                    state,
+                    account,
+                    owner_id,
+                    verifier,
+                    required_scope,
+                    pending,
+                    role,
+                )?;
+            } else {
+                check_owner_authorized(state, account, owner_id, verifier, required_scope, role)?;
+            }
+            Ok(owner_id)
+        }
+        NativeVerifyResult::Invalid(e) => Err(role.auth_invalid(e.to_string())),
+        NativeVerifyResult::Unsupported => verify_custom_via_evm(
+            state,
+            verifier,
+            sig_hash,
+            data,
+            caller,
+            account,
+            required_scope,
+            role,
+            remaining_custom_verifier_gas,
+            pending_owners,
+        ),
+    }
+}
+
 /// Validates `sender_auth` authorization against on-chain owner_config.
 ///
 /// For EOA mode: checks the already-recovered `owner_id` against AccountConfig.
@@ -465,49 +515,18 @@ fn validate_sender_authorization(
 
     match parsed {
         ParsedSenderAuth::Eoa { .. } => unreachable!("handled above"),
-        ParsedSenderAuth::Configured { verifier, data } => {
-            let result = try_native_verify(verifier, &data, sig_hash);
-            match result {
-                NativeVerifyResult::Verified(owner_id) => {
-                    if let Some(pending) = pending_owners {
-                        check_owner_authorized_with_pending(
-                            state,
-                            sender,
-                            owner_id,
-                            verifier,
-                            OwnerScope::SENDER,
-                            pending,
-                            OwnerRole::Sender,
-                        )?;
-                    } else {
-                        check_owner_authorized(
-                            state,
-                            sender,
-                            owner_id,
-                            verifier,
-                            OwnerScope::SENDER,
-                            OwnerRole::Sender,
-                        )?;
-                    }
-                    Ok(owner_id)
-                }
-                NativeVerifyResult::Invalid(e) => {
-                    Err(Eip8130ValidationError::SenderAuthInvalid(e.to_string()))
-                }
-                NativeVerifyResult::Unsupported => verify_custom_via_evm(
-                    state,
-                    verifier,
-                    sig_hash,
-                    &data,
-                    sender,
-                    sender,
-                    OwnerScope::SENDER,
-                    OwnerRole::Sender,
-                    remaining_custom_verifier_gas,
-                    pending_owners,
-                ),
-            }
-        }
+        ParsedSenderAuth::Configured { verifier, data } => verify_auth_with_scope(
+            state,
+            verifier,
+            &data,
+            sig_hash,
+            sender,
+            sender,
+            OwnerScope::SENDER,
+            OwnerRole::Sender,
+            remaining_custom_verifier_gas,
+            pending_owners,
+        ),
     }
 }
 
@@ -533,47 +552,18 @@ fn validate_payer(
     let verifier = Address::from_slice(&tx.payer_auth[..20]);
     let data = Bytes::copy_from_slice(&tx.payer_auth[20..]);
 
-    let result = try_native_verify(verifier, &data, sig_hash);
-    match result {
-        NativeVerifyResult::Verified(owner_id) => {
-            if let Some(pending) = pending_owners {
-                check_owner_authorized_with_pending(
-                    state,
-                    payer,
-                    owner_id,
-                    verifier,
-                    OwnerScope::PAYER,
-                    pending,
-                    OwnerRole::Payer,
-                )?;
-            } else {
-                check_owner_authorized(
-                    state,
-                    payer,
-                    owner_id,
-                    verifier,
-                    OwnerScope::PAYER,
-                    OwnerRole::Payer,
-                )?;
-            }
-            Ok(owner_id)
-        }
-        NativeVerifyResult::Invalid(e) => {
-            Err(Eip8130ValidationError::PayerAuthInvalid(e.to_string()))
-        }
-        NativeVerifyResult::Unsupported => verify_custom_via_evm(
-            state,
-            verifier,
-            sig_hash,
-            &data,
-            sender,
-            payer,
-            OwnerScope::PAYER,
-            OwnerRole::Payer,
-            remaining_custom_verifier_gas,
-            pending_owners,
-        ),
-    }
+    verify_auth_with_scope(
+        state,
+        verifier,
+        &data,
+        sig_hash,
+        sender,
+        payer,
+        OwnerScope::PAYER,
+        OwnerRole::Payer,
+        remaining_custom_verifier_gas,
+        pending_owners,
+    )
 }
 
 /// Checks that the owner_config for `(account, owner_id)` authorizes the given
@@ -625,19 +615,20 @@ enum OwnerRole {
     Authorizer,
 }
 
-/// Effective in-transaction owner state produced by ordered config changes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PendingOwnerState {
-    Authorized { verifier: Address, scope: u8 },
-    Revoked,
-}
-
 impl OwnerRole {
     fn not_authorized(self, detail: String) -> Eip8130ValidationError {
         match self {
             Self::Sender => Eip8130ValidationError::SenderNotAuthorized(detail),
             Self::Payer => Eip8130ValidationError::PayerNotAuthorized(detail),
             Self::Authorizer => Eip8130ValidationError::AuthorizerNotAuthorized(detail),
+        }
+    }
+
+    fn auth_invalid(self, detail: String) -> Eip8130ValidationError {
+        match self {
+            Self::Sender => Eip8130ValidationError::SenderAuthInvalid(detail),
+            Self::Payer => Eip8130ValidationError::PayerAuthInvalid(detail),
+            Self::Authorizer => Eip8130ValidationError::AuthorizerAuthInvalid(detail),
         }
     }
 }
@@ -694,50 +685,27 @@ fn validate_authorizer_chain(
             }
         }
 
-        let result = try_native_verify(verifier, &data, digest);
-        let owner_id = match result {
-            NativeVerifyResult::Verified(id) => {
-                check_owner_authorized_with_pending(
-                    state,
-                    sender,
-                    id,
-                    verifier,
-                    OwnerScope::CONFIG,
-                    &pending_owners,
-                    OwnerRole::Authorizer,
-                )?;
-                id
-            }
-            NativeVerifyResult::Invalid(e) => {
-                return Err(Eip8130ValidationError::AuthorizerAuthInvalid(e.to_string()));
-            }
-            NativeVerifyResult::Unsupported => verify_custom_via_evm(
-                state,
-                verifier,
-                digest,
-                &data,
-                sender,
-                sender,
-                OwnerScope::CONFIG,
-                OwnerRole::Authorizer,
-                remaining_custom_verifier_gas,
-                Some(&pending_owners),
-            )?,
-        };
+        verify_auth_with_scope(
+            state,
+            verifier,
+            &data,
+            digest,
+            sender,
+            sender,
+            OwnerScope::CONFIG,
+            OwnerRole::Authorizer,
+            remaining_custom_verifier_gas,
+            Some(&pending_owners),
+        )?;
 
         // Track pending additions/revocations for chaining.
         for op in &cc.owner_changes {
-            if op.change_type == 0x01 {
-                pending_owners.insert(
-                    op.owner_id,
-                    PendingOwnerState::Authorized { verifier: op.verifier, scope: op.scope },
-                );
-            } else if op.change_type == 0x02 {
-                pending_owners.insert(op.owner_id, PendingOwnerState::Revoked);
+            if let Some(state) =
+                pending_owner_state_for_change(op.change_type, op.verifier, op.scope)
+            {
+                pending_owners.insert(op.owner_id, state);
             }
         }
-
-        let _ = owner_id; // used for scope check above
     }
 
     Ok(pending_owners)
@@ -756,25 +724,22 @@ fn check_owner_authorized_with_pending(
     role: OwnerRole,
 ) -> Result<(), Eip8130ValidationError> {
     if let Some(state_override) = pending_owners.get(&owner_id) {
-        match state_override {
-            PendingOwnerState::Revoked => {
-                return Err(role
-                    .not_authorized("owner explicitly revoked in pending config changes".into()));
-            }
-            PendingOwnerState::Authorized { verifier, scope } => {
-                if *verifier != expected_verifier {
-                    return Err(role.not_authorized(format!(
-                        "pending owner verifier mismatch: expected {expected_verifier}, got {verifier}",
-                    )));
+        validate_pending_owner_state(state_override, expected_verifier, required_scope).map_err(
+            |err| match err {
+                PendingOwnerValidationError::Revoked => {
+                    role.not_authorized("owner explicitly revoked in pending config changes".into())
                 }
-                if *scope != 0 && (*scope & required_scope) == 0 {
-                    return Err(role.not_authorized(format!(
+                PendingOwnerValidationError::VerifierMismatch { expected, actual } => role
+                    .not_authorized(format!(
+                        "pending owner verifier mismatch: expected {expected}, got {actual}",
+                    )),
+                PendingOwnerValidationError::MissingScope { required_scope } => role
+                    .not_authorized(format!(
                         "pending owner lacks required scope 0x{required_scope:02x}",
-                    )));
-                }
-                return Ok(());
-            }
-        }
+                    )),
+            },
+        )?;
+        return Ok(());
     }
 
     check_owner_authorized(state, account, owner_id, expected_verifier, required_scope, role)
@@ -1109,7 +1074,10 @@ pub fn compute_account_tier(
 
 #[cfg(test)]
 mod tests {
-    use base_alloy_consensus::{AccountChangeEntry, ConfigChangeEntry, TxEip8130};
+    use base_alloy_consensus::{
+        AccountChangeEntry, ConfigChangeEntry, TxEip8130, VerifierGasCosts,
+        build_eip8130_parts_with_costs,
+    };
 
     use super::*;
 
@@ -1197,5 +1165,62 @@ mod tests {
         })];
 
         assert!(!tx.has_custom_verifier());
+    }
+
+    #[test]
+    fn conversion_preserves_native_authorizer_verifier() {
+        let sender = Address::repeat_byte(0x11);
+        let mut tx = TxEip8130 {
+            chain_id: 8453,
+            from: sender,
+            nonce_key: U256::ZERO,
+            nonce_sequence: 1,
+            max_priority_fee_per_gas: 1,
+            max_fee_per_gas: 1,
+            gas_limit: 21_000,
+            ..Default::default()
+        };
+
+        let mut auth = K1_VERIFIER_ADDRESS.as_slice().to_vec();
+        auth.extend_from_slice(&[0u8; 65]);
+        tx.account_changes = vec![AccountChangeEntry::ConfigChange(ConfigChangeEntry {
+            chain_id: 8453,
+            sequence: 0,
+            owner_changes: vec![],
+            authorizer_auth: Bytes::from(auth),
+        })];
+
+        let parts = build_eip8130_parts_with_costs(&tx, sender, &VerifierGasCosts::BASE_V1);
+        assert_eq!(parts.authorizer_validations.len(), 1);
+        assert_eq!(parts.authorizer_validations[0].verifier, K1_VERIFIER_ADDRESS);
+        assert!(parts.authorizer_validations[0].verify_call.is_none());
+    }
+
+    #[test]
+    fn conversion_preserves_custom_authorizer_verifier() {
+        let sender = Address::repeat_byte(0x11);
+        let custom_verifier = Address::repeat_byte(0xAB);
+        let mut tx = TxEip8130 {
+            chain_id: 8453,
+            from: sender,
+            nonce_key: U256::ZERO,
+            nonce_sequence: 1,
+            max_priority_fee_per_gas: 1,
+            max_fee_per_gas: 1,
+            gas_limit: 21_000,
+            ..Default::default()
+        };
+
+        tx.account_changes = vec![AccountChangeEntry::ConfigChange(ConfigChangeEntry {
+            chain_id: 8453,
+            sequence: 0,
+            owner_changes: vec![],
+            authorizer_auth: auth_blob(custom_verifier),
+        })];
+
+        let parts = build_eip8130_parts_with_costs(&tx, sender, &VerifierGasCosts::BASE_V1);
+        assert_eq!(parts.authorizer_validations.len(), 1);
+        assert_eq!(parts.authorizer_validations[0].verifier, custom_verifier);
+        assert!(parts.authorizer_validations[0].verify_call.is_some());
     }
 }

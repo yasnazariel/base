@@ -337,9 +337,10 @@ pub async fn maintain_eip8130_invalidation<P, N, T>(
             }
             if nonce_pruned > 0 {
                 debug!(
+                    removal_reason = "nonce_advanced",
                     pruned = nonce_pruned,
                     slots = nonce_slot_changes.len(),
-                    "advanced 2D nonce pool sequences from chain state"
+                    "removed AA transactions from mempool after nonce advancement"
                 );
             }
         }
@@ -366,9 +367,10 @@ pub async fn maintain_eip8130_invalidation<P, N, T>(
                 );
             } else {
                 debug!(
+                    removal_reason = "state_invalidation",
                     count = invalidated.len(),
                     touched_slots = touched.len(),
-                    "evicting invalidated AA transactions"
+                    "removed invalidated AA transactions from mempool"
                 );
                 let hash_vec: Vec<B256> = invalidated.iter().copied().collect();
                 eip8130_pool.remove_transactions(&hash_vec);

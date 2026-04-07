@@ -11,6 +11,12 @@ pub use api::{DefaultOp, DefaultOpEvm, OpBuilder, OpContext, OpContextTr, OpErro
 mod constants;
 pub use constants::*;
 
+mod eip8130_policy;
+pub use eip8130_policy::{
+    PendingOwnerState, PendingOwnerValidationError, owner_scope_allows,
+    pending_owner_state_for_change, validate_pending_owner_state,
+};
+
 mod evm;
 pub use evm::OpEvm;
 

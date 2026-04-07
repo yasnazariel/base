@@ -147,7 +147,7 @@ fn build_authorizer_validations(
             let verify_call =
                 build_verify_call(&cc.authorizer_auth, digest, sender, OwnerScope::CONFIG);
             validations.push(Eip8130AuthorizerValidation {
-                verifier: Address::ZERO,
+                verifier,
                 owner_id: B256::ZERO,
                 verify_call,
                 owner_changes: ops,
@@ -159,7 +159,7 @@ fn build_authorizer_validations(
                 NativeVerifyResult::Invalid(_) | NativeVerifyResult::Unsupported => B256::ZERO,
             };
             validations.push(Eip8130AuthorizerValidation {
-                verifier: Address::ZERO,
+                verifier,
                 owner_id,
                 verify_call: None,
                 owner_changes: ops,
@@ -206,7 +206,7 @@ fn build_authorizer_validations(
         };
 
         validations.push(Eip8130AuthorizerValidation {
-            verifier: Address::ZERO,
+            verifier,
             owner_id: B256::ZERO,
             verify_call,
             owner_changes: ops,
@@ -641,5 +641,68 @@ mod tests {
         };
 
         assert_eq!(derive_sender_owner_id(&tx), B256::ZERO);
+    }
+
+    #[test]
+    fn build_eip8130_parts_preserves_native_authorizer_verifier() {
+        let sender = Address::repeat_byte(0x11);
+        let mut tx = TxEip8130 {
+            chain_id: 8453,
+            from: sender,
+            nonce_key: U256::ZERO,
+            nonce_sequence: 1,
+            max_priority_fee_per_gas: 1,
+            max_fee_per_gas: 1,
+            gas_limit: 21_000,
+            ..Default::default()
+        };
+
+        // Keep payload short/invalid on purpose; we only care that conversion
+        // preserves which verifier was specified in authorizer_auth.
+        let mut auth = K1_VERIFIER_ADDRESS.as_slice().to_vec();
+        auth.extend_from_slice(&[0u8; 65]);
+        tx.account_changes = vec![AccountChangeEntry::ConfigChange(crate::ConfigChangeEntry {
+            chain_id: 8453,
+            sequence: 0,
+            owner_changes: Vec::new(),
+            authorizer_auth: Bytes::from(auth),
+        })];
+
+        let parts = build_eip8130_parts_with_costs(&tx, sender, &VerifierGasCosts::BASE_V1);
+        assert_eq!(parts.authorizer_validations.len(), 1);
+        let validation = &parts.authorizer_validations[0];
+        assert_eq!(validation.verifier, K1_VERIFIER_ADDRESS);
+        assert!(validation.verify_call.is_none());
+    }
+
+    #[test]
+    fn build_eip8130_parts_preserves_custom_authorizer_verifier() {
+        let sender = Address::repeat_byte(0x11);
+        let custom_verifier = Address::repeat_byte(0x77);
+        let mut tx = TxEip8130 {
+            chain_id: 8453,
+            from: sender,
+            nonce_key: U256::ZERO,
+            nonce_sequence: 1,
+            max_priority_fee_per_gas: 1,
+            max_fee_per_gas: 1,
+            gas_limit: 21_000,
+            ..Default::default()
+        };
+
+        let mut auth = custom_verifier.as_slice().to_vec();
+        auth.push(0x01);
+        tx.account_changes = vec![AccountChangeEntry::ConfigChange(crate::ConfigChangeEntry {
+            chain_id: 8453,
+            sequence: 0,
+            owner_changes: Vec::new(),
+            authorizer_auth: Bytes::from(auth),
+        })];
+
+        let parts = build_eip8130_parts_with_costs(&tx, sender, &VerifierGasCosts::BASE_V1);
+        assert_eq!(parts.authorizer_validations.len(), 1);
+        let validation = &parts.authorizer_validations[0];
+        assert_eq!(validation.verifier, custom_verifier);
+        assert!(validation.verify_call.is_some());
     }
 }
