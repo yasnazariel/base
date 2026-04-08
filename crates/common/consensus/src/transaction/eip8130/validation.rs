@@ -286,7 +286,7 @@ pub fn validate_nonce<DB: Database>(
 
 /// Resolves the effective sender address.
 ///
-/// If `from == Address::ZERO` (EOA mode), a recovered sender address must be
+/// If `from` is empty (EOA mode), a recovered sender address must be
 /// provided by ingress recovery. Otherwise, the `from` field is used directly.
 pub fn resolve_sender(
     tx: &TxEip8130,
@@ -296,7 +296,7 @@ pub fn resolve_sender(
         return recovered_sender
             .ok_or(ValidationError::InvalidSenderAuth("EOA sender must be recovered at ingress"));
     }
-    Ok(tx.from)
+    tx.from.ok_or(ValidationError::InvalidSenderAuth("configured sender must set from field"))
 }
 
 /// Checks whether the sender is authorized by verifying their `owner_config`.

@@ -328,7 +328,11 @@ fn resolve_sender_address(tx: &TxEip8130) -> Result<(Address, B256), Eip8130Vali
                 )),
             }
         }
-        ParsedSenderAuth::Configured { .. } => Ok((tx.from, B256::ZERO)),
+        ParsedSenderAuth::Configured { .. } => {
+            tx.from.map(|from| (from, B256::ZERO)).ok_or(Eip8130ValidationError::SenderAuthInvalid(
+                "configured sender must set from field".to_string(),
+            ))
+        }
     }
 }
 
@@ -950,9 +954,7 @@ where
                 return Err(Eip8130ValidationError::VerifierNotAllowed(addr));
             }
         }
-        if tx.payer != Address::ZERO
-            && tx.payer != tx.effective_sender()
-            && tx.payer_auth.len() >= 20
+        if tx.payer.is_some_and(|payer| payer != tx.effective_sender()) && tx.payer_auth.len() >= 20
         {
             let addr = Address::from_slice(&tx.payer_auth[..20]);
             if !allowlist.is_allowed(&addr) {
@@ -1115,7 +1117,7 @@ where
     )?;
 
     // 10. Payer resolution and authorization
-    let payer = if tx.is_self_pay() { sender } else { tx.payer };
+    let payer = tx.payer.unwrap_or(sender);
     let payer_owner_id = if payer != sender {
         Some(validate_payer(&tx, sender, payer, &*state, &mut remaining_custom_verifier_gas, None)?)
     } else {

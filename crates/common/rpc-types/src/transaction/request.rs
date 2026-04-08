@@ -71,7 +71,7 @@ impl OpTransactionRequest {
         }
         Some(TxEip8130 {
             chain_id: self.inner.chain_id.unwrap_or_default(),
-            from: self.inner.from.unwrap_or_default(),
+            from: self.inner.from,
             nonce_key: self.nonce_key.unwrap_or_default(),
             nonce_sequence: self.inner.nonce.unwrap_or_default(),
             expiry: self.expiry.unwrap_or_default(),
@@ -80,7 +80,7 @@ impl OpTransactionRequest {
             gas_limit: self.inner.gas.unwrap_or_default(),
             account_changes: self.account_changes.clone().unwrap_or_default(),
             calls: self.calls.clone().unwrap_or_default(),
-            payer: self.payer.unwrap_or_default(),
+            payer: self.payer,
             sender_auth: self.sender_auth.clone().unwrap_or_default(),
             payer_auth: self.payer_auth.clone().unwrap_or_default(),
         })
@@ -254,10 +254,10 @@ impl From<Sealed<TxDeposit>> for OpTransactionRequest {
 
 impl From<TxEip8130> for OpTransactionRequest {
     fn from(tx: TxEip8130) -> Self {
-        let from = (!tx.is_eoa()).then_some(tx.from);
+        let from = tx.from;
         let nonce_key = Some(tx.nonce_key);
         let expiry = Some(tx.expiry);
-        let payer = Some(tx.payer);
+        let payer = tx.payer;
         let sender_auth = Some(tx.sender_auth.clone());
         let payer_auth = Some(tx.payer_auth.clone());
         let calls = Some(tx.calls.clone());

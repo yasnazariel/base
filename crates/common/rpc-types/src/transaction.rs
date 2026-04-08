@@ -320,7 +320,7 @@ mod tx_serde {
             } else if let Some(deposit) = inner.as_deposit() {
                 deposit.from
             } else if let Some(eip8130) = inner.as_eip8130() {
-                eip8130.from
+                eip8130.from.ok_or_else(|| serde_json::Error::custom("missing `from` field"))?
             } else {
                 return Err(serde_json::Error::custom("missing `from` field"));
             };

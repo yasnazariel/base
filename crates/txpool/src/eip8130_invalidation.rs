@@ -187,12 +187,18 @@ pub fn compute_invalidation_keys(
 
     // 3. Payer owner config — if there's a separate payer, their owner
     //    authorization can be revoked, invalidating the tx.
-    let payer = tx.payer;
-    if payer != Address::ZERO && payer != sender && !tx.payer_auth.is_empty() {
-        let payer_owner_id =
-            resolved_payer_owner_id.unwrap_or_else(|| alloy_primitives::keccak256(&tx.payer_auth));
-        let payer_config_slot = owner_config_slot(payer, payer_owner_id);
-        keys.insert(InvalidationKey { address: ACCOUNT_CONFIG_ADDRESS, slot: payer_config_slot });
+    if let Some(payer) = tx.payer.filter(|payer| *payer != sender) {
+        if tx.payer_auth.is_empty() {
+            // `eth_estimateGas` may omit payer auth; no payer owner slot dependency yet.
+        } else {
+            let payer_owner_id = resolved_payer_owner_id
+                .unwrap_or_else(|| alloy_primitives::keccak256(&tx.payer_auth));
+            let payer_config_slot = owner_config_slot(payer, payer_owner_id);
+            keys.insert(InvalidationKey {
+                address: ACCOUNT_CONFIG_ADDRESS,
+                slot: payer_config_slot,
+            });
+        }
     }
 
     // 4. Account changes — each create entry depends on the target address having

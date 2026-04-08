@@ -181,6 +181,18 @@ function encodeAddress(addr) {
   return addr.toLowerCase();
 }
 
+function encodeOptionalAddress(addr) {
+  if (!addr) return '0x';
+  const normalized = addr.toLowerCase();
+  if (normalized === '0x0000000000000000000000000000000000000000') return '0x';
+  return normalized;
+}
+
+function rpcOptionalAddress(addrField) {
+  if (!addrField || addrField === '0x') return undefined;
+  return addrField;
+}
+
 async function getAaNonce() {
   const innerHash = keccak256(
     concat([
@@ -320,7 +332,7 @@ function buildAaTxRequest(unsignedRlpFields, {
   return {
     type: '0x7b',
     chainId: numberToHex(parseHexQuantity(unsignedRlpFields[0])),
-    from: unsignedRlpFields[1],
+    from: rpcOptionalAddress(unsignedRlpFields[1]),
     nonceKey: numberToHex(parseHexQuantity(unsignedRlpFields[2])),
     nonce: numberToHex(parseHexQuantity(unsignedRlpFields[3])),
     expiry: numberToHex(parseHexQuantity(unsignedRlpFields[4])),
@@ -329,7 +341,7 @@ function buildAaTxRequest(unsignedRlpFields, {
     gas: numberToHex(parseHexQuantity(unsignedRlpFields[7])),
     accountChanges: accountChangesRlpToRpc(unsignedRlpFields[8] || []),
     calls: callsRlpToRpc(unsignedRlpFields[9] || []),
-    payer: unsignedRlpFields[10],
+    payer: rpcOptionalAddress(unsignedRlpFields[10]),
     senderAuth,
     payerAuth,
   };
@@ -386,6 +398,19 @@ async function prepareUnsignedForSubmission(unsignedRlpFields) {
   }
 
   return { prepared, estimatedGas, estimatedWithBuffer, fees };
+}
+
+async function waitForReceipt(nodeTxHash, timeoutMs = 30000, pollMs = 2000) {
+  const started = Date.now();
+  while (Date.now() - started <= timeoutMs) {
+    const receipt = await client.request({
+      method: 'eth_getTransactionReceipt',
+      params: [nodeTxHash],
+    });
+    if (receipt) return receipt;
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+  }
+  return null;
 }
 
 async function signAndSend(unsignedRlpFields, {
@@ -472,13 +497,8 @@ async function signAndSend(unsignedRlpFields, {
     throw err;
   }
 
-  console.log('Waiting for receipt (5s)...');
-  await new Promise(r => setTimeout(r, 5000));
-
-  const receipt = await client.request({
-    method: 'eth_getTransactionReceipt',
-    params: [nodeTxHash],
-  });
+  console.log('Waiting for receipt (up to 30s)...');
+  const receipt = await waitForReceipt(nodeTxHash, 30000, 2000);
   if (receipt) {
     console.log(`\n--- Receipt ---`);
     console.log(`Status:       ${receipt.status}`);
@@ -507,10 +527,16 @@ async function signAndSend(unsignedRlpFields, {
   return { nodeTxHash, receipt, encodedTx, unsignedRlpFields: effectiveUnsigned };
 }
 
-function baseTxFields(nonce, callsRlp, accountChangesRlp = [], payerAddress = '0x0000000000000000000000000000000000000000', { nonceKey = 0n, expiry = 0n } = {}) {
+function baseTxFields(
+  nonce,
+  callsRlp,
+  accountChangesRlp = [],
+  payerAddress = null,
+  { nonceKey = 0n, expiry = 0n, fromAddress = account.address } = {}
+) {
   return [
     encodeUint(L2_CHAIN_ID),
-    encodeAddress(account.address),
+    encodeOptionalAddress(fromAddress),
     encodeUint(nonceKey),
     encodeUint(nonce),
     encodeUint(expiry),
@@ -519,7 +545,7 @@ function baseTxFields(nonce, callsRlp, accountChangesRlp = [], payerAddress = '0
     encodeUint(500000n),
     accountChangesRlp,
     callsRlp,
-    encodeAddress(payerAddress),
+    encodeOptionalAddress(payerAddress),
   ];
 }
 
@@ -2521,21 +2547,15 @@ async function runEoa() {
   const probeCalldata = encodeFunctionData({ abi: PROBE_ABI, functionName: 'probe' });
   const callsRlp = [[[encodeAddress(opts.probeAddr), probeCalldata]]];
 
-  // EOA mode: from = address(0)
+  // EOA mode: from and payer are empty (RLP 0x80 / "0x")
   const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
-  const unsignedRlpFields = [
-    encodeUint(L2_CHAIN_ID),
-    encodeAddress(ZERO_ADDRESS),
-    encodeUint(0n),
-    encodeUint(nonce),
-    encodeUint(0n),
-    encodeUint(1000000n),
-    encodeUint(1000000000n),
-    encodeUint(500000n),
-    [],
+  const unsignedRlpFields = baseTxFields(
+    nonce,
     callsRlp,
-    encodeAddress(ZERO_ADDRESS),
-  ];
+    [],
+    null,
+    { nonceKey: 0n, expiry: 0n, fromAddress: null }
+  );
 
   const preflight = await prepareUnsignedForSubmission(unsignedRlpFields);
   console.log(
@@ -2576,13 +2596,8 @@ async function runEoa() {
   });
   console.log(`SUCCESS! TX hash from node: ${nodeTxHash}`);
 
-  console.log('Waiting for receipt (5s)...');
-  await new Promise(r => setTimeout(r, 5000));
-
-  const receipt = await client.request({
-    method: 'eth_getTransactionReceipt',
-    params: [nodeTxHash],
-  });
+  console.log('Waiting for receipt (up to 30s)...');
+  const receipt = await waitForReceipt(nodeTxHash, 30000, 2000);
 
   if (!receipt || receipt.status !== '0x1') {
     console.log(`FAILED: EOA tx did not land (status=${receipt?.status || 'no receipt'})`);
@@ -2625,7 +2640,8 @@ async function runEoa() {
     console.log('PASS: phaseStatuses=[true]');
   }
 
-  // Verify via eth_getTransactionByHash: raw tx should have from=0x0 (EOA mode)
+  // Verify via eth_getTransactionByHash. Depending on RPC representation, `from`
+  // may be ecrecovered sender or the raw tx field.
   const txData = await client.request({
     method: 'eth_getTransactionByHash',
     params: [nodeTxHash],
@@ -2634,10 +2650,18 @@ async function runEoa() {
     console.log(`\n--- Transaction Data ---`);
     console.log(`Type:  ${txData.type}`);
     console.log(`From:  ${txData.from}`);
-    const isZeroFrom = txData.from?.toLowerCase() === ZERO_ADDRESS.toLowerCase();
-    if (!isZeroFrom) {
-      console.log(`FAIL: tx.from=${txData.from}, expected ${ZERO_ADDRESS} (EOA mode)`);
+    const txFrom = txData.from?.toLowerCase();
+    const senderFrom = senderAddr.toLowerCase();
+    const isEmptyFrom = txData.from == null;
+    const isZeroFrom = txFrom === ZERO_ADDRESS.toLowerCase();
+    const isSenderFrom = txFrom === senderFrom;
+    if (!isEmptyFrom && !isZeroFrom && !isSenderFrom) {
+      console.log(`FAIL: tx.from=${txData.from}, expected null, ${senderAddr}, or ${ZERO_ADDRESS}`);
       pass = false;
+    } else if (isEmptyFrom) {
+      console.log('PASS: tx.from is null in RPC response (empty sender field)');
+    } else if (isSenderFrom) {
+      console.log('PASS: tx.from is ecrecovered sender in RPC response');
     } else {
       console.log('PASS: tx.from is address(0) in raw tx (EOA mode)');
     }

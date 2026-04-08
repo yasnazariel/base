@@ -6,9 +6,9 @@ use alloy_rlp::{Bytes, Decodable, Encodable};
 use base_alloy_consensus::{OpTxEnvelope, OpTxType};
 
 use crate::{
-    SpanBatchEip1559TransactionData, SpanBatchEip2930TransactionData, SpanBatchEip7702TransactionData,
-    SpanBatchEip8130TransactionData, SpanBatchError, SpanBatchLegacyTransactionData,
-    SpanDecodingError,
+    SpanBatchEip1559TransactionData, SpanBatchEip2930TransactionData,
+    SpanBatchEip7702TransactionData, SpanBatchEip8130TransactionData, SpanBatchError,
+    SpanBatchLegacyTransactionData, SpanDecodingError,
 };
 
 /// The typed transaction data for a transaction within a span batch.
@@ -109,14 +109,14 @@ impl TryFrom<&OpTxEnvelope> for SpanBatchTransactionData {
             OpTxEnvelope::Eip8130(s) => {
                 let s = s.inner();
                 Ok(Self::Eip8130(SpanBatchEip8130TransactionData {
-                    from: s.from,
+                    from: s.from.unwrap_or_default(),
                     nonce_key: s.nonce_key,
                     expiry: s.expiry,
                     max_fee_per_gas: U256::from(s.max_fee_per_gas),
                     max_priority_fee_per_gas: U256::from(s.max_priority_fee_per_gas),
                     account_changes: s.account_changes.clone(),
                     calls: s.calls.clone(),
-                    payer: s.payer,
+                    payer: s.payer.unwrap_or_default(),
                     sender_auth: s.sender_auth.clone(),
                     payer_auth: s.payer_auth.clone(),
                 }))
@@ -194,7 +194,9 @@ impl SpanBatchTransactionData {
                 };
                 OpTxEnvelope::Eip7702(data.to_signed_tx(nonce, gas, addr, chain_id, signature)?)
             }
-            Self::Eip8130(data) => OpTxEnvelope::Eip8130(data.to_tx(nonce, gas, chain_id)?.seal_slow()),
+            Self::Eip8130(data) => {
+                OpTxEnvelope::Eip8130(data.to_tx(nonce, gas, chain_id)?.seal_slow())
+            }
         })
     }
 }

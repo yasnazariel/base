@@ -29,8 +29,8 @@ pub struct TxEip8130 {
     /// Chain ID this transaction targets.
     #[cfg_attr(feature = "serde", serde(with = "alloy_serde::quantity"))]
     pub chain_id: u64,
-    /// Sender address. `Address::ZERO` means the sender is derived via ecrecover.
-    pub from: Address,
+    /// Sender address. `None` means the sender is derived via ecrecover.
+    pub from: Option<Address>,
     /// 2D nonce channel selector (uint256).
     pub nonce_key: U256,
     /// Sequence number within the nonce channel.
@@ -55,8 +55,8 @@ pub struct TxEip8130 {
     pub account_changes: Vec<AccountChangeEntry>,
     /// Phased call batches. Each inner `Vec` is one atomic phase.
     pub calls: Vec<Vec<Call>>,
-    /// Payer address. `Address::ZERO` means the sender pays for gas.
-    pub payer: Address,
+    /// Payer address. `None` means the sender pays for gas.
+    pub payer: Option<Address>,
     /// Sender authentication data.
     pub sender_auth: Bytes,
     /// Payer authentication data (empty if self-pay).
@@ -83,12 +83,12 @@ impl TxEip8130 {
 
     /// Returns `true` if this is an EOA-mode transaction (sender derived via ecrecover).
     pub fn is_eoa(&self) -> bool {
-        self.from == Address::ZERO
+        self.from.is_none()
     }
 
     /// Returns `true` if the sender pays for gas (no external payer).
     pub fn is_self_pay(&self) -> bool {
-        self.payer == Address::ZERO
+        self.payer.is_none()
     }
 
     /// Returns `true` if sender authentication uses a custom verifier.
@@ -130,23 +130,26 @@ impl TxEip8130 {
 
     /// Returns the sender address as specified in the `from` field.
     ///
-    /// For EOA-mode transactions (`from == Address::ZERO`), the actual sender
+    /// For EOA-mode transactions (`from` is empty), the actual sender
     /// must be recovered from `sender_auth` via ecrecover during validation.
-    /// This method returns `from` as-is; use the validation pipeline for
-    /// the fully resolved sender.
+    /// This method returns `Address::ZERO` as a placeholder for EOA-mode txs.
     pub fn effective_sender(&self) -> Address {
-        self.from
+        self.from.unwrap_or(Address::ZERO)
     }
 
     /// Returns the effective payer address (sender if self-pay).
     pub fn effective_payer(&self) -> Address {
-        if self.is_self_pay() { self.from } else { self.payer }
+        if self.is_self_pay() {
+            self.effective_sender()
+        } else {
+            self.payer.unwrap_or(Address::ZERO)
+        }
     }
 
     /// Encodes the inner fields into an RLP list payload (no outer header).
     fn encode_fields(&self, out: &mut dyn BufMut) {
         self.chain_id.encode(out);
-        self.from.encode(out);
+        encode_optional_address(&self.from, out);
         self.nonce_key.encode(out);
         self.nonce_sequence.encode(out);
         self.expiry.encode(out);
@@ -155,7 +158,7 @@ impl TxEip8130 {
         self.gas_limit.encode(out);
         encode_list(&self.account_changes, out);
         encode_nested_calls(&self.calls, out);
-        self.payer.encode(out);
+        encode_optional_address(&self.payer, out);
         self.sender_auth.encode(out);
         self.payer_auth.encode(out);
     }
@@ -163,7 +166,7 @@ impl TxEip8130 {
     /// Computes the combined length of all encoded fields (the RLP list payload length).
     fn fields_len(&self) -> usize {
         self.chain_id.length()
-            + self.from.length()
+            + optional_address_len(&self.from)
             + self.nonce_key.length()
             + self.nonce_sequence.length()
             + self.expiry.length()
@@ -172,7 +175,7 @@ impl TxEip8130 {
             + self.gas_limit.length()
             + list_len(&self.account_changes)
             + nested_calls_len(&self.calls)
-            + self.payer.length()
+            + optional_address_len(&self.payer)
             + self.sender_auth.length()
             + self.payer_auth.length()
     }
@@ -181,7 +184,7 @@ impl TxEip8130 {
     fn rlp_decode_fields(buf: &mut &[u8]) -> alloy_rlp::Result<Self> {
         Ok(Self {
             chain_id: Decodable::decode(buf)?,
-            from: Decodable::decode(buf)?,
+            from: decode_optional_address(buf)?,
             nonce_key: Decodable::decode(buf)?,
             nonce_sequence: Decodable::decode(buf)?,
             expiry: Decodable::decode(buf)?,
@@ -190,7 +193,7 @@ impl TxEip8130 {
             gas_limit: Decodable::decode(buf)?,
             account_changes: Decodable::decode(buf)?,
             calls: decode_nested_calls(buf)?,
-            payer: Decodable::decode(buf)?,
+            payer: decode_optional_address(buf)?,
             sender_auth: Decodable::decode(buf)?,
             payer_auth: Decodable::decode(buf)?,
         })
@@ -265,7 +268,7 @@ impl TxEip8130 {
     ///   account_changes, calls, payer]))`
     pub fn encode_for_sender_signing(&self, out: &mut dyn BufMut) {
         let payload_len = self.chain_id.length()
-            + self.from.length()
+            + optional_address_len(&self.from)
             + self.nonce_key.length()
             + self.nonce_sequence.length()
             + self.expiry.length()
@@ -274,12 +277,12 @@ impl TxEip8130 {
             + self.gas_limit.length()
             + list_len(&self.account_changes)
             + nested_calls_len(&self.calls)
-            + self.payer.length();
+            + optional_address_len(&self.payer);
 
         out.put_u8(AA_TX_TYPE_ID);
         Header { list: true, payload_length: payload_len }.encode(out);
         self.chain_id.encode(out);
-        self.from.encode(out);
+        encode_optional_address(&self.from, out);
         self.nonce_key.encode(out);
         self.nonce_sequence.encode(out);
         self.expiry.encode(out);
@@ -288,7 +291,7 @@ impl TxEip8130 {
         self.gas_limit.encode(out);
         encode_list(&self.account_changes, out);
         encode_nested_calls(&self.calls, out);
-        self.payer.encode(out);
+        encode_optional_address(&self.payer, out);
     }
 
     /// Encodes the fields that go into the **payer** signature hash.
@@ -298,7 +301,7 @@ impl TxEip8130 {
     ///   account_changes, calls]))`
     pub fn encode_for_payer_signing(&self, out: &mut dyn BufMut) {
         let payload_len = self.chain_id.length()
-            + self.from.length()
+            + optional_address_len(&self.from)
             + self.nonce_key.length()
             + self.nonce_sequence.length()
             + self.expiry.length()
@@ -311,7 +314,7 @@ impl TxEip8130 {
         out.put_u8(super::constants::AA_PAYER_TYPE);
         Header { list: true, payload_length: payload_len }.encode(out);
         self.chain_id.encode(out);
-        self.from.encode(out);
+        encode_optional_address(&self.from, out);
         self.nonce_key.encode(out);
         self.nonce_sequence.encode(out);
         self.expiry.encode(out);
@@ -454,7 +457,7 @@ impl Transaction for TxEip8130 {
     }
 
     fn kind(&self) -> TxKind {
-        TxKind::Call(self.from)
+        TxKind::Call(self.effective_sender())
     }
 
     fn value(&self) -> U256 {
@@ -497,6 +500,39 @@ fn encode_list<T: Encodable>(items: &[T], out: &mut dyn BufMut) {
     Header { list: true, payload_length: payload_len }.encode(out);
     for item in items {
         item.encode(out);
+    }
+}
+
+fn encode_optional_address(addr: &Option<Address>, out: &mut dyn BufMut) {
+    match addr {
+        Some(address) => address.encode(out),
+        None => out.put_u8(0x80),
+    }
+}
+
+fn optional_address_len(addr: &Option<Address>) -> usize {
+    match addr {
+        Some(address) => address.length(),
+        None => 1,
+    }
+}
+
+fn decode_optional_address(buf: &mut &[u8]) -> alloy_rlp::Result<Option<Address>> {
+    let header = Header::decode(buf)?;
+    if header.list {
+        return Err(alloy_rlp::Error::UnexpectedList);
+    }
+    match header.payload_length {
+        0 => Ok(None),
+        20 => {
+            if buf.len() < 20 {
+                return Err(alloy_rlp::Error::UnexpectedLength);
+            }
+            let address = Address::from_slice(&buf[..20]);
+            *buf = &buf[20..];
+            Ok(Some(address))
+        }
+        _ => Err(alloy_rlp::Error::UnexpectedLength),
     }
 }
 
@@ -559,7 +595,7 @@ mod tests {
     fn sample_tx() -> TxEip8130 {
         TxEip8130 {
             chain_id: 8453,
-            from: Address::repeat_byte(0x01),
+            from: Some(Address::repeat_byte(0x01)),
             nonce_key: U256::from(0u64),
             nonce_sequence: 42,
             expiry: 0,
@@ -571,7 +607,7 @@ mod tests {
                 to: Address::repeat_byte(0xBB),
                 data: Bytes::from_static(&[0xDE, 0xAD]),
             }]],
-            payer: Address::ZERO,
+            payer: None,
             sender_auth: Bytes::from_static(&[0xFF; 65]),
             payer_auth: Bytes::new(),
         }
@@ -631,10 +667,10 @@ mod tests {
         assert!(!tx.is_eoa());
         assert!(tx.is_self_pay());
 
-        tx.from = Address::ZERO;
+        tx.from = None;
         assert!(tx.is_eoa());
 
-        tx.payer = Address::repeat_byte(0xCC);
+        tx.payer = Some(Address::repeat_byte(0xCC));
         assert!(!tx.is_self_pay());
         assert_eq!(tx.effective_payer(), Address::repeat_byte(0xCC));
     }
@@ -648,7 +684,7 @@ mod tests {
         assert!(tx.has_custom_verifier());
 
         tx.sender_auth = auth_blob(super::super::K1_VERIFIER_ADDRESS);
-        tx.payer = Address::repeat_byte(0x22);
+        tx.payer = Some(Address::repeat_byte(0x22));
         tx.payer_auth = auth_blob(custom);
         assert!(tx.payer_has_custom_verifier());
         assert!(tx.has_custom_verifier());
@@ -673,7 +709,7 @@ mod tests {
         delegate_wrapped.extend_from_slice(custom.as_slice());
         delegate_wrapped.extend_from_slice(&[0xEE; 12]);
         tx.sender_auth = Bytes::from(delegate_wrapped);
-        tx.payer = Address::ZERO;
+        tx.payer = None;
         tx.payer_auth = Bytes::new();
         tx.account_changes.clear();
         assert!(tx.sender_has_custom_verifier());
@@ -697,6 +733,22 @@ mod tests {
         tx.encode(&mut buf);
         let decoded = TxEip8130::decode(&mut buf.as_slice()).unwrap();
         assert_eq!(tx, decoded);
+    }
+
+    #[test]
+    fn optional_address_helpers_round_trip() {
+        let mut empty_buf = Vec::new();
+        encode_optional_address(&None, &mut empty_buf);
+        assert_eq!(empty_buf, vec![0x80]);
+        let empty_decoded = decode_optional_address(&mut empty_buf.as_slice()).unwrap();
+        assert_eq!(empty_decoded, None);
+
+        let address = Address::repeat_byte(0xAB);
+        let mut address_buf = Vec::new();
+        encode_optional_address(&Some(address), &mut address_buf);
+        assert_eq!(optional_address_len(&Some(address)), address_buf.len());
+        let address_decoded = decode_optional_address(&mut address_buf.as_slice()).unwrap();
+        assert_eq!(address_decoded, Some(address));
     }
 
     #[test]

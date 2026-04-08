@@ -576,15 +576,15 @@ impl alloy_consensus::transaction::SignerRecoverable for OpTxEnvelope {
 
 /// Recovers the sender address from an EIP-8130 transaction.
 ///
-/// - **Configured owner** (`from != Address::ZERO`): returns `from` directly.
-/// - **EOA mode** (`from == Address::ZERO`): ecrecovers the sender from the
+/// - **Configured owner** (`from` present): returns `from` directly.
+/// - **EOA mode** (`from` empty): ecrecovers the sender from the
 ///   65-byte K1 ECDSA signature in `sender_auth` over `sender_signature_hash`.
 #[cfg(feature = "k256")]
 pub(crate) fn recover_eip8130_signer(
     tx: &TxEip8130,
 ) -> Result<alloy_primitives::Address, alloy_consensus::crypto::RecoveryError> {
     if !tx.is_eoa() {
-        return Ok(tx.from);
+        return tx.from.ok_or_else(alloy_consensus::crypto::RecoveryError::new);
     }
 
     if tx.sender_auth.len() != 65 {
@@ -896,10 +896,7 @@ mod tests {
     #[cfg(feature = "native-verifier")]
     fn eip8130_eoa_recover_signer_ecrecovers_from_sender_auth() {
         use alloy_consensus::transaction::SignerRecoverable;
-        use k256::ecdsa::{
-            SigningKey, VerifyingKey,
-            signature::hazmat::PrehashSigner,
-        };
+        use k256::ecdsa::{SigningKey, VerifyingKey, signature::hazmat::PrehashSigner};
         use k256::elliptic_curve::rand_core::OsRng;
 
         let signing_key = SigningKey::random(&mut OsRng);

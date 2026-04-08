@@ -38,28 +38,24 @@ impl SpanBatchEip8130TransactionData {
     pub fn to_tx(&self, nonce: u64, gas: u64, chain_id: u64) -> Result<TxEip8130, SpanBatchError> {
         Ok(TxEip8130 {
             chain_id,
-            from: self.from,
+            from: (self.from != Address::ZERO).then_some(self.from),
             nonce_key: self.nonce_key,
             nonce_sequence: nonce,
             expiry: self.expiry,
             max_priority_fee_per_gas: u128::from_be_bytes(
-                self.max_priority_fee_per_gas.to_be_bytes::<32>()[16..]
-                    .try_into()
-                    .map_err(|_| {
-                        SpanBatchError::Decoding(SpanDecodingError::InvalidTransactionData)
-                    })?,
+                self.max_priority_fee_per_gas.to_be_bytes::<32>()[16..].try_into().map_err(
+                    |_| SpanBatchError::Decoding(SpanDecodingError::InvalidTransactionData),
+                )?,
             ),
             max_fee_per_gas: u128::from_be_bytes(
-                self.max_fee_per_gas.to_be_bytes::<32>()[16..]
-                    .try_into()
-                    .map_err(|_| {
-                        SpanBatchError::Decoding(SpanDecodingError::InvalidTransactionData)
-                    })?,
+                self.max_fee_per_gas.to_be_bytes::<32>()[16..].try_into().map_err(|_| {
+                    SpanBatchError::Decoding(SpanDecodingError::InvalidTransactionData)
+                })?,
             ),
             gas_limit: gas,
             account_changes: self.account_changes.clone(),
             calls: self.calls.clone(),
-            payer: self.payer,
+            payer: (self.payer != Address::ZERO).then_some(self.payer),
             sender_auth: self.sender_auth.clone(),
             payer_auth: self.payer_auth.clone(),
         })

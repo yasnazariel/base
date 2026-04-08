@@ -290,7 +290,7 @@ fn build_authorizer_validations(
 /// Build [`Eip8130Parts`] from a decoded [`TxEip8130`] for use by the handler.
 ///
 /// `recovered_caller` is the ecrecovered sender address. For EOA mode
-/// (`from == Address::ZERO`) this is the address derived from ecrecover;
+/// (`from` empty) this is the address derived from ecrecover;
 /// for configured mode it equals `tx.from`.
 ///
 /// Uses [`VerifierGasCosts::BASE_V1`] for verification gas computation.
@@ -302,7 +302,7 @@ pub fn build_eip8130_parts(tx: &TxEip8130, recovered_caller: Address) -> Eip8130
 /// Build [`Eip8130Parts`] from a decoded [`TxEip8130`] with explicit gas costs.
 ///
 /// `recovered_caller` is the ecrecovered sender address. For EOA mode
-/// it overrides `tx.from` (which is `Address::ZERO`). For self-pay
+/// it overrides an empty `tx.from`. For self-pay
 /// transactions, the payer is also set to `recovered_caller`.
 pub fn build_eip8130_parts_with_costs(
     tx: &TxEip8130,
@@ -310,7 +310,7 @@ pub fn build_eip8130_parts_with_costs(
     costs: &VerifierGasCosts,
 ) -> Eip8130Parts {
     let sender = recovered_caller;
-    let payer = if tx.is_self_pay() { recovered_caller } else { tx.payer };
+    let payer = tx.payer.unwrap_or(recovered_caller);
     let owner_id = derive_sender_owner_id(tx);
     let payer_owner_id = derive_payer_owner_id(tx);
 
