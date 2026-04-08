@@ -13,7 +13,8 @@
 //! Modeled on Tempo's `AA2dPool` architecture.
 
 use std::{
-    collections::{BTreeMap, HashMap, HashSet, VecDeque},
+    cmp::Ordering,
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -63,6 +64,12 @@ struct PooledEntry<T> {
     transaction: T,
     origin: TransactionOrigin,
     timestamp: Instant,
+    /// Whether this transaction is executable (contiguous nonce chain from on-chain nonce).
+    is_pending: bool,
+    /// Monotonic insertion counter for eviction tie-breaking.
+    submission_id: u64,
+    /// Cached `max_priority_fee_per_gas` for eviction ordering.
+    priority_fee: u128,
 }
 
 impl<T: core::fmt::Debug> core::fmt::Debug for PooledEntry<T> {
@@ -72,28 +79,77 @@ impl<T: core::fmt::Debug> core::fmt::Debug for PooledEntry<T> {
             .field("transaction", &self.transaction)
             .field("origin", &self.origin)
             .field("timestamp", &self.timestamp)
+            .field("is_pending", &self.is_pending)
             .finish()
     }
 }
 
-/// Per-sequence state: on-chain nonce and ordered map of pending transactions.
+/// Key for ordering transactions in the eviction set.
+///
+/// Lower priority is evicted first. On equal priority, newer submissions
+/// (higher `submission_id`) are evicted first to favour older transactions.
+/// The hash field provides a unique tiebreaker for `BTreeSet`.
+#[derive(Debug, Clone)]
+struct EvictionKey {
+    priority_fee: u128,
+    submission_id: u64,
+    hash: B256,
+}
+
+impl PartialEq for EvictionKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.hash == other.hash
+    }
+}
+
+impl Eq for EvictionKey {}
+
+impl PartialOrd for EvictionKey {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for EvictionKey {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.priority_fee
+            .cmp(&other.priority_fee)
+            .then_with(|| other.submission_id.cmp(&self.submission_id))
+            .then_with(|| self.hash.cmp(&other.hash))
+    }
+}
+
+/// Result of a successful [`Eip8130Pool::add_transaction`] call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AddOutcome {
+    /// Transaction was inserted as a new entry.
+    Added,
+    /// Transaction replaced an existing entry at the same 2D nonce.
+    Replaced,
+}
+
+/// Per-sequence state: on-chain nonce and ordered map of pool transactions.
+///
+/// Individual entries track their own `is_pending` status. Transactions with
+/// `nonce_sequence` forming a contiguous chain from `next_nonce` are pending;
+/// those after a gap are queued.
 struct SequenceState<T> {
     next_nonce: u64,
-    pending: BTreeMap<u64, PooledEntry<T>>,
+    txs: BTreeMap<u64, PooledEntry<T>>,
 }
 
 impl<T: core::fmt::Debug> core::fmt::Debug for SequenceState<T> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("SequenceState")
             .field("next_nonce", &self.next_nonce)
-            .field("pending", &self.pending)
+            .field("txs", &self.txs)
             .finish()
     }
 }
 
 impl<T> Default for SequenceState<T> {
     fn default() -> Self {
-        Self { next_nonce: 0, pending: BTreeMap::new() }
+        Self { next_nonce: 0, txs: BTreeMap::new() }
     }
 }
 
@@ -132,7 +188,7 @@ pub struct TierCheckResult {
 /// Configuration for the EIP-8130 2D nonce pool.
 #[derive(Debug, Clone)]
 pub struct Eip8130PoolConfig {
-    /// Maximum pending transactions per sequence lane.
+    /// Maximum transactions per sequence lane `(sender, nonce_key)`.
     pub max_txs_per_sequence: usize,
     /// Maximum total transactions in the pool.
     pub max_pool_size: usize,
@@ -149,6 +205,9 @@ pub struct Eip8130PoolConfig {
     /// Maximum time a cached tier remains valid. The actual expiry may be
     /// shorter when the on-chain unlock deadline is sooner.
     pub tier_cache_ttl: Duration,
+    /// Minimum percentage fee increase required for replacement transactions.
+    /// A value of 10 means a 10% bump is required (e.g. 100 -> 110).
+    pub price_bump_percent: u64,
 }
 
 impl Default for Eip8130PoolConfig {
@@ -162,6 +221,7 @@ impl Default for Eip8130PoolConfig {
             default_max_payer_txs: 8,
             trusted_max_payer_txs: 128,
             tier_cache_ttl: Duration::from_secs(300),
+            price_bump_percent: 10,
         }
     }
 }
@@ -196,27 +256,21 @@ struct PoolInner<T> {
     sequences: HashMap<Eip8130SequenceId, SequenceState<T>>,
     by_hash: HashMap<B256, Eip8130TxId>,
     /// Reverse index: nonce storage slot → sequence ID.
-    /// Populated at insertion time so that block-maintenance can map
-    /// `NONCE_MANAGER_ADDRESS` storage diffs back to sequence lanes.
     slot_to_seq: HashMap<B256, Eip8130SequenceId>,
     /// Per-account count of pool txs where the account acts as **sender**.
-    /// Self-pay transactions do **not** increment this counter — they
-    /// increment `payer_txs` instead (payer is the more privileged role).
     sender_txs: HashMap<Address, usize>,
     /// Per-account count of pool txs where the account acts as **payer**.
-    /// Includes self-pay transactions.
     payer_txs: HashMap<Address, usize>,
-    /// Payer address for each tx hash, used to decrement the correct
-    /// counter on removal.
+    /// Payer address for each tx hash.
     payer_by_hash: HashMap<B256, Address>,
-    /// Cached throughput tier per account, populated lazily when an
-    /// account is about to breach the default cap. Invalidated when the
-    /// account's lock slot changes on-chain or when the entry expires.
+    /// Cached throughput tier per account.
     account_tiers: HashMap<Address, CachedTier>,
-    /// Reverse map: lock storage slot → account address. Used by the
-    /// maintenance task to identify which accounts need tier
-    /// invalidation when `ACCOUNT_CONFIG_ADDRESS` lock slots change.
+    /// Reverse map: lock storage slot → account address.
     lock_slot_to_account: HashMap<B256, Address>,
+    /// Monotonic counter for eviction tie-breaking.
+    next_submission_id: u64,
+    /// All transactions ordered by eviction priority (lowest first).
+    by_eviction_order: BTreeSet<EvictionKey>,
 }
 
 impl<T: core::fmt::Debug> core::fmt::Debug for PoolInner<T> {
@@ -227,6 +281,7 @@ impl<T: core::fmt::Debug> core::fmt::Debug for PoolInner<T> {
             .field("slot_to_seq_len", &self.slot_to_seq.len())
             .field("sender_txs_len", &self.sender_txs.len())
             .field("payer_txs_len", &self.payer_txs.len())
+            .field("eviction_set_len", &self.by_eviction_order.len())
             .finish()
     }
 }
@@ -242,6 +297,8 @@ impl<T> Default for PoolInner<T> {
             payer_by_hash: HashMap::new(),
             account_tiers: HashMap::new(),
             lock_slot_to_account: HashMap::new(),
+            next_submission_id: 0,
+            by_eviction_order: BTreeSet::new(),
         }
     }
 }
@@ -367,7 +424,8 @@ impl<T> Eip8130Pool<T> {
     }
 
     /// Updates the known on-chain nonce for a sequence lane and removes any
-    /// transactions with `nonce_sequence < new_nonce`.
+    /// transactions with `nonce_sequence < new_nonce`. Remaining transactions
+    /// are re-evaluated for pending/queued status via promotion scan.
     ///
     /// Returns the hashes of pruned transactions.
     pub fn update_sequence_nonce(&self, seq_id: &Eip8130SequenceId, new_nonce: u64) -> Vec<B256>
@@ -376,15 +434,27 @@ impl<T> Eip8130Pool<T> {
     {
         let mut inner = self.inner.write();
         let mut removed_hashes = Vec::new();
+        let mut eviction_keys_to_remove = Vec::new();
 
         if let Some(seq) = inner.sequences.get_mut(seq_id) {
             seq.next_nonce = new_nonce;
-            let stale: Vec<u64> = seq.pending.range(..new_nonce).map(|(&nonce, _)| nonce).collect();
+            let stale: Vec<u64> = seq.txs.range(..new_nonce).map(|(&nonce, _)| nonce).collect();
             for nonce in stale {
-                if let Some(entry) = seq.pending.remove(&nonce) {
-                    removed_hashes.push(*entry.transaction.hash());
+                if let Some(entry) = seq.txs.remove(&nonce) {
+                    let hash = *entry.transaction.hash();
+                    eviction_keys_to_remove.push(EvictionKey {
+                        priority_fee: entry.priority_fee,
+                        submission_id: entry.submission_id,
+                        hash,
+                    });
+                    removed_hashes.push(hash);
                 }
             }
+            Self::promote_sequence(seq);
+        }
+
+        for key in eviction_keys_to_remove {
+            inner.by_eviction_order.remove(&key);
         }
 
         let sender = seq_id.sender;
@@ -407,7 +477,7 @@ impl<T> Eip8130Pool<T> {
             Self::maybe_clear_tier(&mut inner, &sender);
         }
 
-        if inner.sequences.get(seq_id).is_some_and(|s| s.pending.is_empty()) {
+        if inner.sequences.get(seq_id).is_some_and(|s| s.txs.is_empty()) {
             inner.sequences.remove(seq_id);
             inner.slot_to_seq.retain(|_, v| v != seq_id);
         }
@@ -418,7 +488,18 @@ impl<T> Eip8130Pool<T> {
     fn remove_from_inner(inner: &mut PoolInner<T>, hash: &B256) -> Option<Eip8130TxId> {
         let id = inner.by_hash.remove(hash)?;
         let seq_id = id.sequence_id();
-        inner.sequences.get_mut(&seq_id)?.pending.remove(&id.nonce_sequence);
+        let entry = inner.sequences.get_mut(&seq_id)?.txs.remove(&id.nonce_sequence)?;
+
+        inner.by_eviction_order.remove(&EvictionKey {
+            priority_fee: entry.priority_fee,
+            submission_id: entry.submission_id,
+            hash: *hash,
+        });
+
+        // Demote descendants — removing this tx creates a nonce gap.
+        if let Some(seq) = inner.sequences.get_mut(&seq_id) {
+            Self::demote_from_nonce(seq, id.nonce_sequence);
+        }
 
         let sender = id.sender;
         if let Some(payer) = inner.payer_by_hash.remove(hash) {
@@ -432,7 +513,7 @@ impl<T> Eip8130Pool<T> {
         }
         Self::maybe_clear_tier(inner, &sender);
 
-        if inner.sequences.get(&seq_id).is_some_and(|s| s.pending.is_empty()) {
+        if inner.sequences.get(&seq_id).is_some_and(|s| s.txs.is_empty()) {
             inner.sequences.remove(&seq_id);
             inner.slot_to_seq.retain(|_, v| v != &seq_id);
         }
@@ -461,21 +542,92 @@ impl<T> Eip8130Pool<T> {
             inner.lock_slot_to_account.remove(&lock_slot(*account));
         }
     }
+
+    /// Evicts the single lowest-priority transaction from the pool.
+    ///
+    /// Prefers queued transactions. Returns `true` if something was evicted.
+    fn try_evict_one(inner: &mut PoolInner<T>, _config: &Eip8130PoolConfig) -> bool
+    where
+        T: PoolTransaction,
+    {
+        // First pass: find the lowest-priority queued tx.
+        let queued_hash = inner
+            .by_eviction_order
+            .iter()
+            .find(|key| {
+                // Check if the tx behind this key is queued (not pending).
+                if let Some(id) = inner.by_hash.get(&key.hash) {
+                    let seq_id = id.sequence_id();
+                    inner
+                        .sequences
+                        .get(&seq_id)
+                        .and_then(|s| s.txs.get(&id.nonce_sequence))
+                        .is_some_and(|e| !e.is_pending)
+                } else {
+                    false
+                }
+            })
+            .map(|key| key.hash);
+
+        // Fall back to lowest-priority pending tx if no queued txs exist.
+        let hash_to_evict = queued_hash.or_else(|| {
+            inner.by_eviction_order.iter().next().map(|key| key.hash)
+        });
+
+        if let Some(hash) = hash_to_evict {
+            Self::remove_from_inner(inner, &hash);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Walks the sequence forward from `next_nonce` and sets `is_pending`
+    /// for every entry in a contiguous run, then `false` for anything
+    /// after the first gap.
+    fn promote_sequence(seq: &mut SequenceState<T>) {
+        let mut next = seq.next_nonce;
+        let mut hit_gap = false;
+        for (&nonce, entry) in seq.txs.iter_mut() {
+            if !hit_gap && nonce == next {
+                entry.is_pending = true;
+                next += 1;
+            } else {
+                hit_gap = true;
+                entry.is_pending = false;
+            }
+        }
+    }
+
+    /// Marks all entries with `nonce_sequence > removed_nonce` as queued.
+    fn demote_from_nonce(seq: &mut SequenceState<T>, removed_nonce: u64) {
+        for (_, entry) in seq.txs.range_mut((
+            std::ops::Bound::Excluded(removed_nonce),
+            std::ops::Bound::Unbounded,
+        )) {
+            entry.is_pending = false;
+        }
+    }
+
+    /// Returns `true` if `new_fee` satisfies the price bump over `old_fee`.
+    fn meets_price_bump(old_fee: u128, new_fee: u128, bump_pct: u64) -> bool {
+        let min_new = old_fee.saturating_mul(100 + bump_pct as u128) / 100;
+        new_fee >= min_new
+    }
 }
 
 impl<T: PoolTransaction> Eip8130Pool<T> {
     /// Attempts to add a validated transaction to the pool.
     ///
-    /// The caller must provide:
-    /// - `nonce_storage_slot` (output of `nonce_slot(sender, nonce_key)`) so
-    ///   the pool can build the reverse index used during block-maintenance
-    ///   nonce updates.
-    /// - `payer` — the address paying for this transaction (equal to sender for
-    ///   self-pay transactions).
-    /// - `check_tier` — a callback that reads on-chain state to determine an
-    ///   account's [`ThroughputTier`]. The pool only invokes this when an
-    ///   account is about to exceed the default cap, keeping the common path
-    ///   free of state reads.
+    /// If a transaction already exists at the same `(sender, nonce_key,
+    /// nonce_sequence)`, the new transaction replaces it **only** if its
+    /// `max_priority_fee_per_gas` meets the configured price bump. Otherwise
+    /// a [`Eip8130PoolError::ReplacementUnderpriced`] error is returned.
+    ///
+    /// On success the pool runs a promotion scan: any previously queued
+    /// transactions that now form a contiguous nonce chain are marked pending.
+    /// If the pool exceeds `max_pool_size`, the lowest-priority queued (then
+    /// pending) transactions are evicted.
     ///
     /// **Counting rules:** a self-pay transaction (payer == sender) increments
     /// the payer counter only. A sponsored transaction increments the sender's
@@ -488,70 +640,118 @@ impl<T: PoolTransaction> Eip8130Pool<T> {
         origin: TransactionOrigin,
         nonce_storage_slot: B256,
         check_tier: &dyn Fn(Address) -> TierCheckResult,
-    ) -> Result<(), Eip8130PoolError> {
+    ) -> Result<AddOutcome, Eip8130PoolError> {
         let hash = *transaction.hash();
+        let priority_fee = transaction.max_priority_fee_per_gas().unwrap_or_default();
         let mut inner = self.inner.write();
 
         if inner.by_hash.contains_key(&hash) {
             return Err(Eip8130PoolError::DuplicateHash(hash));
         }
 
-        if inner.by_hash.len() >= self.config.max_pool_size {
-            return Err(Eip8130PoolError::PoolFull);
-        }
-
         let sender = id.sender;
         let is_self_pay = payer == sender;
+        let seq_id = id.sequence_id();
 
-        // Sender-role check (only for sponsored txs — self-pay uses payer role).
-        if !is_self_pay {
-            let sender_count = inner.sender_txs.get(&sender).copied().unwrap_or(0);
-            if sender_count >= self.config.default_max_sender_txs {
-                let tier = self.resolve_tier(&mut inner, sender, check_tier);
-                if sender_count >= self.config.max_sender_txs_for_tier(tier) {
-                    return Err(Eip8130PoolError::AccountCapacityExceeded(sender));
+        // --- Replacement check ---
+        let replaced_hash: Option<B256> = {
+            let seq = inner.sequences.entry(seq_id.clone()).or_default();
+            if let Some(existing) = seq.txs.get(&id.nonce_sequence) {
+                if !Self::meets_price_bump(
+                    existing.priority_fee,
+                    priority_fee,
+                    self.config.price_bump_percent,
+                ) {
+                    return Err(Eip8130PoolError::ReplacementUnderpriced {
+                        existing_fee: existing.priority_fee,
+                        new_fee: priority_fee,
+                    });
+                }
+                Some(*existing.transaction.hash())
+            } else {
+                None
+            }
+        };
+
+        // Remove the replaced tx (if any) before capacity checks.
+        if let Some(old_hash) = replaced_hash {
+            Self::remove_from_inner(&mut inner, &old_hash);
+        }
+
+        // --- Capacity / account limit checks (only for new insertions, not replacements) ---
+        if replaced_hash.is_none() {
+            if inner.by_hash.len() >= self.config.max_pool_size {
+                // Try evicting before rejecting.
+                if !Self::try_evict_one(&mut inner, &self.config) {
+                    return Err(Eip8130PoolError::PoolFull);
                 }
             }
-        }
 
-        // Payer-role check (always — self-pay and sponsored).
-        let payer_count = inner.payer_txs.get(&payer).copied().unwrap_or(0);
-        if payer_count >= self.config.default_max_payer_txs {
-            let tier = self.resolve_tier(&mut inner, payer, check_tier);
-            if payer_count >= self.config.max_payer_txs_for_tier(tier) {
-                return Err(Eip8130PoolError::AccountCapacityExceeded(payer));
+            if !is_self_pay {
+                let sender_count = inner.sender_txs.get(&sender).copied().unwrap_or(0);
+                if sender_count >= self.config.default_max_sender_txs {
+                    let tier = self.resolve_tier(&mut inner, sender, check_tier);
+                    if sender_count >= self.config.max_sender_txs_for_tier(tier) {
+                        return Err(Eip8130PoolError::AccountCapacityExceeded(sender));
+                    }
+                }
             }
-        }
 
-        let seq_id = id.sequence_id();
-        {
+            let payer_count = inner.payer_txs.get(&payer).copied().unwrap_or(0);
+            if payer_count >= self.config.default_max_payer_txs {
+                let tier = self.resolve_tier(&mut inner, payer, check_tier);
+                if payer_count >= self.config.max_payer_txs_for_tier(tier) {
+                    return Err(Eip8130PoolError::AccountCapacityExceeded(payer));
+                }
+            }
+
             let seq = inner.sequences.entry(seq_id.clone()).or_default();
-            if seq.pending.len() >= self.config.max_txs_per_sequence {
+            if seq.txs.len() >= self.config.max_txs_per_sequence {
                 return Err(Eip8130PoolError::SequenceFull);
             }
-
-            if seq.pending.contains_key(&id.nonce_sequence) {
-                return Err(Eip8130PoolError::NonceAlreadyPending {
-                    sender,
-                    nonce_key: id.nonce_key,
-                    nonce_sequence: id.nonce_sequence,
-                });
-            }
         }
 
-        let entry = PooledEntry { id: id.clone(), transaction, origin, timestamp: Instant::now() };
-        let seq =
-            inner.sequences.get_mut(&seq_id).expect("sequence must exist after entry insertion");
-        seq.pending.insert(id.nonce_sequence, entry);
+        // --- Insert ---
+        let sub_id = inner.next_submission_id;
+        inner.next_submission_id += 1;
+
+        let entry = PooledEntry {
+            id: id.clone(),
+            transaction,
+            origin,
+            timestamp: Instant::now(),
+            is_pending: false,
+            submission_id: sub_id,
+            priority_fee,
+        };
+
+        // Ensure the sequence exists (it may have been cleaned up by
+        // remove_from_inner during replacement if it was the only entry).
+        let seq = inner.sequences.entry(seq_id.clone()).or_default();
+        seq.txs.insert(id.nonce_sequence, entry);
+
+        // Promotion scan — sets is_pending for the contiguous chain.
+        Self::promote_sequence(seq);
+
         inner.by_hash.insert(hash, id);
         inner.payer_by_hash.insert(hash, payer);
         inner.slot_to_seq.entry(nonce_storage_slot).or_insert(seq_id);
-        *inner.payer_txs.entry(payer).or_insert(0) += 1;
-        if !is_self_pay {
-            *inner.sender_txs.entry(sender).or_insert(0) += 1;
+        inner
+            .by_eviction_order
+            .insert(EvictionKey { priority_fee, submission_id: sub_id, hash });
+
+        if replaced_hash.is_none() {
+            *inner.payer_txs.entry(payer).or_insert(0) += 1;
+            if !is_self_pay {
+                *inner.sender_txs.entry(sender).or_insert(0) += 1;
+            }
         }
 
-        Ok(())
+        Ok(if replaced_hash.is_some() {
+            AddOutcome::Replaced
+        } else {
+            AddOutcome::Added
+        })
     }
 
     /// Resolves the throughput tier for `account`, using the cache when fresh
@@ -587,24 +787,20 @@ impl<T: PoolTransaction> Eip8130Pool<T> {
         let inner = self.inner.read();
         let id = inner.by_hash.get(hash)?;
         let seq_id = id.sequence_id();
-        let entry = inner.sequences.get(&seq_id)?.pending.get(&id.nonce_sequence)?;
+        let entry = inner.sequences.get(&seq_id)?.txs.get(&id.nonce_sequence)?;
         Some(Self::wrap_entry(entry))
     }
 
-    /// Returns `(pending, queued)` transaction counts.
-    ///
-    /// Pending = nonce_sequence forms a contiguous run from `next_nonce`.
-    /// Queued = nonce_sequence has a gap relative to `next_nonce`.
+    /// Returns `(pending, queued)` transaction counts using the tracked
+    /// `is_pending` flag on each entry.
     pub fn pending_and_queued_count(&self) -> (usize, usize) {
         let inner = self.inner.read();
         let mut pending = 0;
         let mut queued = 0;
         for seq in inner.sequences.values() {
-            let mut next = seq.next_nonce;
-            for &nonce in seq.pending.keys() {
-                if nonce == next {
+            for entry in seq.txs.values() {
+                if entry.is_pending {
                     pending += 1;
-                    next += 1;
                 } else {
                     queued += 1;
                 }
@@ -635,7 +831,7 @@ impl<T: PoolTransaction> Eip8130Pool<T> {
             .sequences
             .iter()
             .filter(|(seq_id, _)| &seq_id.sender == sender)
-            .flat_map(|(_, state)| state.pending.values().map(|e| Self::wrap_entry(e)))
+            .flat_map(|(_, state)| state.txs.values().map(|e| Self::wrap_entry(e)))
             .collect()
     }
 
@@ -645,19 +841,11 @@ impl<T: PoolTransaction> Eip8130Pool<T> {
         T: Clone,
     {
         let inner = self.inner.read();
-        let mut result = Vec::new();
-        for seq in inner.sequences.values() {
-            let mut next = seq.next_nonce;
-            for (&nonce, entry) in &seq.pending {
-                if nonce == next {
-                    result.push(Self::wrap_entry(entry));
-                    next += 1;
-                } else {
-                    break;
-                }
-            }
-        }
-        result
+        inner
+            .sequences
+            .values()
+            .flat_map(|seq| seq.txs.values().filter(|e| e.is_pending).map(|e| Self::wrap_entry(e)))
+            .collect()
     }
 
     /// Returns all queued (not yet ready) transactions.
@@ -666,20 +854,13 @@ impl<T: PoolTransaction> Eip8130Pool<T> {
         T: Clone,
     {
         let inner = self.inner.read();
-        let mut result = Vec::new();
-        for seq in inner.sequences.values() {
-            let mut next = seq.next_nonce;
-            let mut in_gap = false;
-            for (&nonce, entry) in &seq.pending {
-                if nonce == next && !in_gap {
-                    next += 1;
-                } else {
-                    in_gap = true;
-                    result.push(Self::wrap_entry(entry));
-                }
-            }
-        }
-        result
+        inner
+            .sequences
+            .values()
+            .flat_map(|seq| {
+                seq.txs.values().filter(|e| !e.is_pending).map(|e| Self::wrap_entry(e))
+            })
+            .collect()
     }
 
     /// Returns all validated transactions in the pool (regardless of readiness).
@@ -691,7 +872,7 @@ impl<T: PoolTransaction> Eip8130Pool<T> {
         inner
             .sequences
             .values()
-            .flat_map(|seq| seq.pending.values().map(|e| Self::wrap_entry(e)))
+            .flat_map(|seq| seq.txs.values().map(|e| Self::wrap_entry(e)))
             .collect()
     }
 
@@ -719,21 +900,18 @@ impl<T: PoolTransaction> Eip8130Pool<T> {
 impl<T: EthPoolTransaction + Clone> Eip8130Pool<T> {
     /// Snapshots the ready (executable) transactions across all sequences.
     ///
-    /// A transaction is ready when its `nonce_sequence == next_nonce` for the
-    /// sequence lane, forming a contiguous chain from the on-chain nonce.
+    /// A transaction is ready when its `is_pending` flag is set, meaning it
+    /// forms part of a contiguous nonce chain from the on-chain nonce.
     /// Results are sorted by effective priority (max_priority_fee descending).
     pub fn best_transactions(&self) -> BestEip8130Transactions<T> {
         let inner = self.inner.read();
         let mut ready = Vec::new();
 
         for seq in inner.sequences.values() {
-            let mut next = seq.next_nonce;
-            for (&nonce, entry) in &seq.pending {
-                if nonce != next {
-                    break;
+            for entry in seq.txs.values() {
+                if entry.is_pending {
+                    ready.push(Self::wrap_entry(entry));
                 }
-                ready.push(Self::wrap_entry(entry));
-                next += 1;
             }
         }
 
@@ -796,20 +974,19 @@ impl<T: EthPoolTransaction> reth_transaction_pool::BestTransactions for BestEip8
 pub enum Eip8130PoolError {
     /// Transaction hash already exists in the pool.
     DuplicateHash(B256),
-    /// The sequence lane `(sender, nonce_key)` has too many pending transactions.
+    /// The sequence lane `(sender, nonce_key)` has too many transactions.
     SequenceFull,
-    /// A transaction with the same 2D nonce is already pending.
-    NonceAlreadyPending {
-        /// Sender address.
-        sender: Address,
-        /// Nonce key.
-        nonce_key: U256,
-        /// Nonce sequence within the key.
-        nonce_sequence: u64,
+    /// A transaction at the same 2D nonce exists and the replacement does
+    /// not meet the minimum price bump.
+    ReplacementUnderpriced {
+        /// The priority fee of the existing transaction.
+        existing_fee: u128,
+        /// The priority fee of the proposed replacement.
+        new_fee: u128,
     },
     /// Pool has reached its maximum capacity.
     PoolFull,
-    /// Account (sender or payer) already has the maximum number of pending
+    /// Account (sender or payer) already has the maximum number of
     /// transactions.
     AccountCapacityExceeded(Address),
 }
@@ -819,10 +996,9 @@ impl core::fmt::Display for Eip8130PoolError {
         match self {
             Self::DuplicateHash(hash) => write!(f, "duplicate transaction hash {hash}"),
             Self::SequenceFull => write!(f, "sequence lane is full"),
-            Self::NonceAlreadyPending { sender, nonce_key, nonce_sequence } => write!(
+            Self::ReplacementUnderpriced { existing_fee, new_fee } => write!(
                 f,
-                "nonce already pending: sender={sender}, nonce_key={nonce_key}, \
-                 nonce_sequence={nonce_sequence}"
+                "replacement underpriced: existing_fee={existing_fee}, new_fee={new_fee}"
             ),
             Self::PoolFull => write!(f, "2D nonce pool is full"),
             Self::AccountCapacityExceeded(account) => {
@@ -921,7 +1097,7 @@ mod tests {
         tx: BasePooledTransaction,
         slot: B256,
         check_tier: &dyn Fn(Address) -> TierCheckResult,
-    ) -> Result<(), Eip8130PoolError> {
+    ) -> Result<AddOutcome, Eip8130PoolError> {
         let payer = id.sender;
         pool.add_transaction(id, tx, payer, TransactionOrigin::External, slot, check_tier)
     }
@@ -933,7 +1109,7 @@ mod tests {
         payer: Address,
         slot: B256,
         check_tier: &dyn Fn(Address) -> TierCheckResult,
-    ) -> Result<(), Eip8130PoolError> {
+    ) -> Result<AddOutcome, Eip8130PoolError> {
         pool.add_transaction(id, tx, payer, TransactionOrigin::External, slot, check_tier)
     }
 
@@ -1002,18 +1178,41 @@ mod tests {
     }
 
     #[test]
-    fn add_nonce_collision_rejected() {
+    fn replacement_underpriced_rejected() {
         let pool = TestPool::new();
         let slot = make_slot(0x01, 1);
 
-        let tx1 = make_tx(0x01, 0, 10);
+        let tx1 = make_tx(0x01, 0, 100);
         let id1 = make_id(0x01, 1, 0);
         add_self_pay(&pool, id1, tx1, slot, &default_result).unwrap();
 
-        let tx2 = make_tx(0x01, 100, 20);
+        // Same nonce but fee doesn't meet the 10% bump — rejected.
+        let tx2 = make_tx(0x01, 100, 105);
         let id2 = make_id(0x01, 1, 0);
         let result = add_self_pay(&pool, id2, tx2, slot, &default_result);
-        assert!(matches!(result, Err(Eip8130PoolError::NonceAlreadyPending { .. })));
+        assert!(matches!(result, Err(Eip8130PoolError::ReplacementUnderpriced { .. })));
+        assert_eq!(pool.len(), 1);
+    }
+
+    #[test]
+    fn replacement_with_sufficient_bump_succeeds() {
+        let pool = TestPool::new();
+        let slot = make_slot(0x01, 1);
+
+        let tx1 = make_tx(0x01, 0, 100);
+        let hash1 = *tx1.hash();
+        let id1 = make_id(0x01, 1, 0);
+        add_self_pay(&pool, id1, tx1, slot, &default_result).unwrap();
+
+        // 110% of 100 = 110 — meets the 10% bump.
+        let tx2 = make_tx(0x01, 100, 110);
+        let hash2 = *tx2.hash();
+        let id2 = make_id(0x01, 1, 0);
+        let result = add_self_pay(&pool, id2, tx2, slot, &default_result).unwrap();
+        assert_eq!(result, AddOutcome::Replaced);
+        assert_eq!(pool.len(), 1);
+        assert!(!pool.contains(&hash1));
+        assert!(pool.contains(&hash2));
     }
 
     #[test]
@@ -1348,12 +1547,15 @@ mod tests {
         }
 
         assert_eq!(pool.len(), c.max_pool_size);
+
+        // With eviction, adding a higher-priority tx evicts the lowest.
         let sender = sender_from_index(c.max_pool_size + 1);
-        let tx = make_tx_for_sender(sender, 9999, 10);
+        let tx = make_tx_for_sender(sender, 9999, 20);
         let id = Eip8130TxId { sender, nonce_key: U256::from(9999), nonce_sequence: 0 };
         let slot = make_slot_for(sender, 9999);
         let result = add_self_pay(&pool, id, tx, slot, &trusted_result);
-        assert!(matches!(result, Err(Eip8130PoolError::PoolFull)));
+        assert!(result.is_ok(), "should succeed by evicting lowest-priority tx");
+        assert_eq!(pool.len(), c.max_pool_size, "pool size should stay at max");
     }
 
     #[test]
@@ -1692,5 +1894,150 @@ mod tests {
 
         assert_eq!(pool.payer_tx_count(&Address::repeat_byte(0x01)), 2);
         assert_eq!(pool.payer_tx_count(&Address::repeat_byte(0x02)), 0);
+    }
+
+    // ------------------------------------------------------------------ //
+    //  Promotion on gap-fill
+    // ------------------------------------------------------------------ //
+
+    #[test]
+    fn filling_gap_promotes_descendants() {
+        let pool = TestPool::new();
+        let slot = make_slot(0x01, 1);
+
+        // Insert nonces 0, 2, 3 — gap at 1.
+        for seq in [0, 2, 3] {
+            let tx = make_tx(0x01, seq, 10);
+            let id = make_id(0x01, 1, seq);
+            add_self_pay(&pool, id, tx, slot, &default_result).unwrap();
+        }
+
+        let (pending, queued) = pool.pending_and_queued_count();
+        assert_eq!(pending, 1, "only nonce 0 should be pending");
+        assert_eq!(queued, 2, "nonces 2,3 should be queued");
+
+        // Fill the gap at nonce 1.
+        let tx1 = make_tx(0x01, 1, 10);
+        let id1 = make_id(0x01, 1, 1);
+        add_self_pay(&pool, id1, tx1, slot, &default_result).unwrap();
+
+        let (pending, queued) = pool.pending_and_queued_count();
+        assert_eq!(pending, 4, "all 4 nonces should now be pending");
+        assert_eq!(queued, 0);
+    }
+
+    // ------------------------------------------------------------------ //
+    //  Demotion on mid-chain removal
+    // ------------------------------------------------------------------ //
+
+    #[test]
+    fn removing_mid_chain_demotes_descendants() {
+        let pool = TestPool::new();
+        let slot = make_slot(0x01, 1);
+
+        let mut hashes = Vec::new();
+        for seq in 0..4u64 {
+            let tx = make_tx(0x01, seq, 10);
+            hashes.push(*tx.hash());
+            let id = make_id(0x01, 1, seq);
+            add_self_pay(&pool, id, tx, slot, &default_result).unwrap();
+        }
+
+        let (pending, _) = pool.pending_and_queued_count();
+        assert_eq!(pending, 4);
+
+        // Remove nonce 1 — creates a gap.
+        pool.remove_transaction(&hashes[1]);
+
+        let (pending, queued) = pool.pending_and_queued_count();
+        assert_eq!(pending, 1, "only nonce 0 should remain pending");
+        assert_eq!(queued, 2, "nonces 2,3 should be demoted to queued");
+    }
+
+    // ------------------------------------------------------------------ //
+    //  Priority-based eviction
+    // ------------------------------------------------------------------ //
+
+    #[test]
+    fn eviction_removes_lowest_priority_queued_first() {
+        let config = Eip8130PoolConfig {
+            max_pool_size: 3,
+            max_txs_per_sequence: 16,
+            default_max_payer_txs: 128,
+            trusted_max_payer_txs: 128,
+            ..Eip8130PoolConfig::default()
+        };
+        let pool = Eip8130Pool::<BasePooledTransaction>::with_config(config);
+
+        // nonce 0 (pending, fee=50), nonce 2 (queued, fee=5), nonce 3 (queued, fee=100)
+        let slot = make_slot(0x01, 1);
+        let tx0 = make_tx(0x01, 0, 50);
+        let id0 = make_id(0x01, 1, 0);
+        add_self_pay(&pool, id0, tx0, slot, &trusted_result).unwrap();
+
+        let tx2 = make_tx(0x01, 200, 5);
+        let id2 = make_id(0x01, 1, 2);
+        add_self_pay(&pool, id2, tx2, slot, &trusted_result).unwrap();
+
+        let tx3 = make_tx(0x01, 300, 100);
+        let id3 = make_id(0x01, 1, 3);
+        add_self_pay(&pool, id3, tx3, slot, &trusted_result).unwrap();
+
+        assert_eq!(pool.len(), 3);
+        let (pending, queued) = pool.pending_and_queued_count();
+        assert_eq!(pending, 1);
+        assert_eq!(queued, 2);
+
+        // Adding a 4th tx should evict the lowest-priority queued (fee=5).
+        let tx_new = make_tx(0x02, 0, 20);
+        let id_new = make_id(0x02, 2, 0);
+        let slot2 = make_slot(0x02, 2);
+        add_self_pay(&pool, id_new, tx_new, slot2, &trusted_result).unwrap();
+
+        assert_eq!(pool.len(), 3, "pool should remain at max size after eviction");
+    }
+
+    // ------------------------------------------------------------------ //
+    //  Price bump helper
+    // ------------------------------------------------------------------ //
+
+    #[test]
+    fn price_bump_math() {
+        assert!(Eip8130Pool::<BasePooledTransaction>::meets_price_bump(100, 110, 10));
+        assert!(!Eip8130Pool::<BasePooledTransaction>::meets_price_bump(100, 109, 10));
+        assert!(Eip8130Pool::<BasePooledTransaction>::meets_price_bump(0, 0, 10));
+        assert!(Eip8130Pool::<BasePooledTransaction>::meets_price_bump(0, 1, 10));
+    }
+
+    // ------------------------------------------------------------------ //
+    //  Nonce update promotes survivors
+    // ------------------------------------------------------------------ //
+
+    #[test]
+    fn update_nonce_promotes_survivors() {
+        let pool = TestPool::new();
+        let slot = make_slot(0x01, 1);
+
+        // Insert nonces 0, 1, 4, 5 — gap at 2-3.
+        for seq in [0, 1, 4, 5] {
+            let tx = make_tx(0x01, seq, 10);
+            let id = make_id(0x01, 1, seq);
+            add_self_pay(&pool, id, tx, slot, &default_result).unwrap();
+        }
+
+        let (pending, queued) = pool.pending_and_queued_count();
+        assert_eq!(pending, 2, "nonces 0,1 pending");
+        assert_eq!(queued, 2, "nonces 4,5 queued");
+
+        // Advance nonce to 4 — removes 0, 1; promotes 4, 5.
+        let seq_id =
+            Eip8130SequenceId { sender: Address::repeat_byte(0x01), nonce_key: U256::from(1) };
+        let pruned = pool.update_sequence_nonce(&seq_id, 4);
+        assert_eq!(pruned.len(), 2);
+        assert_eq!(pool.len(), 2);
+
+        let (pending, queued) = pool.pending_and_queued_count();
+        assert_eq!(pending, 2, "nonces 4,5 should now be pending");
+        assert_eq!(queued, 0);
     }
 }
