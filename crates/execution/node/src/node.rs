@@ -4,22 +4,21 @@ use std::{marker::PhantomData, sync::Arc};
 
 use alloy_consensus::BlockHeader;
 use alloy_primitives::{Address, B64, B256};
-use base_common_chains::Upgrades;
-use base_common_consensus::BasePrimitives;
+use base_common_chains::BaseUpgrades;
+use base_common_consensus::{BasePrimitives, BaseTxEnvelope};
 use base_common_rpc_types_engine::{BasePayloadAttributes, ExecutionData};
 use base_execution_chainspec::BaseChainSpec;
 use base_execution_consensus::OpBeaconConsensus;
 use base_execution_evm::{BaseEvmConfig, OpRethReceiptBuilder};
 use base_execution_payload_builder::{
-    Attributes, OpBuiltPayload, PayloadPrimitives,
+    Attributes, OpBuiltPayload, OpPayloadBuilderAttributes, PayloadPrimitives,
     builder::BasePayloadTransactions,
     config::{BaseBuilderConfig, GasLimitConfig, OpDAConfig},
 };
 use base_execution_rpc::{
-    MinerApiExtServer,
     config::{BaseEthConfigApiServer, BaseEthConfigHandler},
     eth::OpEthApiBuilder,
-    miner::OpMinerExtApi,
+    miner::{MinerApiExtServer, OpMinerExtApi},
     witness::OpDebugWitnessApi,
 };
 use base_execution_storage::OpStorage;
@@ -103,10 +102,6 @@ impl<N> BaseFullNodeTypes for N where
 }
 
 /// Local payload attributes builder for Base.
-///
-/// This mirrors the upstream `LocalPayloadAttributesBuilder` for
-/// `op_alloy_rpc_types_engine::BasePayloadAttributes`, but targets
-/// `base_common_rpc_types_engine::BasePayloadAttributes`.
 #[derive(Debug)]
 pub struct BaseLocalPayloadAttributesBuilder {
     chain_spec: Arc<BaseChainSpec>,
@@ -119,8 +114,13 @@ impl BaseLocalPayloadAttributesBuilder {
     }
 }
 
-impl PayloadAttributesBuilder<BasePayloadAttributes> for BaseLocalPayloadAttributesBuilder {
-    fn build(&self, parent: &SealedHeader<alloy_consensus::Header>) -> BasePayloadAttributes {
+impl PayloadAttributesBuilder<OpPayloadBuilderAttributes<BaseTxEnvelope>>
+    for BaseLocalPayloadAttributesBuilder
+{
+    fn build(
+        &self,
+        parent: &SealedHeader<alloy_consensus::Header>,
+    ) -> OpPayloadBuilderAttributes<BaseTxEnvelope> {
         /// Dummy system transaction for dev mode.
         const TX_SET_L1_BLOCK_BASE_MAINNET_BLOCK_1: [u8; 349] = alloy_primitives::hex!(
             "7ef90159a024fa2288af14732611c4b9a8f99b2c929eaf2af8fb45981a752a01417994df3b94deaddeaddeaddeaddeaddeaddeaddeaddead00019442000000000000000000000000000000000000158080830f424080b90104015d8eb900000000000000000000000000000000000000000000000000000000010ac02800000000000000000000000000000000000000000000000000000000648a5ce300000000000000000000000000000000000000000000000000000003ded24b5e5c13d307623a926cd31415036c8b7fa14572f9dac64528e857a470511fc3077100000000000000000000000000000000000000000000000000000000000000010000000000000000000000005050f69a9786f081509234f1a7f4684b5e5b76c900000000000000000000000000000000000000000000000000000000000000bc00000000000000000000000000000000000000000000000000000000000a6fe0"
@@ -147,7 +147,7 @@ impl PayloadAttributesBuilder<BasePayloadAttributes> for BaseLocalPayloadAttribu
         eip1559_bytes[4..8].copy_from_slice(&elasticity.to_be_bytes());
         let eip_1559_params = Some(B64::from(eip1559_bytes));
 
-        BasePayloadAttributes {
+        let attributes = BasePayloadAttributes {
             payload_attributes: alloy_rpc_types_engine::PayloadAttributes {
                 timestamp,
                 prev_randao: B256::random(),
@@ -166,7 +166,10 @@ impl PayloadAttributesBuilder<BasePayloadAttributes> for BaseLocalPayloadAttribu
             gas_limit,
             eip_1559_params,
             min_base_fee: Some(0),
-        }
+        };
+
+        OpPayloadBuilderAttributes::try_new(parent.hash(), attributes, 3)
+            .expect("static dev payload attributes must decode")
     }
 }
 
@@ -330,7 +333,7 @@ impl<N> DebugNode<N> for BaseNode
 where
     N: FullNodeComponents<Types = Self>,
 {
-    type RpcBlock = alloy_rpc_types_eth::Block<base_common_consensus::BaseTxEnvelope>;
+    type RpcBlock = alloy_rpc_types_eth::Block<BaseTxEnvelope>;
 
     fn rpc_to_primitive_block(rpc_block: Self::RpcBlock) -> reth_node_api::BlockTy<Self> {
         rpc_block.into_consensus()
@@ -537,8 +540,7 @@ impl<N, EthB, PVB, EB, EVB, Attrs, RpcMiddleware> NodeAddOns<N>
     for OpAddOns<N, EthB, PVB, EB, EVB, RpcMiddleware>
 where
     N: FullNodeComponents<
-            Types: BaseNodeTypes
-                       + NodeTypes<Payload: PayloadTypes<PayloadBuilderAttributes = Attrs>>,
+            Types: BaseNodeTypes + NodeTypes<Payload: PayloadTypes<PayloadAttributes = Attrs>>,
             Evm: ConfigureEvm<
                 NextBlockEnvCtx: BuildNextEnv<Attrs, HeaderTy<N::Types>, BaseChainSpec>,
             >,
@@ -549,7 +551,10 @@ where
     EB: EngineApiBuilder<N>,
     EVB: EngineValidatorBuilder<N>,
     RpcMiddleware: RethRpcMiddleware,
-    Attrs: Attributes<Transaction = TxTy<N::Types>, RpcPayloadAttributes: DeserializeOwned>,
+    Attrs: Attributes<
+            Transaction = TxTy<N::Types>,
+            RpcPayloadAttributes: DeserializeOwned + Send + Sync + 'static,
+        >,
     <N::Types as NodeTypes>::Primitives: PayloadPrimitives<_Header: HeaderMut>,
 {
     type Handle = RpcHandle<N, EthB::EthApi>;
@@ -570,7 +575,7 @@ where
         // install additional OP specific rpc methods
         let debug_ext = OpDebugWitnessApi::<_, _, _, Attrs>::new(
             ctx.node.provider().clone(),
-            Box::new(ctx.node.task_executor().clone()),
+            ctx.node.task_executor().clone(),
             builder,
         );
         let miner_ext = OpMinerExtApi::new(da_config, gas_limit_config);
@@ -613,8 +618,7 @@ impl<N, EthB, PVB, EB, EVB, Attrs, RpcMiddleware> RethRpcAddOns<N>
     for OpAddOns<N, EthB, PVB, EB, EVB, RpcMiddleware>
 where
     N: FullNodeComponents<
-            Types: BaseNodeTypes
-                       + NodeTypes<Payload: PayloadTypes<PayloadBuilderAttributes = Attrs>>,
+            Types: BaseNodeTypes + NodeTypes<Payload: PayloadTypes<PayloadAttributes = Attrs>>,
             Evm: ConfigureEvm<
                 NextBlockEnvCtx: BuildNextEnv<Attrs, HeaderTy<N::Types>, BaseChainSpec>,
             >,
@@ -625,7 +629,10 @@ where
     EB: EngineApiBuilder<N>,
     EVB: EngineValidatorBuilder<N>,
     RpcMiddleware: RethRpcMiddleware,
-    Attrs: Attributes<Transaction = TxTy<N::Types>, RpcPayloadAttributes: DeserializeOwned>,
+    Attrs: Attributes<
+            Transaction = TxTy<N::Types>,
+            RpcPayloadAttributes: DeserializeOwned + Send + Sync + 'static,
+        >,
     <N::Types as NodeTypes>::Primitives: PayloadPrimitives<_Header: HeaderMut>,
 {
     type EthApi = EthB::EthApi;
@@ -807,10 +814,8 @@ impl<Node> ExecutorBuilder<Node> for OpExecutorBuilder
 where
     Node: FullNodeTypes<Types: BaseNodeTypes>,
 {
-    type EVM = BaseEvmConfig<
-        <Node::Types as NodeTypes>::ChainSpec,
-        <Node::Types as NodeTypes>::Primitives,
-    >;
+    type EVM =
+        BaseEvmConfig<<Node::Types as NodeTypes>::ChainSpec, <Node::Types as NodeTypes>::Primitives>;
 
     async fn build_evm(self, ctx: &BuilderContext<Node>) -> eyre::Result<Self::EVM> {
         let evm_config = BaseEvmConfig::new(ctx.chain_spec(), OpRethReceiptBuilder::default());
@@ -984,12 +989,12 @@ impl<Txs> OpPayloadBuilder<Txs> {
 impl<Node, Pool, Txs, Evm, Attrs> PayloadBuilderBuilder<Node, Pool, Evm> for OpPayloadBuilder<Txs>
 where
     Node: FullNodeTypes<
-            Provider: ChainSpecProvider<ChainSpec: Upgrades>,
+            Provider: ChainSpecProvider<ChainSpec: BaseUpgrades>,
             Types: NodeTypes<
                 Primitives: PayloadPrimitives,
                 Payload: PayloadTypes<
                     BuiltPayload = OpBuiltPayload<PrimitivesTy<Node::Types>>,
-                    PayloadBuilderAttributes = Attrs,
+                    PayloadAttributes = Attrs,
                 >,
             >,
         >,
@@ -1003,7 +1008,7 @@ where
         > + 'static,
     Pool: TransactionPool<Transaction: OpPooledTx<Consensus = TxTy<Node::Types>>> + Unpin + 'static,
     Txs: BasePayloadTransactions<Pool::Transaction>,
-    Attrs: Attributes<Transaction = TxTy<Node::Types>>,
+    Attrs: Attributes<Transaction = TxTy<Node::Types>> + Unpin,
 {
     type PayloadBuilder =
         base_execution_payload_builder::OpPayloadBuilder<Pool, Node::Provider, Evm, Txs, Attrs>;
@@ -1150,7 +1155,7 @@ pub struct OpEngineValidatorBuilder;
 impl<Node> PayloadValidatorBuilder<Node> for OpEngineValidatorBuilder
 where
     Node: FullNodeComponents<
-        Types: NodeTypes<ChainSpec: Upgrades, Payload: PayloadTypes<ExecutionData = ExecutionData>>,
+        Types: NodeTypes<ChainSpec: BaseUpgrades, Payload: PayloadTypes<ExecutionData = ExecutionData>>,
     >,
 {
     type Validator = OpEngineValidator<

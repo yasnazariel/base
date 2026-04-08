@@ -28,7 +28,7 @@ use reth_basic_payload_builder::BuildOutcome;
 use reth_evm::{ConfigureEvm, execute::BlockBuilder};
 use reth_execution_types::ChangedAccount;
 use reth_node_api::{Block, BuiltPayloadExecutedBlock, PayloadBuilderError};
-use reth_payload_primitives::PayloadBuilderAttributes;
+use reth_payload_primitives::PayloadAttributes;
 use reth_payload_util::BestPayloadTransactions;
 use reth_primitives_traits::RecoveredBlock;
 use reth_provider::{
@@ -179,8 +179,8 @@ where
 
         let block_env_attributes = OpNextBlockEnvAttributes {
             timestamp,
-            suggested_fee_recipient: config.attributes.suggested_fee_recipient(),
-            prev_randao: config.attributes.prev_randao(),
+            suggested_fee_recipient: config.attributes.payload_attributes.suggested_fee_recipient,
+            prev_randao: config.attributes.payload_attributes.prev_randao,
             gas_limit: config.attributes.gas_limit.unwrap_or(config.parent_header.gas_limit),
             parent_beacon_block_root: config.attributes.payload_attributes.parent_beacon_block_root,
             extra_data,
@@ -1146,7 +1146,7 @@ where
                     )
                 })?,
             parent_hash: ctx.parent().hash(),
-            fee_recipient: ctx.attributes().suggested_fee_recipient(),
+            fee_recipient: ctx.attributes().payload_attributes.suggested_fee_recipient,
             prev_randao: ctx.attributes().payload_attributes.prev_randao,
             block_number: ctx.parent().number + 1,
             gas_limit: ctx.block_gas_limit(),

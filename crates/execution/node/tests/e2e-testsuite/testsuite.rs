@@ -1,11 +1,11 @@
-//! Reth e2e testsuite integration tests for the execution node.
-
 use std::sync::Arc;
 
 use alloy_primitives::{Address, B64, B256};
-use base_common_rpc_types_engine::BasePayloadAttributes;
-use base_execution_chainspec::{BASE_MAINNET, BaseChainSpecBuilder};
-use base_node_core::{BaseNode, OpEngineTypes};
+use base_alloy_consensus::OpTxEnvelope;
+use base_alloy_rpc_types_engine::OpPayloadAttributes;
+use base_execution_chainspec::{BASE_MAINNET, OpChainSpecBuilder};
+use base_execution_payload_builder::OpPayloadBuilderAttributes;
+use base_node_core::{OpEngineTypes, OpNode};
 use eyre::Result;
 use reth_e2e_test_utils::testsuite::{
     TestBuilder,
@@ -19,7 +19,7 @@ async fn test_testsuite_op_assert_mine_block() -> Result<()> {
 
     let setup = Setup::default()
         .with_chain_spec(Arc::new(
-            BaseChainSpecBuilder::default()
+            OpChainSpecBuilder::default()
                 .chain(BASE_MAINNET.chain)
                 .genesis(serde_json::from_str(include_str!("../assets/genesis.json")).unwrap())
                 .build()
@@ -33,26 +33,31 @@ async fn test_testsuite_op_assert_mine_block() -> Result<()> {
             vec![],
             Some(B256::ZERO),
             // TODO: refactor once we have actions to generate payload attributes.
-            BasePayloadAttributes {
-                payload_attributes: alloy_rpc_types_engine::PayloadAttributes {
-                    timestamp: std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs(),
-                    prev_randao: B256::random(),
-                    suggested_fee_recipient: Address::random(),
-                    withdrawals: None,
-                    parent_beacon_block_root: None,
+            OpPayloadBuilderAttributes::<OpTxEnvelope>::try_new(
+                B256::ZERO,
+                OpPayloadAttributes {
+                    payload_attributes: alloy_rpc_types_engine::PayloadAttributes {
+                        timestamp: std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs(),
+                        prev_randao: B256::random(),
+                        suggested_fee_recipient: Address::random(),
+                        withdrawals: None,
+                        parent_beacon_block_root: None,
+                    },
+                    transactions: None,
+                    no_tx_pool: None,
+                    eip_1559_params: None,
+                    min_base_fee: None,
+                    gas_limit: Some(30_000_000),
                 },
-                transactions: None,
-                no_tx_pool: None,
-                eip_1559_params: None,
-                min_base_fee: None,
-                gas_limit: Some(30_000_000),
-            },
+                3,
+            )
+            .expect("valid test payload attributes"),
         ));
 
-    test.run::<BaseNode>().await?;
+    test.run::<OpNode>().await?;
 
     Ok(())
 }
@@ -63,7 +68,7 @@ async fn test_testsuite_op_assert_mine_block_isthmus_activated() -> Result<()> {
 
     let setup = Setup::default()
         .with_chain_spec(Arc::new(
-            BaseChainSpecBuilder::default()
+            OpChainSpecBuilder::default()
                 .chain(BASE_MAINNET.chain)
                 .genesis(serde_json::from_str(include_str!("../assets/genesis.json")).unwrap())
                 .isthmus_activated()
@@ -78,26 +83,31 @@ async fn test_testsuite_op_assert_mine_block_isthmus_activated() -> Result<()> {
             vec![],
             Some(B256::ZERO),
             // TODO: refactor once we have actions to generate payload attributes.
-            BasePayloadAttributes {
-                payload_attributes: alloy_rpc_types_engine::PayloadAttributes {
-                    timestamp: std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs(),
-                    prev_randao: B256::random(),
-                    suggested_fee_recipient: Address::random(),
-                    withdrawals: Some(vec![]),
-                    parent_beacon_block_root: Some(B256::ZERO),
+            OpPayloadBuilderAttributes::<OpTxEnvelope>::try_new(
+                B256::ZERO,
+                OpPayloadAttributes {
+                    payload_attributes: alloy_rpc_types_engine::PayloadAttributes {
+                        timestamp: std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs(),
+                        prev_randao: B256::random(),
+                        suggested_fee_recipient: Address::random(),
+                        withdrawals: Some(vec![]),
+                        parent_beacon_block_root: Some(B256::ZERO),
+                    },
+                    transactions: None,
+                    no_tx_pool: None,
+                    eip_1559_params: Some(B64::ZERO),
+                    min_base_fee: None,
+                    gas_limit: Some(30_000_000),
                 },
-                transactions: None,
-                no_tx_pool: None,
-                eip_1559_params: Some(B64::ZERO),
-                min_base_fee: None,
-                gas_limit: Some(30_000_000),
-            },
+                3,
+            )
+            .expect("valid test payload attributes"),
         ));
 
-    test.run::<BaseNode>().await?;
+    test.run::<OpNode>().await?;
 
     Ok(())
 }

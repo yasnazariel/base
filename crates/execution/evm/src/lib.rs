@@ -26,7 +26,7 @@ use base_execution_chainspec::BaseChainSpec;
 use reth_chainspec::EthChainSpec;
 #[cfg(feature = "std")]
 use reth_evm::{ConfigureEngineEvm, ExecutableTxIterator};
-use reth_evm::{ConfigureEvm, EvmEnv, TransactionEnv, precompiles::PrecompilesMap};
+use reth_evm::{ConfigureEvm, EvmEnv, TransactionEnvMut, precompiles::PrecompilesMap};
 use reth_primitives_traits::{NodePrimitives, SealedBlock, SealedHeader, SignedTransaction};
 use revm::context::{BlockEnv, TxEnv};
 #[allow(unused_imports)]
@@ -79,6 +79,7 @@ fn op_evm_env(header: &Header, chain_spec: &(impl Upgrades + EthChainSpec)) -> E
         gas_limit: header.gas_limit,
         basefee: header.base_fee_per_gas.unwrap_or_default(),
         blob_excess_gas_and_price,
+        slot_num: 0,
     };
 
     EvmEnv { cfg_env, block_env }
@@ -111,6 +112,7 @@ fn op_next_evm_env(
         gas_limit: attributes.gas_limit,
         basefee: base_fee_per_gas,
         blob_excess_gas_and_price,
+        slot_num: 0,
     };
 
     EvmEnv { cfg_env, block_env }
@@ -192,7 +194,7 @@ where
     EvmF: EvmFactory<
             Tx: FromRecoveredTx<R::Transaction>
                     + FromTxWithEncoded<R::Transaction>
-                    + TransactionEnv
+                    + TransactionEnvMut
                     + BaseTxEnv,
             Precompiles = PrecompilesMap,
             Spec = OpSpecId,
@@ -298,6 +300,7 @@ where
             basefee: payload.payload.as_v1().base_fee_per_gas.to(),
             // EIP-4844 excess blob gas of this block, introduced in Cancun
             blob_excess_gas_and_price,
+            slot_num: 0,
         };
 
         Ok(EvmEnv { cfg_env, block_env })

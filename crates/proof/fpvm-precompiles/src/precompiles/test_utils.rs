@@ -11,7 +11,7 @@ use base_proof_preimage::{
     PreimageOracleServer,
     errors::{PreimageOracleError, PreimageOracleResult},
 };
-use revm::precompile::PrecompileResult;
+use revm::{precompile::PrecompileResult, primitives::hardfork::SpecId};
 use tokio::sync::{Mutex, RwLock};
 
 /// Runs a test with a mock host that serves [`base_proof::HintType::L1Precompile`] hints and
@@ -44,11 +44,12 @@ pub(crate) fn execute_native_precompile<T: Into<Bytes>>(
     input: T,
     gas: u64,
 ) -> PrecompileResult {
-    let precompiles = revm::handler::EthPrecompiles::default();
+    let precompiles = revm::handler::EthPrecompiles::new(SpecId::default());
     let Some(precompile) = precompiles.precompiles.get(&address) else {
         panic!("Precompile not found");
     };
-    precompile.execute(&input.into(), gas)
+    let input = input.into();
+    precompile.execute(&input, gas)
 }
 
 /// Starts a mock host thread that serves [`base_proof::HintType::L1Precompile`] hints and

@@ -1,10 +1,9 @@
-//! Reth compatibility implementations for base-alloy consensus types.
+//! Reth compatibility implementations for Base consensus types.
 //!
 //! This module provides implementations of reth traits gated behind the `reth` feature flag,
-//! including `InMemorySize`, `SignedTransaction`, `SerdeBincodeCompat`, `Compact`,
-//! `Envelope`, `ToTxCompact`, `FromTxCompact`, `Compress`, and `Decompress`.
+//! including `Compact`, `Envelope`, `ToTxCompact`, `FromTxCompact`, `Compress`, and
+//! `Decompress`.
 
-// Ensure `reth-ethereum-primitives` serde-bincode-compat feature is activated.
 use alloc::{borrow::Cow, vec::Vec};
 
 use alloy_consensus::{
@@ -14,131 +13,17 @@ use alloy_consensus::{
 use alloy_primitives::{Address, B256, Bytes, Signature, TxKind, U256};
 use bytes::{Buf, BufMut};
 use reth_codecs::{
-    Compact, CompactZstd,
+    Compact, CompactZstd, DecompressError,
     txtype::{
         COMPACT_EXTENDED_IDENTIFIER_FLAG, COMPACT_IDENTIFIER_EIP1559, COMPACT_IDENTIFIER_EIP2930,
         COMPACT_IDENTIFIER_LEGACY,
     },
 };
-use reth_ethereum_primitives as _;
 
 use crate::{
-    BaseBlock, BasePooledTransaction, BaseReceipt, BaseTxEnvelope, BaseTxType,
-    BaseTypedTransaction, DEPOSIT_TX_TYPE_ID, DepositReceipt, TxDeposit,
+    BaseBlock, BaseReceipt, BaseTxEnvelope, BaseTxType, BaseTypedTransaction,
+    DEPOSIT_TX_TYPE_ID, DepositReceipt, TxDeposit,
 };
-
-// ---------------------------------------------------------------------------
-// InMemorySize (reth-primitives-traits)
-// ---------------------------------------------------------------------------
-
-impl reth_primitives_traits::InMemorySize for BaseTxType {
-    #[inline]
-    fn size(&self) -> usize {
-        core::mem::size_of::<Self>()
-    }
-}
-
-impl reth_primitives_traits::InMemorySize for TxDeposit {
-    #[inline]
-    fn size(&self) -> usize {
-        Self::size(self)
-    }
-}
-
-impl reth_primitives_traits::InMemorySize for DepositReceipt {
-    fn size(&self) -> usize {
-        self.inner.size()
-            + core::mem::size_of_val(&self.deposit_nonce)
-            + core::mem::size_of_val(&self.deposit_receipt_version)
-    }
-}
-
-impl reth_primitives_traits::InMemorySize for BaseReceipt {
-    fn size(&self) -> usize {
-        match self {
-            Self::Legacy(receipt)
-            | Self::Eip2930(receipt)
-            | Self::Eip1559(receipt)
-            | Self::Eip7702(receipt) => receipt.size(),
-            Self::Deposit(receipt) => receipt.size(),
-        }
-    }
-}
-
-impl reth_primitives_traits::InMemorySize for BaseTypedTransaction {
-    fn size(&self) -> usize {
-        match self {
-            Self::Legacy(tx) => tx.size(),
-            Self::Eip2930(tx) => tx.size(),
-            Self::Eip1559(tx) => tx.size(),
-            Self::Eip7702(tx) => tx.size(),
-            Self::Deposit(tx) => tx.size(),
-        }
-    }
-}
-
-impl reth_primitives_traits::InMemorySize for BasePooledTransaction {
-    fn size(&self) -> usize {
-        match self {
-            Self::Legacy(tx) => tx.size(),
-            Self::Eip2930(tx) => tx.size(),
-            Self::Eip1559(tx) => tx.size(),
-            Self::Eip7702(tx) => tx.size(),
-        }
-    }
-}
-
-impl reth_primitives_traits::InMemorySize for BaseTxEnvelope {
-    fn size(&self) -> usize {
-        match self {
-            Self::Legacy(tx) => tx.size(),
-            Self::Eip2930(tx) => tx.size(),
-            Self::Eip1559(tx) => tx.size(),
-            Self::Eip7702(tx) => tx.size(),
-            Self::Deposit(tx) => tx.size(),
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// SignedTransaction (reth-primitives-traits)
-// ---------------------------------------------------------------------------
-
-impl reth_primitives_traits::SignedTransaction for BasePooledTransaction {}
-
-impl reth_primitives_traits::SignedTransaction for BaseTxEnvelope {
-    fn is_system_tx(&self) -> bool {
-        self.is_system_transaction()
-    }
-}
-
-// ---------------------------------------------------------------------------
-// SerdeBincodeCompat (reth-primitives-traits)
-// ---------------------------------------------------------------------------
-
-impl reth_primitives_traits::serde_bincode_compat::SerdeBincodeCompat for BaseTxEnvelope {
-    type BincodeRepr<'a> = crate::serde_bincode_compat::transaction::BaseTxEnvelope<'a>;
-
-    fn as_repr(&self) -> Self::BincodeRepr<'_> {
-        self.into()
-    }
-
-    fn from_repr(repr: Self::BincodeRepr<'_>) -> Self {
-        repr.into()
-    }
-}
-
-impl reth_primitives_traits::serde_bincode_compat::SerdeBincodeCompat for BaseReceipt {
-    type BincodeRepr<'a> = crate::serde_bincode_compat::BaseReceipt<'a>;
-
-    fn as_repr(&self) -> Self::BincodeRepr<'_> {
-        self.into()
-    }
-
-    fn from_repr(repr: Self::BincodeRepr<'_>) -> Self {
-        repr.into()
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Compact – TxDeposit
@@ -411,7 +296,6 @@ struct CompactBaseReceipt<'a> {
 impl<'a> From<&'a BaseReceipt> for CompactBaseReceipt<'a> {
     fn from(receipt: &'a BaseReceipt) -> Self {
         Self {
-            tx_type: receipt.tx_type(),
             success: receipt.status(),
             cumulative_gas_used: receipt.cumulative_gas_used(),
             logs: Cow::Borrowed(&receipt.as_receipt().logs),
@@ -425,6 +309,7 @@ impl<'a> From<&'a BaseReceipt> for CompactBaseReceipt<'a> {
             } else {
                 None
             },
+            tx_type: receipt.tx_type(),
         }
     }
 }
@@ -482,7 +367,7 @@ impl reth_db_api::table::Compress for BaseTxEnvelope {
 }
 
 impl reth_db_api::table::Decompress for BaseTxEnvelope {
-    fn decompress(value: &[u8]) -> Result<Self, reth_db_api::DatabaseError> {
+    fn decompress(value: &[u8]) -> Result<Self, DecompressError> {
         let (obj, _) = Compact::from_compact(value, value.len());
         Ok(obj)
     }
@@ -497,7 +382,7 @@ impl reth_db_api::table::Compress for BaseReceipt {
 }
 
 impl reth_db_api::table::Decompress for BaseReceipt {
-    fn decompress(value: &[u8]) -> Result<Self, reth_db_api::DatabaseError> {
+    fn decompress(value: &[u8]) -> Result<Self, DecompressError> {
         let (obj, _) = Compact::from_compact(value, value.len());
         Ok(obj)
     }

@@ -3,29 +3,31 @@ use std::sync::Arc;
 use alloy_genesis::Genesis;
 use alloy_primitives::{Address, B256};
 use alloy_rpc_types_engine::PayloadAttributes;
-use base_execution_chainspec::BaseChainSpecBuilder;
-use base_execution_payload_builder::{OpBuiltPayload, OpPayloadBuilderAttributes};
+use base_alloy_consensus::OpTxEnvelope;
+use base_execution_chainspec::OpChainSpecBuilder;
+use base_execution_payload_builder::{
+    OpBuiltPayload, OpPayloadBuilderAttributes, payload::EthPayloadBuilderAttributes,
+};
 use reth_e2e_test_utils::{
     NodeHelperType, TmpDB, transaction::TransactionTestContext, wallet::Wallet,
 };
 use reth_node_api::NodeTypesWithDBAdapter;
-use reth_payload_builder::EthPayloadBuilderAttributes;
 use reth_provider::providers::BlockchainProvider;
 use tokio::sync::Mutex;
 
-use crate::BaseNode as OtherOpNode;
+use crate::OpNode as OtherOpNode;
 
 /// Base Node Helper type
-pub type BaseNode =
+pub(crate) type OpNode =
     NodeHelperType<OtherOpNode, BlockchainProvider<NodeTypesWithDBAdapter<OtherOpNode, TmpDB>>>;
 
 /// Creates the initial setup with `num_nodes` of the node config, started and connected.
-pub async fn setup(num_nodes: usize) -> eyre::Result<(Vec<BaseNode>, Wallet)> {
+pub async fn setup(num_nodes: usize) -> eyre::Result<(Vec<OpNode>, Wallet)> {
     let genesis: Genesis =
         serde_json::from_str(include_str!("../tests/assets/genesis.json")).unwrap();
     reth_e2e_test_utils::setup_engine(
         num_nodes,
-        Arc::new(BaseChainSpecBuilder::base_mainnet().genesis(genesis).ecotone_activated().build()),
+        Arc::new(OpChainSpecBuilder::base_mainnet().genesis(genesis).ecotone_activated().build()),
         false,
         Default::default(),
         optimism_payload_attributes,
@@ -36,7 +38,7 @@ pub async fn setup(num_nodes: usize) -> eyre::Result<(Vec<BaseNode>, Wallet)> {
 /// Advance the chain with sequential payloads returning them in the end.
 pub async fn advance_chain(
     length: usize,
-    node: &mut BaseNode,
+    node: &mut OpNode,
     wallet: Arc<Mutex<Wallet>>,
 ) -> eyre::Result<Vec<OpBuiltPayload>> {
     node.advance(length as u64, |_| {
@@ -56,7 +58,7 @@ pub async fn advance_chain(
 }
 
 /// Helper function to create a new eth payload attributes
-pub fn optimism_payload_attributes<T>(timestamp: u64) -> OpPayloadBuilderAttributes<T> {
+pub fn optimism_payload_attributes(timestamp: u64) -> OpPayloadBuilderAttributes<OpTxEnvelope> {
     let attributes = PayloadAttributes {
         timestamp,
         prev_randao: B256::ZERO,
@@ -66,7 +68,15 @@ pub fn optimism_payload_attributes<T>(timestamp: u64) -> OpPayloadBuilderAttribu
     };
 
     OpPayloadBuilderAttributes {
-        payload_attributes: EthPayloadBuilderAttributes::new(B256::ZERO, attributes),
+        payload_attributes: EthPayloadBuilderAttributes {
+            id: Default::default(),
+            parent: B256::ZERO,
+            timestamp: attributes.timestamp,
+            suggested_fee_recipient: attributes.suggested_fee_recipient,
+            prev_randao: attributes.prev_randao,
+            withdrawals: attributes.withdrawals.unwrap_or_default().into(),
+            parent_beacon_block_root: attributes.parent_beacon_block_root,
+        },
         transactions: vec![],
         no_tx_pool: false,
         gas_limit: Some(30_000_000),
