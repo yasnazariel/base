@@ -23,7 +23,7 @@ use reth_transaction_pool::{
     ValidPoolTransaction,
     blobstore::BlobStoreError,
 };
-use tokio::sync::mpsc::Receiver;
+use tokio::sync::mpsc::{self, Receiver};
 
 use crate::{MergedBestTransactions, SharedEip8130Pool};
 
@@ -34,9 +34,12 @@ use crate::{MergedBestTransactions, SharedEip8130Pool};
 /// pools, fixing P2P gossip gaps where the standard pool alone would miss
 /// 2D-nonce transactions stored exclusively in the side-pool.
 pub struct BaseTransactionPool<P, T> {
-    /// Standard Reth pool for all non-2D transactions and AA txs with `nonce_key == 0`.
+    /// Standard Reth pool for non-AA transactions. AA transactions also enter
+    /// this pool (for RPC visibility) but are **not** propagated via its
+    /// gossip channel — the `Eip8130Pool` drives P2P gossip for all AA txs.
     protocol_pool: P,
-    /// 2D nonce pool for AA transactions with `nonce_key != 0`.
+    /// Pool for ALL EIP-8130 AA transactions (every `nonce_key` value).
+    /// Handles 2D nonce ordering, expiry, invalidation, and P2P gossip.
     eip8130_pool: SharedEip8130Pool<T>,
 }
 
@@ -131,7 +134,35 @@ where
     }
 
     fn pending_transactions_listener_for(&self, kind: TransactionListenerKind) -> Receiver<B256> {
-        self.protocol_pool.pending_transactions_listener_for(kind)
+        let mut proto_rx = self.protocol_pool.pending_transactions_listener_for(kind);
+        let mut eip8130_rx = self.eip8130_pool.subscribe_pending_transactions();
+
+        let (merged_tx, merged_rx) = mpsc::channel(512);
+        let tx_for_proto = merged_tx.clone();
+
+        tokio::spawn(async move {
+            while let Some(hash) = proto_rx.recv().await {
+                if tx_for_proto.send(hash).await.is_err() {
+                    break;
+                }
+            }
+        });
+
+        tokio::spawn(async move {
+            loop {
+                match eip8130_rx.recv().await {
+                    Ok(hash) => {
+                        if merged_tx.send(hash).await.is_err() {
+                            break;
+                        }
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                }
+            }
+        });
+
+        merged_rx
     }
 
     fn blob_transaction_sidecars_listener(&self) -> Receiver<NewBlobSidecar> {

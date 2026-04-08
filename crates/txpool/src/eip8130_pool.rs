@@ -1,14 +1,16 @@
 //! 2D-nonce-aware transaction pool for EIP-8130 AA transactions.
 //!
-//! Reth's standard pool uses `(sender, nonce_sequence)` as the identity key.
-//! Two AA transactions sharing `(sender, nonce_sequence)` but with different
-//! `nonce_key` values are both valid on-chain yet collide in that pool.
+//! Reth's standard pool uses `(sender, nonce_sequence)` as the identity key
+//! and tracks account nonces from EVM state. EIP-8130 transactions use the
+//! `NONCE_MANAGER` contract for nonce management (even at `nonce_key == 0`),
+//! need expiry tracking, and can have multiple lanes that collide in the
+//! standard pool.
 //!
-//! This module provides an [`Eip8130Pool`] that stores AA transactions with
-//! `nonce_key != 0` in a separate index keyed by the full 2D identity
-//! `(sender, nonce_key, nonce_sequence)`. Transactions with `nonce_key == 0`
-//! continue to use the standard pool, preserving compatibility with Reth's
-//! existing ordering and nonce-gap logic.
+//! This module provides an [`Eip8130Pool`] that stores **all** EIP-8130
+//! transactions, keyed by the full 2D identity `(sender, nonce_key,
+//! nonce_sequence)`. The standard Reth pool still receives them for RPC
+//! backward compatibility, but does not drive nonce ordering, expiry, or
+//! P2P gossip for these transactions.
 //!
 //! Modeled on Tempo's `AA2dPool` architecture.
 
@@ -27,6 +29,7 @@ use reth_transaction_pool::{
     error::InvalidPoolTransactionError,
     identifier::{SenderId, TransactionId},
 };
+use tokio::sync::broadcast;
 
 /// Identifies a nonce sequence lane: `(sender, nonce_key)`.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -316,7 +319,14 @@ impl<T> Default for PoolInner<T> {
 pub struct Eip8130Pool<T> {
     inner: RwLock<PoolInner<T>>,
     config: Eip8130PoolConfig,
+    /// Broadcasts the hash of every newly-pending EIP-8130 transaction so
+    /// that [`BaseTransactionPool`](crate::BaseTransactionPool) can merge it
+    /// into the P2P gossip stream.
+    pending_tx_sender: broadcast::Sender<B256>,
 }
+
+/// Capacity of the broadcast channel for pending EIP-8130 transaction hashes.
+const PENDING_TX_BROADCAST_CAPACITY: usize = 256;
 
 impl<T: core::fmt::Debug> core::fmt::Debug for Eip8130Pool<T> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -333,12 +343,6 @@ impl<T> Default for Eip8130Pool<T> {
     }
 }
 
-/// Returns `true` if a transaction with the given nonce key would be routed
-/// to the 2D nonce pool (i.e. `nonce_key != 0`).
-pub fn is_2d_nonce(nonce_key: U256) -> bool {
-    !nonce_key.is_zero()
-}
-
 impl<T> Eip8130Pool<T> {
     /// Creates an empty pool.
     pub fn new() -> Self {
@@ -347,12 +351,22 @@ impl<T> Eip8130Pool<T> {
 
     /// Creates a pool with the given configuration.
     pub fn with_config(config: Eip8130PoolConfig) -> Self {
-        Self { inner: RwLock::new(PoolInner::default()), config }
+        let (pending_tx_sender, _) = broadcast::channel(PENDING_TX_BROADCAST_CAPACITY);
+        Self { inner: RwLock::new(PoolInner::default()), config, pending_tx_sender }
     }
 
     /// Returns a reference to the pool configuration.
     pub fn config(&self) -> &Eip8130PoolConfig {
         &self.config
+    }
+
+    /// Subscribes to newly-pending EIP-8130 transaction hashes.
+    ///
+    /// Each time `add_transaction` marks a transaction as pending, its hash is
+    /// broadcast to all active receivers. Used by [`BaseTransactionPool`](crate::BaseTransactionPool)
+    /// to merge EIP-8130 events into the P2P gossip listener.
+    pub fn subscribe_pending_transactions(&self) -> broadcast::Receiver<B256> {
+        self.pending_tx_sender.subscribe()
     }
 
     /// Returns `true` if the pool contains a transaction with the given hash.
@@ -765,7 +779,19 @@ impl<T: PoolTransaction> Eip8130Pool<T> {
         seq.txs.insert(id.nonce_sequence, entry);
 
         // Promotion scan — sets is_pending for the contiguous chain.
+        // Collect hashes of transactions that become newly pending.
+        let pending_before: HashSet<u64> = seq
+            .txs
+            .iter()
+            .filter_map(|(n, e)| if e.is_pending { Some(*n) } else { None })
+            .collect();
         Self::promote_sequence(seq);
+        let newly_pending: Vec<B256> = seq
+            .txs
+            .iter()
+            .filter(|(n, e)| e.is_pending && !pending_before.contains(n))
+            .map(|(_, e)| *e.transaction.hash())
+            .collect();
 
         inner.by_hash.insert(hash, id);
         inner.payer_by_hash.insert(hash, payer);
@@ -779,6 +805,11 @@ impl<T: PoolTransaction> Eip8130Pool<T> {
             if !is_self_pay {
                 *inner.sender_txs.entry(sender).or_insert(0) += 1;
             }
+        }
+
+        // Notify P2P listeners about newly pending transactions.
+        for pending_hash in &newly_pending {
+            let _ = self.pending_tx_sender.send(*pending_hash);
         }
 
         Ok(if replaced_hash.is_some() {
@@ -1151,11 +1182,15 @@ mod tests {
     //  Basic identity / routing
     // ------------------------------------------------------------------ //
 
+    fn is_nonzero_key(nonce_key: U256) -> bool {
+        !nonce_key.is_zero()
+    }
+
     #[test]
-    fn is_2d_nonce_routing() {
-        assert!(!is_2d_nonce(U256::ZERO));
-        assert!(is_2d_nonce(U256::from(1)));
-        assert!(is_2d_nonce(U256::from(u64::MAX)));
+    fn nonce_key_classification() {
+        assert!(!is_nonzero_key(U256::ZERO));
+        assert!(is_nonzero_key(U256::from(1)));
+        assert!(is_nonzero_key(U256::from(u64::MAX)));
     }
 
     #[test]

@@ -17,7 +17,6 @@ mod eip8130_pool;
 pub use eip8130_pool::{
     AddOutcome, BestEip8130Transactions, Eip8130Pool, Eip8130PoolConfig, Eip8130PoolError,
     Eip8130SequenceId, Eip8130TxId, SharedEip8130Pool, ThroughputTier, TierCheckResult,
-    is_2d_nonce,
 };
 
 mod base_pool;

@@ -34,7 +34,7 @@ use base_alloy_consensus::{AA_TX_TYPE_ID, nonce_slot};
 
 use crate::{
     Eip8130InvalidationIndex, Eip8130Pool, Eip8130PoolConfig, Eip8130TxId, OpPooledTx,
-    SharedEip8130Pool, VerifierAllowlist, is_2d_nonce,
+    SharedEip8130Pool, VerifierAllowlist,
 };
 
 /// Tracks additional infos for the current block.
@@ -300,10 +300,12 @@ where
                         }
                     }
 
-                    // Route AA txs with nonce_key != 0 to the 2D nonce pool to
-                    // avoid collisions in the standard pool's (sender, nonce) key.
+                    // Route ALL AA txs to the 2D nonce pool. Even nonce_key == 0
+                    // uses the NONCE_MANAGER contract for nonce management, so the
+                    // standard pool's (sender, account_nonce) tracking is wrong.
+                    // The Eip8130Pool handles expiry, invalidation, and 2D ordering.
                     let nonce_key = outcome.nonce_key;
-                    if is_2d_nonce(nonce_key) {
+                    {
                         let sender = transaction.sender();
                         let payer = outcome.sponsored_payer.unwrap_or(sender);
                         let nonce_storage_slot = nonce_slot(sender, nonce_key);
@@ -336,7 +338,7 @@ where
                             tracing::debug!(
                                 target: "txpool",
                                 error = %err,
-                                "EIP-8130 2D pool rejected transaction"
+                                "EIP-8130 pool rejected transaction"
                             );
                             return TransactionValidationOutcome::Invalid(
                                 transaction,
@@ -367,11 +369,15 @@ where
                         },
                     );
 
+                    // The standard pool still receives the Valid outcome for
+                    // backward-compatible RPC visibility, but `propagate: false`
+                    // prevents it from firing its own P2P gossip. The Eip8130Pool's
+                    // broadcast channel drives gossip instead.
                     TransactionValidationOutcome::Valid {
                         balance: outcome.balance,
                         state_nonce: outcome.state_nonce,
                         transaction: ValidTransaction::Valid(transaction),
-                        propagate: true,
+                        propagate: false,
                         bytecode_hash: None,
                         authorities: None,
                     }
