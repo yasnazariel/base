@@ -1131,9 +1131,7 @@ where
         }),
         hashed_state: Either::Left(Arc::new(hashed_state)),
         trie_updates: Either::Left(
-            trie_updates_to_cache
-                .clone()
-                .unwrap_or_else(|| Arc::new(TrieUpdates::default())),
+            trie_updates_to_cache.unwrap_or_else(|| Arc::new(TrieUpdates::default())),
         ),
     };
     debug!(target: "payload_builder", message = "Executed block created");

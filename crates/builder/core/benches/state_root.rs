@@ -7,8 +7,12 @@
 //!   once over the full accumulated state at finalization. This is the
 //!   **current production behavior**.
 //!
-//! - `per_flashblock` (`calculate_state_root = true`) — state root
-//!   recomputed from scratch after every flashblock.
+//! - `per_flashblock` (`calculate_state_root = true`) — state root computed
+//!   after every flashblock using the **incremental** path: the first call uses
+//!   [`StateRootProvider::state_root_with_updates`], then each subsequent call
+//!   uses [`StateRootProvider::state_root_from_nodes_with_updates`] with
+//!   [`TrieInput`] built from the previous flashblock’s [`TrieUpdates`], matching
+//!   the incremental path in flashblocks `build_block`.
 //!
 //! The benchmarks use an MDBX-backed [`MdbxProofsStorage`] pre-populated with
 //! 50k base-state accounts so that state root computation exercises real disk
@@ -32,6 +36,7 @@ use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use rand::{Rng, SeedableRng, rngs::StdRng};
 use reth_primitives_traits::Account;
 use reth_provider::{StateRootProvider, noop::NoopProvider};
+use reth_trie::{TrieInput, updates::TrieUpdates};
 use reth_trie_common::{HashedPostState, HashedStorage};
 use tempfile::TempDir;
 
@@ -159,8 +164,9 @@ fn finalize_only_benches(c: &mut Criterion) {
     g.finish();
 }
 
-/// Benchmarks `calculate_state_root = true`: state root recomputed from
-/// scratch after every flashblock.
+/// Benchmarks `calculate_state_root = true`: chained incremental state root
+/// after every flashblock (first call full overlay, rest
+/// `state_root_from_nodes_with_updates`).
 fn per_flashblock_benches(c: &mut Criterion) {
     let mut g = c.benchmark_group("state_root/per_flashblock");
     g.sample_size(10);
@@ -186,12 +192,24 @@ fn per_flashblock_benches(c: &mut Criterion) {
 
         g.bench_function(BenchmarkId::new("accounts_per_fb", accounts_per_fb), |b| {
             b.iter(|| {
+                let mut prev_trie_updates: Option<TrieUpdates> = None;
                 for snapshot in &snapshots {
-                    black_box(
+                    let (root, new_updates) = if let Some(prev) = prev_trie_updates.take() {
+                        let trie_input = TrieInput::new(
+                            prev,
+                            snapshot.clone(),
+                            snapshot.construct_prefix_sets(),
+                        );
+                        provider
+                            .state_root_from_nodes_with_updates(trie_input)
+                            .expect("state root should succeed")
+                    } else {
                         provider
                             .state_root_with_updates(snapshot.clone())
-                            .expect("state root should succeed"),
-                    );
+                            .expect("state root should succeed")
+                    };
+                    prev_trie_updates = Some(new_updates);
+                    black_box(root);
                 }
             });
         });
