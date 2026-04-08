@@ -38,8 +38,9 @@ use crate::{
     metrics::{MetricsCollector, MetricsSummary, TransactionMetrics},
     rpc::{RpcClient, WalletProvider, create_wallet_provider},
     workload::{
-        AccountPool, CalldataPayload, Erc20Payload, OsakaPayload, PrecompilePayload,
-        TransferPayload, WorkloadGenerator,
+        AccountPool, AerodromeClPayload, AerodromeV2Payload, CalldataPayload, Erc20Payload,
+        OsakaPayload, PrecompilePayload, TransferPayload, UniswapV2Payload, UniswapV3Payload,
+        WorkloadGenerator,
     },
 };
 
@@ -204,6 +205,52 @@ impl LoadRunner {
                     generator =
                         generator.with_payload(OsakaPayload::new(target.clone()), weight_pct);
                 }
+                TxType::UniswapV2 { router, weth, token, min_amount, max_amount } => {
+                    generator = generator.with_payload(
+                        UniswapV2Payload::new(*router, *weth, *token, *min_amount, *max_amount),
+                        weight_pct,
+                    );
+                }
+                TxType::UniswapV3 { router, token_in, token_out, fee, min_amount, max_amount } => {
+                    generator = generator.with_payload(
+                        UniswapV3Payload::new(
+                            *router,
+                            *token_in,
+                            *token_out,
+                            *fee,
+                            *min_amount,
+                            *max_amount,
+                        ),
+                        weight_pct,
+                    );
+                }
+                TxType::AerodromeV2 { router, weth, token, stable, factory, min_amount, max_amount } => {
+                    generator = generator.with_payload(
+                        AerodromeV2Payload::new(
+                            *router,
+                            *weth,
+                            *token,
+                            *stable,
+                            *factory,
+                            *min_amount,
+                            *max_amount,
+                        ),
+                        weight_pct,
+                    );
+                }
+                TxType::AerodromeCl { router, token_in, token_out, tick_spacing, min_amount, max_amount } => {
+                    generator = generator.with_payload(
+                        AerodromeClPayload::new(
+                            *router,
+                            *token_in,
+                            *token_out,
+                            *tick_spacing,
+                            *min_amount,
+                            *max_amount,
+                        ),
+                        weight_pct,
+                    );
+                }
             }
         }
 
@@ -227,6 +274,10 @@ impl LoadRunner {
                     OsakaTarget::Clz => 80_000,
                     OsakaTarget::P256verifyOsaka | OsakaTarget::ModexpOsaka => 30_000,
                 },
+                TxType::UniswapV2 { .. } => 200_000,
+                TxType::UniswapV3 { .. } => 250_000,
+                TxType::AerodromeV2 { .. } => 200_000,
+                TxType::AerodromeCl { .. } => 250_000,
             };
             weighted_gas += gas_estimate * tx_config.weight as u64;
         }
