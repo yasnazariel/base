@@ -330,6 +330,7 @@ where
                             payer,
                             origin,
                             nonce_storage_slot,
+                            outcome.expiry,
                             &check_tier,
                         ) {
                             tracing::debug!(

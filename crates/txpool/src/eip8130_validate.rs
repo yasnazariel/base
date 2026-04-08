@@ -81,6 +81,8 @@ pub struct Eip8130ValidationOutcome {
     /// The resolved payer address. `None` for self-pay transactions.
     /// Used for payer pending count tracking.
     pub sponsored_payer: Option<Address>,
+    /// Unix timestamp after which this transaction is invalid. `0` = no expiry.
+    pub expiry: u64,
 }
 
 /// Errors from AA transaction validation.
@@ -1154,6 +1156,7 @@ where
         sender_owner_id,
         invalidation_keys,
         sponsored_payer,
+        expiry: tx.expiry,
     })
 }
 

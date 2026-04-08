@@ -70,6 +70,8 @@ struct PooledEntry<T> {
     submission_id: u64,
     /// Cached `max_priority_fee_per_gas` for eviction ordering.
     priority_fee: u128,
+    /// Unix timestamp after which this transaction is invalid. `0` = no expiry.
+    expiry: u64,
 }
 
 impl<T: core::fmt::Debug> core::fmt::Debug for PooledEntry<T> {
@@ -423,6 +425,36 @@ impl<T> Eip8130Pool<T> {
         hashes.iter().filter_map(|h| Self::remove_from_inner(&mut inner, h).map(|_| *h)).collect()
     }
 
+    /// Removes all transactions whose `expiry` is non-zero and less than or
+    /// equal to `current_timestamp`. Returns the hashes of removed transactions.
+    pub fn sweep_expired(&self, current_timestamp: u64) -> Vec<B256>
+    where
+        T: PoolTransaction,
+    {
+        let inner_read = self.inner.read();
+        let expired_hashes: Vec<B256> = inner_read
+            .by_hash
+            .keys()
+            .filter_map(|hash| {
+                let id = inner_read.by_hash.get(hash)?;
+                let seq_id = Eip8130SequenceId { sender: id.sender, nonce_key: id.nonce_key };
+                let seq = inner_read.sequences.get(&seq_id)?;
+                let entry = seq.txs.get(&id.nonce_sequence)?;
+                if entry.expiry != 0 && entry.expiry <= current_timestamp {
+                    Some(*hash)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        drop(inner_read);
+
+        if expired_hashes.is_empty() {
+            return Vec::new();
+        }
+        self.remove_transactions(&expired_hashes)
+    }
+
     /// Updates the known on-chain nonce for a sequence lane and removes any
     /// transactions with `nonce_sequence < new_nonce`. Remaining transactions
     /// are re-evaluated for pending/queued status via promotion scan.
@@ -639,6 +671,7 @@ impl<T: PoolTransaction> Eip8130Pool<T> {
         payer: Address,
         origin: TransactionOrigin,
         nonce_storage_slot: B256,
+        expiry: u64,
         check_tier: &dyn Fn(Address) -> TierCheckResult,
     ) -> Result<AddOutcome, Eip8130PoolError> {
         let hash = *transaction.hash();
@@ -723,6 +756,7 @@ impl<T: PoolTransaction> Eip8130Pool<T> {
             is_pending: false,
             submission_id: sub_id,
             priority_fee,
+            expiry,
         };
 
         // Ensure the sequence exists (it may have been cleaned up by
@@ -1099,7 +1133,7 @@ mod tests {
         check_tier: &dyn Fn(Address) -> TierCheckResult,
     ) -> Result<AddOutcome, Eip8130PoolError> {
         let payer = id.sender;
-        pool.add_transaction(id, tx, payer, TransactionOrigin::External, slot, check_tier)
+        pool.add_transaction(id, tx, payer, TransactionOrigin::External, slot, 0, check_tier)
     }
 
     fn add_sponsored(
@@ -1110,7 +1144,7 @@ mod tests {
         slot: B256,
         check_tier: &dyn Fn(Address) -> TierCheckResult,
     ) -> Result<AddOutcome, Eip8130PoolError> {
-        pool.add_transaction(id, tx, payer, TransactionOrigin::External, slot, check_tier)
+        pool.add_transaction(id, tx, payer, TransactionOrigin::External, slot, 0, check_tier)
     }
 
     // ------------------------------------------------------------------ //
@@ -2039,5 +2073,52 @@ mod tests {
         let (pending, queued) = pool.pending_and_queued_count();
         assert_eq!(pending, 2, "nonces 4,5 should now be pending");
         assert_eq!(queued, 0);
+    }
+
+    #[test]
+    fn sweep_expired_removes_only_expired() {
+        let pool = TestPool::new();
+        let tier = &default_result;
+
+        let sender_byte = 0xAA;
+        let sender = Address::repeat_byte(sender_byte);
+        let slot = B256::ZERO;
+
+        let id0 = Eip8130TxId { sender, nonce_key: U256::from(1), nonce_sequence: 0 };
+        let id1 = Eip8130TxId { sender, nonce_key: U256::from(1), nonce_sequence: 1 };
+        let id2 = Eip8130TxId { sender, nonce_key: U256::from(1), nonce_sequence: 2 };
+
+        let tx0 = make_tx(sender_byte, 0, 10);
+        let tx1 = make_tx(sender_byte, 1, 10);
+        let tx2 = make_tx(sender_byte, 2, 10);
+
+        // tx0: no expiry (0), tx1: expires at 1000, tx2: expires at 2000
+        pool.add_transaction(id0, tx0, sender, TransactionOrigin::External, slot, 0, tier)
+            .unwrap();
+        pool.add_transaction(id1, tx1, sender, TransactionOrigin::External, slot, 1000, tier)
+            .unwrap();
+        pool.add_transaction(id2, tx2, sender, TransactionOrigin::External, slot, 2000, tier)
+            .unwrap();
+
+        assert_eq!(pool.len(), 3);
+
+        // At time 500, nothing is expired.
+        let removed = pool.sweep_expired(500);
+        assert!(removed.is_empty());
+        assert_eq!(pool.len(), 3);
+
+        // At time 1000, tx1 should be removed (expiry <= current).
+        let removed = pool.sweep_expired(1000);
+        assert_eq!(removed.len(), 1);
+        assert_eq!(pool.len(), 2);
+
+        // At time 3000, tx2 should be removed. tx0 stays (expiry == 0).
+        let removed = pool.sweep_expired(3000);
+        assert_eq!(removed.len(), 1);
+        assert_eq!(pool.len(), 1);
+
+        // The remaining tx should have no expiry.
+        let remaining = pool.all_transactions();
+        assert_eq!(remaining.len(), 1);
     }
 }

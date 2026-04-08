@@ -27,7 +27,10 @@ use base_revm::set_custom_verifier_gas_cap;
 use base_txpool::{
     BaseOrdering, BasePooledTransaction, DEFAULT_CUSTOM_VERIFIER_GAS_LIMIT, OpPooledTx,
     OpTransactionPool, OpTransactionValidator, TimestampedTransaction,
+    maintain_eip8130_invalidation,
 };
+use reth_chain_state::CanonStateSubscriptions;
+use tokio_stream::wrappers::BroadcastStream;
 use reth_chainspec::{
     BaseFeeParams, ChainSpecProvider, EthChainSpec, EthereumHardforks, Hardforks,
 };
@@ -990,8 +993,19 @@ where
             )?;
 
         let eip8130_pool = raw_pool.validator().validator().eip8130_pool();
+        let invalidation_index = raw_pool.validator().validator().invalidation_index();
         let transaction_pool =
-            base_txpool::BaseTransactionPool::new(raw_pool, eip8130_pool);
+            base_txpool::BaseTransactionPool::new(raw_pool, eip8130_pool.clone());
+
+        ctx.task_executor().spawn_critical_task(
+            "eip8130-maintenance",
+            maintain_eip8130_invalidation(
+                transaction_pool.clone(),
+                eip8130_pool,
+                BroadcastStream::new(ctx.provider().subscribe_to_canonical_state()),
+                invalidation_index,
+            ),
+        );
 
         info!(target: "reth::cli", "Transaction pool initialized");
         debug!(target: "reth::cli", "Spawned txpool maintenance task");

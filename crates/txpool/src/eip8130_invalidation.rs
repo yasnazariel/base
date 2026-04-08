@@ -18,6 +18,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use alloy_consensus::BlockHeader;
 use alloy_primitives::{Address, B256, U256};
 use base_alloy_consensus::{
     ACCOUNT_CONFIG_ADDRESS, AccountChangeEntry, NONCE_MANAGER_ADDRESS, TxEip8130, nonce_slot,
@@ -288,6 +289,9 @@ pub async fn maintain_eip8130_invalidation<P, N, T>(
 
         blocks_since_prune += 1;
 
+        let tip = notification.tip();
+        let block_timestamp = tip.timestamp();
+
         let committed = notification.committed();
         let execution_outcome = committed.execution_outcome();
 
@@ -376,6 +380,18 @@ pub async fn maintain_eip8130_invalidation<P, N, T>(
                 eip8130_pool.remove_transactions(&hash_vec);
                 pool.remove_transactions(invalidated.into_iter().collect());
             }
+        }
+
+        // Sweep transactions whose `expiry` timestamp has passed.
+        let expired = eip8130_pool.sweep_expired(block_timestamp);
+        if !expired.is_empty() {
+            debug!(
+                removal_reason = "expiry",
+                count = expired.len(),
+                block_timestamp,
+                "removed expired AA transactions from mempool"
+            );
+            pool.remove_transactions(expired);
         }
 
         // Periodically prune stale index entries for transactions the pool

@@ -29,6 +29,7 @@ reth-node-builder.workspace = true
 reth-payload-builder.workspace = true
 reth-rpc-engine-api.workspace = true
 reth-transaction-pool.workspace = true
+reth-chain-state.workspace = true
 reth-rpc-server-types.workspace = true
 ## ensure secp256k1 recovery with rayon support is activated
 reth-primitives-traits = { workspace = true, features = ["secp256k1", "rayon"] }
@@ -66,6 +67,7 @@ base-alloy-rpc-types-engine = { workspace = true, features = ["reth"] }
 
 # async
 tokio.workspace = true
+tokio-stream.workspace = true
 
 # misc
 serde.workspace = true
