@@ -30,6 +30,9 @@ pub trait PublisherMetrics: Send + Sync {
     fn on_send_error(&self);
     /// Called when a WebSocket handshake fails.
     fn on_handshake_error(&self);
+    /// Called when a new connection is rejected because the connection limit
+    /// has been reached.
+    fn on_connection_rejected(&self) {}
 
     /// Called when a subscriber's resume position is older than the ring
     /// buffer's oldest entry, causing a silent gap in the replay.
@@ -74,6 +77,8 @@ base_metrics::define_metrics! {
     ws_send_error_count: counter,
     #[describe("Total WebSocket handshake errors")]
     ws_handshake_error_count: counter,
+    #[describe("Total connections rejected due to connection limit")]
+    ws_connections_rejected_count: counter,
     #[describe("WebSocket connection duration")]
     ws_connection_duration: histogram,
 }
@@ -118,6 +123,10 @@ impl PublisherMetrics for PublishingMetrics {
         Self::ws_handshake_error_count().increment(1);
     }
 
+    fn on_connection_rejected(&self) {
+        Self::ws_connections_rejected_count().increment(1);
+    }
+
     fn on_replay_stale_position(&self) {
         Self::replay_stale_position_count().increment(1);
     }
@@ -138,6 +147,7 @@ mod tests {
         metrics.on_payload_size(1024);
         metrics.on_send_error();
         metrics.on_handshake_error();
+        metrics.on_connection_rejected();
         metrics.on_replay_stale_position();
     }
 
@@ -152,6 +162,7 @@ mod tests {
         metrics.on_payload_size(1024);
         metrics.on_send_error();
         metrics.on_handshake_error();
+        metrics.on_connection_rejected();
         metrics.on_replay_stale_position();
     }
 }

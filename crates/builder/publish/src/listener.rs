@@ -13,6 +13,11 @@ use crate::{BroadcastLoop, FlashblockPosition, PositionedPayload, PublisherMetri
 /// Timeout for the WebSocket handshake.
 const HANDSHAKE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
+/// Default maximum number of concurrent WebSocket connections (handshaking +
+/// active). Provides a safety bound to prevent resource exhaustion under heavy
+/// load.
+const DEFAULT_MAX_CONNECTIONS: usize = 8192;
+
 /// WebSocket connection listener.
 ///
 /// Accepts incoming TCP connections, upgrades them to WebSocket, and spawns
@@ -23,6 +28,7 @@ pub struct Listener {
     receiver: Receiver<PositionedPayload>,
     ring_buffer: Arc<RwLock<RingBuffer<FlashblockPosition, Utf8Bytes>>>,
     cancel: CancellationToken,
+    max_connections: usize,
 }
 
 impl Debug for Listener {
@@ -42,13 +48,22 @@ impl Listener {
         ring_buffer: Arc<RwLock<RingBuffer<FlashblockPosition, Utf8Bytes>>>,
         cancel: CancellationToken,
     ) -> Self {
-        Self { listener, metrics, receiver, ring_buffer, cancel }
+        Self { listener, metrics, receiver, ring_buffer, cancel, max_connections: DEFAULT_MAX_CONNECTIONS }
+    }
+
+    /// Overrides the maximum number of concurrent connections.
+    ///
+    /// Defaults to [`DEFAULT_MAX_CONNECTIONS`] (8192).
+    pub const fn with_max_connections(mut self, max_connections: usize) -> Self {
+        self.max_connections = max_connections;
+        self
     }
 
     /// Runs the listener loop, accepting connections until cancelled.
     pub async fn run(self) {
-        let Self { listener, metrics, receiver, ring_buffer, cancel } = self;
+        let Self { listener, metrics, receiver, ring_buffer, cancel, max_connections } = self;
 
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(max_connections));
         let listen_addr =
             listener.local_addr().map(|a| a.to_string()).unwrap_or_else(|_| "unknown".into());
         info!(addr = %listen_addr, "WebSocketPublisher listening");
@@ -64,12 +79,23 @@ impl Listener {
                         continue;
                     };
 
+                    let permit = match Arc::clone(&semaphore).try_acquire_owned() {
+                        Ok(permit) => permit,
+                        Err(_) => {
+                            metrics.on_connection_rejected();
+                            debug!(peer_addr = %peer_addr, "connection limit reached, dropping new connection");
+                            continue;
+                        }
+                    };
+
                     let cancel = cancel.clone();
                     let receiver = receiver.resubscribe();
                     let ring_buffer = Arc::clone(&ring_buffer);
                     let metrics = Arc::clone(&metrics);
 
                     tokio::spawn(async move {
+                        let _permit = permit; // held until task completes
+
                         let (pos_tx, pos_rx) = tokio::sync::oneshot::channel();
                         let handshake = accept_hdr_async(connection, move |req: &http::Request<()>, resp| {
                             let _ = pos_tx.send(parse_resume_position(req));
@@ -173,11 +199,17 @@ mod tests {
         opened: AtomicU64,
         closed: AtomicU64,
         sent: AtomicU64,
+        rejected: AtomicU64,
     }
 
     impl MockMetrics {
         fn new() -> Self {
-            Self { opened: AtomicU64::new(0), closed: AtomicU64::new(0), sent: AtomicU64::new(0) }
+            Self {
+                opened: AtomicU64::new(0),
+                closed: AtomicU64::new(0),
+                sent: AtomicU64::new(0),
+                rejected: AtomicU64::new(0),
+            }
         }
     }
 
@@ -190,6 +222,9 @@ mod tests {
         }
         fn on_connection_closed(&self, _duration: Duration) {
             self.closed.fetch_add(1, Ordering::Relaxed);
+        }
+        fn on_connection_rejected(&self) {
+            self.rejected.fetch_add(1, Ordering::Relaxed);
         }
         fn on_lagged(&self, _skipped: u64) {}
         fn on_payload_size(&self, _size: usize) {}
@@ -378,6 +413,46 @@ mod tests {
 
         let msg2 = client.next().await.unwrap().unwrap();
         assert_eq!(msg2, Message::Text(Utf8Bytes::from("msg-101-0")));
+
+        cancel.cancel();
+        let _ = handle.await;
+    }
+
+    #[tokio::test]
+    async fn listener_rejects_connections_beyond_limit() {
+        let (listener, addr) = bind_listener().await;
+        let (_tx, rx) = broadcast::channel::<PositionedPayload>(16);
+        let cancel = CancellationToken::new();
+        let metrics = Arc::new(MockMetrics::new());
+        let ring_buffer = Arc::new(RwLock::new(RingBuffer::new(cap(16))));
+
+        let handle = tokio::spawn({
+            let cancel = cancel.clone();
+            let metrics = Arc::clone(&metrics) as Arc<dyn PublisherMetrics>;
+            async move {
+                Listener::new(listener, metrics, rx, ring_buffer, cancel)
+                    .with_max_connections(1)
+                    .run()
+                    .await;
+            }
+        });
+
+        // First connection should succeed.
+        let (_client1, _) = connect_async(format!("ws://{addr}")).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        // Second connection should be rejected by the listener.
+        let result = tokio::time::timeout(
+            Duration::from_millis(500),
+            connect_async(format!("ws://{addr}")),
+        )
+        .await;
+        assert!(
+            result.is_err() || result.unwrap().is_err(),
+            "second connection should fail when at capacity"
+        );
+
+        assert_eq!(metrics.rejected.load(Ordering::Relaxed), 1);
 
         cancel.cancel();
         let _ = handle.await;
