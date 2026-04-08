@@ -1,6 +1,6 @@
 use std::{fmt, path::Path, time::Duration};
 
-use alloy_primitives::Address;
+use alloy_primitives::{Address, U256};
 use alloy_signer_local::PrivateKeySigner;
 use rand::Rng;
 use revm::precompile::PrecompileId;
@@ -227,6 +227,77 @@ pub enum TxTypeConfig {
         /// Target Osaka feature.
         target: OsakaTarget,
     },
+    /// Uniswap V2 style swap (ETH -> token).
+    UniswapV2 {
+        /// Router contract address.
+        router: String,
+        /// WETH contract address.
+        weth: String,
+        /// Output token address.
+        token: String,
+        /// Minimum swap amount in wei.
+        #[serde(default = "default_swap_min_amount")]
+        min_amount: String,
+        /// Maximum swap amount in wei.
+        #[serde(default = "default_swap_max_amount")]
+        max_amount: String,
+    },
+    /// Uniswap V3 style swap.
+    UniswapV3 {
+        /// Router contract address.
+        router: String,
+        /// Input token address.
+        token_in: String,
+        /// Output token address.
+        token_out: String,
+        /// Fee tier (default 3000 = 0.3%).
+        #[serde(default = "default_uniswap_v3_fee")]
+        fee: u32,
+        /// Minimum swap amount in wei.
+        #[serde(default = "default_swap_min_amount")]
+        min_amount: String,
+        /// Maximum swap amount in wei.
+        #[serde(default = "default_swap_max_amount")]
+        max_amount: String,
+    },
+    /// Aerodrome V2 (classic AMM) swap.
+    AerodromeV2 {
+        /// Router contract address.
+        router: String,
+        /// WETH contract address.
+        weth: String,
+        /// Output token address.
+        token: String,
+        /// Whether to use stable pool (default false).
+        #[serde(default)]
+        stable: bool,
+        /// Factory address (required by Aerodrome Route struct).
+        factory: String,
+        /// Minimum swap amount in wei.
+        #[serde(default = "default_swap_min_amount")]
+        min_amount: String,
+        /// Maximum swap amount in wei.
+        #[serde(default = "default_swap_max_amount")]
+        max_amount: String,
+    },
+    /// Aerodrome Slipstream (concentrated liquidity) swap.
+    AerodromeCl {
+        /// CL Router contract address.
+        router: String,
+        /// Input token address.
+        token_in: String,
+        /// Output token address.
+        token_out: String,
+        /// Tick spacing for the pool.
+        #[serde(default = "default_aerodrome_tick_spacing")]
+        tick_spacing: i32,
+        /// Minimum swap amount in wei.
+        #[serde(default = "default_swap_min_amount")]
+        min_amount: String,
+        /// Maximum swap amount in wei.
+        #[serde(default = "default_swap_max_amount")]
+        max_amount: String,
+    },
 }
 
 const fn default_calldata_size() -> usize {
@@ -239,6 +310,30 @@ const fn default_repeat_count() -> usize {
 
 const fn default_iterations() -> u32 {
     1
+}
+
+fn default_swap_min_amount() -> String {
+    "1000000000000000".to_string()
+}
+
+fn default_swap_max_amount() -> String {
+    "10000000000000000".to_string()
+}
+
+const fn default_uniswap_v3_fee() -> u32 {
+    3000
+}
+
+const fn default_aerodrome_tick_spacing() -> i32 {
+    100
+}
+
+fn default_rpc_ws_url() -> Url {
+    Url::parse("ws://localhost:8546").expect("valid default rpc_ws_url")
+}
+
+fn default_flashblocks_ws_url() -> Url {
+    Url::parse("ws://localhost:7111").expect("valid default flashblocks_ws_url")
 }
 
 impl TestConfig {
@@ -411,9 +506,88 @@ impl TestConfig {
                 }
             }
             TxTypeConfig::Osaka { target } => TxType::Osaka { target: target.clone() },
+            TxTypeConfig::UniswapV2 { router, weth, token, min_amount, max_amount } => {
+                let router = parse_address(router, "uniswap_v2 router")?;
+                let weth = parse_address(weth, "uniswap_v2 weth")?;
+                let token = parse_address(token, "uniswap_v2 token")?;
+                let min_amount = parse_amount(min_amount, "uniswap_v2 min_amount")?;
+                let max_amount = parse_amount(max_amount, "uniswap_v2 max_amount")?;
+                TxType::UniswapV2 { router, weth, token, min_amount, max_amount }
+            }
+            TxTypeConfig::UniswapV3 {
+                router,
+                token_in,
+                token_out,
+                fee,
+                min_amount,
+                max_amount,
+            } => {
+                let router = parse_address(router, "uniswap_v3 router")?;
+                let token_in = parse_address(token_in, "uniswap_v3 token_in")?;
+                let token_out = parse_address(token_out, "uniswap_v3 token_out")?;
+                let min_amount = parse_amount(min_amount, "uniswap_v3 min_amount")?;
+                let max_amount = parse_amount(max_amount, "uniswap_v3 max_amount")?;
+                TxType::UniswapV3 { router, token_in, token_out, fee: *fee, min_amount, max_amount }
+            }
+            TxTypeConfig::AerodromeV2 {
+                router,
+                weth,
+                token,
+                stable,
+                factory,
+                min_amount,
+                max_amount,
+            } => {
+                let router = parse_address(router, "aerodrome_v2 router")?;
+                let weth = parse_address(weth, "aerodrome_v2 weth")?;
+                let token = parse_address(token, "aerodrome_v2 token")?;
+                let factory = parse_address(factory, "aerodrome_v2 factory")?;
+                let min_amount = parse_amount(min_amount, "aerodrome_v2 min_amount")?;
+                let max_amount = parse_amount(max_amount, "aerodrome_v2 max_amount")?;
+                TxType::AerodromeV2 {
+                    router,
+                    weth,
+                    token,
+                    stable: *stable,
+                    factory,
+                    min_amount,
+                    max_amount,
+                }
+            }
+            TxTypeConfig::AerodromeCl {
+                router,
+                token_in,
+                token_out,
+                tick_spacing,
+                min_amount,
+                max_amount,
+            } => {
+                let router = parse_address(router, "aerodrome_cl router")?;
+                let token_in = parse_address(token_in, "aerodrome_cl token_in")?;
+                let token_out = parse_address(token_out, "aerodrome_cl token_out")?;
+                let min_amount = parse_amount(min_amount, "aerodrome_cl min_amount")?;
+                let max_amount = parse_amount(max_amount, "aerodrome_cl max_amount")?;
+                TxType::AerodromeCl {
+                    router,
+                    token_in,
+                    token_out,
+                    tick_spacing: *tick_spacing,
+                    min_amount,
+                    max_amount,
+                }
+            }
         };
         Ok(TxConfig { weight: weighted.weight, tx_type })
     }
+}
+
+fn parse_address(s: &str, field: &str) -> Result<Address> {
+    s.parse::<Address>()
+        .map_err(|e| BaselineError::Config(format!("invalid {field} address '{s}': {e}")))
+}
+
+fn parse_amount(s: &str, field: &str) -> Result<U256> {
+    s.parse::<U256>().map_err(|e| BaselineError::Config(format!("invalid {field} '{s}': {e}")))
 }
 
 #[cfg(test)]
@@ -603,5 +777,97 @@ rpc: http://localhost:8545
         let config = TestConfig::from_yaml(yaml).unwrap();
         assert!(config.rpc_ws_url.is_none());
         assert!(config.flashblocks_ws_url.is_none());
+    }
+
+    #[test]
+    fn parse_uniswap_v2_config() {
+        let yaml = r#"
+rpc: http://localhost:8545
+transactions:
+  - weight: 10
+    type: uniswap_v2
+    router: "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D"
+    weth: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+    token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+"#;
+        let config = TestConfig::from_yaml(yaml).unwrap();
+        assert_eq!(config.transactions.len(), 1);
+        match &config.transactions[0].tx_type {
+            TxTypeConfig::UniswapV2 { router, weth, token, min_amount, max_amount } => {
+                assert!(router.starts_with("0x"));
+                assert!(weth.starts_with("0x"));
+                assert!(token.starts_with("0x"));
+                assert_eq!(min_amount, &default_swap_min_amount());
+                assert_eq!(max_amount, &default_swap_max_amount());
+            }
+            _ => panic!("expected UniswapV2"),
+        }
+    }
+
+    #[test]
+    fn parse_uniswap_v3_config() {
+        let yaml = r#"
+rpc: http://localhost:8545
+transactions:
+  - weight: 10
+    type: uniswap_v3
+    router: "0xE592427A0AEce92De3Edee1F18E0157C05861564"
+    token_in: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+    token_out: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+    fee: 500
+"#;
+        let config = TestConfig::from_yaml(yaml).unwrap();
+        assert_eq!(config.transactions.len(), 1);
+        match &config.transactions[0].tx_type {
+            TxTypeConfig::UniswapV3 { fee, .. } => {
+                assert_eq!(*fee, 500);
+            }
+            _ => panic!("expected UniswapV3"),
+        }
+    }
+
+    #[test]
+    fn parse_aerodrome_v2_config() {
+        let yaml = r#"
+rpc: http://localhost:8545
+transactions:
+  - weight: 10
+    type: aerodrome_v2
+    router: "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43"
+    weth: "0x4200000000000000000000000000000000000006"
+    token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+    factory: "0x420DD381b31aEf6683db6B902084cB0FFECe40Da"
+    stable: false
+"#;
+        let config = TestConfig::from_yaml(yaml).unwrap();
+        assert_eq!(config.transactions.len(), 1);
+        match &config.transactions[0].tx_type {
+            TxTypeConfig::AerodromeV2 { stable, .. } => {
+                assert!(!stable);
+            }
+            _ => panic!("expected AerodromeV2"),
+        }
+    }
+
+    #[test]
+    fn parse_aerodrome_cl_config() {
+        let yaml = r#"
+rpc: http://localhost:8545
+transactions:
+  - weight: 10
+    type: aerodrome_cl
+    router: "0xBE6D8f0d05cC4be24d5167a3eF062215bE6D18a5"
+    token_in: "0x4200000000000000000000000000000000000006"
+    token_out: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+    tick_spacing: 200
+"#;
+        let config = TestConfig::from_yaml(yaml).unwrap();
+        assert_eq!(config.transactions.len(), 1);
+        match &config.transactions[0].tx_type {
+            TxTypeConfig::AerodromeCl { tick_spacing, .. } => {
+                assert_eq!(*tick_spacing, 200);
+            }
+            _ => panic!("expected AerodromeCl"),
+        }
     }
 }

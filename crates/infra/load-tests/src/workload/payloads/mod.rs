@@ -26,6 +26,9 @@ pub use looper::PrecompileLooper;
 mod uniswap;
 pub use uniswap::{UniswapV2Payload, UniswapV3Payload};
 
+mod aerodrome;
+pub use aerodrome::{AerodromeClPayload, AerodromeV2Payload};
+
 mod osaka;
 pub use osaka::OsakaPayload;
 

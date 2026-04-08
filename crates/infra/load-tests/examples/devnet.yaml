@@ -38,3 +38,25 @@ transactions:
   - weight: 10
     type: precompile
     target: sha256
+  # Swap transaction types (require deployed contracts):
+  # - weight: 5
+  #   type: uniswap_v2
+  #   router: "0x..."
+  #   weth: "0x..."
+  #   token: "0x..."
+  # - weight: 5
+  #   type: uniswap_v3
+  #   router: "0x..."
+  #   token_in: "0x..."
+  #   token_out: "0x..."
+  # - weight: 5
+  #   type: aerodrome_v2
+  #   router: "0x..."
+  #   weth: "0x..."
+  #   token: "0x..."
+  #   factory: "0x..."
+  # - weight: 5
+  #   type: aerodrome_cl
+  #   router: "0x..."
+  #   token_in: "0x..."
+  #   token_out: "0x..."
