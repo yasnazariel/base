@@ -85,6 +85,7 @@ base-metrics.workspace = true
 
 [dev-dependencies]
 base-execution-chainspec.workspace = true
+reth-provider = { workspace = true, features = ["test-utils"] }
 
 [features]
 default = [ "metrics" ]

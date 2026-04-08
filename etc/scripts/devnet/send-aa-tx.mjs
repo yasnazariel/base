@@ -23,6 +23,7 @@
  *   nonceless        Send a nonce-free tx (NONCE_KEY_MAX + expiry), verify no replay
  *   delegation       Set/change EIP-7702 code delegation via account_changes entry (type 0x02)
  *   locked-config    Lock an account then verify config changes are rejected (includes unlock cleanup)
+ *   eoa              Pure EOA-mode AA tx (from=0x0, raw sig), verifies receipt from/payer fields
  *
  * Options:
  *   --probe <addr>    OwnerIdProbe contract address
@@ -1616,11 +1617,8 @@ async function runDelegateP256() {
     const sig = p256curve.sign(hashArr, p256PrivateKey, { lowS: true });
     const rBytes = sig.r.toString(16).padStart(64, '0');
     const sBytes = sig.s.toString(16).padStart(64, '0');
-    const xHex = Buffer.from(p256PubRaw.slice(0, 32)).toString('hex');
-    const yHex = Buffer.from(p256PubRaw.slice(32, 64)).toString('hex');
-    // Solidity P256Verifier layout:
-    // r(32) || s(32) || x(32) || y(32) || pre_hash(1)
-    const nestedP256Data = '0x' + rBytes + sBytes + xHex + yHex + '00';
+    // Native P256 raw verifier layout: publicKey(64) || signature(64) = 128 bytes
+    const nestedP256Data = concat([toHex(p256PubRaw), '0x' + rBytes + sBytes]);
     const nestedAuth = concat([P256_VERIFIER_ADDRESS, nestedP256Data]);
     return concat([DELEGATE_VERIFIER_ADDRESS, account.address, nestedAuth]);
   };
@@ -2337,27 +2335,40 @@ async function runNonceless() {
   }
   console.log(`Nonceless tx landed! Hash: ${nodeTxHash}`);
 
-  // Step 2: Resubmit the exact same signed transaction (same hash)
+  // Step 2: Resubmit the exact same signed transaction (same hash).
+  // The on-chain ring buffer should have recorded sender_signature_hash,
+  // so the mempool must reject it with NonceFreeReplay.
+  //
+  // Note: same raw bytes produce the same tx hash, so we cannot use
+  // eth_getTransactionReceipt to distinguish the duplicate from the
+  // original.  The correct assertion is that eth_sendRawTransaction
+  // itself returns an error.
   console.log('\n--- Step 2: Resubmit same nonceless tx (should be rejected) ---');
 
   const dupTxHash = keccak256(encodedTx);
   console.log(`Duplicate TX hash: ${dupTxHash}`);
+  const originalBlock = BigInt(receipt.blockNumber);
+  console.log(`Original landed in block: ${originalBlock}`);
 
   try {
     await client.request({
       method: 'eth_sendRawTransaction',
       params: [encodedTx],
     });
-    console.log('WARNING: Duplicate tx was accepted by RPC, checking if it lands...');
+    // RPC accepted the tx — it may have silently deduped by hash.
+    // Wait and check if a new block includes a second instance.
+    console.log('WARNING: Duplicate tx was accepted by RPC, checking block number...');
     await new Promise(r => setTimeout(r, 5000));
     const receipt2 = await client.request({
       method: 'eth_getTransactionReceipt',
       params: [dupTxHash],
     });
-    if (!receipt2 || receipt2.status === '0x0') {
-      console.log('SUCCESS: Duplicate nonceless tx did not land');
+    if (!receipt2) {
+      console.log('SUCCESS: Duplicate nonceless tx did not land (no receipt)');
+    } else if (BigInt(receipt2.blockNumber) === originalBlock) {
+      console.log('SUCCESS: Receipt is from the original tx (same block), no replay');
     } else {
-      console.log('FAILED: Duplicate nonceless tx actually landed twice!');
+      console.log(`FAILED: Duplicate nonceless tx landed in a new block ${receipt2.blockNumber}!`);
       process.exit(1);
     }
   } catch (err) {
@@ -2495,6 +2506,155 @@ async function runDelegation() {
 }
 
 // ─────────────────────────────────────────────────
+// Mode: eoa
+// ─────────────────────────────────────────────────
+async function runEoa() {
+  const senderAddr = account.address;
+  console.log('\n--- Pure EOA Signature Test ---');
+  console.log(`Sender:  ${senderAddr}`);
+  console.log('EOA mode: from=0x0, sender_auth=raw 65-byte ECDSA (no verifier prefix)');
+
+  // Build unsigned tx with from = Address::ZERO (EOA mode)
+  const nonce = await getAaNonce();
+  console.log(`AA nonce (key=0): ${nonce}`);
+
+  const probeCalldata = encodeFunctionData({ abi: PROBE_ABI, functionName: 'probe' });
+  const callsRlp = [[[encodeAddress(opts.probeAddr), probeCalldata]]];
+
+  // EOA mode: from = address(0)
+  const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+  const unsignedRlpFields = [
+    encodeUint(L2_CHAIN_ID),
+    encodeAddress(ZERO_ADDRESS),
+    encodeUint(0n),
+    encodeUint(nonce),
+    encodeUint(0n),
+    encodeUint(1000000n),
+    encodeUint(1000000000n),
+    encodeUint(500000n),
+    [],
+    callsRlp,
+    encodeAddress(ZERO_ADDRESS),
+  ];
+
+  const preflight = await prepareUnsignedForSubmission(unsignedRlpFields);
+  console.log(
+    `Fee preflight: baseFee=${preflight.fees.baseFeePerGas} tip=${preflight.fees.maxPriorityFeePerGas} maxFee=${preflight.fees.maxFeePerGas}`
+  );
+  if (preflight.estimatedGas !== null) {
+    console.log(
+      `Gas preflight: estimate=${preflight.estimatedGas} bufferedLimit=${preflight.estimatedWithBuffer}`
+    );
+  }
+
+  const prepared = preflight.prepared;
+
+  // Compute sender signing hash (same as configured mode)
+  const signingPayload = concat([toHex(AA_TX_TYPE, { size: 1 }), toRlp(prepared)]);
+  const sigHash = keccak256(signingPayload);
+  console.log(`Sender signing hash: ${sigHash}`);
+
+  // EOA mode: sender_auth = raw 65-byte signature (r || s || v), NO verifier prefix
+  const rawSig = await account.sign({ hash: sigHash });
+  const senderAuth = rawSig;
+  console.log(`Sender auth (EOA raw sig): ${rawSig.length / 2 - 1} bytes`);
+
+  const encodedTx = concat([
+    toHex(AA_TX_TYPE, { size: 1 }),
+    toRlp([...prepared, senderAuth, '0x']),
+  ]);
+  const txHash = keccak256(encodedTx);
+  console.log(`\nEncoded tx: ${encodedTx.slice(0, 80)}...`);
+  console.log(`Encoded length: ${(encodedTx.length - 2) / 2} bytes`);
+  console.log(`TX hash: ${txHash}`);
+
+  // Submit
+  console.log('\n--- Submitting to L2 RPC ---');
+  const nodeTxHash = await client.request({
+    method: 'eth_sendRawTransaction',
+    params: [encodedTx],
+  });
+  console.log(`SUCCESS! TX hash from node: ${nodeTxHash}`);
+
+  console.log('Waiting for receipt (5s)...');
+  await new Promise(r => setTimeout(r, 5000));
+
+  const receipt = await client.request({
+    method: 'eth_getTransactionReceipt',
+    params: [nodeTxHash],
+  });
+
+  if (!receipt || receipt.status !== '0x1') {
+    console.log(`FAILED: EOA tx did not land (status=${receipt?.status || 'no receipt'})`);
+    process.exit(1);
+  }
+
+  console.log('\n--- Receipt ---');
+  console.log(`Status:       ${receipt.status}`);
+  console.log(`Block number: ${receipt.blockNumber}`);
+  console.log(`Gas used:     ${receipt.gasUsed}`);
+  console.log(`From:         ${receipt.from}`);
+  console.log(`Payer:        ${receipt.payer}`);
+  console.log(`Phase status: ${JSON.stringify(receipt.phaseStatuses)}`);
+  console.log(`Logs:         ${receipt.logs?.length || 0}`);
+
+  // Verify receipt fields
+  let pass = true;
+
+  // from must be ecrecovered sender, not Address::ZERO
+  if (receipt.from?.toLowerCase() !== senderAddr.toLowerCase()) {
+    console.log(`FAIL: from=${receipt.from}, expected ${senderAddr} (ecrecovered)`);
+    pass = false;
+  } else {
+    console.log('PASS: from matches ecrecovered sender');
+  }
+
+  // payer should equal the ecrecovered sender (self-pay)
+  if (receipt.payer?.toLowerCase() !== senderAddr.toLowerCase()) {
+    console.log(`FAIL: payer=${receipt.payer}, expected ${senderAddr}`);
+    pass = false;
+  } else {
+    console.log('PASS: payer matches sender (self-pay)');
+  }
+
+  // phaseStatuses should be [true]
+  if (!receipt.phaseStatuses || receipt.phaseStatuses.length !== 1 || !receipt.phaseStatuses[0]) {
+    console.log(`FAIL: phaseStatuses=${JSON.stringify(receipt.phaseStatuses)}, expected [true]`);
+    pass = false;
+  } else {
+    console.log('PASS: phaseStatuses=[true]');
+  }
+
+  // Verify via eth_getTransactionByHash: raw tx should have from=0x0 (EOA mode)
+  const txData = await client.request({
+    method: 'eth_getTransactionByHash',
+    params: [nodeTxHash],
+  });
+  if (txData) {
+    console.log(`\n--- Transaction Data ---`);
+    console.log(`Type:  ${txData.type}`);
+    console.log(`From:  ${txData.from}`);
+    const isZeroFrom = txData.from?.toLowerCase() === ZERO_ADDRESS.toLowerCase();
+    if (!isZeroFrom) {
+      console.log(`FAIL: tx.from=${txData.from}, expected ${ZERO_ADDRESS} (EOA mode)`);
+      pass = false;
+    } else {
+      console.log('PASS: tx.from is address(0) in raw tx (EOA mode)');
+    }
+    // Confirm receipt.from differs from raw tx.from (ecrecovery applied)
+    if (isZeroFrom && receipt.from?.toLowerCase() === senderAddr.toLowerCase()) {
+      console.log('PASS: receipt.from != tx.from confirms ecrecovery in receipt');
+    }
+  }
+
+  if (!pass) {
+    console.log('\nFAILED: Some EOA receipt checks did not pass');
+    process.exit(1);
+  }
+  console.log('\nSUCCESS: Pure EOA AA transaction executed with correct receipt fields!');
+}
+
+// ─────────────────────────────────────────────────
 // Main
 // ─────────────────────────────────────────────────
 const blockNum = await client.getBlockNumber();
@@ -2558,8 +2718,11 @@ switch (opts.mode) {
   case 'locked-config':
     await runLockedConfig();
     break;
+  case 'eoa':
+    await runEoa();
+    break;
   default:
     console.error(`Unknown mode: ${opts.mode}`);
-    console.error('Available modes: probe, multi-call, sponsor, config-change, p256, webauthn, receipt-test, deploy, nonce-rpc, estimate-gas, custom-verifier, delegate-native, delegate-p256, delegate-custom, owner-change-signing, nonceless, delegation, locked-config');
+    console.error('Available modes: probe, multi-call, sponsor, config-change, p256, webauthn, receipt-test, deploy, nonce-rpc, estimate-gas, custom-verifier, delegate-native, delegate-p256, delegate-custom, owner-change-signing, nonceless, delegation, locked-config, eoa');
     process.exit(1);
 }

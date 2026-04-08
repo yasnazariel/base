@@ -25,8 +25,8 @@ use base_execution_rpc::{
 use base_execution_storage::OpStorage;
 use base_revm::set_custom_verifier_gas_cap;
 use base_txpool::{
-    BaseOrdering, BasePooledTransaction, DEFAULT_CUSTOM_VERIFIER_GAS_LIMIT, HasEip8130Pool,
-    OpPooledTx, OpTransactionPool, OpTransactionValidator, TimestampedTransaction,
+    BaseOrdering, BasePooledTransaction, DEFAULT_CUSTOM_VERIFIER_GAS_LIMIT, OpPooledTx,
+    OpTransactionPool, OpTransactionValidator, TimestampedTransaction,
 };
 use reth_chainspec::{
     BaseFeeParams, ChainSpecProvider, EthChainSpec, EthereumHardforks, Hardforks,
@@ -981,13 +981,17 @@ where
 
         let final_pool_config = pool_config_overrides.apply(ctx.pool_config());
 
-        let transaction_pool = TxPoolBuilder::new(ctx)
+        let raw_pool = TxPoolBuilder::new(ctx)
             .with_validator(validator)
             .build_with_ordering_and_spawn_maintenance_task(
                 ordering,
                 blob_store,
                 final_pool_config,
             )?;
+
+        let eip8130_pool = raw_pool.validator().validator().eip8130_pool();
+        let transaction_pool =
+            base_txpool::BaseTransactionPool::new(raw_pool, eip8130_pool);
 
         info!(target: "reth::cli", "Transaction pool initialized");
         debug!(target: "reth::cli", "Spawned txpool maintenance task");
@@ -1074,7 +1078,6 @@ where
             >,
         > + 'static,
     Pool: TransactionPool<Transaction: OpPooledTx<Consensus = TxTy<Node::Types>> + Clone>
-        + HasEip8130Pool<Tx = Pool::Transaction>
         + Unpin
         + 'static,
     Txs: OpPayloadTransactions<Pool::Transaction>,
@@ -1084,7 +1087,7 @@ where
         Pool,
         Node::Provider,
         Evm,
-        base_execution_payload_builder::Eip8130PayloadTransactions<Pool::Transaction>,
+        (),
         Attrs,
     >;
 
@@ -1094,8 +1097,6 @@ where
         pool: Pool,
         evm_config: Evm,
     ) -> eyre::Result<Self::PayloadBuilder> {
-        let eip8130_txs =
-            base_execution_payload_builder::Eip8130PayloadTransactions::new(pool.eip8130_pool());
         let payload_builder =
             base_execution_payload_builder::OpPayloadBuilder::with_builder_config(
                 pool,
@@ -1106,7 +1107,6 @@ where
                     gas_limit_config: self.gas_limit_config.clone(),
                 },
             )
-            .with_transactions(eip8130_txs)
             .set_compute_pending_block(self.compute_pending_block);
         Ok(payload_builder)
     }

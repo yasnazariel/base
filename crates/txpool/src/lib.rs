@@ -19,6 +19,9 @@ pub use eip8130_pool::{
     Eip8130TxId, SharedEip8130Pool, ThroughputTier, TierCheckResult, is_2d_nonce,
 };
 
+mod base_pool;
+pub use base_pool::BaseTransactionPool;
+
 mod best;
 pub use best::MergedBestTransactions;
 
@@ -61,18 +64,27 @@ pub use wire::ValidatedTransaction;
 pub mod estimated_da_size;
 
 use reth_transaction_pool::{
-    BlobStore, EthPoolTransaction, Pool, TransactionOrdering, TransactionValidationTaskExecutor,
+    EthPoolTransaction, Pool, TransactionPool, TransactionValidationTaskExecutor,
 };
 
-/// Type alias for default Base transaction pool
-pub type OpTransactionPool<Client, S, Evm, T = BasePooledTransaction, O = BaseOrdering<T>> =
+/// The raw Reth pool type, before wrapping with [`BaseTransactionPool`].
+pub type RawOpPool<Client, S, Evm, T = BasePooledTransaction, O = BaseOrdering<T>> =
     Pool<TransactionValidationTaskExecutor<OpTransactionValidator<Client, T, Evm>>, O, S>;
+
+/// Type alias for the default Base transaction pool.
+///
+/// Wraps a raw Reth [`Pool`] with the EIP-8130 2D nonce side-pool so that
+/// all [`TransactionPool`] methods transparently cover both standard and
+/// 2D-nonce AA transactions.
+pub type OpTransactionPool<Client, S, Evm, T = BasePooledTransaction, O = BaseOrdering<T>> =
+    BaseTransactionPool<RawOpPool<Client, S, Evm, T, O>, T>;
 
 /// Trait that exposes the [`SharedEip8130Pool`] from a transaction pool.
 ///
-/// Implemented for [`OpTransactionPool`] so that consumers (payload builder,
-/// consumer, invalidation task) can retrieve the 2D nonce pool through a
-/// generic pool reference without needing concrete type knowledge.
+/// Implemented for [`BaseTransactionPool`] (and by extension
+/// [`OpTransactionPool`]) so that consumers (payload builder, consumer,
+/// invalidation task) can retrieve the 2D nonce pool through a generic pool
+/// reference without needing concrete type knowledge.
 pub trait HasEip8130Pool {
     /// The pool transaction type.
     type Tx: EthPoolTransaction;
@@ -80,22 +92,14 @@ pub trait HasEip8130Pool {
     fn eip8130_pool(&self) -> SharedEip8130Pool<Self::Tx>;
 }
 
-impl<Client, Tx, Evm, O, S> HasEip8130Pool
-    for Pool<TransactionValidationTaskExecutor<OpTransactionValidator<Client, Tx, Evm>>, O, S>
+impl<P, T> HasEip8130Pool for BaseTransactionPool<P, T>
 where
-    Client: reth_chainspec::ChainSpecProvider<ChainSpec: base_alloy_chains::BaseUpgrades>
-        + reth_storage_api::StateProviderFactory
-        + reth_storage_api::BlockReaderIdExt
-        + Sync
-        + 'static,
-    Tx: EthPoolTransaction + OpPooledTx + Clone,
-    Evm: reth_evm::ConfigureEvm + 'static,
-    O: TransactionOrdering<Transaction = Tx>,
-    S: BlobStore,
+    P: TransactionPool<Transaction = T>,
+    T: EthPoolTransaction + Clone,
 {
-    type Tx = Tx;
+    type Tx = T;
 
-    fn eip8130_pool(&self) -> SharedEip8130Pool<Tx> {
-        self.validator().validator().eip8130_pool()
+    fn eip8130_pool(&self) -> SharedEip8130Pool<T> {
+        self.eip8130_pool()
     }
 }

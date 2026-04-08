@@ -113,3 +113,62 @@ where
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use alloy_primitives::{Address, U256, address};
+    use reth_provider::test_utils::{ExtendedAccount, MockEthProvider};
+
+    use super::*;
+
+    #[test]
+    fn read_2d_nonce_reads_nonce_manager_storage() {
+        let provider = MockEthProvider::default();
+        let owner = address!("0x1111111111111111111111111111111111111111");
+        let nonce_key = U256::from(42_u64);
+        let slot = nonce_slot(owner, nonce_key);
+        provider.add_account(
+            NONCE_MANAGER_ADDRESS,
+            ExtendedAccount::new(0, U256::ZERO).extend_storage([(slot.into(), U256::from(99_u64))]),
+        );
+
+        let nonce = read_2d_nonce(&provider, owner, BlockId::default(), nonce_key).unwrap();
+        assert_eq!(nonce, U256::from(99_u64));
+    }
+
+    #[tokio::test]
+    async fn get_transaction_count_without_nonce_key_uses_account_nonce() {
+        let provider = MockEthProvider::default();
+        let address = Address::repeat_byte(0x22);
+        provider.add_account(address, ExtendedAccount::new(7, U256::ZERO));
+
+        let api = TransactionCountOverrideImpl::new(provider);
+        let nonce =
+            TransactionCountOverrideServer::get_transaction_count(&api, address, None, None).await.unwrap();
+        assert_eq!(nonce, U256::from(7_u64));
+    }
+
+    #[tokio::test]
+    async fn get_transaction_count_with_nonce_key_uses_2d_nonce() {
+        let provider = MockEthProvider::default();
+        let address = Address::repeat_byte(0x33);
+        let nonce_key = U256::from(5_u64);
+        let slot = nonce_slot(address, nonce_key);
+        provider.add_account(address, ExtendedAccount::new(1, U256::ZERO));
+        provider.add_account(
+            NONCE_MANAGER_ADDRESS,
+            ExtendedAccount::new(0, U256::ZERO).extend_storage([(slot.into(), U256::from(21_u64))]),
+        );
+
+        let api = TransactionCountOverrideImpl::new(provider);
+        let nonce = TransactionCountOverrideServer::get_transaction_count(
+            &api,
+            address,
+            Some(BlockId::default()),
+            Some(nonce_key),
+        )
+        .await
+        .unwrap();
+        assert_eq!(nonce, U256::from(21_u64));
+    }
+}

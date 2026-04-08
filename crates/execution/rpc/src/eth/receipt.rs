@@ -4,6 +4,7 @@ use std::fmt::Debug;
 
 use alloy_consensus::{BlockHeader, Receipt, ReceiptWithBloom, TxReceipt};
 use alloy_eips::eip2718::Encodable2718;
+use alloy_primitives::Address;
 use alloy_rpc_types_eth::{Log, TransactionReceipt};
 use base_alloy_chains::BaseUpgrades;
 use base_alloy_consensus::{OpEip8130Transaction, OpReceipt, OpTransaction};
@@ -317,6 +318,7 @@ impl OpReceiptBuilder {
     {
         let timestamp = input.meta.timestamp;
         let block_number = input.meta.block_number;
+        let recovered_sender = Address(*input.tx.signer());
         let tx_signed = *input.tx.inner();
         let mut core_receipt = build_receipt(input, None, |receipt, next_log_index, meta| {
             let map_logs = move |receipt: alloy_consensus::Receipt| {
@@ -361,7 +363,9 @@ impl OpReceiptBuilder {
                     .or_else(|| {
                         infer_eip8130_phase_statuses(tx.calls.len(), core_receipt.inner.status())
                     });
-            Eip8130ReceiptFields { payer: tx.effective_payer(), phase_statuses }
+            let payer =
+                if tx.is_self_pay() { recovered_sender } else { Address(*tx.effective_payer()) };
+            Eip8130ReceiptFields { payer, phase_statuses }
         });
 
         Ok(Self { core_receipt, op_receipt_fields, eip8130_fields })
@@ -380,12 +384,13 @@ impl OpReceiptBuilder {
 
 #[cfg(test)]
 mod tests {
-    use alloy_consensus::{Block, BlockBody, Eip658Value, TxEip7702, transaction::TransactionMeta};
+    use alloy_consensus::{Block, BlockBody, Eip658Value, Receipt, TxEip7702, transaction::TransactionMeta};
     use alloy_eips::eip2718::Decodable2718;
     use alloy_primitives::{Address, Bytes, Signature, U256, hex};
     use base_alloy_chains::BaseChainConfig;
-    use base_alloy_consensus::{OpPrimitives, OpTransactionSigned, OpTypedTransaction};
+    use base_alloy_consensus::{OpPrimitives, OpReceipt, OpTransactionSigned, OpTypedTransaction, TxEip8130};
     use base_execution_chainspec::BASE_MAINNET;
+    use base_revm::{Eip8130PhaseResult, phase_statuses_system_log};
     use reth_primitives_traits::Recovered;
 
     use super::*;
@@ -772,5 +777,93 @@ mod tests {
         .unwrap();
 
         assert_eq!(op_receipt.core_receipt.blob_gas_used, None);
+    }
+
+    fn sample_eip8130_tx(from: Address, payer: Address, phases: usize) -> OpTransactionSigned {
+        let tx = TxEip8130 {
+            chain_id: 8453,
+            from,
+            nonce_key: U256::from(7_u64),
+            nonce_sequence: 2,
+            expiry: 1234,
+            max_fee_per_gas: 11,
+            max_priority_fee_per_gas: 3,
+            gas_limit: 55_000,
+            calls: vec![vec![]; phases],
+            payer,
+            sender_auth: Bytes::from(vec![0xAA; 32]),
+            payer_auth: (payer != Address::ZERO)
+                .then(|| Bytes::from(vec![0xBB; 16]))
+                .unwrap_or_default(),
+            ..Default::default()
+        };
+
+        OpTransactionSigned::new_unhashed(OpTypedTransaction::Eip8130(tx), Signature::test_signature())
+    }
+
+    #[test]
+    fn aa_receipt_uses_recovered_sender_for_self_pay_eoa() {
+        let recovered_sender = Address::repeat_byte(0x77);
+        let tx = sample_eip8130_tx(Address::ZERO, Address::ZERO, 1);
+        let mut l1_block_info = base_revm::L1BlockInfo::default();
+
+        let op_receipt = OpReceiptBuilder::new(
+            &*BASE_MAINNET,
+            ConvertReceiptInput::<OpPrimitives> {
+                tx: Recovered::new_unchecked(&tx, recovered_sender),
+                receipt: OpReceipt::Eip8130(Receipt {
+                    status: Eip658Value::Eip658(true),
+                    cumulative_gas_used: 100,
+                    logs: vec![],
+                }),
+                gas_used: 100,
+                next_log_index: 0,
+                meta: TransactionMeta {
+                    timestamp: BaseChainConfig::mainnet().isthmus_timestamp,
+                    ..Default::default()
+                },
+            },
+            &mut l1_block_info,
+        )
+        .unwrap();
+
+        let eip8130_fields = op_receipt.eip8130_fields.expect("AA receipt fields should exist");
+        assert_eq!(eip8130_fields.payer, recovered_sender);
+    }
+
+    #[test]
+    fn aa_receipt_extracts_phase_statuses_from_system_log() {
+        let sender = Address::repeat_byte(0x55);
+        let tx = sample_eip8130_tx(sender, Address::ZERO, 3);
+        let mut l1_block_info = base_revm::L1BlockInfo::default();
+        let results = vec![
+            Eip8130PhaseResult { success: true, gas_used: 10 },
+            Eip8130PhaseResult { success: false, gas_used: 20 },
+            Eip8130PhaseResult { success: true, gas_used: 30 },
+        ];
+
+        let op_receipt = OpReceiptBuilder::new(
+            &*BASE_MAINNET,
+            ConvertReceiptInput::<OpPrimitives> {
+                tx: Recovered::new_unchecked(&tx, sender),
+                receipt: OpReceipt::Eip8130(Receipt {
+                    status: Eip658Value::Eip658(true),
+                    cumulative_gas_used: 100,
+                    logs: vec![phase_statuses_system_log(TX_CONTEXT_ADDRESS, &results)],
+                }),
+                gas_used: 100,
+                next_log_index: 0,
+                meta: TransactionMeta {
+                    timestamp: BaseChainConfig::mainnet().isthmus_timestamp,
+                    ..Default::default()
+                },
+            },
+            &mut l1_block_info,
+        )
+        .unwrap();
+
+        let eip8130_fields = op_receipt.eip8130_fields.expect("AA receipt fields should exist");
+        assert_eq!(eip8130_fields.phase_statuses, Some(vec![true, false, true]));
+        assert_eq!(eip8130_fields.payer, sender);
     }
 }

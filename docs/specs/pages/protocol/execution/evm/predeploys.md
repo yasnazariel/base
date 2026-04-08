@@ -45,6 +45,25 @@ or `Bedrock` or `Canyon`. Deprecated contracts should not be used.
 | BeaconBlockRoot               | 0x000F3df6D732807Ef1319fB7B8bB8522d0Beac02 | Ecotone    | No         | No      |
 | OperatorFeeVault              | 0x420000000000000000000000000000000000001B | Isthmus    | No         | Yes     |
 
+## EIP-8130 Account Abstraction
+
+Base includes additional Account Abstraction (EIP-8130) system contracts introduced at `BASE_V1`.
+These addresses are fixed and part of protocol behavior:
+
+- `AccountConfiguration`: `0x4F20618Cf5c160e7AA385268721dA968F86F0e61`
+- `DefaultAccount`: `0x31914Dd8C3901448D787b2097744Bf7D3241E85A`
+- `DefaultHighRateAccount`: `0x42Ebc02d3D7aaff19226D96F83C376B304BD25Cf`
+- `P256Verifier`: `0x75E9779603e826f2D8d4dD7Edee3F0a737e4228d`
+- `WebAuthnVerifier`: `0xb2c8b7ec119882fBcc32FDe1be1341e19a5Bd53E`
+- `DelegateVerifier`: `0x30A76831b27732087561372f6a1bef6Fc391d805`
+
+EIP-8130 also depends on native precompiles:
+
+- `NonceManager`: `0x000000000000000000000000000000000000aa02`
+- `TxContext`: `0x000000000000000000000000000000000000aa03`
+
+See [EIP-8130](eip-8130.md) for execution and RPC behavior details.
+
 ## LegacyMessagePasser
 
 [Implementation](https://github.com/ethereum-optimism/optimism/blob/develop/packages/contracts-bedrock/src/legacy/LegacyMessagePasser.sol)

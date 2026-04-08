@@ -677,11 +677,12 @@ impl BatchPipeline for BatchEncoder {
 
 #[cfg(test)]
 mod tests {
-    use alloy_consensus::{BlockBody, Header, SignableTransaction, TxLegacy};
-    use alloy_primitives::{Bytes, Sealed, Signature};
-    use base_alloy_consensus::{OpTxEnvelope, TxDeposit};
+    use alloy_consensus::{BlockBody, Header, Sealable, SignableTransaction, TxLegacy};
+    use alloy_primitives::{Address, Bytes, Sealed, Signature, U256};
+    use base_alloy_consensus::{OpTxEnvelope, TxDeposit, TxEip8130};
+    use base_consensus_genesis::HardForkConfig;
     use base_comp::BatchComposeError;
-    use base_protocol::{L1BlockInfoBedrock, L1BlockInfoTx};
+    use base_protocol::{Batch, BatchReader, BlockInfo, Channel, L1BlockInfoBedrock, L1BlockInfoTx};
     use rstest::rstest;
 
     use super::*;
@@ -711,6 +712,50 @@ mod tests {
                 ..Default::default()
             },
         }
+    }
+
+    fn make_eip8130_tx() -> OpTxEnvelope {
+        OpTxEnvelope::Eip8130(
+            TxEip8130 {
+                chain_id: 0,
+                from: Address::repeat_byte(0x11),
+                nonce_key: U256::from(7_u64),
+                nonce_sequence: 2,
+                expiry: 1234,
+                max_fee_per_gas: 9,
+                max_priority_fee_per_gas: 3,
+                gas_limit: 55_000,
+                calls: vec![vec![]],
+                sender_auth: Bytes::from(vec![0xAA; 32]),
+                payer_auth: Bytes::from(vec![0xBB; 16]),
+                ..Default::default()
+            }
+            .seal_slow(),
+        )
+    }
+
+    fn fjord_rollup_config() -> Arc<RollupConfig> {
+        Arc::new(RollupConfig {
+            hardforks: HardForkConfig {
+                fjord_time: Some(0),
+                delta_time: Some(0),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+    }
+
+    fn decode_frames_to_batch(frames: &[Arc<Frame>], rollup_config: &RollupConfig) -> Batch {
+        let mut channel = Channel::new(frames[0].id, BlockInfo::default());
+        for frame in frames {
+            channel.add_frame(frame.as_ref().clone(), BlockInfo::default()).unwrap();
+        }
+
+        let mut reader = BatchReader::new(
+            channel.frame_data().expect("frames should reconstruct a channel").to_vec(),
+            RollupConfig::MAX_RLP_BYTES_PER_CHANNEL_FJORD as usize,
+        );
+        reader.next_batch(rollup_config).expect("channel should decode a batch")
     }
 
     fn default_encoder() -> BatchEncoder {
@@ -817,6 +862,63 @@ mod tests {
         let backlog = encoder.da_backlog_bytes();
         // The backlog should only count the user tx, not the deposit.
         assert!(backlog > 0);
+    }
+
+    #[test]
+    fn test_da_backlog_counts_eip8130_payload_bytes() {
+        let mut encoder = default_encoder();
+        let aa_tx = make_eip8130_tx();
+        let expected = aa_tx.encode_2718_len() as u64;
+        let block = BaseBlock {
+            header: Header { parent_hash: B256::ZERO, ..Default::default() },
+            body: BlockBody { transactions: vec![make_deposit_tx(), aa_tx], ..Default::default() },
+        };
+        encoder.add_block(block).unwrap();
+        assert_eq!(encoder.da_backlog_bytes(), expected);
+    }
+
+    #[test]
+    fn test_single_batch_roundtrip_preserves_eip8130_tx_bytes() {
+        let rollup_config = fjord_rollup_config();
+        let mut encoder = BatchEncoder::new(Arc::clone(&rollup_config), EncoderConfig::default());
+        let aa_tx = make_eip8130_tx();
+        let expected = aa_tx.encoded_2718().to_vec();
+        let block = BaseBlock {
+            header: Header { parent_hash: B256::ZERO, ..Default::default() },
+            body: BlockBody { transactions: vec![make_deposit_tx(), aa_tx], ..Default::default() },
+        };
+
+        encoder.add_block(block).unwrap();
+        let frames = encoder.encode_and_drain().unwrap();
+        let batch = decode_frames_to_batch(&frames, &rollup_config);
+
+        let Batch::Single(single) = batch else {
+            panic!("expected a single batch");
+        };
+        assert_eq!(single.transactions, vec![Bytes::from(expected)]);
+    }
+
+    #[test]
+    fn test_span_batch_roundtrip_preserves_eip8130_tx_bytes() {
+        let rollup_config = fjord_rollup_config();
+        let config = EncoderConfig { batch_type: BatchType::Span, ..EncoderConfig::default() };
+        let mut encoder = BatchEncoder::new(Arc::clone(&rollup_config), config);
+        let aa_tx = make_eip8130_tx();
+        let expected = aa_tx.encoded_2718().to_vec();
+        let block = BaseBlock {
+            header: Header { parent_hash: B256::ZERO, ..Default::default() },
+            body: BlockBody { transactions: vec![make_deposit_tx(), aa_tx], ..Default::default() },
+        };
+
+        encoder.add_block(block).unwrap();
+        let frames = encoder.encode_and_drain().unwrap();
+        let batch = decode_frames_to_batch(&frames, &rollup_config);
+
+        let Batch::Span(span) = batch else {
+            panic!("expected a span batch");
+        };
+        assert_eq!(span.batches.len(), 1);
+        assert_eq!(span.batches[0].transactions, vec![Bytes::from(expected)]);
     }
 
     #[test]

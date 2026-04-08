@@ -79,10 +79,10 @@ impl BatchComposer {
 mod tests {
     use alloc::{vec, vec::Vec};
 
-    use alloy_consensus::{BlockBody, Header, SignableTransaction, TxLegacy};
+    use alloy_consensus::{BlockBody, Header, Sealable, SignableTransaction, TxLegacy};
     use alloy_eips::eip2718::Encodable2718;
-    use alloy_primitives::{B256, Bytes, Sealed, Signature};
-    use base_alloy_consensus::{BaseBlock, OpTxEnvelope, TxDeposit};
+    use alloy_primitives::{Address, B256, Bytes, Sealed, Signature};
+    use base_alloy_consensus::{BaseBlock, OpTxEnvelope, TxDeposit, TxEip8130};
     use base_protocol::{L1BlockInfoBedrock, L1BlockInfoTx};
     use rstest::rstest;
 
@@ -109,6 +109,22 @@ mod tests {
         OpTxEnvelope::Legacy(signed)
     }
 
+    fn eip8130_tx() -> OpTxEnvelope {
+        OpTxEnvelope::Eip8130(
+            TxEip8130 {
+                chain_id: 8453,
+                from: Address::repeat_byte(0x11),
+                nonce_sequence: 2,
+                max_fee_per_gas: 3,
+                max_priority_fee_per_gas: 4,
+                gas_limit: 55_000,
+                calls: vec![vec![]],
+                ..Default::default()
+            }
+            .seal_slow(),
+        )
+    }
+
     #[rstest]
     #[case::empty_block(make_block(vec![]), BatchComposeError::EmptyBlock)]
     #[case::not_deposit(make_block(vec![non_deposit_tx()]), BatchComposeError::NotDepositTx)]
@@ -130,6 +146,15 @@ mod tests {
         let user_tx = non_deposit_tx();
         let expected: Bytes = user_tx.encoded_2718().into();
         let block = make_block(vec![valid_deposit_tx(), user_tx]);
+        let (batch, _) = BatchComposer::block_to_single_batch(&block).unwrap();
+        assert_eq!(batch.transactions, vec![expected]);
+    }
+
+    #[test]
+    fn test_eip8130_tx_bytes_preserved() {
+        let aa_tx = eip8130_tx();
+        let expected: Bytes = aa_tx.encoded_2718().into();
+        let block = make_block(vec![valid_deposit_tx(), aa_tx, deposit_tx(Bytes::new())]);
         let (batch, _) = BatchComposer::block_to_single_batch(&block).unwrap();
         assert_eq!(batch.transactions, vec![expected]);
     }

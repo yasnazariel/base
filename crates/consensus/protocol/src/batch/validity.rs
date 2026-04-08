@@ -42,6 +42,8 @@ pub enum BatchDropReason {
     DepositTransaction,
     /// EIP-7702 transaction included before Isthmus activation.
     Eip7702PreIsthmus,
+    /// EIP-8130 transaction included before BASE_V1 activation.
+    Eip8130PreBaseV1,
     /// Non-empty batch in Jovian transition block.
     NonEmptyTransitionBlock,
 
@@ -93,6 +95,9 @@ impl core::fmt::Display for BatchDropReason {
             Self::EmptyTransaction => write!(f, "batch contains empty transaction"),
             Self::DepositTransaction => write!(f, "batch contains deposit transaction"),
             Self::Eip7702PreIsthmus => write!(f, "EIP-7702 transaction before Isthmus activation"),
+            Self::Eip8130PreBaseV1 => {
+                write!(f, "EIP-8130 transaction before BASE_V1 activation")
+            }
             Self::NonEmptyTransitionBlock => write!(f, "non-empty batch in transition block"),
             Self::SpanBatchPreDelta => write!(f, "span batch received before Delta hard fork"),
             Self::SpanBatchNoNewBlocksPreHolocene => {
@@ -208,6 +213,10 @@ mod tests {
         assert_eq!(
             format!("{}", BatchDropReason::EmptyTransaction),
             "batch contains empty transaction"
+        );
+        assert_eq!(
+            format!("{}", BatchDropReason::Eip8130PreBaseV1),
+            "EIP-8130 transaction before BASE_V1 activation"
         );
     }
 

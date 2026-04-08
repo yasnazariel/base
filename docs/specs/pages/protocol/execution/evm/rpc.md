@@ -124,6 +124,13 @@ Returns the receipt for a transaction.
 - `logs`: Array of log objects
 - `logsBloom`: Bloom filter for logs
 
+For EIP-8130 Account Abstraction transactions (`type = 0x7b`), the receipt also includes:
+
+- `payer`: Address that paid gas for the transaction.
+- `phaseStatuses`: Optional per-phase execution status array (`true` = success, `false` = revert).
+
+When `phaseStatuses` cannot be inferred for mixed-result historical receipts, it is omitted.
+
 ### `eth_getBalance`
 
 Returns the balance of an account.
@@ -159,6 +166,7 @@ Returns the number of transactions sent from an address (nonce).
 **Parameters:**
 - `address`: `String` - Address to query
 - `blockNumber`: `String` - Block number or tag (`"pending"` for preconfirmed state)
+- `nonceKey` (optional): `String` - 2D nonce channel key for EIP-8130 (`uint256`, hex-encoded)
 
 **Returns:** `String` - Transaction count (hex-encoded)
 
@@ -177,6 +185,16 @@ Returns the number of transactions sent from an address (nonce).
   "id": 1,
   "jsonrpc": "2.0",
   "result": "0x5"
+}
+```
+
+```json
+// EIP-8130 2D nonce query (optional third parameter)
+{
+  "method": "eth_getTransactionCount",
+  "params": ["0x...", "latest", "0x2a"],
+  "id": 2,
+  "jsonrpc": "2.0"
 }
 ```
 

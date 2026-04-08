@@ -208,7 +208,7 @@ impl alloy_consensus::transaction::SignerRecoverable for OpPooledTransaction {
         &self,
     ) -> Result<alloy_primitives::Address, alloy_consensus::crypto::RecoveryError> {
         if let Self::Eip8130(tx) = self {
-            return Ok(tx.inner().from);
+            return super::envelope::recover_eip8130_signer(tx.inner());
         }
         let signature_hash = self.signature_hash();
         alloy_consensus::crypto::secp256k1::recover_signer(self.signature(), signature_hash)
@@ -218,7 +218,7 @@ impl alloy_consensus::transaction::SignerRecoverable for OpPooledTransaction {
         &self,
     ) -> Result<alloy_primitives::Address, alloy_consensus::crypto::RecoveryError> {
         if let Self::Eip8130(tx) = self {
-            return Ok(tx.inner().from);
+            return super::envelope::recover_eip8130_signer(tx.inner());
         }
         let signature_hash = self.signature_hash();
         alloy_consensus::crypto::secp256k1::recover_signer_unchecked(
@@ -244,7 +244,7 @@ impl alloy_consensus::transaction::SignerRecoverable for OpPooledTransaction {
             Self::Eip7702(tx) => {
                 alloy_consensus::transaction::SignerRecoverable::recover_unchecked_with_buf(tx, buf)
             }
-            Self::Eip8130(tx) => Ok(tx.inner().from),
+            Self::Eip8130(tx) => super::envelope::recover_eip8130_signer(tx.inner()),
         }
     }
 }
@@ -291,7 +291,8 @@ impl<Tx> TryFrom<Extended<OpTxEnvelope, Tx>> for OpPooledTransaction {
 
 #[cfg(test)]
 mod tests {
-    use alloy_consensus::Transaction;
+    use alloy_consensus::{Sealable, Transaction};
+    use alloy_eips::eip2718::IsTyped2718;
     use alloy_primitives::{address, hex};
     use alloy_rlp::Decodable;
     use bytes::Bytes;
@@ -371,5 +372,26 @@ mod tests {
         // we can also decode_enveloped
         let res = OpPooledTransaction::decode_2718(&mut &data[..]);
         assert!(res.is_ok());
+    }
+
+    #[test]
+    fn eip8130_pooled_type_and_roundtrip() {
+        let tx = TxEip8130 {
+            chain_id: 8453,
+            from: address!("0123456789012345678901234567890123456789"),
+            nonce_sequence: 3,
+            max_fee_per_gas: 10,
+            max_priority_fee_per_gas: 2,
+            gas_limit: 100_000,
+            calls: vec![vec![]],
+            ..Default::default()
+        };
+        let pooled = OpPooledTransaction::Eip8130(tx.seal_slow());
+        assert!(OpPooledTransaction::is_type(123));
+
+        let mut encoded = Vec::new();
+        pooled.encode_2718(&mut encoded);
+        let decoded = OpPooledTransaction::decode_2718(&mut encoded.as_slice()).unwrap();
+        assert!(matches!(decoded, OpPooledTransaction::Eip8130(_)));
     }
 }

@@ -14,6 +14,8 @@ indicates when the precompile was introduced.
 | Name       | Address                                    | Introduced |
 |------------| ------------------------------------------ |------------|
 | P256VERIFY | 0x0000000000000000000000000000000000000100 | Fjord      |
+| NonceManager | 0x000000000000000000000000000000000000aa02 | BASE_V1 |
+| TxContext | 0x000000000000000000000000000000000000aa03 | BASE_V1 |
 
 ## P256VERIFY
 
@@ -25,3 +27,15 @@ the Base protocol in the Fjord release. The op-geth implementation is
 [here](https://github.com/ethereum-optimism/op-geth/blob/optimism/core/vm/contracts.go#L1161-L1193).
 
 Address: `0x0000000000000000000000000000000000000100`
+
+## NonceManager
+
+The `NonceManager` precompile provides read access for EIP-8130 2D nonce channels.
+
+Address: `0x000000000000000000000000000000000000aa02`
+
+## TxContext
+
+The `TxContext` precompile provides EIP-8130 execution context during phased AA execution.
+
+Address: `0x000000000000000000000000000000000000aa03`

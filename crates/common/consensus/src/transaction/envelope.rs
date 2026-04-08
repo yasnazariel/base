@@ -517,7 +517,7 @@ impl alloy_consensus::transaction::SignerRecoverable for OpTxEnvelope {
             Self::Eip2930(tx) => tx.signature_hash(),
             Self::Eip1559(tx) => tx.signature_hash(),
             Self::Eip7702(tx) => tx.signature_hash(),
-            Self::Eip8130(tx) => return Ok(tx.inner().from),
+            Self::Eip8130(tx) => return recover_eip8130_signer(tx.inner()),
             Self::Deposit(tx) => return Ok(tx.from),
         };
         let signature = match self {
@@ -538,7 +538,7 @@ impl alloy_consensus::transaction::SignerRecoverable for OpTxEnvelope {
             Self::Eip2930(tx) => tx.signature_hash(),
             Self::Eip1559(tx) => tx.signature_hash(),
             Self::Eip7702(tx) => tx.signature_hash(),
-            Self::Eip8130(tx) => return Ok(tx.inner().from),
+            Self::Eip8130(tx) => return recover_eip8130_signer(tx.inner()),
             Self::Deposit(tx) => return Ok(tx.from),
         };
         let signature = match self {
@@ -568,10 +568,42 @@ impl alloy_consensus::transaction::SignerRecoverable for OpTxEnvelope {
             Self::Eip7702(tx) => {
                 alloy_consensus::transaction::SignerRecoverable::recover_unchecked_with_buf(tx, buf)
             }
-            Self::Eip8130(tx) => Ok(tx.inner().from),
+            Self::Eip8130(tx) => recover_eip8130_signer(tx.inner()),
             Self::Deposit(tx) => Ok(tx.from),
         }
     }
+}
+
+/// Recovers the sender address from an EIP-8130 transaction.
+///
+/// - **Configured owner** (`from != Address::ZERO`): returns `from` directly.
+/// - **EOA mode** (`from == Address::ZERO`): ecrecovers the sender from the
+///   65-byte K1 ECDSA signature in `sender_auth` over `sender_signature_hash`.
+#[cfg(feature = "k256")]
+pub(crate) fn recover_eip8130_signer(
+    tx: &TxEip8130,
+) -> Result<alloy_primitives::Address, alloy_consensus::crypto::RecoveryError> {
+    if !tx.is_eoa() {
+        return Ok(tx.from);
+    }
+
+    if tx.sender_auth.len() != 65 {
+        return Err(alloy_consensus::crypto::RecoveryError::new());
+    }
+
+    let sig_hash = crate::sender_signature_hash(tx);
+    let v = tx.sender_auth[64];
+    let parity = match v {
+        0 | 27 => false,
+        1 | 28 => true,
+        _ => return Err(alloy_consensus::crypto::RecoveryError::new()),
+    };
+    let signature = Signature::new(
+        alloy_primitives::U256::from_be_slice(&tx.sender_auth[..32]),
+        alloy_primitives::U256::from_be_slice(&tx.sender_auth[32..64]),
+        parity,
+    );
+    alloy_consensus::crypto::secp256k1::recover_signer(&signature, sig_hash)
 }
 
 /// Bincode-compatible serde implementation for [`OpTxEnvelope`].
@@ -858,5 +890,67 @@ mod tests {
         let mut slice = encoded.as_slice();
         let decoded = OpTxEnvelope::decode_2718(&mut slice).unwrap();
         assert!(matches!(decoded, OpTxEnvelope::Eip1559(_)));
+    }
+
+    #[test]
+    #[cfg(feature = "native-verifier")]
+    fn eip8130_eoa_recover_signer_ecrecovers_from_sender_auth() {
+        use alloy_consensus::transaction::SignerRecoverable;
+        use k256::ecdsa::{
+            SigningKey, VerifyingKey,
+            signature::hazmat::PrehashSigner,
+        };
+        use k256::elliptic_curve::rand_core::OsRng;
+
+        let signing_key = SigningKey::random(&mut OsRng);
+        let verifying_key = VerifyingKey::from(&signing_key);
+        let public_key_bytes = verifying_key.to_encoded_point(false);
+        let pk_hash = alloy_primitives::keccak256(&public_key_bytes.as_bytes()[1..]);
+        let expected_sender = Address::from_slice(&pk_hash[12..]);
+
+        let mut tx = TxEip8130 {
+            chain_id: 84532,
+            from: Address::ZERO,
+            nonce_sequence: 0,
+            gas_limit: 100_000,
+            max_fee_per_gas: 1_000_000_000,
+            max_priority_fee_per_gas: 1_000_000,
+            ..Default::default()
+        };
+
+        let sig_hash = crate::sender_signature_hash(&tx);
+        let (signature, recid): (k256::ecdsa::Signature, _) =
+            signing_key.sign_prehash(sig_hash.as_slice()).unwrap();
+        let mut sender_auth = Vec::with_capacity(65);
+        sender_auth.extend_from_slice(&signature.to_bytes());
+        sender_auth.push(recid.to_byte());
+        tx.sender_auth = Bytes::from(sender_auth);
+
+        let sealed = tx.seal_slow();
+        let envelope = OpTxEnvelope::Eip8130(sealed);
+
+        let recovered = envelope.recover_signer().expect("recovery should succeed");
+        assert_eq!(recovered, expected_sender, "EOA recovery must return ecrecovered sender");
+        assert_ne!(recovered, Address::ZERO, "EOA recovery must not return Address::ZERO");
+    }
+
+    #[test]
+    #[cfg(feature = "k256")]
+    fn eip8130_configured_owner_recover_signer_returns_from_field() {
+        use alloy_consensus::transaction::SignerRecoverable;
+
+        let explicit_sender = Address::repeat_byte(0x42);
+        let tx = TxEip8130 {
+            chain_id: 84532,
+            from: explicit_sender,
+            sender_auth: Bytes::from(vec![0xAB; 85]),
+            ..Default::default()
+        };
+
+        let sealed = tx.seal_slow();
+        let envelope = OpTxEnvelope::Eip8130(sealed);
+
+        let recovered = envelope.recover_signer().expect("recovery should succeed");
+        assert_eq!(recovered, explicit_sender);
     }
 }

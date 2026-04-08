@@ -173,6 +173,11 @@ impl SingleBatch {
             if tx.as_ref().first() == Some(&(OpTxType::Deposit as u8)) {
                 return BatchValidity::Drop(BatchDropReason::DepositTransaction);
             }
+            if !cfg.is_base_v1_active(self.timestamp)
+                && tx.as_ref().first() == Some(&(OpTxType::Eip8130 as u8))
+            {
+                return BatchValidity::Drop(BatchDropReason::Eip8130PreBaseV1);
+            }
             // If isthmus is not active yet and the transaction is a 7702, drop the batch.
             if !cfg.is_isthmus_active(self.timestamp)
                 && tx.as_ref().first() == Some(&(OpTxType::Eip7702 as u8))
@@ -193,8 +198,8 @@ mod tests {
     use alloy_eips::eip2718::{Decodable2718, Encodable2718};
     use alloy_primitives::{Address, Sealed, Signature, TxKind, U256};
     use alloy_rlp::{Decodable, Encodable};
-    use base_alloy_consensus::{OpTxEnvelope, TxDeposit};
-    use base_consensus_genesis::HardForkConfig;
+    use base_alloy_consensus::{OpTxEnvelope, TxDeposit, TxEip8130};
+    use base_consensus_genesis::{BaseHardforkConfig, HardForkConfig};
     use tracing::Level;
     use tracing_subscriber::layer::SubscriberExt;
 
@@ -448,6 +453,19 @@ mod tests {
         }
     }
 
+    fn eip_8130_tx() -> TxEip8130 {
+        TxEip8130 {
+            chain_id: 8453u64,
+            from: Address::repeat_byte(0x11),
+            nonce_sequence: 2,
+            max_fee_per_gas: 3,
+            max_priority_fee_per_gas: 4,
+            gas_limit: 5,
+            calls: vec![vec![]],
+            ..Default::default()
+        }
+    }
+
     #[test]
     fn test_check_batch_drop_7702_pre_isthmus() {
         // Use the example transaction
@@ -510,6 +528,65 @@ mod tests {
         let cfg = RollupConfig {
             max_sequencer_drift: 1,
             hardforks: HardForkConfig { isthmus_time: Some(0), ..Default::default() },
+            ..Default::default()
+        };
+        let l1_blocks = vec![BlockInfo::default(), BlockInfo::default()];
+        let l2_safe_head = L2BlockInfo {
+            block_info: BlockInfo { timestamp: 1, ..Default::default() },
+            ..Default::default()
+        };
+        let inclusion_block = BlockInfo::default();
+        assert_eq!(
+            single_batch.check_batch(&cfg, &l1_blocks, l2_safe_head, &inclusion_block),
+            BatchValidity::Accept
+        );
+    }
+
+    #[test]
+    fn test_check_batch_drop_8130_pre_base_v1() {
+        let mut transactions = example_transactions();
+        transactions.push(eip_8130_tx().encoded_2718().into());
+
+        let single_batch = SingleBatch {
+            parent_hash: BlockHash::ZERO,
+            epoch_num: 1,
+            epoch_hash: BlockHash::ZERO,
+            timestamp: 1,
+            transactions,
+        };
+
+        let cfg = RollupConfig { max_sequencer_drift: 1, ..Default::default() };
+        let l1_blocks = vec![BlockInfo::default(), BlockInfo::default()];
+        let l2_safe_head = L2BlockInfo {
+            block_info: BlockInfo { timestamp: 1, ..Default::default() },
+            ..Default::default()
+        };
+        let inclusion_block = BlockInfo::default();
+        assert_eq!(
+            single_batch.check_batch(&cfg, &l1_blocks, l2_safe_head, &inclusion_block),
+            BatchValidity::Drop(BatchDropReason::Eip8130PreBaseV1)
+        );
+    }
+
+    #[test]
+    fn test_check_batch_accept_8130_post_base_v1() {
+        let mut transactions = example_transactions();
+        transactions.push(eip_8130_tx().encoded_2718().into());
+
+        let single_batch = SingleBatch {
+            parent_hash: BlockHash::ZERO,
+            epoch_num: 1,
+            epoch_hash: BlockHash::ZERO,
+            timestamp: 1,
+            transactions,
+        };
+
+        let cfg = RollupConfig {
+            max_sequencer_drift: 1,
+            hardforks: HardForkConfig {
+                base: BaseHardforkConfig { v1: Some(0) },
+                ..Default::default()
+            },
             ..Default::default()
         };
         let l1_blocks = vec![BlockInfo::default(), BlockInfo::default()];

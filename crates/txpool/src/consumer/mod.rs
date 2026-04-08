@@ -8,8 +8,6 @@ use reth_transaction_pool::{EthPoolTransaction, TransactionPool, ValidPoolTransa
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 
-use crate::SharedEip8130Pool;
-
 mod config;
 pub use config::ConsumerConfig;
 
@@ -40,17 +38,12 @@ where
     P::Transaction: EthPoolTransaction + Clone,
 {
     /// Creates and spawns a [`Consumer`] as a blocking task on the executor.
-    pub fn spawn(
-        pool: P,
-        eip8130_pool: SharedEip8130Pool<P::Transaction>,
-        config: ConsumerConfig,
-        executor: &TaskExecutor,
-    ) -> Self {
+    pub fn spawn(pool: P, config: ConsumerConfig, executor: &TaskExecutor) -> Self {
         let (sender, _) = broadcast::channel(config.channel_capacity);
         let broadcast_sender = sender.clone();
         let cancel = CancellationToken::new();
         let mut consumer =
-            Consumer::new(pool, eip8130_pool, config, broadcast_sender, cancel.child_token());
+            Consumer::new(pool, config, broadcast_sender, cancel.child_token());
 
         executor.spawn_blocking_task(Box::pin(async move {
             consumer.run();

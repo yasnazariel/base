@@ -91,7 +91,7 @@ const LOCK_BASE_SLOT: U256 = U256::from_limbs([1, 0, 0, 0]);
 /// Sentinel nonce key that activates nonce-free mode.
 ///
 /// Mirrors [`base_alloy_consensus::NONCE_KEY_MAX`] to avoid a cyclic dependency.
-const NONCE_KEY_MAX: U256 = U256::from_limbs([u64::MAX, u64::MAX, u64::MAX, 0]);
+const NONCE_KEY_MAX: U256 = U256::MAX;
 
 /// Mirrors [`base_alloy_consensus::EXPIRING_SEEN_BASE_SLOT`].
 const EXPIRING_SEEN_BASE_SLOT: U256 = U256::from_limbs([2, 0, 0, 0]);

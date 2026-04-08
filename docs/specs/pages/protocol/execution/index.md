@@ -49,6 +49,20 @@ To process deposited transactions safely, the deposits MUST be authenticated fir
 Deposited transactions MUST never be consumed from the transaction pool.
 _The transaction pool can be disabled in a deposits-only rollup_
 
+## Account Abstraction (EIP-8130)
+
+`BASE_V1` introduces Account Abstraction transaction type `0x7b` with:
+
+- 2D nonces (`nonceKey`, `nonceSequence`)
+- phased call execution with per-phase outcomes
+- optional sponsorship via `payer` authorization
+
+The execution engine and RPC behavior are documented in:
+
+- [EIP-8130 execution details](evm/eip-8130.md)
+- [RPC extensions](evm/rpc.md)
+- [AA system contract addresses](evm/predeploys.md#eip-8130-account-abstraction)
+
 ## Fees
 
 Sequenced transactions (i.e. not applicable to deposits) are charged with 3 types of fees:
