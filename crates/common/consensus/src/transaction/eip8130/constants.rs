@@ -2,10 +2,7 @@
 
 use alloy_primitives::{Address, U256};
 
-use super::predeploys::{
-    DELEGATE_VERIFIER_ADDRESS, K1_VERIFIER_ADDRESS, P256_RAW_VERIFIER_ADDRESS,
-    P256_WEBAUTHN_VERIFIER_ADDRESS,
-};
+use super::verifier::NativeVerifier;
 
 /// The EIP-2718 transaction type byte for AA transactions.
 pub const AA_TX_TYPE_ID: u8 = 0x7B;
@@ -80,7 +77,7 @@ pub const MAX_CONFIG_OPS_PER_TX: usize = 5;
 /// charged to the payer separately from the sender's `gas_limit` (which is
 /// execution-only). This cap bounds the DoS surface of arbitrary verifier
 /// contracts.
-pub const CUSTOM_VERIFIER_GAS_CAP: u64 = 100_000;
+pub const CUSTOM_VERIFIER_GAS_CAP: u64 = 200_000;
 
 /// Maximum nonce key value (`2^256 - 1`), enabling nonce-free mode.
 ///
@@ -146,6 +143,25 @@ impl VerifierGasCosts {
     pub const BASE_V1: Self =
         Self { k1: 6_000, p256_raw: 9_500, p256_webauthn: 15_000, delegate: 3_000 };
 
+    /// Returns the verification gas for a native verifier.
+    pub fn gas_for_native_verifier(
+        &self,
+        verifier: NativeVerifier,
+        inner_verifier: Option<NativeVerifier>,
+    ) -> u64 {
+        match verifier {
+            NativeVerifier::K1 => self.k1,
+            NativeVerifier::P256Raw => self.p256_raw,
+            NativeVerifier::P256WebAuthn => self.p256_webauthn,
+            NativeVerifier::Delegate => {
+                self.delegate
+                    + inner_verifier
+                        .map(|inner| self.gas_for_native_verifier(inner, None))
+                        .unwrap_or(0)
+            }
+        }
+    }
+
     /// Returns the verification gas for a given verifier address.
     ///
     /// - For native verifiers (K1, P256_RAW, P256_WEBAUTHN): returns the flat
@@ -157,17 +173,12 @@ impl VerifierGasCosts {
     /// - For custom verifiers (any other address): returns 0 (metered at
     ///   runtime via STATICCALL).
     pub fn gas_for_verifier(&self, verifier: Address, inner_verifier: Option<Address>) -> u64 {
-        if verifier == K1_VERIFIER_ADDRESS {
-            self.k1
-        } else if verifier == P256_RAW_VERIFIER_ADDRESS {
-            self.p256_raw
-        } else if verifier == P256_WEBAUTHN_VERIFIER_ADDRESS {
-            self.p256_webauthn
-        } else if verifier == DELEGATE_VERIFIER_ADDRESS {
-            let inner_cost = inner_verifier.map(|v| self.gas_for_verifier(v, None)).unwrap_or(0);
-            self.delegate + inner_cost
-        } else {
-            0
+        match NativeVerifier::from_address(verifier) {
+            Some(native) => self.gas_for_native_verifier(
+                native,
+                inner_verifier.and_then(NativeVerifier::from_address),
+            ),
+            None => 0,
         }
     }
 }

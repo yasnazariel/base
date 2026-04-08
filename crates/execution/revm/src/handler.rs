@@ -72,6 +72,11 @@ const K1_VERIFIER_ADDRESS: Address = Address::new([
     0x00, 0x00, 0x00, 0x01,
 ]);
 
+/// Sentinel verifier written when the implicit EOA owner is explicitly revoked.
+///
+/// Mirrors `base_alloy_consensus::REVOKED_VERIFIER`.
+const REVOKED_VERIFIER: Address = Address::new([0xff; 20]);
+
 /// Monotonic cache: once the AccountConfiguration contract is detected, we
 /// skip the code-existence check on all subsequent calls. Relaxed ordering
 /// is safe because the flag only transitions `false → true`.
@@ -80,7 +85,7 @@ static ACCOUNT_CONFIG_DEPLOYED: std::sync::atomic::AtomicBool =
 
 /// Base storage slot for the nonce mapping in NonceManager (slot index 1).
 const NONCE_BASE_SLOT: U256 = U256::from_limbs([1, 0, 0, 0]);
-/// Base storage slot for the lock mapping in AccountConfig (slot index 1).
+/// Base storage slot for the packed `_accountState` mapping in AccountConfig (slot index 1).
 const LOCK_BASE_SLOT: U256 = U256::from_limbs([1, 0, 0, 0]);
 
 /// Sentinel nonce key that activates nonce-free mode.
@@ -153,7 +158,10 @@ fn aa_lock_slot(account: Address) -> U256 {
 
 /// Owner config base storage slot in AccountConfig (slot index 0).
 ///
-/// `keccak256(owner_id . keccak256(account . 0))`
+/// Solidity declaration:
+/// `mapping(bytes32 ownerId => mapping(address account => OwnerConfig)) _ownerConfig`
+///
+/// `keccak256(account . keccak256(owner_id . 0))`
 const OWNER_CONFIG_BASE_SLOT: U256 = U256::ZERO;
 
 /// Computes the AccountConfig storage slot for `owner_config(account, owner_id)`.
@@ -162,20 +170,20 @@ const OWNER_CONFIG_BASE_SLOT: U256 = U256::ZERO;
 fn aa_owner_config_slot(account: Address, owner_id: U256) -> U256 {
     let inner = {
         let mut buf = [0u8; 64];
-        buf[12..32].copy_from_slice(account.as_slice());
+        buf[..32].copy_from_slice(&owner_id.to_be_bytes::<32>());
         let base_bytes = OWNER_CONFIG_BASE_SLOT.to_be_bytes::<32>();
         buf[32..64].copy_from_slice(&base_bytes);
         keccak256(buf)
     };
     let mut buf = [0u8; 64];
-    buf[..32].copy_from_slice(&owner_id.to_be_bytes::<32>());
+    buf[12..32].copy_from_slice(account.as_slice());
     buf[32..64].copy_from_slice(inner.as_slice());
     U256::from_be_bytes(keccak256(buf).0)
 }
 
 /// Parses a packed owner_config word into `(verifier_address, scope)`.
 ///
-/// Layout: `[scope(1) | zeros(11) | verifier(20)]` (big-endian 32 bytes).
+/// Layout: `[zeros(11) | scope(1) | verifier(20)]` (big-endian 32 bytes).
 fn parse_owner_config_word(word: U256) -> (Address, u8) {
     let bytes = word.to_be_bytes::<32>();
     let scope = bytes[11];
@@ -221,7 +229,7 @@ where
     let config_word = evm.ctx().journal_mut().sload(ACCOUNT_CONFIG_ADDRESS, slot)?.data;
     let (on_chain_verifier, scope) = parse_owner_config_word(config_word);
 
-    if on_chain_verifier == Address::with_last_byte(1) {
+    if on_chain_verifier == REVOKED_VERIFIER {
         return Err(eip8130_invalid_tx::<ERROR>(
             "native verifier owner explicitly revoked (REVOKED_VERIFIER sentinel)",
         ));
@@ -256,7 +264,7 @@ where
     Ok(())
 }
 
-/// Reads one sequence value from packed `ChangeSequences { multichain, local }`.
+/// Reads one sequence value from packed `AccountState { multichain, local, unlocksAt, unlockDelay }`.
 fn read_packed_sequence(slot_value: U256, is_multichain: bool) -> u64 {
     if is_multichain { slot_value.as_limbs()[0] } else { (slot_value >> 64_u8).as_limbs()[0] }
 }
@@ -1175,6 +1183,41 @@ where
                     verify_call.verifier,
                     verify_call.required_scope,
                     pending_overrides,
+                )?;
+            }
+
+            // Delegate with nested custom verifier: after nested owner validation,
+            // validate the outer delegate owner binding on sender/payer account.
+            if eip8130.sender_verify_call.is_some()
+                && eip8130.sender_verifier == crate::constants::DELEGATE_VERIFIER_ADDRESS
+                && eip8130.owner_id != B256::ZERO
+            {
+                validate_owner_config::<EVM, ERROR>(
+                    evm,
+                    sender,
+                    U256::from_be_bytes(eip8130.owner_id.0),
+                    crate::constants::DELEGATE_VERIFIER_ADDRESS,
+                    crate::constants::OWNER_SCOPE_SENDER,
+                    Some(&pending_sender_owner_overrides),
+                )?;
+            }
+            if eip8130.payer_verify_call.is_some()
+                && eip8130.payer_verifier == crate::constants::DELEGATE_VERIFIER_ADDRESS
+                && eip8130.payer_owner_id != B256::ZERO
+                && eip8130.payer != eip8130.sender
+            {
+                let payer_pending_overrides = if eip8130.payer == sender {
+                    Some(&pending_sender_owner_overrides)
+                } else {
+                    None
+                };
+                validate_owner_config::<EVM, ERROR>(
+                    evm,
+                    eip8130.payer,
+                    U256::from_be_bytes(eip8130.payer_owner_id.0),
+                    crate::constants::DELEGATE_VERIFIER_ADDRESS,
+                    crate::constants::OWNER_SCOPE_PAYER,
+                    payer_pending_overrides,
                 )?;
             }
 
@@ -2597,12 +2640,106 @@ mod tests {
     }
 
     #[test]
+    fn test_eip8130_sequence_update_preserves_lock_fields_at_inclusion() {
+        let sender = Address::from([0x11; 20]);
+        let target = Address::from([0x22; 20]);
+        let mut db = InMemoryDB::default();
+        db.insert_account_info(
+            sender,
+            AccountInfo { balance: U256::from(10_000_000), ..Default::default() },
+        );
+        db.insert_account_info(
+            NONCE_MANAGER_ADDRESS,
+            AccountInfo { code: Some(Bytecode::new_legacy(bytes!("FE"))), ..Default::default() },
+        );
+        db.insert_account_info(
+            target,
+            AccountInfo { code: Some(Bytecode::new_legacy(bytes!("00"))), ..Default::default() },
+        );
+        db.insert_account_info(
+            ACCOUNT_CONFIG_ADDRESS,
+            AccountInfo { code: Some(Bytecode::new_legacy(bytes!("FE"))), ..Default::default() },
+        );
+
+        let state_slot = aa_lock_slot(sender);
+        let initial = pack_account_state(5, 9, 0, 600);
+        let account_cfg = db.load_account(ACCOUNT_CONFIG_ADDRESS).unwrap();
+        account_cfg.storage.insert(state_slot, initial);
+
+        let mut tx = OpTransaction::builder()
+            .base(
+                TxEnv::builder()
+                    .tx_type(Some(0x7B))
+                    .caller(sender)
+                    .gas_limit(200_000)
+                    .kind(TxKind::Call(sender)),
+            )
+            .enveloped_tx(Some(bytes!("7BFACADE")))
+            .build_fill();
+        tx.eip8130 = Eip8130Parts {
+            sender,
+            payer: sender,
+            aa_intrinsic_gas: 25_000,
+            sequence_updates: vec![Eip8130SequenceUpdate {
+                slot: state_slot,
+                is_multichain: true,
+                new_value: 6, // tx sequence = 5, matches initial multichain sequence
+            }],
+            call_phases: vec![vec![Eip8130Call {
+                to: target,
+                data: Bytes::new(),
+                value: U256::ZERO,
+            }]],
+            ..Default::default()
+        };
+
+        let ctx = Context::op()
+            .with_db(db)
+            .with_tx(tx)
+            .with_chain(L1BlockInfo {
+                l2_block: Some(U256::ZERO),
+                operator_fee_scalar: Some(U256::ZERO),
+                operator_fee_constant: Some(U256::ZERO),
+                ..Default::default()
+            })
+            .with_cfg(CfgEnv::new_with_spec(OpSpecId::BASE_V1));
+        let mut evm = ctx.build_op();
+        let mut handler =
+            OpHandler::<_, EVMError<_, OpTransactionError>, EthFrame<EthInterpreter>>::new();
+        let result = handler.run(&mut evm).expect("tx should execute");
+        assert!(result.is_success(), "inclusion should succeed");
+
+        let account = evm
+            .ctx()
+            .journal_mut()
+            .load_account(ACCOUNT_CONFIG_ADDRESS)
+            .expect("account config should be loaded");
+        let updated = account
+            .storage
+            .get(&state_slot)
+            .expect("account state slot should be present")
+            .present_value();
+        let bytes = updated.to_be_bytes::<32>();
+        let multichain = u64::from_be_bytes(bytes[24..32].try_into().expect("8-byte slice"));
+        let local = u64::from_be_bytes(bytes[16..24].try_into().expect("8-byte slice"));
+        let mut unlocks_at_bytes = [0u8; 8];
+        unlocks_at_bytes[3..8].copy_from_slice(&bytes[11..16]);
+        let unlocks_at = u64::from_be_bytes(unlocks_at_bytes);
+        let unlock_delay = u16::from_be_bytes([bytes[9], bytes[10]]);
+
+        assert_eq!(multichain, 6, "multichain sequence should increment");
+        assert_eq!(local, 9, "local sequence should be preserved");
+        assert_eq!(unlocks_at, 0, "unlocksAt should be preserved");
+        assert_eq!(unlock_delay, 600, "unlockDelay should be preserved");
+    }
+
+    #[test]
     fn test_eip8130_sender_auth_rejected_when_revoked_in_same_tx() {
         let sender = Address::from([0x11; 20]);
         let target = Address::from([0x22; 20]);
         let k1_verifier = K1_VERIFIER_ADDRESS;
         let new_verifier = Address::from([0x44; 20]);
-        let revoked_verifier = Address::with_last_byte(1);
+        let revoked_verifier = REVOKED_VERIFIER;
 
         let mut implicit_owner = [0u8; 32];
         implicit_owner[..20].copy_from_slice(sender.as_slice());
@@ -2711,7 +2848,7 @@ mod tests {
         let target = Address::from([0x22; 20]);
         let k1_verifier = K1_VERIFIER_ADDRESS;
         let new_verifier = Address::from([0x44; 20]);
-        let revoked_verifier = Address::with_last_byte(1);
+        let revoked_verifier = REVOKED_VERIFIER;
 
         let mut implicit_owner = [0u8; 32];
         implicit_owner[..20].copy_from_slice(sender.as_slice());
@@ -2821,7 +2958,7 @@ mod tests {
         let sender = Address::from([0x11; 20]);
         let target = Address::from([0x22; 20]);
         let new_verifier = Address::from([0x44; 20]);
-        let revoked_verifier = Address::with_last_byte(1);
+        let revoked_verifier = REVOKED_VERIFIER;
 
         let mut implicit_owner = [0u8; 32];
         implicit_owner[..20].copy_from_slice(sender.as_slice());
@@ -3119,20 +3256,29 @@ mod tests {
         U256::from_be_bytes(bytes)
     }
 
-    /// Packs an `AccountState` slot with only the lock-related fields.
+    /// Packs an `AccountState` storage word.
     ///
-    /// Layout: `... | unlockDelay(2) | unlocksAt(5) | localSequence(8) | multichainSequence(8)`
-    /// When `locked` is true, sets `unlocksAt = type(uint40).max`.
-    fn pack_lock_state(locked: bool) -> U256 {
+    /// Layout: `zeros(9) | unlockDelay(2) | unlocksAt(5) | localSequence(8) | multichainSequence(8)`.
+    fn pack_account_state(multichain: u64, local: u64, unlocks_at: u64, unlock_delay: u16) -> U256 {
         let mut bytes = [0u8; 32];
-        if locked {
-            bytes[11..16].copy_from_slice(&[0xff; 5]);
-        }
+        bytes[24..32].copy_from_slice(&multichain.to_be_bytes());
+        bytes[16..24].copy_from_slice(&local.to_be_bytes());
+        let unlocks_at_bytes = unlocks_at.to_be_bytes();
+        bytes[11..16].copy_from_slice(&unlocks_at_bytes[3..8]);
+        bytes[9..11].copy_from_slice(&unlock_delay.to_be_bytes());
         U256::from_be_bytes(bytes)
     }
 
+    /// Packs an `AccountState` slot with only the lock-related fields.
+    ///
+    /// When `locked` is true, sets `unlocksAt = type(uint40).max`.
+    fn pack_lock_state(locked: bool) -> U256 {
+        let unlocks_at = if locked { (1_u64 << 40) - 1 } else { 0 };
+        pack_account_state(0, 0, unlocks_at, 0)
+    }
+
     fn pack_sequences(multichain: u64, local: u64) -> U256 {
-        U256::from(multichain) | (U256::from(local) << 64_u8)
+        pack_account_state(multichain, local, 0, 0)
     }
 
     #[test]

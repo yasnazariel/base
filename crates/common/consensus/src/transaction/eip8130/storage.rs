@@ -1,33 +1,34 @@
 //! Storage slot derivation for EIP-8130 system contracts.
 //!
 //! Provides deterministic slot computation for owner configuration, nonce
-//! manager, lock state, and change sequence data.
+//! manager, and the packed `AccountState` word used by `AccountConfiguration`.
 
 use alloy_primitives::{Address, B256, U256, keccak256};
 
-/// Base storage slot for the `_ownerConfigs` mapping in `AccountConfiguration`.
+/// Base storage slot for the `_ownerConfig` mapping in `AccountConfiguration`.
 ///
-/// `_ownerConfigs[account][ownerId]` →
-///   `keccak256(ownerId . keccak256(account . OWNER_CONFIG_BASE_SLOT))`
+/// Solidity declaration:
+/// `mapping(bytes32 ownerId => mapping(address account => OwnerConfig)) _ownerConfig`
+///
+/// `_ownerConfig[ownerId][account]` →
+///   `keccak256(account . keccak256(ownerId . OWNER_CONFIG_BASE_SLOT))`
 ///
 /// Solidity packing (right-aligned): `zeros(11) | scope(1) | verifier(20)`.
 pub const OWNER_CONFIG_BASE_SLOT: U256 = U256::ZERO;
 
-/// Base storage slot for the `_accountLocks` mapping in `AccountConfiguration`.
+/// Base storage slot for the `_accountState` mapping in `AccountConfiguration`.
 ///
-/// `_accountLocks[account]` → `keccak256(account . LOCK_BASE_SLOT)`
+/// Solidity declaration:
+/// `mapping(address account => AccountState) _accountState`
 ///
-/// Solidity `AccountLock { bool locked; uint32 unlockDelay; uint32 unlockRequestedAt; }`.
-/// Packing (right-aligned): `zeros(23) | unlockRequestedAt(4) | unlockDelay(4) | locked(1)`.
-pub const LOCK_BASE_SLOT: U256 = U256::from_limbs([1, 0, 0, 0]);
+/// `_accountState[account]` → `keccak256(account . ACCOUNT_STATE_BASE_SLOT)`
+pub const ACCOUNT_STATE_BASE_SLOT: U256 = U256::from_limbs([1, 0, 0, 0]);
 
-/// Base storage slot for the `_changeSequences` mapping in `AccountConfiguration`.
-///
-/// `_changeSequences[account]` → `keccak256(account . SEQUENCE_BASE_SLOT)`
-///
-/// Solidity `ChangeSequences { uint64 multichain; uint64 local; }`.
-/// Packing (right-aligned): `zeros(16) | local(8) | multichain(8)`.
-pub const SEQUENCE_BASE_SLOT: U256 = U256::from_limbs([2, 0, 0, 0]);
+/// Alias for callers that conceptually watch the lock portion of `_accountState`.
+pub const LOCK_BASE_SLOT: U256 = ACCOUNT_STATE_BASE_SLOT;
+
+/// Alias for callers that conceptually watch the sequence portion of `_accountState`.
+pub const SEQUENCE_BASE_SLOT: U256 = ACCOUNT_STATE_BASE_SLOT;
 
 /// Base storage slot for the `nonce` mapping in `NonceManager` (precompile at 0xAa02).
 ///
@@ -61,11 +62,24 @@ pub const EXPIRING_RING_BASE_SLOT: U256 = U256::from_limbs([3, 0, 0, 0]);
 /// in the NonceManager address.
 pub const EXPIRING_RING_PTR_SLOT: U256 = U256::from_limbs([4, 0, 0, 0]);
 
-/// Computes the storage slot for `owner_config[account][ownerId]`.
+/// Packed `AccountState` word read from `_accountState[account]`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct AccountState {
+    /// Sequence used by multi-chain config changes (`chain_id == 0`).
+    pub multichain_sequence: u64,
+    /// Sequence used by local-chain config changes.
+    pub local_sequence: u64,
+    /// Timestamp after which the account becomes unlocked.
+    pub unlocks_at: u64,
+    /// Delay configured when entering the locked state.
+    pub unlock_delay: u16,
+}
+
+/// Computes the storage slot for `owner_config[ownerId][account]`.
 pub fn owner_config_slot(account: Address, owner_id: B256) -> B256 {
     let inner = {
         let mut buf = [0u8; 64];
-        buf[12..32].copy_from_slice(account.as_slice());
+        buf[..32].copy_from_slice(owner_id.as_slice());
         OWNER_CONFIG_BASE_SLOT.to_be_bytes::<32>().as_slice().iter().enumerate().for_each(
             |(i, &b)| {
                 buf[32 + i] = b;
@@ -75,7 +89,7 @@ pub fn owner_config_slot(account: Address, owner_id: B256) -> B256 {
     };
 
     let mut buf = [0u8; 64];
-    buf[..32].copy_from_slice(owner_id.as_slice());
+    buf[12..32].copy_from_slice(account.as_slice());
     buf[32..64].copy_from_slice(inner.as_slice());
     keccak256(buf)
 }
@@ -121,48 +135,77 @@ pub fn expiring_ring_slot(index: u32) -> B256 {
     keccak256(buf)
 }
 
-/// Computes the storage slot for `lock_state[account]`.
-pub fn lock_slot(account: Address) -> B256 {
+/// Computes the storage slot for `_accountState[account]`.
+pub fn account_state_slot(account: Address) -> B256 {
     let mut buf = [0u8; 64];
     buf[12..32].copy_from_slice(account.as_slice());
-    LOCK_BASE_SLOT.to_be_bytes::<32>().as_slice().iter().enumerate().for_each(|(i, &b)| {
-        buf[32 + i] = b;
-    });
+    ACCOUNT_STATE_BASE_SLOT.to_be_bytes::<32>().as_slice().iter().enumerate().for_each(
+        |(i, &b)| {
+            buf[32 + i] = b;
+        },
+    );
     keccak256(buf)
 }
 
-/// Computes the base storage slot for `_changeSequences[account]`.
-///
-/// The Solidity struct `ChangeSequences { uint64 multichain; uint64 local; }` packs
-/// both fields into this single slot (right-aligned):
-///   bits [0,  64)  = multichain (chain_id 0)
-///   bits [64, 128) = local      (chain_id == block.chainid)
+/// Computes the storage slot for the lock view of `_accountState[account]`.
+pub fn lock_slot(account: Address) -> B256 {
+    account_state_slot(account)
+}
+
+/// Computes the storage slot for the sequence view of `_accountState[account]`.
 pub fn sequence_base_slot(account: Address) -> B256 {
-    let mut buf = [0u8; 64];
-    buf[12..32].copy_from_slice(account.as_slice());
-    SEQUENCE_BASE_SLOT.to_be_bytes::<32>().as_slice().iter().enumerate().for_each(|(i, &b)| {
-        buf[32 + i] = b;
-    });
-    keccak256(buf)
+    account_state_slot(account)
+}
+
+/// Parses a packed `_accountState[account]` word.
+///
+/// Big-endian byte layout:
+/// - `bytes[24..32]` = `multichainSequence`
+/// - `bytes[16..24]` = `localSequence`
+/// - `bytes[11..16]` = `unlocksAt` (uint40)
+/// - `bytes[9..11]`  = `unlockDelay` (uint16)
+pub fn parse_account_state(slot_value: U256) -> AccountState {
+    let bytes = slot_value.to_be_bytes::<32>();
+    let multichain_sequence = u64::from_be_bytes(bytes[24..32].try_into().expect("8-byte slice"));
+    let local_sequence = u64::from_be_bytes(bytes[16..24].try_into().expect("8-byte slice"));
+    let mut unlocks_at_bytes = [0u8; 8];
+    unlocks_at_bytes[3..8].copy_from_slice(&bytes[11..16]);
+    let unlocks_at = u64::from_be_bytes(unlocks_at_bytes);
+    let unlock_delay = u16::from_be_bytes([bytes[9], bytes[10]]);
+    AccountState { multichain_sequence, local_sequence, unlocks_at, unlock_delay }
+}
+
+/// Encodes an [`AccountState`] into the packed Solidity storage layout.
+pub fn encode_account_state(state: AccountState) -> U256 {
+    let mut bytes = [0u8; 32];
+    bytes[24..32].copy_from_slice(&state.multichain_sequence.to_be_bytes());
+    bytes[16..24].copy_from_slice(&state.local_sequence.to_be_bytes());
+    let unlocks_at_bytes = state.unlocks_at.to_be_bytes();
+    bytes[11..16].copy_from_slice(&unlocks_at_bytes[3..8]);
+    bytes[9..11].copy_from_slice(&state.unlock_delay.to_be_bytes());
+    U256::from_be_bytes(bytes)
 }
 
 /// Reads the `multichain` or `local` sequence from a packed slot value.
 ///
-/// `is_multichain` = true  → reads the low 8 bytes  (chain_id 0)
-/// `is_multichain` = false → reads bytes [16..24]    (local chain)
+/// `is_multichain` = true  → `multichainSequence`
+/// `is_multichain` = false → `localSequence`
 pub fn read_sequence(slot_value: U256, is_multichain: bool) -> u64 {
-    if is_multichain { slot_value.as_limbs()[0] } else { (slot_value >> 64_u8).as_limbs()[0] }
+    let state = parse_account_state(slot_value);
+    if is_multichain { state.multichain_sequence } else { state.local_sequence }
 }
 
-/// Writes a sequence value into a packed slot, preserving the other field.
+/// Writes a sequence value into the packed `_accountState[account]` word.
+///
+/// Preserves the other sequence field and all lock-related fields.
 pub fn write_sequence(current: U256, is_multichain: bool, new_value: u64) -> U256 {
-    let mask_low = U256::from(u64::MAX);
-    let mask_high = mask_low << 64_u8;
+    let mut state = parse_account_state(current);
     if is_multichain {
-        (current & mask_high) | U256::from(new_value)
+        state.multichain_sequence = new_value;
     } else {
-        (current & mask_low) | (U256::from(new_value) << 64_u8)
+        state.local_sequence = new_value;
     }
+    encode_account_state(state)
 }
 
 /// Parses an `owner_config` storage slot value into `(verifier, scope)`.
@@ -194,6 +237,8 @@ pub fn encode_owner_config(verifier: Address, scope: u8) -> B256 {
 
 #[cfg(test)]
 mod tests {
+    use alloy_primitives::{address, b256};
+
     use super::*;
 
     #[test]
@@ -203,6 +248,39 @@ mod tests {
         let slot1 = owner_config_slot(account, owner_id);
         let slot2 = owner_config_slot(account, owner_id);
         assert_eq!(slot1, slot2);
+    }
+
+    #[test]
+    fn owner_config_slot_uses_owner_then_account() {
+        let account = Address::repeat_byte(0x01);
+        let owner_id = B256::repeat_byte(0x02);
+
+        let outer = {
+            let mut buf = [0u8; 64];
+            buf[..32].copy_from_slice(owner_id.as_slice());
+            buf[32..64].copy_from_slice(&OWNER_CONFIG_BASE_SLOT.to_be_bytes::<32>());
+            keccak256(buf)
+        };
+
+        let expected = {
+            let mut buf = [0u8; 64];
+            buf[12..32].copy_from_slice(account.as_slice());
+            buf[32..64].copy_from_slice(outer.as_slice());
+            keccak256(buf)
+        };
+
+        assert_eq!(owner_config_slot(account, owner_id), expected);
+    }
+
+    #[test]
+    fn owner_config_slot_matches_solidity_fixture() {
+        // Generated with Foundry `cast`:
+        // inner = keccak256(abi.encode(owner_id, uint256(0)))
+        // slot  = keccak256(abi.encode(account, inner))
+        let account = address!("0x1234567890abcdef1234567890abcdef12345678");
+        let owner_id = b256!("0x0f0e0d0c0b0a09080706050403020100fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0");
+        let expected = b256!("0x0164bdd9c38961717a4b6760c1c55c6f0ba5648be63c9b386ce9c654795c0017");
+        assert_eq!(owner_config_slot(account, owner_id), expected);
     }
 
     #[test]
@@ -253,6 +331,24 @@ mod tests {
     }
 
     #[test]
+    fn account_state_slot_matches_lock_and_sequence_views() {
+        let account = Address::repeat_byte(0x01);
+        assert_eq!(account_state_slot(account), lock_slot(account));
+        assert_eq!(account_state_slot(account), sequence_base_slot(account));
+    }
+
+    #[test]
+    fn account_state_slot_matches_solidity_fixture() {
+        // Generated with Foundry `cast`:
+        // slot = keccak256(abi.encode(account, uint256(1)))
+        let account = address!("0x1234567890abcdef1234567890abcdef12345678");
+        let expected = b256!("0x99e61528d26b8142c5975683c5533b7afbe872a9ef426c9e9cfe43f5c9ce53a4");
+        assert_eq!(account_state_slot(account), expected);
+        assert_eq!(lock_slot(account), expected);
+        assert_eq!(sequence_base_slot(account), expected);
+    }
+
+    #[test]
     fn sequence_base_slot_deterministic() {
         let account = Address::repeat_byte(0x01);
         let slot1 = sequence_base_slot(account);
@@ -282,6 +378,34 @@ mod tests {
         let packed = write_sequence(packed, false, 20);
         assert_eq!(read_sequence(packed, true), 10);
         assert_eq!(read_sequence(packed, false), 20);
+    }
+
+    #[test]
+    fn parse_encode_account_state_roundtrip() {
+        let state = AccountState {
+            multichain_sequence: 7,
+            local_sequence: 9,
+            unlocks_at: 0x0102_0304_05,
+            unlock_delay: 0x0607,
+        };
+        let encoded = encode_account_state(state);
+        assert_eq!(parse_account_state(encoded), state);
+    }
+
+    #[test]
+    fn write_sequence_preserves_lock_fields() {
+        let packed = encode_account_state(AccountState {
+            multichain_sequence: 1,
+            local_sequence: 2,
+            unlocks_at: 0x0102_0304_05,
+            unlock_delay: 0x0607,
+        });
+        let updated = write_sequence(packed, true, 99);
+        let state = parse_account_state(updated);
+        assert_eq!(state.multichain_sequence, 99);
+        assert_eq!(state.local_sequence, 2);
+        assert_eq!(state.unlocks_at, 0x0102_0304_05);
+        assert_eq!(state.unlock_delay, 0x0607);
     }
 
     #[test]

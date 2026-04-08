@@ -4,6 +4,9 @@
 //! account change entries), constants, signature hash computation, intrinsic gas
 //! calculation, and CREATE2 address derivation.
 
+mod verifier;
+pub use verifier::{NativeVerifier, VerifierKind, auth_verifier_kind, verifier_kind};
+
 mod constants;
 pub use constants::{
     AA_BASE_COST, AA_PAYER_TYPE, AA_TX_TYPE_ID, BYTECODE_BASE_GAS, BYTECODE_PER_BYTE_GAS,
@@ -58,10 +61,11 @@ pub use predeploys::{
 
 mod storage;
 pub use storage::{
-    EXPIRING_RING_BASE_SLOT, EXPIRING_RING_PTR_SLOT, EXPIRING_SEEN_BASE_SLOT, LOCK_BASE_SLOT,
-    NONCE_BASE_SLOT, OWNER_CONFIG_BASE_SLOT, SEQUENCE_BASE_SLOT, encode_owner_config,
+    ACCOUNT_STATE_BASE_SLOT, AccountState, EXPIRING_RING_BASE_SLOT, EXPIRING_RING_PTR_SLOT,
+    EXPIRING_SEEN_BASE_SLOT, LOCK_BASE_SLOT, NONCE_BASE_SLOT, OWNER_CONFIG_BASE_SLOT,
+    SEQUENCE_BASE_SLOT, account_state_slot, encode_account_state, encode_owner_config,
     expiring_ring_slot, expiring_seen_slot, lock_slot, nonce_slot, owner_config_slot,
-    parse_owner_config, read_sequence, sequence_base_slot, write_sequence,
+    parse_account_state, parse_owner_config, read_sequence, sequence_base_slot, write_sequence,
 };
 
 #[cfg(feature = "evm")]

@@ -10,8 +10,8 @@ use revm::database::Database;
 use super::{
     predeploys::{ACCOUNT_CONFIG_ADDRESS, NONCE_MANAGER_ADDRESS},
     storage::{
-        encode_owner_config, lock_slot, nonce_slot, owner_config_slot, parse_owner_config,
-        read_sequence, sequence_base_slot,
+        account_state_slot, encode_owner_config, nonce_slot, owner_config_slot,
+        parse_account_state, parse_owner_config, read_sequence,
     },
 };
 
@@ -109,28 +109,22 @@ pub fn read_lock_state<DB: Database>(
     db: &mut DB,
     account: Address,
 ) -> Result<LockState, DB::Error> {
-    let slot = lock_slot(account);
+    let slot = account_state_slot(account);
     let value = db.storage(ACCOUNT_CONFIG_ADDRESS, slot.into())?;
-    let bytes = value.to_be_bytes::<32>();
-
-    let mut ua = [0u8; 8];
-    ua[3..8].copy_from_slice(&bytes[11..16]);
-    let unlocks_at = u64::from_be_bytes(ua);
-    let unlock_delay = u16::from_be_bytes([bytes[9], bytes[10]]);
-
-    Ok(LockState { unlocks_at, unlock_delay })
+    let state = parse_account_state(value);
+    Ok(LockState { unlocks_at: state.unlocks_at, unlock_delay: state.unlock_delay })
 }
 
 /// Reads the change sequence for `(account, chain_id)` from AccountConfig.
 ///
-/// The `ChangeSequences { uint64 multichain; uint64 local }` struct is packed
-/// into a single slot. `chain_id == 0` reads `multichain`, otherwise `local`.
+/// `AccountState` packs `multichainSequence` and `localSequence` into the same
+/// storage slot. `chain_id == 0` reads `multichain`, otherwise `local`.
 pub fn read_change_sequence<DB: Database>(
     db: &mut DB,
     account: Address,
     chain_id: u64,
 ) -> Result<u64, DB::Error> {
-    let slot = sequence_base_slot(account);
+    let slot = account_state_slot(account);
     let packed = db.storage(ACCOUNT_CONFIG_ADDRESS, slot.into())?;
     Ok(read_sequence(packed, chain_id == 0))
 }

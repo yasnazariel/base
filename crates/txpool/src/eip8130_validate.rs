@@ -24,12 +24,12 @@ use reth_storage_api::StateProviderFactory;
 use base_alloy_consensus::{
     ACCOUNT_CONFIG_ADDRESS, AccountChangeEntry, DELEGATE_VERIFIER_ADDRESS, K1_VERIFIER_ADDRESS,
     MAX_CONFIG_OPS_PER_TX, NONCE_FREE_MAX_EXPIRY_WINDOW, NONCE_KEY_MAX, NONCE_MANAGER_ADDRESS,
-    NativeVerifyResult, OwnerScope, P256_RAW_VERIFIER_ADDRESS, P256_WEBAUTHN_VERIFIER_ADDRESS,
-    ParsedSenderAuth, REVOKED_VERIFIER, TxEip8130, ValidationError, config_change_digest,
-    encode_verify_call, expiring_seen_slot, implicit_eoa_owner_id, intrinsic_gas,
-    is_native_verifier, lock_slot, nonce_slot, owner_config_slot, parse_owner_config,
-    parse_sender_auth, payer_signature_hash, read_sequence, sender_signature_hash,
-    sequence_base_slot, try_native_verify, validate_expiry, validate_structure,
+    NativeVerifier, NativeVerifyResult, OwnerScope, ParsedSenderAuth, REVOKED_VERIFIER, TxEip8130,
+    ValidationError, config_change_digest, encode_verify_call, expiring_seen_slot,
+    implicit_eoa_owner_id, intrinsic_gas, is_native_verifier, lock_slot, nonce_slot,
+    owner_config_slot, parse_account_state, parse_owner_config, parse_sender_auth,
+    payer_signature_hash, read_sequence, sender_signature_hash, sequence_base_slot,
+    try_native_verify, validate_expiry, validate_structure,
 };
 
 use crate::{
@@ -53,10 +53,7 @@ impl VerifierAllowlist {
     /// The four native verifier addresses are added automatically.
     pub fn new(custom_addresses: impl IntoIterator<Item = Address>) -> Self {
         let mut allowed: HashSet<Address> = custom_addresses.into_iter().collect();
-        allowed.insert(K1_VERIFIER_ADDRESS);
-        allowed.insert(P256_RAW_VERIFIER_ADDRESS);
-        allowed.insert(P256_WEBAUTHN_VERIFIER_ADDRESS);
-        allowed.insert(DELEGATE_VERIFIER_ADDRESS);
+        allowed.extend(NativeVerifier::ALL.into_iter().map(NativeVerifier::address));
         Self { allowed }
     }
 
@@ -439,6 +436,20 @@ fn verify_auth_with_scope(
     remaining_custom_verifier_gas: &mut u64,
     pending_owners: Option<&HashMap<B256, PendingOwnerState>>,
 ) -> Result<B256, Eip8130ValidationError> {
+    if verifier == DELEGATE_VERIFIER_ADDRESS {
+        return verify_delegate_auth_with_scope(
+            state,
+            data,
+            sig_hash,
+            caller,
+            account,
+            required_scope,
+            role,
+            remaining_custom_verifier_gas,
+            pending_owners,
+        );
+    }
+
     match try_native_verify(verifier, data, sig_hash) {
         NativeVerifyResult::Verified(owner_id) => {
             if let Some(pending) = pending_owners {
@@ -470,6 +481,142 @@ fn verify_auth_with_scope(
             pending_owners,
         ),
     }
+}
+
+/// Verifies canonical delegate auth:
+/// `delegate_account(20) || nested_auth(verifier(20) || data...)`.
+///
+/// For nested native verifiers, both delegate resolution and nested signature
+/// verification stay native (no EVM call). For nested custom verifiers, only
+/// the nested verifier executes via STATICCALL.
+fn verify_delegate_auth_with_scope(
+    state: &dyn reth_storage_api::StateProvider,
+    delegate_data: &Bytes,
+    sig_hash: B256,
+    caller: Address,
+    account: Address,
+    required_scope: u8,
+    role: OwnerRole,
+    remaining_custom_verifier_gas: &mut u64,
+    pending_owners: Option<&HashMap<B256, PendingOwnerState>>,
+) -> Result<B256, Eip8130ValidationError> {
+    if delegate_data.len() < 40 {
+        return Err(role.auth_invalid(format!(
+            "delegate auth too short: expected >= 40 bytes, got {}",
+            delegate_data.len()
+        )));
+    }
+
+    let delegate_account = Address::from_slice(&delegate_data[..20]);
+    let nested_verifier = Address::from_slice(&delegate_data[20..40]);
+    let nested_data = Bytes::copy_from_slice(&delegate_data[40..]);
+
+    if nested_verifier == DELEGATE_VERIFIER_ADDRESS {
+        return Err(role.auth_invalid("nested delegation is not allowed".into()));
+    }
+
+    // Outer delegate owner check on the source account.
+    let delegate_owner_id = implicit_eoa_owner_id(delegate_account);
+    if let Some(pending) = pending_owners {
+        check_owner_authorized_with_pending(
+            state,
+            account,
+            delegate_owner_id,
+            DELEGATE_VERIFIER_ADDRESS,
+            required_scope,
+            pending,
+            role,
+        )?;
+    } else {
+        check_owner_authorized(
+            state,
+            account,
+            delegate_owner_id,
+            DELEGATE_VERIFIER_ADDRESS,
+            required_scope,
+            role,
+        )?;
+    }
+
+    // Nested verifier check on the delegate account.
+    if nested_verifier == Address::ZERO {
+        // Implicit EOA nested path: recover signer and enforce it is the delegate.
+        let recovered_owner_id =
+            match try_native_verify(K1_VERIFIER_ADDRESS, &nested_data, sig_hash) {
+                NativeVerifyResult::Verified(owner_id) => owner_id,
+                NativeVerifyResult::Invalid(e) => return Err(role.auth_invalid(e.to_string())),
+                NativeVerifyResult::Unsupported => {
+                    return Err(role.auth_invalid("K1 nested verifier unsupported".into()));
+                }
+            };
+        if recovered_owner_id != delegate_owner_id {
+            return Err(role
+                .not_authorized("delegate nested signature recovered non-delegate signer".into()));
+        }
+        check_owner_authorized(
+            state,
+            delegate_account,
+            recovered_owner_id,
+            K1_VERIFIER_ADDRESS,
+            required_scope,
+            role,
+        )?;
+        return Ok(delegate_owner_id);
+    }
+
+    if is_native_verifier(nested_verifier) {
+        let nested_owner_id = match try_native_verify(nested_verifier, &nested_data, sig_hash) {
+            NativeVerifyResult::Verified(owner_id) => owner_id,
+            NativeVerifyResult::Invalid(e) => return Err(role.auth_invalid(e.to_string())),
+            NativeVerifyResult::Unsupported => {
+                return Err(
+                    role.auth_invalid("nested native verifier unexpectedly unsupported".into())
+                );
+            }
+        };
+        check_owner_authorized(
+            state,
+            delegate_account,
+            nested_owner_id,
+            nested_verifier,
+            required_scope,
+            role,
+        )?;
+        return Ok(delegate_owner_id);
+    }
+
+    if matches!(role, OwnerRole::Authorizer) {
+        // Keep authorizer delegate-custom parity with execution path.
+        verify_custom_via_evm(
+            state,
+            DELEGATE_VERIFIER_ADDRESS,
+            sig_hash,
+            delegate_data,
+            caller,
+            account,
+            required_scope,
+            role,
+            remaining_custom_verifier_gas,
+            pending_owners,
+        )?;
+    } else {
+        // Nested custom verifier: direct STATICCALL on nested verifier while
+        // keeping delegate resolution native.
+        verify_custom_via_evm(
+            state,
+            nested_verifier,
+            sig_hash,
+            &nested_data,
+            caller,
+            delegate_account,
+            required_scope,
+            role,
+            remaining_custom_verifier_gas,
+            None,
+        )?;
+    }
+
+    Ok(delegate_owner_id)
 }
 
 /// Validates `sender_auth` authorization against on-chain owner_config.
@@ -884,10 +1031,7 @@ where
         }
         let lock_slot_key = lock_slot(sender);
         let lock_value = read_storage(&*state, ACCOUNT_CONFIG_ADDRESS, lock_slot_key)?;
-        let lock_bytes = lock_value.to_be_bytes::<32>();
-        let mut ua = [0u8; 8];
-        ua[3..8].copy_from_slice(&lock_bytes[11..16]);
-        let unlocks_at = u64::from_be_bytes(ua);
+        let unlocks_at = parse_account_state(lock_value).unlocks_at;
         if block_timestamp < unlocks_at {
             return Err(Eip8130ValidationError::AccountLocked);
         }
@@ -1036,11 +1180,7 @@ pub fn compute_account_tier(
         Ok(v) => v,
         Err(_) => return default_result,
     };
-
-    let lock_bytes = lock_value.to_be_bytes::<32>();
-    let mut ua = [0u8; 8];
-    ua[3..8].copy_from_slice(&lock_bytes[11..16]);
-    let unlocks_at = u64::from_be_bytes(ua);
+    let unlocks_at = parse_account_state(lock_value).unlocks_at;
     // `unlocksAt != 0` is a heuristic: any non-zero value means the account
     // was locked (or is in the process of unlocking). This over-classifies
     // slightly for accounts that have fully unlocked but haven't cleared
@@ -1075,7 +1215,8 @@ pub fn compute_account_tier(
 #[cfg(test)]
 mod tests {
     use base_alloy_consensus::{
-        AccountChangeEntry, ConfigChangeEntry, TxEip8130, VerifierGasCosts,
+        AccountChangeEntry, ConfigChangeEntry, DELEGATE_VERIFIER_ADDRESS,
+        P256_RAW_VERIFIER_ADDRESS, P256_WEBAUTHN_VERIFIER_ADDRESS, TxEip8130, VerifierGasCosts,
         build_eip8130_parts_with_costs,
     };
 

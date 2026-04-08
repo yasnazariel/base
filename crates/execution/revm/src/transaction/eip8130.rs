@@ -69,12 +69,12 @@ pub struct Eip8130SequenceUpdate {
 impl Eip8130SequenceUpdate {
     /// Applies this update to the current packed slot value.
     pub fn apply(&self, current: U256) -> U256 {
-        let mask_low = U256::from(u64::MAX);
-        let mask_high = mask_low << 64_u8;
+        let shift = if self.is_multichain { 0 } else { 64 };
+        let field_mask: U256 = U256::from(u64::MAX) << shift;
         if self.is_multichain {
-            (current & mask_high) | U256::from(self.new_value)
+            (current & !field_mask) | U256::from(self.new_value)
         } else {
-            (current & mask_low) | (U256::from(self.new_value) << 64_u8)
+            (current & !field_mask) | (U256::from(self.new_value) << shift)
         }
     }
 }
@@ -516,5 +516,25 @@ mod tests {
         assert_eq!(log.data.data.len(), 64);
         assert_eq!(&log.data.data[..32], user_salt.as_slice());
         assert_eq!(&log.data.data[32..64], code_hash.as_slice());
+    }
+
+    #[test]
+    fn sequence_update_preserves_lock_bits() {
+        let mut bytes = [0u8; 32];
+        bytes[24..32].copy_from_slice(&1u64.to_be_bytes());
+        bytes[16..24].copy_from_slice(&2u64.to_be_bytes());
+        bytes[11..16].copy_from_slice(&[0x01, 0x02, 0x03, 0x04, 0x05]);
+        bytes[9..11].copy_from_slice(&0x0607u16.to_be_bytes());
+        let current = U256::from_be_bytes(bytes);
+
+        let updated =
+            Eip8130SequenceUpdate { slot: U256::ZERO, is_multichain: true, new_value: 99 }
+                .apply(current);
+        let updated_bytes = updated.to_be_bytes::<32>();
+
+        assert_eq!(u64::from_be_bytes(updated_bytes[24..32].try_into().unwrap()), 99);
+        assert_eq!(u64::from_be_bytes(updated_bytes[16..24].try_into().unwrap()), 2);
+        assert_eq!(&updated_bytes[11..16], &[0x01, 0x02, 0x03, 0x04, 0x05]);
+        assert_eq!(&updated_bytes[9..11], &0x0607u16.to_be_bytes());
     }
 }

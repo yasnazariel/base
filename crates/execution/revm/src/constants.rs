@@ -100,7 +100,7 @@ pub const DELEGATE_VERIFIER_ADDRESS: Address =
     address!("0x30A76831b27732087561372f6a1bef6Fc391d805");
 
 /// Default cap for aggregate gas spent across custom verifier STATICCALLs.
-pub const DEFAULT_CUSTOM_VERIFIER_GAS_CAP: u64 = 100_000;
+pub const DEFAULT_CUSTOM_VERIFIER_GAS_CAP: u64 = 200_000;
 
 /// Runtime-configurable cap for aggregate custom verifier STATICCALL gas.
 static CUSTOM_VERIFIER_GAS_CAP: AtomicU64 = AtomicU64::new(DEFAULT_CUSTOM_VERIFIER_GAS_CAP);

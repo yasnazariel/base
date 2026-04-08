@@ -14,16 +14,19 @@ use base_revm::{
 use revm::context::TxEnv;
 
 use crate::{
-    ACCOUNT_CONFIG_ADDRESS, AccountChangeEntry, K1_VERIFIER_ADDRESS, NONCE_KEY_MAX,
-    OP_AUTHORIZE_OWNER, OP_REVOKE_OWNER, OpTxEnvelope, OwnerScope, TxDeposit, TxEip8130,
-    VerifierGasCosts, account_change_units, auto_delegation_code, config_change_digest,
-    config_change_sequence, config_change_writes, delegate_inner_verifier, derive_account_address,
-    encode_verify_call, intrinsic_gas_with_costs, is_native_verifier, owner_registration_writes,
-    payer_auth_cost, payer_signature_hash, payer_verification_gas, sender_signature_hash,
-    total_verification_gas,
+    ACCOUNT_CONFIG_ADDRESS, AccountChangeEntry, DELEGATE_VERIFIER_ADDRESS, K1_VERIFIER_ADDRESS,
+    NONCE_KEY_MAX, OP_AUTHORIZE_OWNER, OP_REVOKE_OWNER, OpTxEnvelope, OwnerScope, TxDeposit,
+    TxEip8130, VerifierGasCosts, account_change_units, auth_verifier_kind, auto_delegation_code,
+    config_change_digest, config_change_sequence, config_change_writes, delegate_inner_verifier,
+    derive_account_address, encode_verify_call, intrinsic_gas_with_costs,
+    owner_registration_writes, payer_auth_cost, payer_signature_hash, payer_verification_gas,
+    sender_signature_hash, total_verification_gas,
 };
 #[cfg(feature = "native-verifier")]
-use crate::{NativeVerifyResult, ParsedSenderAuth, parse_sender_auth, try_native_verify};
+use crate::{
+    NativeVerifier, NativeVerifyResult, ParsedSenderAuth, VerifierKind, parse_sender_auth,
+    try_native_verify,
+};
 
 #[cfg(feature = "native-verifier")]
 fn derive_sender_owner_id(tx: &TxEip8130) -> B256 {
@@ -42,9 +45,25 @@ fn derive_sender_owner_id(tx: &TxEip8130) -> B256 {
             }
         }
         ParsedSenderAuth::Configured { verifier, data } => {
-            match try_native_verify(verifier, &data, sig_hash) {
-                NativeVerifyResult::Verified(owner_id) => owner_id,
-                NativeVerifyResult::Invalid(_) | NativeVerifyResult::Unsupported => B256::ZERO,
+            match NativeVerifier::from_address(verifier) {
+                Some(native) => {
+                    let mut delegate_owner = [0u8; 32];
+                    if native == NativeVerifier::Delegate && data.len() >= 20 {
+                        delegate_owner[..20].copy_from_slice(&data[..20]);
+                    }
+                    match try_native_verify(native.address(), &data, sig_hash) {
+                        NativeVerifyResult::Verified(owner_id) => owner_id,
+                        NativeVerifyResult::Invalid(_) => B256::ZERO,
+                        NativeVerifyResult::Unsupported => {
+                            if native == NativeVerifier::Delegate && data.len() >= 20 {
+                                B256::from(delegate_owner)
+                            } else {
+                                B256::ZERO
+                            }
+                        }
+                    }
+                }
+                None => B256::ZERO,
             }
         }
     }
@@ -62,17 +81,35 @@ fn derive_sender_owner_id(_tx: &TxEip8130) -> B256 {
 /// remaining bytes are passed to the native verifier.
 #[cfg(feature = "native-verifier")]
 fn derive_payer_owner_id(tx: &TxEip8130) -> B256 {
-    if tx.is_self_pay() || tx.payer_auth.len() < 20 {
+    if tx.is_self_pay() {
         return B256::ZERO;
     }
 
-    let verifier = Address::from_slice(&tx.payer_auth[..20]);
+    let Some(verifier) = auth_verifier_kind(&tx.payer_auth) else {
+        return B256::ZERO;
+    };
     let data = Bytes::copy_from_slice(&tx.payer_auth[20..]);
     let sig_hash = payer_signature_hash(tx);
 
-    match try_native_verify(verifier, &data, sig_hash) {
-        NativeVerifyResult::Verified(owner_id) => owner_id,
-        NativeVerifyResult::Invalid(_) | NativeVerifyResult::Unsupported => B256::ZERO,
+    match verifier {
+        VerifierKind::Native(native) => {
+            let mut delegate_owner = [0u8; 32];
+            if native == NativeVerifier::Delegate && data.len() >= 20 {
+                delegate_owner[..20].copy_from_slice(&data[..20]);
+            }
+            match try_native_verify(native.address(), &data, sig_hash) {
+                NativeVerifyResult::Verified(owner_id) => owner_id,
+                NativeVerifyResult::Invalid(_) => B256::ZERO,
+                NativeVerifyResult::Unsupported => {
+                    if native == NativeVerifier::Delegate && data.len() >= 20 {
+                        B256::from(delegate_owner)
+                    } else {
+                        B256::ZERO
+                    }
+                }
+            }
+        }
+        VerifierKind::Custom(_) => B256::ZERO,
     }
 }
 
@@ -81,28 +118,61 @@ fn derive_payer_owner_id(_tx: &TxEip8130) -> B256 {
     B256::ZERO
 }
 
-/// Builds a [`Eip8130VerifyCall`] for a custom verifier auth blob.
+/// Builds a [`Eip8130VerifyCall`] for verifier auth that must run in-EVM.
 ///
-/// Returns `None` for native verifiers or blobs shorter than 20 bytes.
-/// For custom verifiers: the first 20 bytes are the verifier address, the
-/// remaining bytes are verifier-specific data. ABI-encodes
-/// `IVerifier.verify(hash, data)`.
+/// Supported cases:
+/// - **Custom verifier** auth: `CUSTOM(20) || data...`
+/// - **Delegate auth with nested custom verifier**:
+///   `DELEGATE(20) || delegate_account(20) || inner_auth(verifier(20) || data...)`
+///
+/// Returns `None` for native-only paths that do not require runtime STATICCALL.
 fn build_verify_call(
     auth: &[u8],
     sig_hash: B256,
     account: Address,
     required_scope: u8,
+    direct_nested_custom_delegate: bool,
 ) -> Option<Eip8130VerifyCall> {
-    if auth.len() < 20 {
-        return None;
+    let verifier_kind = auth_verifier_kind(auth)?;
+    let verifier = verifier_kind.address();
+
+    if verifier_kind.is_custom() {
+        let data = Bytes::copy_from_slice(&auth[20..]);
+        let calldata = encode_verify_call(sig_hash, &data);
+        return Some(Eip8130VerifyCall { verifier, calldata, account, required_scope });
     }
-    let verifier = Address::from_slice(&auth[..20]);
-    if is_native_verifier(verifier) {
-        return None;
+
+    // Delegate envelope:
+    // DELEGATE(20) || delegate_account(20) || nested_auth(verifier(20) || ...)
+    //
+    // Nested native verifiers stay fully native. Nested custom verifiers can
+    // either route directly to the nested verifier (native delegate wrapper) or
+    // through the Solidity delegate contract, depending on caller policy.
+    if verifier == DELEGATE_VERIFIER_ADDRESS && auth.len() >= 60 {
+        let inner_verifier = Address::from_slice(&auth[40..60]);
+        if inner_verifier != Address::ZERO
+            && auth_verifier_kind(&auth[40..]).is_some_and(|inner| inner.is_custom())
+        {
+            let (call_verifier, call_account, data) = if direct_nested_custom_delegate {
+                (
+                    inner_verifier,
+                    Address::from_slice(&auth[20..40]),
+                    Bytes::copy_from_slice(&auth[60..]),
+                )
+            } else {
+                (verifier, account, Bytes::copy_from_slice(&auth[20..]))
+            };
+            let calldata = encode_verify_call(sig_hash, &data);
+            return Some(Eip8130VerifyCall {
+                verifier: call_verifier,
+                calldata,
+                account: call_account,
+                required_scope,
+            });
+        }
     }
-    let data = Bytes::copy_from_slice(&auth[20..]);
-    let calldata = encode_verify_call(sig_hash, &data);
-    Some(Eip8130VerifyCall { verifier, calldata, account, required_scope })
+
+    None
 }
 
 /// Builds per-config-change authorizer validation data.
@@ -130,7 +200,8 @@ fn build_authorizer_validations(
         }
 
         let digest = config_change_digest(sender, cc);
-        let verifier = Address::from_slice(&cc.authorizer_auth[..20]);
+        let verifier = auth_verifier_kind(&cc.authorizer_auth).expect("len checked above");
+        let verifier_address = verifier.address();
 
         let ops: Vec<Eip8130ConfigOp> = cc
             .owner_changes
@@ -143,23 +214,23 @@ fn build_authorizer_validations(
             })
             .collect();
 
-        if !is_native_verifier(verifier) {
+        if verifier.is_custom() {
             let verify_call =
-                build_verify_call(&cc.authorizer_auth, digest, sender, OwnerScope::CONFIG);
+                build_verify_call(&cc.authorizer_auth, digest, sender, OwnerScope::CONFIG, false);
             validations.push(Eip8130AuthorizerValidation {
-                verifier,
+                verifier: verifier_address,
                 owner_id: B256::ZERO,
                 verify_call,
                 owner_changes: ops,
             });
         } else {
             let data = Bytes::copy_from_slice(&cc.authorizer_auth[20..]);
-            let owner_id = match try_native_verify(verifier, &data, digest) {
+            let owner_id = match try_native_verify(verifier_address, &data, digest) {
                 NativeVerifyResult::Verified(id) => id,
                 NativeVerifyResult::Invalid(_) | NativeVerifyResult::Unsupported => B256::ZERO,
             };
             validations.push(Eip8130AuthorizerValidation {
-                verifier,
+                verifier: verifier_address,
                 owner_id,
                 verify_call: None,
                 owner_changes: ops,
@@ -186,7 +257,8 @@ fn build_authorizer_validations(
         }
 
         let digest = config_change_digest(sender, cc);
-        let verifier = Address::from_slice(&cc.authorizer_auth[..20]);
+        let verifier = auth_verifier_kind(&cc.authorizer_auth).expect("len checked above");
+        let verifier_address = verifier.address();
 
         let ops: Vec<Eip8130ConfigOp> = cc
             .owner_changes
@@ -199,14 +271,14 @@ fn build_authorizer_validations(
             })
             .collect();
 
-        let verify_call = if !is_native_verifier(verifier) {
-            build_verify_call(&cc.authorizer_auth, digest, sender, OwnerScope::CONFIG)
+        let verify_call = if verifier.is_custom() {
+            build_verify_call(&cc.authorizer_auth, digest, sender, OwnerScope::CONFIG, false)
         } else {
             None
         };
 
         validations.push(Eip8130AuthorizerValidation {
-            verifier,
+            verifier: verifier_address,
             owner_id: B256::ZERO,
             verify_call,
             owner_changes: ops,
@@ -343,14 +415,14 @@ pub fn build_eip8130_parts_with_costs(
 
     let sender_verify_call = if !tx.is_eoa() {
         let sig_hash = sender_signature_hash(tx);
-        build_verify_call(&tx.sender_auth, sig_hash, sender, OwnerScope::SENDER)
+        build_verify_call(&tx.sender_auth, sig_hash, sender, OwnerScope::SENDER, true)
     } else {
         None
     };
 
     let payer_verify_call = if !tx.is_self_pay() && !tx.payer_auth.is_empty() {
         let sig_hash = payer_signature_hash(tx);
-        build_verify_call(&tx.payer_auth, sig_hash, payer, OwnerScope::PAYER)
+        build_verify_call(&tx.payer_auth, sig_hash, payer, OwnerScope::PAYER, true)
     } else {
         None
     };

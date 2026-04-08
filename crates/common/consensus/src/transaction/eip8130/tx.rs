@@ -7,7 +7,10 @@ use alloy_eips::eip2718::{Decodable2718, Eip2718Error, Eip2718Result, Encodable2
 use alloy_primitives::{Address, B256, Bytes, ChainId, TxKind, U256, keccak256};
 use alloy_rlp::{BufMut, Decodable, Encodable, Header, length_of_length};
 
-use super::{AccountChangeEntry, Call, constants::AA_TX_TYPE_ID, is_native_verifier};
+use super::{
+    AccountChangeEntry, Call, DELEGATE_VERIFIER_ADDRESS, auth_verifier_kind,
+    constants::AA_TX_TYPE_ID,
+};
 
 /// An EIP-8130 account-abstracted transaction.
 ///
@@ -61,6 +64,23 @@ pub struct TxEip8130 {
 }
 
 impl TxEip8130 {
+    fn auth_uses_delegate_staticcall(auth: &[u8]) -> bool {
+        if auth.len() < 60 {
+            return false;
+        }
+        if auth_verifier_kind(auth).is_none_or(|kind| kind.address() != DELEGATE_VERIFIER_ADDRESS) {
+            return false;
+        }
+        let nested_verifier = Address::from_slice(&auth[40..60]);
+        if nested_verifier == Address::ZERO {
+            return false;
+        }
+        // Delegate envelope:
+        // DELEGATE(20) || delegate_account(20) || nested_auth(verifier(20) || ...)
+        // Only nested custom verifiers require STATICCALL.
+        auth_verifier_kind(&auth[40..]).is_some_and(|kind| kind.is_custom())
+    }
+
     /// Returns `true` if this is an EOA-mode transaction (sender derived via ecrecover).
     pub fn is_eoa(&self) -> bool {
         self.from == Address::ZERO
@@ -74,23 +94,23 @@ impl TxEip8130 {
     /// Returns `true` if sender authentication uses a custom verifier.
     pub fn sender_has_custom_verifier(&self) -> bool {
         !self.is_eoa()
-            && self.sender_auth.len() >= 20
-            && !is_native_verifier(Address::from_slice(&self.sender_auth[..20]))
+            && (auth_verifier_kind(&self.sender_auth).is_some_and(|verifier| verifier.is_custom())
+                || Self::auth_uses_delegate_staticcall(&self.sender_auth))
     }
 
     /// Returns `true` if payer authentication uses a custom verifier.
     pub fn payer_has_custom_verifier(&self) -> bool {
         !self.is_self_pay()
-            && self.payer_auth.len() >= 20
-            && !is_native_verifier(Address::from_slice(&self.payer_auth[..20]))
+            && (auth_verifier_kind(&self.payer_auth).is_some_and(|verifier| verifier.is_custom())
+                || Self::auth_uses_delegate_staticcall(&self.payer_auth))
     }
 
     /// Returns `true` if any config-change authorizer uses a custom verifier.
     pub fn authorizer_has_custom_verifier(&self) -> bool {
         self.account_changes.iter().any(|entry| {
             matches!(entry, AccountChangeEntry::ConfigChange(cc)
-                if cc.authorizer_auth.len() >= 20
-                    && !is_native_verifier(Address::from_slice(&cc.authorizer_auth[..20])))
+                if auth_verifier_kind(&cc.authorizer_auth)
+                    .is_some_and(|verifier| verifier.is_custom()))
         })
     }
 
@@ -643,6 +663,31 @@ mod tests {
             })];
         assert!(tx.authorizer_has_custom_verifier());
         assert!(tx.has_custom_verifier());
+
+        // Delegate-wrapped sender auth using STATICCALL path:
+        // DELEGATE || delegate_account || CUSTOM || custom_data
+        let delegate_target = Address::repeat_byte(0x42);
+        let mut delegate_wrapped = Vec::new();
+        delegate_wrapped.extend_from_slice(super::super::DELEGATE_VERIFIER_ADDRESS.as_slice());
+        delegate_wrapped.extend_from_slice(delegate_target.as_slice());
+        delegate_wrapped.extend_from_slice(custom.as_slice());
+        delegate_wrapped.extend_from_slice(&[0xEE; 12]);
+        tx.sender_auth = Bytes::from(delegate_wrapped);
+        tx.payer = Address::ZERO;
+        tx.payer_auth = Bytes::new();
+        tx.account_changes.clear();
+        assert!(tx.sender_has_custom_verifier());
+        assert!(tx.has_custom_verifier());
+
+        // Delegate-wrapped sender auth with native nested verifier stays native:
+        // DELEGATE || delegate_account || P256_RAW || p256_data
+        let mut delegate_native = Vec::new();
+        delegate_native.extend_from_slice(super::super::DELEGATE_VERIFIER_ADDRESS.as_slice());
+        delegate_native.extend_from_slice(delegate_target.as_slice());
+        delegate_native.extend_from_slice(super::super::P256_RAW_VERIFIER_ADDRESS.as_slice());
+        delegate_native.extend_from_slice(&[0xAA; 128]);
+        tx.sender_auth = Bytes::from(delegate_native);
+        assert!(!tx.sender_has_custom_verifier());
     }
 
     #[test]

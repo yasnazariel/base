@@ -16,12 +16,16 @@ use super::{
 
 /// Extracts the inner verifier address for a DELEGATE auth blob.
 ///
-/// For delegate auth (`DELEGATE_VERIFIER_ADDRESS(20) || inner_verifier(20) || inner_data...`),
-/// returns `Some(inner_verifier)`. For non-delegate auth or blobs too short
-/// to contain both addresses, returns `None`.
+/// For canonical delegate auth
+/// (`DELEGATE_VERIFIER_ADDRESS(20) || delegate_account(20) || inner_verifier(20) || inner_data...`),
+/// returns `Some(inner_verifier)`. If `inner_verifier == address(0)`, this
+/// represents implicit EOA auth and is normalized to `K1_VERIFIER_ADDRESS`.
+/// For non-delegate auth or blobs too short to contain all three addresses,
+/// returns `None`.
 pub fn delegate_inner_verifier(auth: &[u8]) -> Option<Address> {
-    if auth.len() >= 40 && Address::from_slice(&auth[..20]) == DELEGATE_VERIFIER_ADDRESS {
-        Some(Address::from_slice(&auth[20..40]))
+    if auth.len() >= 60 && Address::from_slice(&auth[..20]) == DELEGATE_VERIFIER_ADDRESS {
+        let inner = Address::from_slice(&auth[40..60]);
+        if inner == Address::ZERO { Some(K1_VERIFIER_ADDRESS) } else { Some(inner) }
     } else {
         None
     }
@@ -612,17 +616,23 @@ mod tests {
     #[test]
     fn delegate_inner_verifier_extraction() {
         let mut delegate_k1 = DELEGATE_VERIFIER_ADDRESS.as_slice().to_vec();
+        delegate_k1.extend_from_slice(Address::repeat_byte(0x11).as_slice());
         delegate_k1.extend_from_slice(K1_VERIFIER_ADDRESS.as_slice());
         delegate_k1.push(0xAB);
         assert_eq!(delegate_inner_verifier(&delegate_k1), Some(K1_VERIFIER_ADDRESS));
 
         let mut delegate_p256 = DELEGATE_VERIFIER_ADDRESS.as_slice().to_vec();
+        delegate_p256.extend_from_slice(Address::repeat_byte(0x22).as_slice());
         delegate_p256.extend_from_slice(P256_RAW_VERIFIER_ADDRESS.as_slice());
         assert_eq!(delegate_inner_verifier(&delegate_p256), Some(P256_RAW_VERIFIER_ADDRESS));
 
         let mut k1_only = K1_VERIFIER_ADDRESS.as_slice().to_vec();
         k1_only.push(0xAB);
         assert_eq!(delegate_inner_verifier(&k1_only), None);
+
+        let mut short_delegate = DELEGATE_VERIFIER_ADDRESS.as_slice().to_vec();
+        short_delegate.extend_from_slice(K1_VERIFIER_ADDRESS.as_slice());
+        assert_eq!(delegate_inner_verifier(&short_delegate), None);
 
         assert_eq!(delegate_inner_verifier(DELEGATE_VERIFIER_ADDRESS.as_slice()), None);
         assert_eq!(delegate_inner_verifier(&[]), None);
@@ -631,6 +641,7 @@ mod tests {
     #[test]
     fn intrinsic_gas_includes_delegate_inner_cost() {
         let mut auth = DELEGATE_VERIFIER_ADDRESS.as_slice().to_vec();
+        auth.extend_from_slice(Address::repeat_byte(0x33).as_slice());
         auth.extend_from_slice(K1_VERIFIER_ADDRESS.as_slice());
         auth.push(0xAB);
         let tx = TxEip8130 {

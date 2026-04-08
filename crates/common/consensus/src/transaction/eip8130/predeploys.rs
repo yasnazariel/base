@@ -19,6 +19,8 @@
 use alloy_primitives::{Address, address};
 use core::sync::atomic::{AtomicBool, Ordering};
 
+use super::verifier::NativeVerifier;
+
 /// Sentinel verifier address written on self-ownerId revocation.
 ///
 /// When the implicit EOA owner (`ownerId == bytes32(bytes20(account))`) is
@@ -120,8 +122,5 @@ pub const EXTERNAL_CALLER_VERIFIER: Address =
 /// Returns `true` if the given address is a known native verifier
 /// (K1, P256 raw, P256 WebAuthn, or Delegate).
 pub fn is_native_verifier(addr: Address) -> bool {
-    addr == K1_VERIFIER_ADDRESS
-        || addr == P256_RAW_VERIFIER_ADDRESS
-        || addr == P256_WEBAUTHN_VERIFIER_ADDRESS
-        || addr == DELEGATE_VERIFIER_ADDRESS
+    NativeVerifier::from_address(addr).is_some()
 }
