@@ -567,6 +567,11 @@ impl TestConfig {
                 let token_out = parse_address(token_out, "aerodrome_cl token_out")?;
                 let min_amount = parse_amount(min_amount, "aerodrome_cl min_amount")?;
                 let max_amount = parse_amount(max_amount, "aerodrome_cl max_amount")?;
+                if !(-8_388_608..=8_388_607).contains(tick_spacing) {
+                    return Err(BaselineError::Config(format!(
+                        "aerodrome_cl tick_spacing {tick_spacing} exceeds i24 range"
+                    )));
+                }
                 TxType::AerodromeCl {
                     router,
                     token_in,

@@ -160,7 +160,9 @@ impl Payload for AerodromeClPayload {
             params: IAerodromeClRouter::ExactInputSingleParams {
                 tokenIn: self.token_in,
                 tokenOut: self.token_out,
-                tickSpacing: I24::try_from(self.tick_spacing).expect("tick spacing fits i24"),
+                // SAFETY: tick_spacing is validated to fit i24 at config parse time.
+                tickSpacing: I24::try_from(self.tick_spacing)
+                    .expect("validated at config parse time"),
                 recipient: to,
                 deadline: U256::from(u64::MAX),
                 amountIn: amount,
