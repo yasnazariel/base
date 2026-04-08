@@ -224,7 +224,15 @@ impl LoadRunner {
                         weight_pct,
                     );
                 }
-                TxType::AerodromeV2 { router, weth, token, stable, factory, min_amount, max_amount } => {
+                TxType::AerodromeV2 {
+                    router,
+                    weth,
+                    token,
+                    stable,
+                    factory,
+                    min_amount,
+                    max_amount,
+                } => {
                     generator = generator.with_payload(
                         AerodromeV2Payload::new(
                             *router,
@@ -238,7 +246,14 @@ impl LoadRunner {
                         weight_pct,
                     );
                 }
-                TxType::AerodromeCl { router, token_in, token_out, tick_spacing, min_amount, max_amount } => {
+                TxType::AerodromeCl {
+                    router,
+                    token_in,
+                    token_out,
+                    tick_spacing,
+                    min_amount,
+                    max_amount,
+                } => {
                     generator = generator.with_payload(
                         AerodromeClPayload::new(
                             *router,
