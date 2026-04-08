@@ -3,6 +3,8 @@ name: Vouch
 on:
   pull_request_target:
     types: [opened, reopened]
+  issues:
+    types: [opened, reopened]
   issue_comment:
     types: [created]
 
@@ -25,9 +27,35 @@ jobs:
         uses: step-security/harden-runner@95d9a5deda9de15063e7595e9719c11c38c90ae2 # v2.13.2
         with:
           egress-policy: audit
+      # auto-close is disabled so the CI reviewer can review unvouched PRs first.
+      # The CI reviewer will vouch the contributor if the PR passes review,
+      # or close the PR if it does not meet the bar.
       - uses: mitchellh/vouch/action/check-pr@c6d80ead49839655b61b422700b7a3bc9d0804a9 # v1
         with:
           pr-number: ${{ github.event.pull_request.number }}
+          auto-close: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Auto-close issues opened by denounced users. Issues from unvouched
+  # (but not denounced) users remain open — issues are open to everyone.
+  check-issue:
+    if: github.event_name == 'issues'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@95d9a5deda9de15063e7595e9719c11c38c90ae2 # v2.13.2
+        with:
+          egress-policy: audit
+      - uses: mitchellh/vouch/action/check-issue@c6d80ead49839655b61b422700b7a3bc9d0804a9 # v1
+        with:
+          issue-number: ${{ github.event.issue.number }}
+          # Only block denounced users, not all unvouched users.
+          # Issues remain open to everyone who isn't actively denounced.
+          require-vouch: false
           auto-close: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

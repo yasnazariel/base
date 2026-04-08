@@ -1,0 +1,128 @@
+name: Claude Triage
+
+# Automated triage for external contributor PRs (forks).
+# Reviews fork PRs for issue relevance and code quality, then auto-closes
+# with feedback if the PR doesn't meet the bar.
+#
+# pull_request_target runs in the base repo context — fork authors cannot
+# access secrets or modify the workflow. The fork's code is never checked
+# out — Claude reviews the diff via the GitHub API.
+
+on:
+  pull_request_target:
+    types: [opened, ready_for_review, reopened]
+
+jobs:
+  triage:
+    name: Triage Fork PR
+    # Only run for fork PRs. Same-repo PRs are reviewed by claude-review.yml.
+    if: github.event.pull_request.head.repo.fork == true
+    concurrency:
+      group: claude-triage-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    runs-on:
+      group: BaseRunnerGroup
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Harden the runner (Block unauthorized outbound calls)
+        uses: step-security/harden-runner@95d9a5deda9de15063e7595e9719c11c38c90ae2 # v2.13.2
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+            objects.githubusercontent.com:443
+            ${{ vars.LLM_GATEWAY_HOSTNAME }}:443
+
+      # Check if the contributor is denounced. Denounced users are banned from
+      # PRs — close immediately without running the LLM.
+      - name: Check denounced status
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Fetch VOUCHED.td from the base branch via the API (no checkout needed).
+          VOUCHED=$(gh api "repos/${REPO}/contents/.github/VOUCHED.td?ref=${{ github.event.pull_request.base.ref }}" \
+            --jq '.content' | base64 -d 2>/dev/null || echo "")
+
+          if echo "${VOUCHED}" | grep -Fxq -- "-${PR_AUTHOR}" || \
+             echo "${VOUCHED}" | grep -Fxq -- "-github:${PR_AUTHOR}"; then
+            echo "::error::User ${PR_AUTHOR} is denounced."
+            gh pr close "${PR_NUMBER}" \
+              --repo "${REPO}" \
+              --comment "This PR was automatically closed because the author has been denounced. If you believe this is an error, please contact a maintainer."
+            exit 1
+          fi
+
+      # Rate-limit fork PRs to prevent LLM credit abuse.
+      # If the author has had 3+ PRs closed (not merged) in the last 24h,
+      # skip the review and close the PR.
+      - name: Rate-limit fork PRs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Only count PRs that were closed without being merged.
+          # Merged PRs have a non-null mergedAt field.
+          CLOSED_COUNT=$(gh pr list \
+            --repo "${REPO}" \
+            --author "${PR_AUTHOR}" \
+            --state closed \
+            --limit 100 \
+            --json closedAt,mergedAt \
+            --jq "[.[] | select(.mergedAt == null and .closedAt > (now - 86400 | todate))] | length")
+
+          echo "Author ${PR_AUTHOR} has had ${CLOSED_COUNT} PRs closed (not merged) in the last 24h."
+
+          if [[ "${CLOSED_COUNT}" -ge 3 ]]; then
+            echo "::error::Rate limit exceeded. Closing PR."
+            gh pr close "${PR_NUMBER}" \
+              --repo "${REPO}" \
+              --comment "This PR was automatically closed because you have had ${CLOSED_COUNT} PRs closed without merge in the last 24 hours. Please wait before opening new PRs. If you believe this is an error, comment on this PR and a maintainer will review."
+            exit 1
+          fi
+
+      # SECURITY: Always check out the base branch, never the fork's code.
+      # Needed for: claude-code-action setup (AGENTS.md).
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.base.ref }}
+          fetch-depth: 1
+
+      # Render the triage prompt with envsubst so the prompt file stays
+      # free of GitHub Actions ${{ }} expressions.
+      - name: Prepare triage prompt
+        id: prompt
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          REPO: ${{ github.repository }}
+        run: |
+          {
+            echo 'TRIAGE_PROMPT<<PROMPT_EOF'
+            envsubst '${PR_NUMBER} ${PR_AUTHOR} ${REPO}' \
+              < .github/actions/claude-triage/prompt.md
+            echo 'PROMPT_EOF'
+          } >> "$GITHUB_ENV"
+
+      - name: Run Claude Code
+        id: claude-triage
+        uses: anthropics/claude-code-action@1b8ee3b94104046d71fde52ec3557651ad8c0d71 # v1.0.29
+        env:
+          ANTHROPIC_BASE_URL: https://${{ vars.LLM_GATEWAY_HOSTNAME }}
+        with:
+          anthropic_api_key: ${{ secrets.LLM_GATEWAY_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          track_progress: false
+          prompt: ${{ env.TRIAGE_PROMPT }}
+
+          claude_args: |
+            --model claude-opus-4-6-default
+            --allowedTools "Bash(gh pr comment ${{ github.event.pull_request.number }} --body:*),Bash(gh pr close ${{ github.event.pull_request.number }}:*),Bash(gh pr diff ${{ github.event.pull_request.number }}:*),Bash(gh pr view ${{ github.event.pull_request.number }}:*),Bash(gh issue view --repo ${{ github.repository }}:*),Bash(gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments:*)"
+

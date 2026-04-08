@@ -6,21 +6,67 @@ This document will help you get started. **Do not let this document intimidate y
 
 ## Contributor Trust System
 
-We use [vouch](https://github.com/mitchellh/vouch) to manage contributor trust. This helps us maintain code quality by gating pull requests behind an explicit trust list.
+We use [vouch](https://github.com/mitchellh/vouch) to manage contributor trust.
+Pull requests are gated behind an explicit trust list so that maintainers can
+keep the review queue focused on good-faith contributions.
 
 **What this means for you:**
 
-- **Issues** are open to everyone — no restrictions.
-- **Pull requests** require you to be vouched. PRs from unvouched users are auto-closed.
-- **Org collaborators** with write access bypass this check automatically.
-
-**How to get vouched:**
-
-1. Open an issue describing the bug or feature you'd like to work on.
-2. A maintainer will review and comment `vouch` to add you to the trust list.
-3. Once vouched, you can open pull requests.
+- **Issues** are open to everyone — denounced users are the only exception
+  (see [Denouncing policy](#denouncing-policy)).
+- **Pull requests** from unvouched users must target an issue labeled
+  [`M-help-wanted`][help-wanted] and are reviewed automatically by our CI
+  reviewer.
+- **Org collaborators** with write access bypass these checks automatically.
 
 The trust list lives in [`.github/VOUCHED.td`](.github/VOUCHED.td).
+
+### Vouching policy
+
+To get vouched:
+
+1. Find an open issue labeled [`M-help-wanted`][help-wanted] that you'd like to
+   work on.
+2. Open a pull request that targets that issue. Reference the issue number in
+   your PR description.
+3. Our CI reviewer will automatically check that the linked issue has the
+   `M-help-wanted` label, then review your PR for code quality and relevance.
+4. If the review passes, a maintainer will review and merge your PR, and vouch
+   you for future contributions.
+
+A maintainer can also vouch a contributor manually by commenting `vouch` on any
+issue or PR authored by that contributor.
+
+### Auto-close policy
+
+The CI reviewer may **auto-close** a pull request if it determines the
+contribution is:
+
+- Not relevant to the linked issue or to any open issue.
+- Low-effort, spammy, or not meeting the project's code quality standards.
+
+Auto-closing is a soft rejection. You can open a new PR that addresses the
+feedback.
+
+### Denouncing policy
+
+If a contributor's pull requests are repeatedly auto-closed, a maintainer may
+**denounce** the contributor to revoke their access. Denounced users are banned
+from both **issues and pull requests** — any new issues or PRs they open are
+automatically closed. Denouncing is also used for:
+
+- Deliberately disruptive behaviour (force-pushing over review comments, opening
+  duplicate PRs after closure, etc.).
+- Attempts to introduce malicious code, supply-chain attacks, or obfuscated
+  backdoors.
+- Violations of the project's code of conduct.
+
+To denounce, a maintainer comments `denounce` or `denounce [username]` on any
+issue or PR. The contributor's handle is prefixed with `-` in `.github/VOUCHED.td`
+and their open PRs are auto-closed.
+
+Denouncing is a serious action. Maintainers should leave a brief explanation in
+the comment for the audit trail.
 
 ## Ways to Contribute
 
@@ -28,7 +74,7 @@ There are three ways an individual can contribute:
 
 1. **By opening an issue:** If you believe you have uncovered a bug in Base or have a feature request, creating a new issue in the issue tracker is the way to begin the process.
 2. **By adding context:** Provide additional context to existing issues, such as screenshots, logs, and code snippets, to help resolve them.
-3. **By resolving issues:** Typically this is done by opening a pull request that fixes the underlying problem in a concrete and reviewable manner.
+3. **By resolving issues:** Find an open issue labeled [`M-help-wanted`][help-wanted] and open a pull request that addresses it. This is the recommended path for new contributors — our CI reviewer will automatically review your PR and vouch you if it meets the bar.
 
 ## Scope of Contributions
 
