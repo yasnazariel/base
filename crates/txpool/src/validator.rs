@@ -356,6 +356,17 @@ where
                         );
                     }
 
+                    let transaction = transaction.attach_aa_metadata(
+                        crate::Eip8130Metadata {
+                            nonce_key: outcome.nonce_key,
+                            nonce_sequence: outcome.state_nonce,
+                            payer: outcome.sponsored_payer,
+                            invalidation_keys: outcome.invalidation_keys,
+                            verifier_passed: true,
+                            expiry: outcome.expiry,
+                        },
+                    );
+
                     TransactionValidationOutcome::Valid {
                         balance: outcome.balance,
                         state_nonce: outcome.state_nonce,

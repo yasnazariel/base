@@ -37,9 +37,9 @@ pub use validator::{OpL1BlockInfo, OpTransactionValidator};
 
 mod transaction;
 pub use transaction::{
-    BLOCK_TIME_SECS, BasePooledTransaction, BundleTransaction, MAX_BUNDLE_ADVANCE_BLOCKS,
-    MAX_BUNDLE_ADVANCE_MILLIS, MAX_BUNDLE_ADVANCE_SECS, OpPooledTx, TimestampedTransaction,
-    unix_time_millis,
+    BLOCK_TIME_SECS, BasePooledTransaction, BundleTransaction, Eip8130Metadata,
+    MAX_BUNDLE_ADVANCE_BLOCKS, MAX_BUNDLE_ADVANCE_MILLIS, MAX_BUNDLE_ADVANCE_SECS, OpPooledTx,
+    TimestampedTransaction, unix_time_millis,
 };
 
 mod ordering;
@@ -60,7 +60,7 @@ pub use bundle::{
 };
 
 mod wire;
-pub use wire::ValidatedTransaction;
+pub use wire::{Eip8130WireMetadata, ValidatedTransaction};
 
 pub mod estimated_da_size;
 

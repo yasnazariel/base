@@ -19,6 +19,9 @@ use reth_transaction_pool::{
     EthBlobTransactionSidecar, EthPoolTransaction, EthPooledTransaction, PoolTransaction,
 };
 
+use std::collections::HashSet;
+
+use crate::eip8130_invalidation::InvalidationKey;
 use crate::estimated_da_size::DataAvailabilitySized;
 
 /// Assumed L2 block time in seconds, used to convert block-based bundle windows
@@ -43,6 +46,27 @@ pub fn unix_time_millis() -> u128 {
             0
         }
     }
+}
+
+/// Pre-validated EIP-8130 metadata attached to a pool transaction.
+///
+/// Produced by the mempool node's `validate_eip8130_transaction` and
+/// forwarded to the builder so it can skip re-deriving expensive fields
+/// like custom verifier execution and invalidation key computation.
+#[derive(Debug, Clone)]
+pub struct Eip8130Metadata {
+    /// The transaction's `nonce_key` (2D nonce lane identifier).
+    pub nonce_key: U256,
+    /// The sender's current nonce sequence at validation time.
+    pub nonce_sequence: u64,
+    /// Resolved payer address (`None` for self-pay transactions).
+    pub payer: Option<Address>,
+    /// Storage slot dependencies for invalidation tracking.
+    pub invalidation_keys: HashSet<InvalidationKey>,
+    /// Whether the sender's custom verifier execution succeeded.
+    pub verifier_passed: bool,
+    /// Unix timestamp after which this transaction is invalid. `0` = no expiry.
+    pub expiry: u64,
 }
 
 /// Pool transaction for OP.
@@ -73,6 +97,10 @@ pub struct BasePooledTransaction<
     /// Optional maximum timestamp (millis since Unix epoch) from bundle submission.
     /// The transaction should be evicted after this time.
     max_timestamp: Option<u64>,
+    /// Pre-validated EIP-8130 metadata from the forwarding mempool node.
+    /// When present, the builder can skip re-running custom verifier execution
+    /// and re-use invalidation keys from the sequencer.
+    aa_metadata: Option<Eip8130Metadata>,
 }
 
 impl<Cons: SignedTransaction, Pooled> BasePooledTransaction<Cons, Pooled> {
@@ -87,6 +115,7 @@ impl<Cons: SignedTransaction, Pooled> BasePooledTransaction<Cons, Pooled> {
             target_block_number: None,
             min_timestamp: None,
             max_timestamp: None,
+            aa_metadata: None,
         }
     }
 
@@ -107,7 +136,19 @@ impl<Cons: SignedTransaction, Pooled> BasePooledTransaction<Cons, Pooled> {
             target_block_number: None,
             min_timestamp: None,
             max_timestamp: None,
+            aa_metadata: None,
         }
+    }
+
+    /// Attaches pre-validated EIP-8130 metadata from the forwarding mempool node.
+    pub fn with_aa_metadata(mut self, metadata: Eip8130Metadata) -> Self {
+        self.aa_metadata = Some(metadata);
+        self
+    }
+
+    /// Returns the pre-validated EIP-8130 metadata, if present.
+    pub fn aa_metadata(&self) -> Option<&Eip8130Metadata> {
+        self.aa_metadata.as_ref()
     }
 
     /// Sets bundle metadata on this transaction, returning the modified instance.
@@ -332,6 +373,20 @@ pub trait OpPooledTx: PoolTransaction + DataAvailabilitySized {
     fn as_eip8130(&self) -> Option<&TxEip8130> {
         None
     }
+
+    /// Attaches pre-validated EIP-8130 metadata. Default is a no-op for
+    /// non-AA-aware transaction types.
+    fn attach_aa_metadata(self, _metadata: Eip8130Metadata) -> Self
+    where
+        Self: Sized,
+    {
+        self
+    }
+
+    /// Returns pre-validated EIP-8130 metadata if attached.
+    fn get_aa_metadata(&self) -> Option<&Eip8130Metadata> {
+        None
+    }
 }
 
 impl<Cons, Pooled> OpPooledTx for BasePooledTransaction<Cons, Pooled>
@@ -346,6 +401,14 @@ where
 
     fn as_eip8130(&self) -> Option<&TxEip8130> {
         self.inner.transaction().inner().as_eip8130().map(|sealed| sealed.inner())
+    }
+
+    fn attach_aa_metadata(self, metadata: Eip8130Metadata) -> Self {
+        self.with_aa_metadata(metadata)
+    }
+
+    fn get_aa_metadata(&self) -> Option<&Eip8130Metadata> {
+        self.aa_metadata()
     }
 }
 

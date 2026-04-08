@@ -12,7 +12,7 @@ use reth_transaction_pool::TransactionPool;
 use tracing::debug;
 
 use super::metrics::Metrics as BuilderApiMetrics;
-use crate::{BasePooledTransaction, ValidatedTransaction};
+use crate::{BasePooledTransaction, Eip8130Metadata, InvalidationKey, ValidatedTransaction};
 
 /// RPC interface for submitting pre-validated transactions to a block builder.
 #[rpc(server, namespace = "base")]
@@ -69,11 +69,26 @@ where
         let encoded_len = tx.raw.len();
 
         let recovered = Recovered::new_unchecked(consensus_tx, sender);
-        let pool_tx = BasePooledTransaction::new(recovered, encoded_len).with_bundle_metadata(
+        let mut pool_tx = BasePooledTransaction::new(recovered, encoded_len).with_bundle_metadata(
             tx.target_block_number,
             tx.min_timestamp,
             tx.max_timestamp,
         );
+
+        if let Some(wire_meta) = tx.aa_metadata {
+            pool_tx = pool_tx.with_aa_metadata(Eip8130Metadata {
+                nonce_key: wire_meta.nonce_key,
+                nonce_sequence: wire_meta.nonce_sequence,
+                payer: wire_meta.payer,
+                invalidation_keys: wire_meta
+                    .invalidation_slots
+                    .into_iter()
+                    .map(|(address, slot)| InvalidationKey { address, slot })
+                    .collect(),
+                verifier_passed: wire_meta.verifier_passed,
+                expiry: wire_meta.expiry,
+            });
+        }
 
         // Insert into the pool
         let start = Instant::now();
@@ -170,6 +185,7 @@ mod tests {
             target_block_number: None,
             min_timestamp: None,
             max_timestamp: None,
+            aa_metadata: None,
         };
 
         let result = handler.insert_validated_transaction(tx).await;
@@ -198,6 +214,7 @@ mod tests {
             target_block_number: None,
             min_timestamp: None,
             max_timestamp: None,
+            aa_metadata: None,
         };
 
         let result = handler.insert_validated_transaction(tx).await;
@@ -225,6 +242,7 @@ mod tests {
             target_block_number: None,
             min_timestamp: None,
             max_timestamp: None,
+            aa_metadata: None,
         };
 
         let result = handler.insert_validated_transaction(tx).await;
@@ -249,6 +267,7 @@ mod tests {
             target_block_number: None,
             min_timestamp: None,
             max_timestamp: None,
+            aa_metadata: None,
         };
 
         let result = handler.insert_validated_transaction(tx).await;
@@ -268,6 +287,7 @@ mod tests {
             target_block_number: None,
             min_timestamp: None,
             max_timestamp: None,
+            aa_metadata: None,
         };
 
         let result = handler.insert_validated_transaction(tx).await;
@@ -288,6 +308,7 @@ mod tests {
             target_block_number: None,
             min_timestamp: None,
             max_timestamp: None,
+            aa_metadata: None,
         };
 
         let result = handler.insert_validated_transaction(tx).await;
@@ -306,6 +327,7 @@ mod tests {
             target_block_number: None,
             min_timestamp: None,
             max_timestamp: None,
+            aa_metadata: None,
         };
 
         let result = handler.insert_validated_transaction(tx).await;
