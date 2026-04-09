@@ -16,6 +16,13 @@ const bcps: BcpEntry[] = [
     status: 'Final',
     link: '/bcps/bcp-0000',
   },
+  {
+    id: 'BCP-0003',
+    title: 'Virtual Address Deposit Routing',
+    description: 'A virtual address scheme for routing token deposits to a master address without sweep transactions.',
+    status: 'Draft',
+    link: '/bcps/bcp-0003',
+  },
 ]
 
 const statusColor: Record<BcpStatus, { color: string; background: string }> = {
