@@ -194,20 +194,23 @@ fn per_flashblock_benches(c: &mut Criterion) {
             b.iter(|| {
                 let mut prev_trie_updates: Option<TrieUpdates> = None;
                 for snapshot in &snapshots {
-                    let (root, new_updates) = if let Some(prev) = prev_trie_updates.take() {
-                        let trie_input = TrieInput::new(
-                            prev,
-                            snapshot.clone(),
-                            snapshot.construct_prefix_sets(),
-                        );
-                        provider
-                            .state_root_from_nodes_with_updates(trie_input)
-                            .expect("state root should succeed")
-                    } else {
-                        provider
-                            .state_root_with_updates(snapshot.clone())
-                            .expect("state root should succeed")
-                    };
+                    let (root, new_updates) = prev_trie_updates.take().map_or_else(
+                        || {
+                            provider
+                                .state_root_with_updates(snapshot.clone())
+                                .expect("state root should succeed")
+                        },
+                        |prev| {
+                            let trie_input = TrieInput::new(
+                                prev,
+                                snapshot.clone(),
+                                snapshot.construct_prefix_sets(),
+                            );
+                            provider
+                                .state_root_from_nodes_with_updates(trie_input)
+                                .expect("state root should succeed")
+                        },
+                    );
                     prev_trie_updates = Some(new_updates);
                     black_box(root);
                 }
