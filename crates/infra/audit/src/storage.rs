@@ -12,10 +12,12 @@ use futures::future;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
+use base_bundles::RejectedTransaction;
+
 use crate::{
     metrics::Metrics,
     reader::Event,
-    types::{BundleEvent, BundleId, DropReason, RejectedTransaction, TransactionId},
+    types::{BundleEvent, BundleId, DropReason, TransactionId},
 };
 
 /// S3 key types for storing different event types.
