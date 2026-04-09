@@ -7,12 +7,10 @@ use aws_sdk_s3::{
     Client as S3Client, error::SdkError, operation::get_object::GetObjectError,
     primitives::ByteStream,
 };
-use base_bundles::AcceptedBundle;
+use base_bundles::{AcceptedBundle, RejectedTransaction};
 use futures::future;
 use serde::{Deserialize, Serialize};
 use tracing::info;
-
-use base_bundles::RejectedTransaction;
 
 use crate::{
     metrics::Metrics,
