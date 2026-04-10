@@ -42,8 +42,7 @@ where
         let (sender, _) = broadcast::channel(config.channel_capacity);
         let broadcast_sender = sender.clone();
         let cancel = CancellationToken::new();
-        let mut consumer =
-            Consumer::new(pool, config, broadcast_sender, cancel.child_token());
+        let mut consumer = Consumer::new(pool, config, broadcast_sender, cancel.child_token());
 
         executor.spawn_blocking_task(Box::pin(async move {
             consumer.run();

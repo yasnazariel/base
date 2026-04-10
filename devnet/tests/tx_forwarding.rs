@@ -111,6 +111,7 @@ async fn test_insert_validated_transaction_single() -> Result<()> {
         target_block_number: None,
         min_timestamp: None,
         max_timestamp: None,
+        aa_metadata: None,
     };
 
     // Create RPC client for the builder
@@ -181,6 +182,7 @@ async fn test_insert_validated_transaction_invalid_bytes() -> Result<()> {
         target_block_number: None,
         min_timestamp: None,
         max_timestamp: None,
+        aa_metadata: None,
     };
 
     // Call base_insertValidatedTransaction - should fail

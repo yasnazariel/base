@@ -144,7 +144,9 @@ mod tests {
 
         let api = TransactionCountOverrideImpl::new(provider);
         let nonce =
-            TransactionCountOverrideServer::get_transaction_count(&api, address, None, None).await.unwrap();
+            TransactionCountOverrideServer::get_transaction_count(&api, address, None, None)
+                .await
+                .unwrap();
         assert_eq!(nonce, U256::from(7_u64));
     }
 

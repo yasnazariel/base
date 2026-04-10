@@ -384,11 +384,15 @@ impl OpReceiptBuilder {
 
 #[cfg(test)]
 mod tests {
-    use alloy_consensus::{Block, BlockBody, Eip658Value, Receipt, TxEip7702, transaction::TransactionMeta};
+    use alloy_consensus::{
+        Block, BlockBody, Eip658Value, Receipt, TxEip7702, transaction::TransactionMeta,
+    };
     use alloy_eips::eip2718::Decodable2718;
     use alloy_primitives::{Address, Bytes, Signature, U256, hex};
     use base_alloy_chains::BaseChainConfig;
-    use base_alloy_consensus::{OpPrimitives, OpReceipt, OpTransactionSigned, OpTypedTransaction, TxEip8130};
+    use base_alloy_consensus::{
+        OpPrimitives, OpReceipt, OpTransactionSigned, OpTypedTransaction, TxEip8130,
+    };
     use base_execution_chainspec::BASE_MAINNET;
     use base_revm::{Eip8130PhaseResult, phase_statuses_system_log};
     use reth_primitives_traits::Recovered;
@@ -798,7 +802,10 @@ mod tests {
             ..Default::default()
         };
 
-        OpTransactionSigned::new_unhashed(OpTypedTransaction::Eip8130(tx), Signature::test_signature())
+        OpTransactionSigned::new_unhashed(
+            OpTypedTransaction::Eip8130(tx),
+            Signature::test_signature(),
+        )
     }
 
     #[test]

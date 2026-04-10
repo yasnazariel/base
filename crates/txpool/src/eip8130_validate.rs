@@ -1259,7 +1259,7 @@ mod tests {
     #[test]
     fn detects_custom_sender_verifier() {
         let custom = Address::repeat_byte(0xAB);
-        let mut tx = TxEip8130 { from: Address::repeat_byte(0x11), ..Default::default() };
+        let mut tx = TxEip8130 { from: Some(Address::repeat_byte(0x11)), ..Default::default() };
         tx.sender_auth = auth_blob(custom);
 
         assert!(tx.has_custom_verifier());
@@ -1269,8 +1269,8 @@ mod tests {
     fn detects_custom_payer_verifier() {
         let custom = Address::repeat_byte(0xAB);
         let mut tx = TxEip8130 {
-            from: Address::repeat_byte(0x11),
-            payer: Address::repeat_byte(0x22),
+            from: Some(Address::repeat_byte(0x11)),
+            payer: Some(Address::repeat_byte(0x22)),
             ..Default::default()
         };
         tx.sender_auth = auth_blob(K1_VERIFIER_ADDRESS);
@@ -1282,7 +1282,7 @@ mod tests {
     #[test]
     fn detects_custom_authorizer_verifier() {
         let custom = Address::repeat_byte(0xAB);
-        let mut tx = TxEip8130 { from: Address::repeat_byte(0x11), ..Default::default() };
+        let mut tx = TxEip8130 { from: Some(Address::repeat_byte(0x11)), ..Default::default() };
         tx.sender_auth = auth_blob(K1_VERIFIER_ADDRESS);
         tx.account_changes = vec![AccountChangeEntry::ConfigChange(ConfigChangeEntry {
             chain_id: 0,
@@ -1297,8 +1297,8 @@ mod tests {
     #[test]
     fn ignores_native_verifiers() {
         let mut tx = TxEip8130 {
-            from: Address::repeat_byte(0x11),
-            payer: Address::repeat_byte(0x22),
+            from: Some(Address::repeat_byte(0x11)),
+            payer: Some(Address::repeat_byte(0x22)),
             ..Default::default()
         };
         tx.sender_auth = auth_blob(K1_VERIFIER_ADDRESS);
@@ -1318,7 +1318,7 @@ mod tests {
         let sender = Address::repeat_byte(0x11);
         let mut tx = TxEip8130 {
             chain_id: 8453,
-            from: sender,
+            from: Some(sender),
             nonce_key: U256::ZERO,
             nonce_sequence: 1,
             max_priority_fee_per_gas: 1,
@@ -1348,7 +1348,7 @@ mod tests {
         let custom_verifier = Address::repeat_byte(0xAB);
         let mut tx = TxEip8130 {
             chain_id: 8453,
-            from: sender,
+            from: Some(sender),
             nonce_key: U256::ZERO,
             nonce_sequence: 1,
             max_priority_fee_per_gas: 1,

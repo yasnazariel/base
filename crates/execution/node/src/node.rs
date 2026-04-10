@@ -30,7 +30,6 @@ use base_txpool::{
     maintain_eip8130_invalidation,
 };
 use reth_chain_state::CanonStateSubscriptions;
-use tokio_stream::wrappers::BroadcastStream;
 use reth_chainspec::{
     BaseFeeParams, ChainSpecProvider, EthChainSpec, EthereumHardforks, Hardforks,
 };
@@ -68,6 +67,7 @@ use reth_transaction_pool::{
 };
 use reth_trie_common::KeccakKeyHasher;
 use serde::de::DeserializeOwned;
+use tokio_stream::wrappers::BroadcastStream;
 
 use crate::{
     OpEngineApiBuilder, OpEngineTypes,
@@ -1097,13 +1097,8 @@ where
     Txs: OpPayloadTransactions<Pool::Transaction>,
     Attrs: OpAttributes<Transaction = TxTy<Node::Types>>,
 {
-    type PayloadBuilder = base_execution_payload_builder::OpPayloadBuilder<
-        Pool,
-        Node::Provider,
-        Evm,
-        (),
-        Attrs,
-    >;
+    type PayloadBuilder =
+        base_execution_payload_builder::OpPayloadBuilder<Pool, Node::Provider, Evm, (), Attrs>;
 
     async fn build_payload_builder(
         self,

@@ -680,9 +680,11 @@ mod tests {
     use alloy_consensus::{BlockBody, Header, Sealable, SignableTransaction, TxLegacy};
     use alloy_primitives::{Address, Bytes, Sealed, Signature, U256};
     use base_alloy_consensus::{OpTxEnvelope, TxDeposit, TxEip8130};
-    use base_consensus_genesis::HardForkConfig;
     use base_comp::BatchComposeError;
-    use base_protocol::{Batch, BatchReader, BlockInfo, Channel, L1BlockInfoBedrock, L1BlockInfoTx};
+    use base_consensus_genesis::HardForkConfig;
+    use base_protocol::{
+        Batch, BatchReader, BlockInfo, Channel, L1BlockInfoBedrock, L1BlockInfoTx,
+    };
     use rstest::rstest;
 
     use super::*;

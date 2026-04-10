@@ -326,7 +326,7 @@ where
                             };
                             crate::compute_account_tier(account, &*state, trusted, block_ts)
                         };
-                        if let Err(err) = self.eip8130_pool.add_transaction(
+                        match self.eip8130_pool.add_transaction(
                             id,
                             transaction.clone(),
                             payer,
@@ -335,17 +335,24 @@ where
                             outcome.expiry,
                             &check_tier,
                         ) {
-                            tracing::debug!(
-                                target: "txpool",
-                                error = %err,
-                                "EIP-8130 pool rejected transaction"
-                            );
-                            return TransactionValidationOutcome::Invalid(
-                                transaction,
-                                reth_transaction_pool::error::InvalidPoolTransactionError::other(
-                                    err,
-                                ),
-                            );
+                            Ok(_) => {}
+                            Err(crate::Eip8130PoolError::DuplicateHash(_)) => {
+                                // Already in the side pool — fall through to the
+                                // standard pool which will return "already known".
+                            }
+                            Err(err) => {
+                                tracing::debug!(
+                                    target: "txpool",
+                                    error = %err,
+                                    "EIP-8130 pool rejected transaction"
+                                );
+                                return TransactionValidationOutcome::Invalid(
+                                    transaction,
+                                    reth_transaction_pool::error::InvalidPoolTransactionError::other(
+                                        err,
+                                    ),
+                                );
+                            }
                         }
                     }
 
@@ -358,16 +365,14 @@ where
                         );
                     }
 
-                    let transaction = transaction.attach_aa_metadata(
-                        crate::Eip8130Metadata {
-                            nonce_key: outcome.nonce_key,
-                            nonce_sequence: outcome.state_nonce,
-                            payer: outcome.sponsored_payer,
-                            invalidation_keys: outcome.invalidation_keys,
-                            verifier_passed: true,
-                            expiry: outcome.expiry,
-                        },
-                    );
+                    let transaction = transaction.attach_aa_metadata(crate::Eip8130Metadata {
+                        nonce_key: outcome.nonce_key,
+                        nonce_sequence: outcome.state_nonce,
+                        payer: outcome.sponsored_payer,
+                        invalidation_keys: outcome.invalidation_keys,
+                        verifier_passed: true,
+                        expiry: outcome.expiry,
+                    });
 
                     // The standard pool still receives the Valid outcome for
                     // backward-compatible RPC visibility, but `propagate: false`

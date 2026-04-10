@@ -314,13 +314,13 @@ mod tx_serde {
             } = value;
 
             // Resolve `from`: prefer the explicit RPC field, fall back to
-            // deposit's or AA's embedded sender.
+            // deposit's sender or the AA transaction's sender.
             let from = if let Some(from) = other.from {
                 from
             } else if let Some(deposit) = inner.as_deposit() {
                 deposit.from
             } else if let Some(eip8130) = inner.as_eip8130() {
-                eip8130.from.ok_or_else(|| serde_json::Error::custom("missing `from` field"))?
+                eip8130.effective_sender()
             } else {
                 return Err(serde_json::Error::custom("missing `from` field"));
             };
@@ -347,6 +347,10 @@ mod tx_serde {
 
 #[cfg(test)]
 mod tests {
+    use alloy_primitives::address;
+    use alloy_rpc_types_eth::BlockTransactions;
+    use base_alloy_consensus::OpEip8130Transaction;
+
     use super::*;
 
     #[test]
@@ -371,17 +375,47 @@ mod tests {
 
     #[test]
     fn can_deserialize_aa_tx() {
-        use base_alloy_consensus::OpEip8130Transaction;
-        let rpc_tx = r#"{"type":"0x7b","chainId":"0x509f455","from":"0x70997970c51812dc3a010c7d01b50e0d17dc79c8","nonceKey":"0x0","nonceSequence":"0x0","expiry":"0x0","maxPriorityFeePerGas":"0xf4240","maxFeePerGas":"0x3b9aca00","gas":"0xc350","authorizationList":[],"accountChanges":[],"calls":[[]],"payer":"0x0000000000000000000000000000000000000000","senderAuth":"0x01b20cd35322123007a2085319f0aa7154dc47c9dc4d6f713d00b6a87dbcafafa02885b9d7326ceeab6033b8ae512e51a774c70cdd9605c3d0fe6a355ddc4381981b","payerAuth":"0x","hash":"0x45a9e1761ba8a09a61fcd724b2d3558b5c08cbab45ecd4f552aa016a24bb50a2","blockHash":"0xf8b3c8f0cb5a88e3eef36d1d9103ceb0b6a1fbfbb9cd5a3a4116cae693ce54ed","blockNumber":"0x17","transactionIndex":"0x1","gasPrice":"0x3b9aca00"}"#;
+        let rpc_tx = r#"{"type":"0x7b","chainId":"0x509f455","from":"0x70997970c51812dc3a010c7d01b50e0d17dc79c8","nonceKey":"0x0","nonceSequence":"0x3","expiry":"0x0","maxPriorityFeePerGas":"0xf4240","maxFeePerGas":"0x7744d640","gas":"0x1a746","accountChanges":[{"type":"ConfigChange","chainId":0,"sequence":0,"ownerChanges":[{"changeType":1,"verifier":"0x0000000000000000000000000000000000000001","ownerId":"0x90f79bf6eb2c4f870365e785982e1f101e93b906000000000000000000000000","scope":0}],"authorizerAuth":"0x000000000000000000000000000000000000000160f31960ac91828d417b25ea4f212ed8d980b45237539e73d2b27ccd53e066b023df4910e280d300ce3db3ff1ab14bcbd4571568a6f76762debcbd8c5ee1bb891c"}],"calls":[[{"to":"0x8464135c8f25da09e49bc8782676a84730c318bc","data":"0xb74af5a9"}]],"payer":null,"senderAuth":"0x0000000000000000000000000000000000000001830b6621e452fac94239ea017ce967eaf386aaaba7e01e2bbc767b48115764847e1e556d25675c413714489bc72c24a4e3c92b93c9f22380870c7d159e7c32091c","payerAuth":"0x","hash":"0x4f5c7cd2aa47ccbd978434e1dd162b8194b7434c08032b11e8c2e2c56b9e068a","blockHash":"0xaf3c608adb01fef400d13080283ccde33c1c07158affb34e75f6fed41c95a67e","blockNumber":"0x40","transactionIndex":"0x1","gasPrice":"0x3baa0c40"}"#;
 
-        let result = serde_json::from_str::<Transaction>(rpc_tx);
-        match &result {
-            Ok(tx) => {
-                assert!(tx.as_ref().as_eip8130().is_some());
-            }
-            Err(e) => {
-                panic!("Failed to deserialize AA transaction: {e}");
-            }
-        }
+        let tx = serde_json::from_str::<Transaction>(rpc_tx).unwrap();
+        let inner = tx.as_ref().as_eip8130().expect("expected AA transaction");
+        assert_eq!(inner.from, Some(address!("70997970c51812dc3a010c7d01b50e0d17dc79c8")));
+        assert!(inner.payer.is_none());
+        assert_eq!(inner.account_changes.len(), 1);
+        assert_eq!(inner.calls.len(), 1);
+
+        let deserialized = serde_json::to_value(&tx).unwrap();
+        let expected = serde_json::from_str::<serde_json::Value>(rpc_tx).unwrap();
+        similar_asserts::assert_eq!(deserialized, expected);
+    }
+
+    #[test]
+    fn can_deserialize_aa_eoa_tx_with_null_from() {
+        let rpc_tx = r#"{"type":"0x7b","chainId":"0x509f455","from":null,"nonceKey":"0x0","nonceSequence":"0x0","expiry":"0x0","maxPriorityFeePerGas":"0xf4240","maxFeePerGas":"0x3b9aca00","gas":"0xc350","accountChanges":[],"calls":[[{"to":"0x8464135c8f25da09e49bc8782676a84730c318bc","data":"0xb74af5a9"}]],"payer":null,"senderAuth":"0x1234","payerAuth":"0x","hash":"0x45a9e1761ba8a09a61fcd724b2d3558b5c08cbab45ecd4f552aa016a24bb50a2","blockHash":"0xf8b3c8f0cb5a88e3eef36d1d9103ceb0b6a1fbfbb9cd5a3a4116cae693ce54ed","blockNumber":"0x17","transactionIndex":"0x1","gasPrice":"0x3b9aca00"}"#;
+
+        let tx = serde_json::from_str::<Transaction>(rpc_tx).unwrap();
+        let inner = tx.as_ref().as_eip8130().expect("expected AA transaction");
+        assert!(inner.from.is_none());
+        assert_eq!(tx.inner.inner.signer(), Address::ZERO);
+
+        let deserialized = serde_json::to_value(&tx).unwrap();
+        let expected = serde_json::from_str::<serde_json::Value>(rpc_tx).unwrap();
+        similar_asserts::assert_eq!(deserialized, expected);
+    }
+
+    #[test]
+    fn can_deserialize_block_with_full_aa_transactions() {
+        let rpc_block = r#"{"hash":"0xaf3c608adb01fef400d13080283ccde33c1c07158affb34e75f6fed41c95a67e","parentHash":"0xeca8a163a275ad63595e90f80e2442ff556efd9894bec6cd8222427b6ce2ce1e","sha3Uncles":"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347","miner":"0x4200000000000000000000000000000000000011","stateRoot":"0x43968ac95718624b7684b29a7ee2c54c6a2fbb1b49468c8f2de490fb00c924da","transactionsRoot":"0xbd5403dd8fda51e71ebbe1639fceea6a3de0b92ed67ea77d1883c9e73748671f","receiptsRoot":"0x19b7031fee63babe2f15a63a142373e40ddba310f85a0e24d6fcc6f855f346f0","logsBloom":"0x00000004000000000002000000000000000000004000000000000000000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000000000000001000000800000000000000000000000000000000000000000000000000000000020000000080000000000000000000010000000400000000000000000000000000000000000008000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000000000100000000000040000000000000000100400001000000400000000000000000000000","difficulty":"0x0","number":"0x40","gasLimit":"0x3938700","gasUsed":"0x1a05e","timestamp":"0x69d81ee2","extraData":"0x01000000fa00000006000000003b9aca00","mixHash":"0x3385ae66cda77785c400fbd159d6ef6c80db6cb1af6138c962541cd96f69190d","nonce":"0x0000000000000000","baseFeePerGas":"0x3b9aca00","withdrawalsRoot":"0x8ed4baae3a927be3dea54996b4d5899f8c01e7594bf50b17dc1e741388ce3d12","blobGasUsed":"0x11df0","excessBlobGas":"0x0","parentBeaconBlockRoot":"0x071b42d963868211d97c9fd6c99fcf42994277d9de3ec775865cdffd2cad5245","requestsHash":"0xe3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","size":"0x4cf","uncles":[],"transactions":[{"type":"0x7e","sourceHash":"0x3a510647913093396f33cae605d54f3ff5d86265bb2a8cc7d589fb497662d199","from":"0xdeaddeaddeaddeaddeaddeaddeaddeaddead0001","to":"0x4200000000000000000000000000000000000015","mint":"0x0","value":"0x0","gas":"0xf4240","input":"0x3db6be2b00000558000c3c9d00000000000000010000000069d81ede000000000000002f00000000000000000000000000000000000000000000000000000000003a79af000000000000000000000000000000000000000000000000000000000000000127d25418e7c3ced4248f7e05e859d6909728951bbceaaf68e8f08a9ef6f0f4d8000000000000000000000000976ea74026e726554db657fa54763abd0c3a0aa90000000000000000000000000190","hash":"0xcac88d74934731f6bee1a48db9459d237232839c36b84e469facb24d3c909611","r":"0x0","s":"0x0","yParity":"0x0","v":"0x0","blockHash":"0xaf3c608adb01fef400d13080283ccde33c1c07158affb34e75f6fed41c95a67e","blockNumber":"0x40","transactionIndex":"0x0","depositReceiptVersion":"0x1","gasPrice":"0x0","nonce":"0x3f"},{"type":"0x7b","chainId":"0x509f455","from":"0x70997970c51812dc3a010c7d01b50e0d17dc79c8","nonceKey":"0x0","nonceSequence":"0x3","expiry":"0x0","maxPriorityFeePerGas":"0xf4240","maxFeePerGas":"0x7744d640","gas":"0x1a746","accountChanges":[{"type":"ConfigChange","chainId":0,"sequence":0,"ownerChanges":[{"changeType":1,"verifier":"0x0000000000000000000000000000000000000001","ownerId":"0x90f79bf6eb2c4f870365e785982e1f101e93b906000000000000000000000000","scope":0}],"authorizerAuth":"0x000000000000000000000000000000000000000160f31960ac91828d417b25ea4f212ed8d980b45237539e73d2b27ccd53e066b023df4910e280d300ce3db3ff1ab14bcbd4571568a6f76762debcbd8c5ee1bb891c"}],"calls":[[{"to":"0x8464135c8f25da09e49bc8782676a84730c318bc","data":"0xb74af5a9"}]],"payer":null,"senderAuth":"0x0000000000000000000000000000000000000001830b6621e452fac94239ea017ce967eaf386aaaba7e01e2bbc767b48115764847e1e556d25675c413714489bc72c24a4e3c92b93c9f22380870c7d159e7c32091c","payerAuth":"0x","hash":"0x4f5c7cd2aa47ccbd978434e1dd162b8194b7434c08032b11e8c2e2c56b9e068a","blockHash":"0xaf3c608adb01fef400d13080283ccde33c1c07158affb34e75f6fed41c95a67e","blockNumber":"0x40","transactionIndex":"0x1","gasPrice":"0x3baa0c40"}],"withdrawals":[]}"#;
+
+        let block = serde_json::from_str::<
+            alloy_rpc_types_eth::Block<Transaction, alloy_rpc_types_eth::Header>,
+        >(rpc_block)
+        .unwrap();
+
+        let BlockTransactions::Full(transactions) = block.transactions else {
+            panic!("expected full transaction objects");
+        };
+        assert_eq!(transactions.len(), 2);
+        assert!(transactions[1].as_ref().as_eip8130().is_some());
     }
 }

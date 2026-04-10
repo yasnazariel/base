@@ -616,9 +616,8 @@ impl<T> Eip8130Pool<T> {
             .map(|key| key.hash);
 
         // Fall back to lowest-priority pending tx if no queued txs exist.
-        let hash_to_evict = queued_hash.or_else(|| {
-            inner.by_eviction_order.iter().next().map(|key| key.hash)
-        });
+        let hash_to_evict =
+            queued_hash.or_else(|| inner.by_eviction_order.iter().next().map(|key| key.hash));
 
         if let Some(hash) = hash_to_evict {
             Self::remove_from_inner(inner, &hash);
@@ -647,10 +646,10 @@ impl<T> Eip8130Pool<T> {
 
     /// Marks all entries with `nonce_sequence > removed_nonce` as queued.
     fn demote_from_nonce(seq: &mut SequenceState<T>, removed_nonce: u64) {
-        for (_, entry) in seq.txs.range_mut((
-            std::ops::Bound::Excluded(removed_nonce),
-            std::ops::Bound::Unbounded,
-        )) {
+        for (_, entry) in seq
+            .txs
+            .range_mut((std::ops::Bound::Excluded(removed_nonce), std::ops::Bound::Unbounded))
+        {
             entry.is_pending = false;
         }
     }
@@ -796,9 +795,7 @@ impl<T: PoolTransaction> Eip8130Pool<T> {
         inner.by_hash.insert(hash, id);
         inner.payer_by_hash.insert(hash, payer);
         inner.slot_to_seq.entry(nonce_storage_slot).or_insert(seq_id);
-        inner
-            .by_eviction_order
-            .insert(EvictionKey { priority_fee, submission_id: sub_id, hash });
+        inner.by_eviction_order.insert(EvictionKey { priority_fee, submission_id: sub_id, hash });
 
         if replaced_hash.is_none() {
             *inner.payer_txs.entry(payer).or_insert(0) += 1;
@@ -812,11 +809,7 @@ impl<T: PoolTransaction> Eip8130Pool<T> {
             let _ = self.pending_tx_sender.send(*pending_hash);
         }
 
-        Ok(if replaced_hash.is_some() {
-            AddOutcome::Replaced
-        } else {
-            AddOutcome::Added
-        })
+        Ok(if replaced_hash.is_some() { AddOutcome::Replaced } else { AddOutcome::Added })
     }
 
     /// Resolves the throughput tier for `account`, using the cache when fresh
@@ -922,9 +915,7 @@ impl<T: PoolTransaction> Eip8130Pool<T> {
         inner
             .sequences
             .values()
-            .flat_map(|seq| {
-                seq.txs.values().filter(|e| !e.is_pending).map(|e| Self::wrap_entry(e))
-            })
+            .flat_map(|seq| seq.txs.values().filter(|e| !e.is_pending).map(|e| Self::wrap_entry(e)))
             .collect()
     }
 
@@ -1061,10 +1052,9 @@ impl core::fmt::Display for Eip8130PoolError {
         match self {
             Self::DuplicateHash(hash) => write!(f, "duplicate transaction hash {hash}"),
             Self::SequenceFull => write!(f, "sequence lane is full"),
-            Self::ReplacementUnderpriced { existing_fee, new_fee } => write!(
-                f,
-                "replacement underpriced: existing_fee={existing_fee}, new_fee={new_fee}"
-            ),
+            Self::ReplacementUnderpriced { existing_fee, new_fee } => {
+                write!(f, "replacement underpriced: existing_fee={existing_fee}, new_fee={new_fee}")
+            }
             Self::PoolFull => write!(f, "2D nonce pool is full"),
             Self::AccountCapacityExceeded(account) => {
                 write!(f, "account {account} exceeded per-account capacity")
@@ -2128,8 +2118,7 @@ mod tests {
         let tx2 = make_tx(sender_byte, 2, 10);
 
         // tx0: no expiry (0), tx1: expires at 1000, tx2: expires at 2000
-        pool.add_transaction(id0, tx0, sender, TransactionOrigin::External, slot, 0, tier)
-            .unwrap();
+        pool.add_transaction(id0, tx0, sender, TransactionOrigin::External, slot, 0, tier).unwrap();
         pool.add_transaction(id1, tx1, sender, TransactionOrigin::External, slot, 1000, tier)
             .unwrap();
         pool.add_transaction(id2, tx2, sender, TransactionOrigin::External, slot, 2000, tier)

@@ -20,8 +20,7 @@ use reth_transaction_pool::{
     CanonicalStateUpdate, EthPoolTransaction, GetPooledTransactionLimit, NewBlobSidecar,
     PoolResult, PoolSize, PoolTransaction, PropagatedTransactions, TransactionEvents,
     TransactionListenerKind, TransactionOrigin, TransactionPool, TransactionPoolExt,
-    ValidPoolTransaction,
-    blobstore::BlobStoreError,
+    ValidPoolTransaction, blobstore::BlobStoreError,
 };
 use tokio::sync::mpsc::{self, Receiver};
 
@@ -109,8 +108,9 @@ where
         &self,
         origin: TransactionOrigin,
         transaction: Self::Transaction,
-    ) -> impl std::future::Future<Output = PoolResult<reth_transaction_pool::AddedTransactionOutcome>>
-           + Send {
+    ) -> impl std::future::Future<
+        Output = PoolResult<reth_transaction_pool::AddedTransactionOutcome>,
+    > + Send {
         self.protocol_pool.add_transaction(origin, transaction)
     }
 
@@ -262,13 +262,11 @@ where
         tx_hash: B256,
     ) -> Option<reth_primitives_traits::Recovered<<Self::Transaction as PoolTransaction>::Pooled>>
     {
-        self.protocol_pool
-            .get_pooled_transaction_element(tx_hash)
-            .or_else(|| {
-                let tx = self.eip8130_pool.get(&tx_hash)?;
-                let pooled = tx.transaction.clone_into_pooled().ok()?;
-                Some(pooled)
-            })
+        self.protocol_pool.get_pooled_transaction_element(tx_hash).or_else(|| {
+            let tx = self.eip8130_pool.get(&tx_hash)?;
+            let pooled = tx.transaction.clone_into_pooled().ok()?;
+            Some(pooled)
+        })
     }
 
     fn best_transactions(
@@ -390,10 +388,7 @@ where
         self.protocol_pool.get(tx_hash).or_else(|| self.eip8130_pool.get(tx_hash))
     }
 
-    fn get_all(
-        &self,
-        txs: Vec<B256>,
-    ) -> Vec<Arc<ValidPoolTransaction<Self::Transaction>>> {
+    fn get_all(&self, txs: Vec<B256>) -> Vec<Arc<ValidPoolTransaction<Self::Transaction>>> {
         let mut result = self.protocol_pool.get_all(txs.clone());
         let found: std::collections::HashSet<B256> = result.iter().map(|tx| *tx.hash()).collect();
         for hash in &txs {
@@ -423,15 +418,8 @@ where
         &self,
         mut predicate: impl FnMut(&ValidPoolTransaction<Self::Transaction>) -> bool,
     ) -> Vec<Arc<ValidPoolTransaction<Self::Transaction>>> {
-        let mut txs = self
-            .protocol_pool
-            .get_pending_transactions_with_predicate(&mut predicate);
-        txs.extend(
-            self.eip8130_pool
-                .pending_transactions()
-                .into_iter()
-                .filter(|tx| predicate(tx)),
-        );
+        let mut txs = self.protocol_pool.get_pending_transactions_with_predicate(&mut predicate);
+        txs.extend(self.eip8130_pool.pending_transactions().into_iter().filter(|tx| predicate(tx)));
         txs
     }
 
@@ -441,10 +429,7 @@ where
     ) -> Vec<Arc<ValidPoolTransaction<Self::Transaction>>> {
         let mut txs = self.protocol_pool.get_pending_transactions_by_sender(sender);
         txs.extend(
-            self.eip8130_pool
-                .pending_transactions()
-                .into_iter()
-                .filter(|tx| tx.sender() == sender),
+            self.eip8130_pool.pending_transactions().into_iter().filter(|tx| tx.sender() == sender),
         );
         txs
     }
@@ -455,10 +440,7 @@ where
     ) -> Vec<Arc<ValidPoolTransaction<Self::Transaction>>> {
         let mut txs = self.protocol_pool.get_queued_transactions_by_sender(sender);
         txs.extend(
-            self.eip8130_pool
-                .queued_transactions()
-                .into_iter()
-                .filter(|tx| tx.sender() == sender),
+            self.eip8130_pool.queued_transactions().into_iter().filter(|tx| tx.sender() == sender),
         );
         txs
     }
@@ -477,8 +459,7 @@ where
         sender: Address,
         on_chain_nonce: u64,
     ) -> Option<Arc<ValidPoolTransaction<Self::Transaction>>> {
-        self.protocol_pool
-            .get_highest_consecutive_transaction_by_sender(sender, on_chain_nonce)
+        self.protocol_pool.get_highest_consecutive_transaction_by_sender(sender, on_chain_nonce)
     }
 
     fn get_transaction_by_sender_and_nonce(

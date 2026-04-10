@@ -436,7 +436,7 @@ mod tests {
     fn make_simple_tx(from: Address, nonce_key: u64) -> TxEip8130 {
         TxEip8130 {
             chain_id: 1,
-            from,
+            from: Some(from),
             nonce_key: U256::from(nonce_key),
             nonce_sequence: 0,
             gas_limit: 100_000,
@@ -482,7 +482,7 @@ mod tests {
         let from = Address::repeat_byte(0x42);
         let tx = TxEip8130 {
             chain_id: 1,
-            from,
+            from: Some(from),
             account_changes: vec![AccountChangeEntry::ConfigChange(ConfigChangeEntry {
                 chain_id: 1,
                 sequence: 0,
@@ -510,7 +510,7 @@ mod tests {
         let from = Address::repeat_byte(0x42);
         let tx = TxEip8130 {
             chain_id: 1,
-            from,
+            from: Some(from),
             account_changes: vec![AccountChangeEntry::Create(CreateEntry {
                 user_salt: B256::repeat_byte(0x01),
                 bytecode: Bytes::from(vec![0x60, 0x00]),
@@ -530,7 +530,7 @@ mod tests {
         let resolved = Address::repeat_byte(0xAA);
         let tx = TxEip8130 {
             chain_id: 1,
-            from: Address::ZERO,
+            from: Some(Address::ZERO),
             sender_auth: Bytes::from(vec![0u8; 65]),
             ..Default::default()
         };
