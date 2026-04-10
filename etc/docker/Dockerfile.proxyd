@@ -2,6 +2,8 @@ FROM public.ecr.aws/docker/library/golang:1.23-alpine3.20 AS builder
 RUN apk add --no-cache make git gcc musl-dev
 WORKDIR /app
 RUN git clone --depth 1 --branch release-rb https://github.com/base/infra-routing.git .
+COPY proxyd/eip8130-passthrough.patch /tmp/eip8130-passthrough.patch
+RUN git apply /tmp/eip8130-passthrough.patch
 WORKDIR /app/proxyd
 RUN go build -o /bin/proxyd ./cmd/proxyd
 

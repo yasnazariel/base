@@ -1,0 +1,105 @@
+--- a/proxyd/server.go
++++ b/proxyd/server.go
+@@ -664,39 +664,44 @@
+ 				responses[i] = NewRPCErrorRes(parsedReq.ID, err)
+ 				continue
+ 			}
+-			if err := s.rateLimitSender(ctx, tx, bypassLimit); err != nil {
+-				RecordRPCError(ctx, BackendProxyd, parsedReq.Method, err)
+-				responses[i] = NewRPCErrorRes(parsedReq.ID, err)
+-				continue
+-			}
+-			if err := s.validateInteropSendRpcRequest(ctx, tx); err != nil {
+-				RecordRPCError(ctx, BackendProxyd, parsedReq.Method, err)
+-				responses[i] = NewRPCErrorRes(parsedReq.ID, err)
+-				continue
+-			}
+-
+-			// Send async copy to ingress service, don't wait for error handling
+-			if s.ingressRpc != "" {
+-				body, err := json.Marshal(parsedReq)
+-				if err != nil {
+-					log.Error("unable to marshal JSON RPC request", "source", "rpc", "err", err)
+-				} else {
+-					go func() {
+-						RecordIngressRequest()
++			// tx is nil for unknown transaction types (e.g. EIP-8130 type 0x7B).
++			// Skip sender rate limiting, validation, and ingress forwarding
++			// but still forward the raw request to the backend.
++			if tx != nil {
++				if err := s.rateLimitSender(ctx, tx, bypassLimit); err != nil {
++					RecordRPCError(ctx, BackendProxyd, parsedReq.Method, err)
++					responses[i] = NewRPCErrorRes(parsedReq.ID, err)
++					continue
++				}
++				if err := s.validateInteropSendRpcRequest(ctx, tx); err != nil {
++					RecordRPCError(ctx, BackendProxyd, parsedReq.Method, err)
++					responses[i] = NewRPCErrorRes(parsedReq.ID, err)
++					continue
++				}
+ 
+-						ingressStart := time.Now()
+-						req, err := http.NewRequest(http.MethodPost, s.ingressRpc, bytes.NewBuffer(body))
+-						req.Header.Set("Content-Type", "application/json")
++				// Send async copy to ingress service, don't wait for error handling
++				if s.ingressRpc != "" {
++					body, err := json.Marshal(parsedReq)
++					if err != nil {
++						log.Error("unable to marshal JSON RPC request", "source", "rpc", "err", err)
++					} else {
++						go func() {
++							RecordIngressRequest()
+ 
+-						resp, err := s.ingressRpcClient.Do(req)
+-						if err != nil {
+-							log.Warn("failed to proxy to ingress rpc", "err", err)
+-							return
+-						}
++							ingressStart := time.Now()
++							req, err := http.NewRequest(http.MethodPost, s.ingressRpc, bytes.NewBuffer(body))
++							req.Header.Set("Content-Type", "application/json")
+ 
+-						defer resp.Body.Close()
+-						RecordIngressRequestDuration(time.Since(ingressStart))
+-					}()
++							resp, err := s.ingressRpcClient.Do(req)
++							if err != nil {
++								log.Warn("failed to proxy to ingress rpc", "err", err)
++								return
++							}
++
++							defer resp.Body.Close()
++							RecordIngressRequestDuration(time.Since(ingressStart))
++						}()
++					}
+ 				}
+ 			}
+ 		}
+@@ -962,10 +967,15 @@
+ 	}
+ 
+ 	// Inflates a types.Transaction object from the transaction's raw bytes.
++	// Returns (nil, nil) for unknown tx types (e.g. EIP-8130 type 0x7B)
++	// so callers can skip sender-based features but still forward the request.
+ 	tx := new(types.Transaction)
+ 	if err := tx.UnmarshalBinary(data); err != nil {
+-		log.Debug("could not unmarshal transaction", "err", err, "req_id", GetReqID(ctx))
+-		return nil, ErrInvalidParams(err.Error())
++		log.Debug("unknown or unsupported transaction type, forwarding as-is",
++			"err", err,
++			"req_id", GetReqID(ctx),
++		)
++		return nil, nil
+ 	}
+ 
+ 	// Log transaction hash for all sendRawTransaction requests if enabled
+@@ -1177,6 +1187,9 @@
+ 		if err != nil {
+ 			return err
+ 		}
++		if tx == nil {
++			return nil
++		}
+ 		txs = []*types.Transaction{tx}
+ 	case "eth_sendBundle":
+ 		txs, err = transactionsFromBundleReq(ctx, req)

@@ -10,15 +10,15 @@ default:
     @just devnet --list
 
 # Stops devnet, deletes data, and starts fresh (3-node HA conductor cluster)
-up: down _build-setup-image (_build-rust-images "devnet" "dev")
+up: down _build-setup-image (_build-rust-images "devnet" "dev") _build-proxyd-image
     docker compose {{ _env }} {{ _ha }} up -d --no-build --scale contender=0
 
 # Stops devnet, deletes data, and starts fresh with a single sequencer (no conductor)
-up-single: down _build-setup-image (_build-rust-images "devnet" "dev")
+up-single: down _build-setup-image (_build-rust-images "devnet" "dev") _build-proxyd-image
     docker compose {{ _env }} {{ _base }} up -d --no-build --scale contender=0
 
 # Stops devnet, deletes data, and starts fresh with profiling (Pyroscope + optimized builds)
-profiling: down _build-setup-image (_build-rust-images "devnet" "profiling")
+profiling: down _build-setup-image (_build-rust-images "devnet" "profiling") _build-proxyd-image
     docker compose {{ _env }} {{ _ha }} --profile profiling up -d --no-build --scale contender=0
 
 # Stops devnet and deletes all data
@@ -119,6 +119,10 @@ tests-ci: _install-nextest _build-contracts
 [private]
 _install-nextest:
     @command -v cargo-nextest >/dev/null 2>&1 || cargo install cargo-nextest
+
+[private]
+_build-proxyd-image:
+    docker build -t proxyd:local -f etc/docker/Dockerfile.proxyd etc/docker
 
 [private]
 _build-setup-image:

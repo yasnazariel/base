@@ -230,6 +230,41 @@ services:
       start_period: 250ms
     restart: unless-stopped
 
+  patch-genesis-hash:
+    image: devnet-setup:local
+    container_name: patch-genesis-hash
+    env_file: devnet-env
+    depends_on:
+      base-builder:
+        condition: service_healthy
+    volumes:
+      - ../../.devnet:/devnet
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        set -e
+        HASH=$$(curl -sf -X POST -H 'Content-Type: application/json' \
+          --data '{"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["0x0",false],"id":1}' \
+          http://base-builder:${L2_BUILDER_HTTP_PORT} | jq -r '.result.hash')
+        if [ -z "$$HASH" ] || [ "$$HASH" = "null" ]; then
+          echo "ERROR: Failed to get genesis hash from builder EL"
+          exit 1
+        fi
+        CURRENT=$$(jq -r '.genesis.l2.hash' /devnet/l2/configs/rollup.json)
+        if [ "$$CURRENT" = "$$HASH" ]; then
+          echo "Genesis hash already correct: $$HASH"
+          exit 0
+        fi
+        echo "Patching rollup config genesis hash: $$CURRENT -> $$HASH"
+        for f in /devnet/l2/configs/rollup.json /devnet/l2/configs/rollup-conductor.json; do
+          if [ -f "$$f" ]; then
+            TMP=$$(mktemp)
+            jq --arg hash "$$HASH" '.genesis.l2.hash = $$hash' "$$f" > "$$TMP"
+            mv "$$TMP" "$$f"
+          fi
+        done
+        echo "Rollup config genesis hash patched successfully"
+
   base-builder-cl:
     image: base-consensus:local
     build:
@@ -237,6 +272,8 @@ services:
       target: consensus
     container_name: base-builder-cl
     depends_on:
+      patch-genesis-hash:
+        condition: service_completed_successfully
       base-builder:
         condition: service_healthy
     ports:
@@ -528,6 +565,30 @@ services:
       - /etc/alloy/config.alloy
     depends_on:
       - pyroscope
+    restart: unless-stopped
+
+  proxyd:
+    image: proxyd:local
+    build:
+      context: .
+      dockerfile: Dockerfile.proxyd
+    container_name: proxyd
+    depends_on:
+      base-builder:
+        condition: service_healthy
+      base-client:
+        condition: service_healthy
+    ports:
+      - "${L2_INGRESS_HTTP_PORT:-8080}:8080"
+    volumes:
+      - ./proxyd:/config:ro
+    command: ["/config/proxyd-ratelimit.toml"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "-X", "POST", "-H", "Content-Type: application/json", "--data", "{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"params\":[],\"id\":1}", "http://localhost:8080"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
     restart: unless-stopped
 
   prometheus:

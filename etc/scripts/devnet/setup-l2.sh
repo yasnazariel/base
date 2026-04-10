@@ -188,18 +188,24 @@ op-deployer inspect l1 \
   >"$OUTPUT_DIR/l1-addresses.json"
 echo "L1 addresses written to $OUTPUT_DIR/l1-addresses.json"
 
-# Verify the rollup.json has the correct L1 genesis hash
+# Verify the rollup.json L1 anchor block exists on the running L1
+ROLLUP_L1_NUM=$(jq -r '.genesis.l1.number' "$OUTPUT_DIR/rollup.json")
 ROLLUP_L1_HASH=$(jq -r '.genesis.l1.hash' "$OUTPUT_DIR/rollup.json")
+ROLLUP_L1_NUM_HEX=$(printf "0x%x" "$ROLLUP_L1_NUM")
+ACTUAL_L1_HASH=$(curl -s -X POST -H "Content-Type: application/json" \
+  --data "{\"jsonrpc\":\"2.0\",\"method\":\"eth_getBlockByNumber\",\"params\":[\"$ROLLUP_L1_NUM_HEX\",false],\"id\":1}" \
+  "$L1_RPC_URL" | jq -r '.result.hash')
 echo ""
-echo "=== Verifying L1 Genesis Hash ==="
-echo "Actual L1 genesis hash: $L1_HASH"
-echo "Rollup.json L1 hash:    $ROLLUP_L1_HASH"
+echo "=== Verifying L1 Anchor Block ==="
+echo "Rollup L1 anchor block: $ROLLUP_L1_NUM"
+echo "Rollup L1 anchor hash:  $ROLLUP_L1_HASH"
+echo "Actual L1 block hash:   $ACTUAL_L1_HASH"
 
-if [ "$L1_HASH" != "$ROLLUP_L1_HASH" ]; then
-  echo "WARNING: L1 genesis hash mismatch!"
+if [ "$ACTUAL_L1_HASH" != "$ROLLUP_L1_HASH" ]; then
+  echo "WARNING: L1 anchor block hash mismatch!"
   echo "This might cause issues with the consensus node."
 else
-  echo "L1 genesis hash matches!"
+  echo "L1 anchor block hash matches!"
 fi
 
 # =============================================================================
