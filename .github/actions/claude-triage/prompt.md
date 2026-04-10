@@ -49,7 +49,10 @@ You MUST perform the following trust evaluation:
 
    If the code quality is acceptable and the PR is relevant, post a
    review summary comment and leave the PR open for a maintainer to review.
-   Run: gh pr comment ${PR_NUMBER} --body "<your review summary, or 'Triage passed — no findings.' if clean>"
+   The comment MUST start with the marker `<!-- CLAUDE_TRIAGE_PASSED -->` so
+   downstream automation can programmatically verify that triage succeeded.
+   Run: gh pr comment ${PR_NUMBER} --body "<!-- CLAUDE_TRIAGE_PASSED -->
+   <your review summary, or 'Triage passed — no findings.' if clean>"
 
 5. If the code quality is NOT acceptable after review, close the PR with
    specific feedback on what needs to change:

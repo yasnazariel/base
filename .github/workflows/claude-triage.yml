@@ -106,8 +106,10 @@ jobs:
         run: |
           PR_BODY=$(gh pr view "${PR_NUMBER}" --repo "${REPO}" --json body --jq '.body // ""')
 
-          # Match common issue reference patterns: #123, GH-123, org/repo#123, or full URLs.
-          ISSUE_NUM=$(echo "${PR_BODY}" | grep -oE '(#|GH-)[0-9]+|https://github\.com/[^/]+/[^/]+/issues/[0-9]+' | head -1 | grep -oE '[0-9]+$' || echo "")
+          # Match issue reference patterns: #123 or GH-123 only.
+          # Full URLs are intentionally excluded to prevent cross-repo issue injection
+          # (attacker could reference a different repo's M-help-wanted issue).
+          ISSUE_NUM=$(echo "${PR_BODY}" | grep -oE '(#|GH-)[0-9]+' | head -1 | grep -oE '[0-9]+$' || echo "")
 
           if [[ -z "${ISSUE_NUM}" ]]; then
             echo "issue_number=" >> "$GITHUB_OUTPUT"
@@ -127,11 +129,14 @@ jobs:
           REPO: ${{ github.repository }}
           ISSUE_NUMBER: ${{ steps.issue.outputs.issue_number }}
         run: |
+          # Use a random delimiter to prevent injection via user-controlled
+          # values (CodeQL: Environment variable built from user-controlled sources).
+          DELIMITER=$(openssl rand -hex 16)
           {
-            echo 'TRIAGE_PROMPT<<PROMPT_EOF'
+            echo "TRIAGE_PROMPT<<${DELIMITER}"
             envsubst '${PR_NUMBER} ${PR_AUTHOR} ${REPO} ${ISSUE_NUMBER}' \
               < .github/actions/claude-triage/prompt.md
-            echo 'PROMPT_EOF'
+            echo "${DELIMITER}"
           } >> "$GITHUB_ENV"
 
       - name: Run Claude Code

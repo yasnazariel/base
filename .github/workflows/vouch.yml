@@ -27,9 +27,9 @@ jobs:
         uses: step-security/harden-runner@95d9a5deda9de15063e7595e9719c11c38c90ae2 # v2.13.2
         with:
           egress-policy: audit
-      # auto-close is disabled so the CI reviewer can review unvouched PRs first.
-      # The CI reviewer will vouch the contributor if the PR passes review,
-      # or close the PR if it does not meet the bar.
+      # auto-close is disabled so the CI reviewer (claude-triage.yml) can
+      # review unvouched fork PRs first. If the PR passes triage, a maintainer
+      # will manually review, merge, and vouch the contributor.
       - uses: mitchellh/vouch/action/check-pr@c6d80ead49839655b61b422700b7a3bc9d0804a9 # v1
         with:
           pr-number: ${{ github.event.pull_request.number }}
