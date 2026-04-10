@@ -122,6 +122,16 @@ op-deployer inspect genesis \
   >"$OUTPUT_DIR/genesis.json"
 echo "L2 genesis written to $OUTPUT_DIR/genesis.json"
 
+if [ -n "$FAUCET_ADDR" ]; then
+  FAUCET_BALANCE="0x84595161401484a000000"
+  echo "Injecting faucet ($FAUCET_ADDR) into L2 genesis with 10M ETH..."
+  TMP_FAUCET=$(mktemp)
+  jq --arg addr "$FAUCET_ADDR" --arg bal "$FAUCET_BALANCE" \
+    '.alloc[$addr] = {"balance": $bal}' \
+    "$OUTPUT_DIR/genesis.json" > "$TMP_FAUCET"
+  mv "$TMP_FAUCET" "$OUTPUT_DIR/genesis.json"
+fi
+
 echo "Extracting rollup config..."
 op-deployer inspect rollup \
   --workdir "$OP_DEPLOYER_WORKDIR" \
