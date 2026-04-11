@@ -20,6 +20,7 @@ jobs:
     concurrency:
       group: claude-triage-${{ github.event.pull_request.number }}
       cancel-in-progress: true
+    timeout-minutes: 15
     runs-on:
       group: BaseRunnerGroup
     permissions:
@@ -106,10 +107,16 @@ jobs:
         run: |
           PR_BODY=$(gh pr view "${PR_NUMBER}" --repo "${REPO}" --json body --jq '.body // ""')
 
-          # Match issue reference patterns: #123 or GH-123 only.
-          # Full URLs are intentionally excluded to prevent cross-repo issue injection
-          # (attacker could reference a different repo's M-help-wanted issue).
-          ISSUE_NUM=$(echo "${PR_BODY}" | grep -oE '(#|GH-)[0-9]+' | head -1 | grep -oE '[0-9]+$' || echo "")
+          # Match common issue-closing keywords followed by #N (e.g. "Fixes #123",
+          # "Closes #456"). This avoids false-positives from markdown anchors,
+          # HTML fragments, and quoted text that happen to contain "#".
+          # Full URLs are excluded to prevent cross-repo issue injection.
+          ISSUE_NUM=$(echo "${PR_BODY}" | grep -oiE '(close[sd]?|fix(e[sd])?|resolve[sd]?)\s+#[0-9]+' | head -1 | grep -oE '[0-9]+$' || echo "")
+
+          # Fallback: bare #N at the start of a line (less precise but catches "Ref #123").
+          if [[ -z "${ISSUE_NUM}" ]]; then
+            ISSUE_NUM=$(echo "${PR_BODY}" | grep -oE '^#[0-9]+' | head -1 | grep -oE '[0-9]+$' || echo "")
+          fi
 
           if [[ -z "${ISSUE_NUM}" ]]; then
             echo "issue_number=" >> "$GITHUB_OUTPUT"

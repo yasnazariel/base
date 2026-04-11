@@ -74,7 +74,7 @@ There are three ways an individual can contribute:
 
 1. **By opening an issue:** If you believe you have uncovered a bug in Base or have a feature request, creating a new issue in the issue tracker is the way to begin the process.
 2. **By adding context:** Provide additional context to existing issues, such as screenshots, logs, and code snippets, to help resolve them.
-3. **By resolving issues:** Find an open issue labeled [`M-help-wanted`][help-wanted] and open a pull request that addresses it. This is the recommended path for new contributors — our CI reviewer will automatically review your PR and vouch you if it meets the bar.
+3. **By resolving issues:** Find an open issue labeled [`M-help-wanted`][help-wanted] and open a pull request that addresses it. This is the recommended path for new contributors — our CI reviewer will automatically triage your PR, and a maintainer will review and vouch you once it meets the bar.
 
 ## Scope of Contributions
 
