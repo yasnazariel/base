@@ -16,6 +16,7 @@ use tokio::{
     sync::{mpsc, oneshot},
 };
 use tokio_util::sync::{CancellationToken, WaitForCancellationFuture};
+use url::Url;
 
 use crate::{
     CancellableContext, Metrics, NodeActor, SequencerAdminQuery, UnsafePayloadGossipClient,
@@ -27,6 +28,7 @@ use crate::{
             conductor::Conductor,
             error::SequencerActorError,
             origin_selector::OriginSelector,
+            preconfirmation::{PreconfirmationSubscriber, PreconfirmationTracker},
             recovery::RecoveryModeGuard,
             seal::PayloadSealer,
         },
@@ -85,6 +87,17 @@ pub struct SequencerActor<
     /// Stashed response sender for a pending `stop_sequencer` call that is waiting
     /// for the in-flight seal pipeline to complete before responding.
     pub pending_stop: Option<PendingStopSender>,
+    /// WebSocket URL for the leader's flashblocks feed.
+    ///
+    /// When `Some`, a [`PreconfirmationSubscriber`] is spawned at startup to
+    /// populate [`preconfirmation_tracker`] from the current leader's feed.
+    ///
+    /// [`preconfirmation_tracker`]: Self::preconfirmation_tracker
+    pub preconfirmation_ws_url: Option<Url>,
+    /// Shared preconfirmation tracker, also held by the [`PayloadBuilder`].
+    ///
+    /// [`PayloadBuilder`]: super::PayloadBuilder
+    pub preconfirmation_tracker: Option<Arc<PreconfirmationTracker>>,
 }
 
 impl<
@@ -273,6 +286,16 @@ where
             tokio::time::interval(Duration::from_secs(self.rollup_config.block_time));
 
         self.update_metrics();
+
+        // Start the preconfirmation subscriber if both a WS URL and tracker are configured.
+        // The subscriber runs continuously in the background, accumulating preconfirmed
+        // transactions from the current leader's flashblocks feed. On leadership transfer,
+        // the PayloadBuilder drains the tracker into the first block's attributes.
+        if let (Some(ws_url), Some(tracker)) =
+            (self.preconfirmation_ws_url.take(), self.preconfirmation_tracker.clone())
+        {
+            PreconfirmationSubscriber::new(ws_url, tracker).start();
+        }
 
         let mut next_payload_to_seal: Option<UnsealedPayloadHandle> = None;
 

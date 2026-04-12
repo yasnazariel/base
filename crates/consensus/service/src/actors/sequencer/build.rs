@@ -18,6 +18,7 @@ use crate::{
         sequencer::{
             error::SequencerActorError,
             origin_selector::{L1OriginSelectorError, OriginSelector},
+            preconfirmation::PreconfirmationTracker,
             recovery::RecoveryModeGuard,
         },
     },
@@ -50,6 +51,12 @@ pub struct PayloadBuilder<A: AttributesBuilder, O: OriginSelector, E: SequencerE
     pub recovery_mode: RecoveryModeGuard,
     /// The rollup configuration.
     pub rollup_config: Arc<RollupConfig>,
+    /// Optional tracker for preconfirmed transactions accumulated from the leader's
+    /// flashblocks feed.
+    ///
+    /// When `Some`, the first block built after a leadership transfer will have
+    /// preconfirmed transactions injected to preserve user-visible ordering.
+    pub preconfirmation_tracker: Option<Arc<PreconfirmationTracker>>,
 }
 
 impl<A: AttributesBuilder, O: OriginSelector, E: SequencerEngineClient> PayloadBuilder<A, O, E> {
@@ -206,6 +213,26 @@ impl<A: AttributesBuilder, O: OriginSelector, E: SequencerEngineClient> PayloadB
         let activator = PoolActivation::new(Arc::clone(&self.rollup_config));
         attributes.no_tx_pool =
             Some(!activator.is_enabled(self.recovery_mode.get(), l1_origin, &attributes));
+
+        // On the first block after a leadership transfer, inject any preconfirmed
+        // transactions that were accumulated while watching the previous leader's
+        // flashblocks feed. Deposit transactions (from prepare_payload_attributes)
+        // are preserved first; preconfirmed transactions follow. Injection applies
+        // regardless of no_tx_pool — forced transactions are always included and
+        // this ensures ordering is preserved even during sequencer drift recovery.
+        if let Some(ref tracker) = self.preconfirmation_tracker {
+            if let Some(preconf_txs) = tracker.take_transactions(unsafe_head.block_info.hash) {
+                info!(
+                    target: "sequencer",
+                    parent_hash = %unsafe_head.block_info.hash,
+                    tx_count = preconf_txs.len(),
+                    "Injecting preconfirmed transactions into first block after leadership transfer"
+                );
+                let mut merged = attributes.transactions.take().unwrap_or_default();
+                merged.extend(preconf_txs);
+                attributes.transactions = Some(merged);
+            }
+        }
 
         let attrs_with_parent = AttributesWithParent::new(attributes, unsafe_head, None, false);
         Ok(Some(attrs_with_parent))

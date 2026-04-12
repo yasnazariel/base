@@ -56,6 +56,28 @@ pub struct SequencerArgs {
         value_parser = |arg: &str| -> Result<Duration, ParseIntError> {Ok(Duration::from_secs(arg.parse()?))}
     )]
     pub conductor_rpc_timeout: Duration,
+
+    /// WebSocket URL for the leader's flashblocks feed, used for preconfirmation tracking.
+    ///
+    /// When set alongside `--conductor.rpc`, this node subscribes to the feed as a follower
+    /// and injects accumulated preconfirmed transactions into its first block on leadership
+    /// transfer, preserving user-visible transaction ordering across the handoff.
+    #[arg(
+        long = "sequencer.preconfirmations.ws-url",
+        env = "BASE_NODE_SEQUENCER_PRECONFIRMATIONS_WS_URL"
+    )]
+    pub preconfirmation_ws_url: Option<Url>,
+
+    /// TTL in seconds for preconfirmed transaction sets (default: 30).
+    ///
+    /// Entries older than this are discarded rather than injected, preventing
+    /// stale data from appearing in a block after a delayed leadership transfer.
+    #[arg(
+        long = "sequencer.preconfirmations.ttl",
+        default_value = "30",
+        env = "BASE_NODE_SEQUENCER_PRECONFIRMATIONS_TTL"
+    )]
+    pub preconfirmation_ttl: u64,
 }
 
 impl Default for SequencerArgs {
@@ -74,6 +96,8 @@ impl SequencerArgs {
             sequencer_recovery_mode: self.recover,
             conductor_rpc_url: self.conductor_rpc.clone(),
             l1_conf_delay: self.l1_confs,
+            preconfirmation_ws_url: self.preconfirmation_ws_url.clone(),
+            preconfirmation_ttl: Duration::from_secs(self.preconfirmation_ttl),
         }
     }
 }

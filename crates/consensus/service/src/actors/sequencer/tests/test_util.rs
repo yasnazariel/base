@@ -36,6 +36,7 @@ pub(super) fn test_actor() -> SequencerActor<
             origin_selector: MockOriginSelector::new(),
             recovery_mode: recovery_mode.clone(),
             rollup_config: Arc::clone(&rollup_config),
+            preconfirmation_tracker: None,
         },
         cancellation_token: CancellationToken::new(),
         conductor: None,
@@ -47,5 +48,7 @@ pub(super) fn test_actor() -> SequencerActor<
         sealer: None,
         pending_stop: None,
         next_build_parent: None,
+        preconfirmation_ws_url: None,
+        preconfirmation_tracker: None,
     }
 }

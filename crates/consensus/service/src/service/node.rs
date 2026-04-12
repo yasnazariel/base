@@ -24,10 +24,10 @@ use crate::{
     DelegateDerivationActor, DerivationActor, DerivationDelegateClient, DerivationError,
     EngineActor, EngineActorRequest, EngineConfig, EngineProcessor, EngineRpcProcessor,
     L1OriginSelector, L1WatcherActor, NetworkActor, NetworkBuilder, NetworkConfig, NodeActor,
-    NodeMode, PayloadBuilder, QueuedDerivationEngineClient, QueuedEngineDerivationClient,
-    QueuedEngineRpcClient, QueuedL1WatcherDerivationClient, QueuedNetworkEngineClient,
-    QueuedSequencerAdminAPIClient, QueuedSequencerEngineClient, RecoveryModeGuard, RpcActor,
-    RpcContext, SequencerActor, SequencerConfig,
+    NodeMode, PayloadBuilder, PreconfirmationTracker, QueuedDerivationEngineClient,
+    QueuedEngineDerivationClient, QueuedEngineRpcClient, QueuedL1WatcherDerivationClient,
+    QueuedNetworkEngineClient, QueuedSequencerAdminAPIClient, QueuedSequencerEngineClient,
+    RecoveryModeGuard, RpcActor, RpcContext, SequencerActor, SequencerConfig,
     actors::{BlockStream, NetworkInboundData, QueuedUnsafePayloadGossipClient},
 };
 
@@ -467,6 +467,20 @@ impl RollupNode {
             let recovery_mode =
                 RecoveryModeGuard::new(self.sequencer_config.sequencer_recovery_mode);
             let engine_client = Arc::new(sequencer_engine_client);
+
+            // Preconfirmation tracking is only meaningful in conductor mode: without a
+            // conductor there can be no leadership transfer, so the tracker is a no-op.
+            let preconfirmation_tracker = self
+                .sequencer_config
+                .preconfirmation_ws_url
+                .as_ref()
+                .filter(|_| conductor.is_some())
+                .map(|_| {
+                    Arc::new(PreconfirmationTracker::new(
+                        self.sequencer_config.preconfirmation_ttl,
+                    ))
+                });
+
             (
                 Some(SequencerActor {
                     admin_api_rx: sequencer_admin_api_rx,
@@ -476,6 +490,7 @@ impl RollupNode {
                         origin_selector: delayed_origin_selector,
                         recovery_mode: recovery_mode.clone(),
                         rollup_config: Arc::clone(&self.config),
+                        preconfirmation_tracker: preconfirmation_tracker.clone(),
                     },
                     cancellation_token: cancellation.clone(),
                     conductor,
@@ -487,6 +502,8 @@ impl RollupNode {
                     sealer: None,
                     pending_stop: None,
                     next_build_parent: None,
+                    preconfirmation_ws_url: self.sequencer_config.preconfirmation_ws_url.clone(),
+                    preconfirmation_tracker,
                 }),
                 Some(QueuedSequencerAdminAPIClient::new(sequencer_admin_api_tx)),
             )

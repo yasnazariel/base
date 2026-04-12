@@ -23,6 +23,7 @@ base-consensus-derive.workspace = true
 base-consensus-safedb.workspace = true
 base-consensus-sources.workspace = true
 base-consensus-genesis.workspace = true
+base-alloy-flashblocks.workspace = true
 base-consensus-providers.workspace = true
 base-consensus-rpc = { workspace = true, features = ["client"] }
 
@@ -63,6 +64,7 @@ tokio-util.workspace = true
 async-trait.workspace = true
 async-stream.workspace = true
 tokio-stream.workspace = true
+tokio-tungstenite.workspace = true
 libp2p-stream.workspace = true
 http-body-util.workspace = true
 tracing = { workspace = true, features = ["std"] }
