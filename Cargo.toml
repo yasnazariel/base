@@ -25,6 +25,7 @@ members = [
   "bin/prover/nitro-enclave",
   "bin/prover/zk",
   "bin/prover-registrar",
+  "bin/snapshot",
   "bin/websocket-proxy",
   "crates/client/*",
   "crates/consensus/*",
@@ -62,6 +63,7 @@ members = [
   "crates/infra/mempool-rebroadcaster",
   "crates/infra/websocket-proxy",
   "crates/infra/load-tests",
+  "crates/infra/snapshot",
   "crates/common/*",
   "crates/execution/*",
   "etc/tools/*",
@@ -83,6 +85,7 @@ default-members = [
   "bin/prover/nitro-enclave",
   "bin/prover/zk",
   "bin/prover-registrar",
+  "bin/snapshot",
 ]
 
 [workspace.metadata.cargo-udeps.ignore]
@@ -241,6 +244,7 @@ audit-archiver-lib = { path = "crates/infra/audit" }
 ingress-rpc-lib = { path = "crates/infra/ingress-rpc" }
 websocket-proxy = { path = "crates/infra/websocket-proxy" }
 mempool-rebroadcaster = { path = "crates/infra/mempool-rebroadcaster" }
+base-snapshot = { path = "crates/infra/snapshot" }
 
 # Proof
 base-zk-db = { path = "crates/proof/zk/db" }
@@ -526,6 +530,8 @@ rayon = "1.11"
 nanoid = "0.4"
 strum = "0.28"
 tar = "0.4.44"
+zstd = "0.13"
+blake3 = "1"
 rkyv = "0.8"
 backon = "1.6"
 time = "0.3.44"

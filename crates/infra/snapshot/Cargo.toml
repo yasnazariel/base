@@ -1,0 +1,58 @@
+[package]
+name = "base-snapshot"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Base
+base-metrics = { workspace = true, optional = true }
+
+# AWS / S3
+aws-sdk-s3.workspace = true
+aws-config.workspace = true
+
+# Compression & Hashing
+tar.workspace = true
+zstd.workspace = true
+blake3.workspace = true
+
+# Async
+tokio = { workspace = true, features = ["full"] }
+
+# Serialization
+serde = { workspace = true, features = ["derive", "std"] }
+serde_json = { workspace = true, features = ["std"] }
+
+# HTTP (for pre-flight RPC checks)
+reqwest = { workspace = true, features = ["json"] }
+
+# Logging
+tracing.workspace = true
+
+# Error handling
+eyre.workspace = true
+
+# Misc
+chrono.workspace = true
+
+# Metrics (optional)
+metrics = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
+tempfile.workspace = true
+testcontainers = { workspace = true, features = ["blocking"] }
+testcontainers-modules = { workspace = true, features = ["minio"] }
+aws-config = { workspace = true, features = ["default-https-client", "rt-tokio"] }
+aws-sdk-s3 = { workspace = true, features = ["rustls", "default-https-client", "rt-tokio"] }
+aws-credential-types.workspace = true
+
+[features]
+default = ["metrics"]
+metrics = ["base-metrics/metrics", "dep:metrics"]

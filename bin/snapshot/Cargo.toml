@@ -1,0 +1,23 @@
+[package]
+name = "snapshot"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "snapshot"
+path = "src/main.rs"
+
+[dependencies]
+base-snapshot.workspace = true
+tokio = { workspace = true, features = ["full"] }
+clap = { workspace = true, features = ["derive"] }
+eyre.workspace = true
+tracing.workspace = true
+tracing-subscriber = "0.3"
+serde_json.workspace = true
