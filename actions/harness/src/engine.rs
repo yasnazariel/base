@@ -33,7 +33,7 @@ use base_common_rpc_types_engine::{
 };
 use base_consensus_engine::{EngineClient, EngineClientError, HyperAuthClient};
 use base_consensus_genesis::RollupConfig;
-use base_consensus_node::{EngineClientError as NodeEngineClientError, SequencerEngineClient};
+use base_consensus_node::{HandleClientError, SequencerEngineClient};
 use base_execution_chainspec::BaseChainSpec;
 use base_execution_evm::BaseEvmConfig;
 use base_execution_payload_builder::{
@@ -898,7 +898,7 @@ impl BaseEngineApi<Base, Http<HyperAuthClient>> for ActionEngineClient {
 
 #[async_trait]
 impl SequencerEngineClient for ActionEngineClient {
-    async fn reset_engine_forkchoice(&self) -> Result<(), NodeEngineClientError> {
+    async fn reset_engine_forkchoice(&self) -> Result<(), HandleClientError> {
         // No-op in action tests — FCU to current head is the default.
         Ok(())
     }
@@ -906,7 +906,7 @@ impl SequencerEngineClient for ActionEngineClient {
     async fn start_build_block(
         &self,
         attributes: AttributesWithParent,
-    ) -> Result<PayloadId, NodeEngineClientError> {
+    ) -> Result<PayloadId, HandleClientError> {
         let parent_hash = attributes.parent.block_info.hash;
         let mut guard = self.inner.lock().expect("action engine inner lock poisoned");
         Self::build_payload_inner(
@@ -915,17 +915,17 @@ impl SequencerEngineClient for ActionEngineClient {
             parent_hash,
             &attributes.attributes,
         )
-        .map_err(|e| NodeEngineClientError::RequestError(e.to_string()))
+        .map_err(|e| HandleClientError::RequestError(e.to_string()))
     }
 
     async fn get_sealed_payload(
         &self,
         payload_id: PayloadId,
         _attributes: AttributesWithParent,
-    ) -> Result<BaseExecutionPayloadEnvelope, NodeEngineClientError> {
+    ) -> Result<BaseExecutionPayloadEnvelope, HandleClientError> {
         let mut guard = self.inner.lock().expect("action engine inner lock poisoned");
         let pending = Self::take_pending(&mut guard, payload_id)
-            .map_err(|e| NodeEngineClientError::ResponseError(e.to_string()))?;
+            .map_err(|e| HandleClientError::ResponseError(e.to_string()))?;
         let block = pending.built.block();
         let block_hash = block.hash();
         let parent_beacon_block_root = block.header().parent_beacon_block_root();
@@ -937,14 +937,14 @@ impl SequencerEngineClient for ActionEngineClient {
     async fn insert_unsafe_payload(
         &self,
         payload: BaseExecutionPayloadEnvelope,
-    ) -> Result<(), NodeEngineClientError> {
+    ) -> Result<(), HandleClientError> {
         // Extract the V1 payload for execution.
         let v1 = payload.execution_payload.as_v1();
         let head_hash = v1.block_hash;
 
         let mut guard = self.inner.lock().expect("action engine inner lock poisoned");
         Self::execute_v1_inner(&mut guard, &self.block_registry, v1)
-            .map_err(|e| NodeEngineClientError::RequestError(e.to_string()))?;
+            .map_err(|e| HandleClientError::RequestError(e.to_string()))?;
 
         // Update canonical head.
         if let Some(h) =
@@ -964,7 +964,7 @@ impl SequencerEngineClient for ActionEngineClient {
         Ok(())
     }
 
-    async fn get_unsafe_head(&self) -> Result<L2BlockInfo, NodeEngineClientError> {
+    async fn get_unsafe_head(&self) -> Result<L2BlockInfo, HandleClientError> {
         let guard = self.inner.lock().expect("action engine inner lock poisoned");
         Ok(guard.canonical_head)
     }

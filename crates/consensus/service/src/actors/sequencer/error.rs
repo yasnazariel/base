@@ -2,7 +2,7 @@ use base_consensus_derive::PipelineErrorKind;
 use base_consensus_engine::BuildTaskError;
 
 use crate::{
-    L1OriginSelectorError, UnsafePayloadGossipClientError, actors::engine::EngineClientError,
+    L1OriginSelectorError, UnsafePayloadGossipClientError, actors::engine::HandleClientError,
 };
 
 /// An error produced by the [`crate::SequencerActor`].
@@ -19,7 +19,7 @@ pub enum SequencerActorError {
     L1OriginSelector(#[from] L1OriginSelectorError),
     /// An error occurred communicating with the engine.
     #[error(transparent)]
-    EngineError(#[from] EngineClientError),
+    EngineError(#[from] HandleClientError),
     /// An error occurred while attempting to build a payload.
     #[error(transparent)]
     BuildError(#[from] BuildTaskError),

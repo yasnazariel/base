@@ -8,14 +8,14 @@ mod error;
 pub use error::EngineError;
 
 mod rpc_request_processor;
+pub use rpc_request_processor::{EngineRpcProcessor, EngineRpcRequestReceiver};
+
 pub use base_consensus_engine::{
     BootstrapRole, BuildTaskError, ConsolidateInput, DerivationEngineClient, EngineClient,
-    EngineEvent, EngineHandle, EngineQueries, EngineState, HandleClientError as EngineClientError,
-    HandleClientResult as EngineClientResult, NetworkEngineClient, SealTaskError,
-    SequencerEngineClient,
+    EngineEvent, EngineHandle, EngineQueries, EngineState, HandleClientError, HandleClientResult,
+    NetworkEngineClient, SealTaskError, SequencerEngineClient,
 };
 #[cfg(test)]
 pub use base_consensus_engine::{
     MockDerivationEngineClient, MockNetworkEngineClient, MockSequencerEngineClient,
 };
-pub use rpc_request_processor::{EngineRpcProcessor, EngineRpcRequestReceiver};

@@ -3,7 +3,8 @@ use std::{sync::Arc, time::Duration};
 use alloy_eips::BlockNumberOrTag;
 use alloy_provider::RootProvider;
 use base_common_network::Base;
-use base_consensus_engine::{BootstrapRole, EngineClient, EngineHandle, EngineQueries};
+use base_consensus_derive::{ResetSignal, Signal};
+use base_consensus_engine::{BootstrapRole, EngineClient, EngineEvent, EngineHandle, EngineQueries};
 use base_consensus_genesis::RollupConfig;
 use base_consensus_rpc::RpcBuilder;
 use base_consensus_safedb::{DisabledSafeDB, SafeDBReader};
@@ -103,9 +104,6 @@ impl FollowNode {
 
         // Bridge engine events to the derivation actor's request channel.
         {
-            use base_consensus_derive::{ResetSignal, Signal};
-            use base_consensus_engine::EngineEvent;
-
             let deriv_tx = derivation_actor_request_tx.clone();
             let cancel = cancellation.clone();
             tokio::spawn(async move {

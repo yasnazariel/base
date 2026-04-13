@@ -21,7 +21,7 @@ use crate::{
     CancellableContext, Metrics, NodeActor, SequencerAdminQuery, UnsafePayloadGossipClient,
     actors::{
         SequencerEngineClient,
-        engine::EngineClientError,
+        engine::HandleClientError,
         sequencer::{
             build::{PayloadBuilder, UnsealedPayloadHandle},
             conductor::Conductor,
@@ -174,12 +174,12 @@ where
         let seal_start = Instant::now();
         match self.seal_payload(&handle).await {
             Ok(sealer) => Ok(Some((sealer, seal_start.elapsed()))),
-            Err(SequencerActorError::EngineError(EngineClientError::SealError(err))) => {
+            Err(SequencerActorError::EngineError(HandleClientError::SealError(err))) => {
                 if err.is_fatal() {
                     error!(target: "sequencer", error = ?err, "Critical seal task error occurred");
                     Metrics::sequencer_seal_errors_total("true").increment(1);
                     self.cancellation_token.cancel();
-                    return Err(SequencerActorError::EngineError(EngineClientError::SealError(
+                    return Err(SequencerActorError::EngineError(HandleClientError::SealError(
                         err,
                     )));
                 }
@@ -198,7 +198,7 @@ where
     /// Schedules the initial engine reset request and waits for the unsafe head to be updated.
     ///
     /// If the EL is still syncing (snap sync in progress), the engine will defer the reset and
-    /// return [`EngineClientError::ELSyncing`]. In that case we wait one block time and retry,
+    /// return [`HandleClientError::ELSyncing`]. In that case we wait one block time and retry,
     /// so we never send a `forkchoice_updated` that would abort reth's in-progress EL sync.
     ///
     /// Admin API queries are serviced throughout — both during reset attempts and during the
@@ -216,7 +216,7 @@ where
                 }
                 result = self.engine_client.reset_engine_forkchoice() => match result {
                     Ok(()) => return Ok(()),
-                    Err(EngineClientError::ResetError(base_consensus_engine::EngineResetError::ELSyncing)) => {
+                    Err(HandleClientError::ResetError(base_consensus_engine::EngineResetError::ELSyncing)) => {
                         info!(target: "sequencer", "EL sync in progress; deferring initial engine reset");
                     }
                     Err(err) => {

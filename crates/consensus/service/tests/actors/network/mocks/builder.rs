@@ -8,7 +8,7 @@ use base_common_rpc_types_engine::BaseExecutionPayloadEnvelope;
 use base_consensus_disc::LocalNode;
 use base_consensus_genesis::RollupConfig;
 use base_consensus_node::{
-    EngineClientResult, NetworkActor, NetworkBuilder, NetworkEngineClient, NodeActor,
+    HandleClientResult, NetworkActor, NetworkBuilder, NetworkEngineClient, NodeActor,
 };
 use base_consensus_peers::BootNode;
 use base_consensus_sources::BlockSigner;
@@ -122,7 +122,7 @@ impl NetworkEngineClient for ForwardingNetworkEngineClient {
     async fn send_unsafe_block(
         &self,
         block: BaseExecutionPayloadEnvelope,
-    ) -> EngineClientResult<()> {
+    ) -> HandleClientResult<()> {
         let _ = self
             .blocks_tx
             .send(block)

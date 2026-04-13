@@ -14,12 +14,12 @@ use crate::{ConsolidateInput, EngineClient};
 
 // ── Re-export the error/result types that consumer traits use ──
 
-/// The result of an Engine client call.
-pub type EngineClientResult<T> = Result<T, EngineClientError>;
+/// The result of a handle client call.
+pub type HandleClientResult<T> = Result<T, HandleClientError>;
 
-/// Error making requests to the engine.
+/// Error making requests to the engine handle.
 #[derive(Debug, thiserror::Error)]
-pub enum EngineClientError {
+pub enum HandleClientError {
     /// Error making a request to the engine. The request never made it there.
     #[error("Error making a request to the engine: {0}.")]
     RequestError(String),
@@ -62,7 +62,7 @@ pub enum EngineClientError {
 pub trait SequencerEngineClient: std::fmt::Debug + Send + Sync {
     /// Resets the engine's forkchoice, awaiting confirmation that it succeeded or
     /// returning the error in performing the reset.
-    async fn reset_engine_forkchoice(&self) -> EngineClientResult<()>;
+    async fn reset_engine_forkchoice(&self) -> HandleClientResult<()>;
 
     /// Starts building a block with the provided attributes.
     ///
@@ -70,7 +70,7 @@ pub trait SequencerEngineClient: std::fmt::Debug + Send + Sync {
     async fn start_build_block(
         &self,
         attributes: AttributesWithParent,
-    ) -> EngineClientResult<PayloadId>;
+    ) -> HandleClientResult<PayloadId>;
 
     /// Fetches the sealed payload envelope from the engine WITHOUT inserting it.
     /// Call this before attempting conductor commit, then call `insert_unsafe_payload` on
@@ -79,59 +79,59 @@ pub trait SequencerEngineClient: std::fmt::Debug + Send + Sync {
         &self,
         payload_id: PayloadId,
         attributes: AttributesWithParent,
-    ) -> EngineClientResult<BaseExecutionPayloadEnvelope>;
+    ) -> HandleClientResult<BaseExecutionPayloadEnvelope>;
 
     /// Fire-and-forget: submits the sealed payload to the engine for insertion
     /// (`new_payload` + FCU). Call this after a successful conductor commit.
     async fn insert_unsafe_payload(
         &self,
         payload: BaseExecutionPayloadEnvelope,
-    ) -> EngineClientResult<()>;
+    ) -> HandleClientResult<()>;
 
     /// Returns the current unsafe head [`L2BlockInfo`].
-    async fn get_unsafe_head(&self) -> EngineClientResult<L2BlockInfo>;
+    async fn get_unsafe_head(&self) -> HandleClientResult<L2BlockInfo>;
 }
 
 /// Blanket implementation so `Arc<T>` can be used wherever `T: SequencerEngineClient`.
 #[async_trait]
 impl<T: SequencerEngineClient> SequencerEngineClient for std::sync::Arc<T> {
-    async fn reset_engine_forkchoice(&self) -> EngineClientResult<()> {
+    async fn reset_engine_forkchoice(&self) -> HandleClientResult<()> {
         (**self).reset_engine_forkchoice().await
     }
     async fn start_build_block(
         &self,
         attributes: AttributesWithParent,
-    ) -> EngineClientResult<PayloadId> {
+    ) -> HandleClientResult<PayloadId> {
         (**self).start_build_block(attributes).await
     }
     async fn get_sealed_payload(
         &self,
         payload_id: PayloadId,
         attributes: AttributesWithParent,
-    ) -> EngineClientResult<BaseExecutionPayloadEnvelope> {
+    ) -> HandleClientResult<BaseExecutionPayloadEnvelope> {
         (**self).get_sealed_payload(payload_id, attributes).await
     }
     async fn insert_unsafe_payload(
         &self,
         payload: BaseExecutionPayloadEnvelope,
-    ) -> EngineClientResult<()> {
+    ) -> HandleClientResult<()> {
         (**self).insert_unsafe_payload(payload).await
     }
-    async fn get_unsafe_head(&self) -> EngineClientResult<L2BlockInfo> {
+    async fn get_unsafe_head(&self) -> HandleClientResult<L2BlockInfo> {
         (**self).get_unsafe_head().await
     }
 }
 
 #[async_trait]
 impl<C: EngineClient + std::fmt::Debug + 'static> SequencerEngineClient for EngineHandle<C> {
-    async fn reset_engine_forkchoice(&self) -> EngineClientResult<()> {
+    async fn reset_engine_forkchoice(&self) -> HandleClientResult<()> {
         self.reset().await.map(|_| ()).map_err(Into::into)
     }
 
     async fn start_build_block(
         &self,
         attributes: AttributesWithParent,
-    ) -> EngineClientResult<PayloadId> {
+    ) -> HandleClientResult<PayloadId> {
         self.build(attributes).await.map_err(Into::into)
     }
 
@@ -139,18 +139,18 @@ impl<C: EngineClient + std::fmt::Debug + 'static> SequencerEngineClient for Engi
         &self,
         payload_id: PayloadId,
         attributes: AttributesWithParent,
-    ) -> EngineClientResult<BaseExecutionPayloadEnvelope> {
+    ) -> HandleClientResult<BaseExecutionPayloadEnvelope> {
         self.get_payload(payload_id, attributes).await.map_err(Into::into)
     }
 
     async fn insert_unsafe_payload(
         &self,
         payload: BaseExecutionPayloadEnvelope,
-    ) -> EngineClientResult<()> {
+    ) -> HandleClientResult<()> {
         self.insert(payload, false).await.map_err(Into::into)
     }
 
-    async fn get_unsafe_head(&self) -> EngineClientResult<L2BlockInfo> {
+    async fn get_unsafe_head(&self) -> HandleClientResult<L2BlockInfo> {
         Ok(self.state().sync_state.unsafe_head())
     }
 }
@@ -162,27 +162,27 @@ impl<C: EngineClient + std::fmt::Debug + 'static> SequencerEngineClient for Engi
 #[async_trait]
 pub trait DerivationEngineClient: std::fmt::Debug + Send + Sync {
     /// Resets the engine's forkchoice.
-    async fn reset_engine_forkchoice(&self) -> EngineClientResult<()>;
+    async fn reset_engine_forkchoice(&self) -> HandleClientResult<()>;
 
     /// Sends a request to finalize the L2 block at the provided block number.
     /// Note: This does not wait for the engine to process it.
-    async fn send_finalized_l2_block(&self, block_number: u64) -> EngineClientResult<()>;
+    async fn send_finalized_l2_block(&self, block_number: u64) -> HandleClientResult<()>;
 
     /// Sends a consolidation signal to the engine.
-    async fn send_safe_l2_signal(&self, signal: ConsolidateInput) -> EngineClientResult<()>;
+    async fn send_safe_l2_signal(&self, signal: ConsolidateInput) -> HandleClientResult<()>;
 }
 
 #[async_trait]
 impl<C: EngineClient + std::fmt::Debug + 'static> DerivationEngineClient for EngineHandle<C> {
-    async fn reset_engine_forkchoice(&self) -> EngineClientResult<()> {
+    async fn reset_engine_forkchoice(&self) -> HandleClientResult<()> {
         self.reset().await.map(|_| ()).map_err(Into::into)
     }
 
-    async fn send_finalized_l2_block(&self, block_number: u64) -> EngineClientResult<()> {
+    async fn send_finalized_l2_block(&self, block_number: u64) -> HandleClientResult<()> {
         self.finalize(block_number).await.map_err(Into::into)
     }
 
-    async fn send_safe_l2_signal(&self, signal: ConsolidateInput) -> EngineClientResult<()> {
+    async fn send_safe_l2_signal(&self, signal: ConsolidateInput) -> HandleClientResult<()> {
         self.consolidate(signal).await.map_err(Into::into)
     }
 }
@@ -198,7 +198,7 @@ pub trait NetworkEngineClient: std::fmt::Debug + Send + Sync {
     async fn send_unsafe_block(
         &self,
         block: BaseExecutionPayloadEnvelope,
-    ) -> EngineClientResult<()>;
+    ) -> HandleClientResult<()>;
 }
 
 #[async_trait]
@@ -206,7 +206,7 @@ impl<C: EngineClient + std::fmt::Debug + 'static> NetworkEngineClient for Engine
     async fn send_unsafe_block(
         &self,
         block: BaseExecutionPayloadEnvelope,
-    ) -> EngineClientResult<()> {
+    ) -> HandleClientResult<()> {
         self.insert(block, false).await.map_err(Into::into)
     }
 }

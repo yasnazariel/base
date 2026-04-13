@@ -17,7 +17,7 @@ use crate::{
     actors::{
         MockConductor, MockOriginSelector, MockSequencerEngineClient,
         MockUnsafePayloadGossipClient,
-        engine::EngineClientError,
+        engine::HandleClientError,
         sequencer::{PayloadSealer, tests::test_util::test_actor},
     },
 };
@@ -145,7 +145,7 @@ async fn test_try_seal_handle_get_unsafe_head_error_propagates() {
     client
         .expect_get_unsafe_head()
         .times(1)
-        .return_once(|| Err(EngineClientError::RequestError("channel closed".to_string())));
+        .return_once(|| Err(HandleClientError::RequestError("channel closed".to_string())));
     client.expect_get_sealed_payload().times(0);
 
     let mut actor = test_actor();
@@ -162,7 +162,7 @@ async fn test_try_seal_handle_fatal_seal_error_cancels_and_propagates() {
     let mut client = MockSequencerEngineClient::new();
     client.expect_get_unsafe_head().times(1).return_once(|| Ok(head_at(5)));
     client.expect_get_sealed_payload().times(1).return_once(|_, _| {
-        Err(EngineClientError::SealError(SealTaskError::DepositOnlyPayloadFailed))
+        Err(HandleClientError::SealError(SealTaskError::DepositOnlyPayloadFailed))
     });
 
     let mut actor = test_actor();
@@ -182,7 +182,7 @@ async fn test_try_seal_handle_non_fatal_seal_error_returns_none() {
     client
         .expect_get_sealed_payload()
         .times(1)
-        .return_once(|_, _| Err(EngineClientError::SealError(SealTaskError::HoloceneInvalidFlush)));
+        .return_once(|_, _| Err(HandleClientError::SealError(SealTaskError::HoloceneInvalidFlush)));
 
     let mut actor = test_actor();
     actor.engine_client = Arc::new(client);
@@ -264,7 +264,7 @@ async fn test_seal_payload_failure_propagates() {
     client
         .expect_get_sealed_payload()
         .times(1)
-        .return_once(|_, _| Err(EngineClientError::RequestError("engine offline".to_string())));
+        .return_once(|_, _| Err(HandleClientError::RequestError("engine offline".to_string())));
 
     let mut actor = test_actor();
     actor.engine_client = Arc::new(client);
@@ -387,7 +387,7 @@ async fn test_sealer_insert_failure_stays_gossiped() {
     engine
         .expect_insert_unsafe_payload()
         .times(1)
-        .return_once(|_| Err(EngineClientError::RequestError("channel closed".to_string())));
+        .return_once(|_| Err(HandleClientError::RequestError("channel closed".to_string())));
 
     let conductor: Option<MockConductor> = None;
     let mut sealer = PayloadSealer::new(envelope);

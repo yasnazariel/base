@@ -123,5 +123,5 @@ pub enum SealStepError {
     Gossip(crate::UnsafePayloadGossipClientError),
     /// Engine insertion failed.
     #[error("engine insert failed: {0}")]
-    Insert(crate::actors::engine::EngineClientError),
+    Insert(crate::actors::engine::HandleClientError),
 }

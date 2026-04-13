@@ -430,19 +430,19 @@ mod tests {
 
     #[async_trait]
     impl DerivationEngineClient for MockCombinedEngineClient {
-        async fn reset_engine_forkchoice(&self) -> crate::EngineClientResult<()> {
+        async fn reset_engine_forkchoice(&self) -> crate::HandleClientResult<()> {
             self.derivation.reset_engine_forkchoice().await
         }
         async fn send_finalized_l2_block(
             &self,
             block_number: u64,
-        ) -> crate::EngineClientResult<()> {
+        ) -> crate::HandleClientResult<()> {
             self.derivation.send_finalized_l2_block(block_number).await
         }
         async fn send_safe_l2_signal(
             &self,
             signal: ConsolidateInput,
-        ) -> crate::EngineClientResult<()> {
+        ) -> crate::HandleClientResult<()> {
             self.derivation.send_safe_l2_signal(signal).await
         }
     }
@@ -452,7 +452,7 @@ mod tests {
         async fn send_unsafe_block(
             &self,
             block: BaseExecutionPayloadEnvelope,
-        ) -> crate::EngineClientResult<()> {
+        ) -> crate::HandleClientResult<()> {
             self.network.send_unsafe_block(block).await
         }
     }

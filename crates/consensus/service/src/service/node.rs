@@ -6,8 +6,8 @@ use alloy_genesis::ChainConfig;
 use alloy_provider::RootProvider;
 use base_common_chains::BaseChainConfig;
 use base_common_network::Base;
-use base_consensus_derive::{Pipeline, SignalReceiver, StatefulAttributesBuilder};
-use base_consensus_engine::{BootstrapRole, EngineClient, EngineHandle, EngineQueries};
+use base_consensus_derive::{Pipeline, ResetSignal, Signal, SignalReceiver, StatefulAttributesBuilder};
+use base_consensus_engine::{BootstrapRole, EngineClient, EngineEvent, EngineHandle, EngineQueries};
 use base_consensus_genesis::RollupConfig;
 use base_consensus_providers::{
     AlloyChainProvider, AlloyL2ChainProvider, OnlineBeaconClient, OnlineBlobProvider,
@@ -29,10 +29,10 @@ type EngineComponents<E> = (
 use crate::{
     AlloyL1BlockFetcher, Conductor, ConductorClient, DelayedL1OriginSelectorProvider,
     DelegateDerivationActor, DerivationActor, DerivationDelegateClient, DerivationError,
-    EngineConfig, EngineRpcProcessor, L1OriginSelector, L1WatcherActor, NetworkActor,
-    NetworkBuilder, NetworkConfig, NodeActor, NodeMode, PayloadBuilder, QueuedEngineRpcClient,
-    QueuedL1WatcherDerivationClient, QueuedSequencerAdminAPIClient, RecoveryModeGuard, RpcActor,
-    RpcContext, SequencerActor, SequencerConfig,
+    EngineConfig, EngineRpcProcessor, EngineRpcRequestReceiver, L1OriginSelector, L1WatcherActor,
+    NetworkActor, NetworkBuilder, NetworkConfig, NodeActor, NodeMode, PayloadBuilder,
+    QueuedEngineRpcClient, QueuedL1WatcherDerivationClient, QueuedSequencerAdminAPIClient,
+    RecoveryModeGuard, RpcActor, RpcContext, SequencerActor, SequencerConfig,
     actors::{BlockStream, NetworkInboundData, QueuedUnsafePayloadGossipClient},
 };
 
@@ -326,9 +326,6 @@ impl RollupNode {
 
         // Bridge engine events to the derivation actor's request channel.
         {
-            use base_consensus_derive::{ResetSignal, Signal};
-            use base_consensus_engine::EngineEvent;
-
             let deriv_tx = derivation_actor_request_tx.clone();
             let cancel = cancellation.clone();
             tokio::spawn(async move {
@@ -525,10 +522,7 @@ impl RollupNode {
         });
 
         // Spawn the RPC processor as a separate task.
-        let _rpc_handle = {
-            use crate::EngineRpcRequestReceiver;
-            engine_rpc_processor.start(rpc_query_rx)
-        };
+        let _rpc_handle = engine_rpc_processor.start(rpc_query_rx);
 
         crate::service::spawn_and_wait!(
             cancellation,

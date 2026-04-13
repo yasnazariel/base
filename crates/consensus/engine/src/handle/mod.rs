@@ -22,7 +22,7 @@ mod build;
 mod consolidate;
 mod consumers;
 pub use consumers::{
-    DerivationEngineClient, EngineClientError, EngineClientResult, NetworkEngineClient,
+    DerivationEngineClient, HandleClientError, HandleClientResult, NetworkEngineClient,
     SequencerEngineClient,
 };
 #[cfg(any(test, feature = "test-utils"))]

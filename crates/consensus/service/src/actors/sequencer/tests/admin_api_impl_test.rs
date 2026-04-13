@@ -8,7 +8,7 @@ use rstest::rstest;
 use tokio::sync::oneshot;
 
 use crate::{
-    ConductorError, EngineClientError, SequencerAdminQuery,
+    ConductorError, HandleClientError, SequencerAdminQuery,
     actors::{MockConductor, MockSequencerEngineClient, sequencer::tests::test_util::test_actor},
 };
 
@@ -359,7 +359,7 @@ async fn test_start_sequencer_engine_client_error(#[values(true, false)] via_cha
     client
         .expect_get_unsafe_head()
         .times(1)
-        .return_once(|| Err(EngineClientError::RequestError("rpc failure".to_string())));
+        .return_once(|| Err(HandleClientError::RequestError("rpc failure".to_string())));
 
     let mut actor = test_actor();
     actor.engine_client = Arc::new(client);
@@ -435,7 +435,7 @@ async fn test_stop_sequencer_error_fetching_unsafe_head(#[values(true, false)] v
     client
         .expect_get_unsafe_head()
         .times(1)
-        .return_once(|| Err(EngineClientError::RequestError("whoops!".to_string())));
+        .return_once(|| Err(HandleClientError::RequestError("whoops!".to_string())));
 
     let mut actor = test_actor();
     actor.engine_client = Arc::new(client);
@@ -587,7 +587,7 @@ async fn test_reset_derivation_pipeline_error(#[values(true, false)] via_channel
     client
         .expect_reset_engine_forkchoice()
         .times(1)
-        .return_once(|| Err(EngineClientError::RequestError("reset failed".to_string())));
+        .return_once(|| Err(HandleClientError::RequestError("reset failed".to_string())));
 
     let mut actor = test_actor();
     actor.engine_client = Arc::new(client);

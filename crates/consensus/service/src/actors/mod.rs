@@ -8,9 +8,9 @@ pub use traits::{CancellableContext, NodeActor};
 mod engine;
 pub use engine::{
     BootstrapRole, BuildTaskError, ConsolidateInput, DerivationEngineClient, EngineClient,
-    EngineClientError, EngineClientResult, EngineConfig, EngineError, EngineEvent, EngineHandle,
-    EngineQueries, EngineRpcProcessor, EngineRpcRequestReceiver, EngineState, NetworkEngineClient,
-    SealTaskError, SequencerEngineClient,
+    EngineConfig, EngineError, EngineEvent, EngineHandle, EngineQueries, EngineRpcProcessor,
+    EngineRpcRequestReceiver, EngineState, HandleClientError, HandleClientResult,
+    NetworkEngineClient, SealTaskError, SequencerEngineClient,
 };
 #[cfg(test)]
 pub use engine::{MockDerivationEngineClient, MockNetworkEngineClient, MockSequencerEngineClient};

@@ -18,9 +18,8 @@ pub use errors::{
 
 mod handle;
 pub use handle::{
-    BootstrapRole, DerivationEngineClient, EngineClientError as HandleClientError,
-    EngineClientResult as HandleClientResult, EngineEvent, EngineHandle, NetworkEngineClient,
-    SequencerEngineClient,
+    BootstrapRole, DerivationEngineClient, EngineEvent, EngineHandle, HandleClientError,
+    HandleClientResult, NetworkEngineClient, SequencerEngineClient,
 };
 #[cfg(any(test, feature = "test-utils"))]
 pub use handle::{MockDerivationEngineClient, MockNetworkEngineClient, MockSequencerEngineClient};
