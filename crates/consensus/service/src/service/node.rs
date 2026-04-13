@@ -18,6 +18,14 @@ use base_consensus_safedb::{DisabledSafeDB, SafeDB, SafeDBReader, SafeHeadListen
 use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 
+type EngineComponents<E> = (
+    EngineHandle<E>,
+    mpsc::UnboundedReceiver<base_consensus_engine::EngineEvent>,
+    mpsc::Sender<EngineQueries>,
+    mpsc::Receiver<EngineQueries>,
+    EngineRpcProcessor<E>,
+);
+
 use crate::{
     AlloyL1BlockFetcher, Conductor, ConductorClient, DelayedL1OriginSelectorProvider,
     DelegateDerivationActor, DerivationActor, DerivationDelegateClient, DerivationError,
@@ -213,13 +221,7 @@ impl RollupNode {
     fn create_engine<E: EngineClient + std::fmt::Debug + 'static>(
         &self,
         engine_client: Arc<E>,
-    ) -> (
-        EngineHandle<E>,
-        mpsc::UnboundedReceiver<base_consensus_engine::EngineEvent>,
-        mpsc::Sender<EngineQueries>,
-        mpsc::Receiver<EngineQueries>,
-        EngineRpcProcessor<E>,
-    ) {
+    ) -> EngineComponents<E> {
         let (engine_handle, engine_events_rx) =
             EngineHandle::new(Arc::clone(&engine_client), Arc::clone(&self.config));
 
