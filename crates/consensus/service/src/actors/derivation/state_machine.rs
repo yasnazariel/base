@@ -108,7 +108,13 @@ fn transition(
             DerivationStateUpdate::SignalProcessed => {
                 Ok(DerivationState::AwaitingUpdateAfterSignal)
             }
-            DerivationStateUpdate::L1DataReceived | DerivationStateUpdate::MoreDataNeeded => {
+            // Stay in AwaitingSignal for these: the reset signal hasn't been sent to the pipeline
+            // yet. NewAttributesConfirmed can arrive here because reset_engine_forkchoice()
+            // triggers the engine to echo back the current safe head before the signal is
+            // processed.
+            DerivationStateUpdate::L1DataReceived
+            | DerivationStateUpdate::MoreDataNeeded
+            | DerivationStateUpdate::NewAttributesConfirmed(_) => {
                 Ok(DerivationState::AwaitingSignal)
             }
             _ => Err(DerivationStateTransitionError::InvalidTransition {
@@ -202,6 +208,7 @@ impl DerivationStateMachine {
             && safe_head.block_info.hash == self.confirmed_safe_head.block_info.hash
         {
             info!(target: "derivation", ?safe_head, "Re-received safe head. Skipping state transition.");
+            return Ok(());
         }
 
         debug!(target: "derivation", state=?self.state, ?state_update, "Executing derivation state update.");
@@ -280,6 +287,7 @@ mod tests {
     // AwaitingSignal valid transitions
     #[case(AwaitingSignal, SignalProcessed, AwaitingUpdateAfterSignal)]
     #[case(AwaitingSignal, L1DataReceived, AwaitingSignal)]
+    #[case(AwaitingSignal, NewAttributesConfirmed(block()), AwaitingSignal)]
     #[case(AwaitingSignal, MoreDataNeeded, AwaitingSignal)]
     // AwaitingUpdateAfterSignal valid transitions
     #[case(AwaitingUpdateAfterSignal, L1DataReceived, Deriving)]
@@ -322,7 +330,6 @@ mod tests {
     // AwaitingSignal invalid transitions
     #[case(AwaitingSignal, ELSyncCompleted(block()))]
     #[case(AwaitingSignal, NewAttributesDerived(attrs()))]
-    #[case(AwaitingSignal, NewAttributesConfirmed(block()))]
     #[case(AwaitingSignal, SignalNeeded)]
     // AwaitingUpdateAfterSignal invalid transitions
     #[case(AwaitingUpdateAfterSignal, ELSyncCompleted(block()))]
@@ -412,6 +419,56 @@ mod tests {
 
         assert_eq!(machine.current_state(), Deriving);
         assert_eq!(machine.last_confirmed_safe_head(), new_safe_head);
+    }
+
+    /// Regression test: re-receiving a safe head with the same hash while in AwaitingSignal state
+    /// must not crash. Previously, the dedup guard logged "Skipping state transition" but omitted
+    /// the early return, so `transition(AwaitingSignal, NewAttributesConfirmed)` was still called,
+    /// causing a fatal `InvalidTransition` error on startup.
+    #[test]
+    fn test_re_received_safe_head_skips_transition_in_awaiting_signal() {
+        let mut machine = DerivationStateMachine::new();
+        let safe_head = dummy_l2_block_info();
+
+        // EL sync completes → Deriving, confirmed_safe_head = safe_head
+        machine.update(&ELSyncCompleted(Box::new(safe_head))).unwrap();
+        assert_eq!(machine.current_state(), Deriving);
+
+        // Pipeline reset forces AwaitingSignal
+        machine.update(&SignalNeeded).unwrap();
+        assert_eq!(machine.current_state(), AwaitingSignal);
+
+        // Engine re-sends the same safe head (e.g. in response to reset_engine_forkchoice).
+        // This must be a no-op rather than an InvalidTransition crash.
+        machine.update(&NewAttributesConfirmed(Box::new(safe_head))).unwrap();
+        assert_eq!(machine.current_state(), AwaitingSignal);
+        assert_eq!(machine.last_confirmed_safe_head(), safe_head);
+    }
+
+    /// Regression test: a NEW safe head arriving in AwaitingSignal (different hash from
+    /// confirmed_safe_head) must also be accepted. This happens when reset_engine_forkchoice()
+    /// sends a reset FCU and the engine responds with the actual genesis block hash, which differs
+    /// from the default all-zeros confirmed_safe_head set during EL sync at genesis.
+    #[test]
+    fn test_new_safe_head_in_awaiting_signal_stays_in_awaiting_signal() {
+        let mut machine = DerivationStateMachine::new();
+
+        // Simulate EL sync completing with a default (all-zeros) safe head, as can happen at
+        // genesis before the engine has a real block hash.
+        machine.update(&ELSyncCompleted(Box::new(L2BlockInfo::default()))).unwrap();
+        assert_eq!(machine.current_state(), Deriving);
+
+        // Pipeline reset → AwaitingSignal
+        machine.update(&SignalNeeded).unwrap();
+        assert_eq!(machine.current_state(), AwaitingSignal);
+
+        // Engine responds to reset FCU with the actual genesis block (different hash).
+        let actual_genesis = dummy_l2_block_info();
+        machine.update(&NewAttributesConfirmed(Box::new(actual_genesis))).unwrap();
+
+        // Must stay in AwaitingSignal and update confirmed_safe_head.
+        assert_eq!(machine.current_state(), AwaitingSignal);
+        assert_eq!(machine.last_confirmed_safe_head(), actual_genesis);
     }
 
     #[test]
