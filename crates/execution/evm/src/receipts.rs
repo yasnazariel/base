@@ -17,9 +17,9 @@ impl BaseReceiptBuilder for OpRethReceiptBuilder {
     fn build_receipt<'a, E: Evm>(
         &self,
         ctx: ReceiptBuilderCtx<'a, BaseTxType, E>,
-    ) -> Result<Self::Receipt, ReceiptBuilderCtx<'a, BaseTxType, E>> {
+    ) -> Result<Self::Receipt, Box<ReceiptBuilderCtx<'a, BaseTxType, E>>> {
         match ctx.tx_type {
-            BaseTxType::Deposit => Err(ctx),
+            BaseTxType::Deposit => Err(Box::new(ctx)),
             ty => {
                 let receipt = Receipt {
                     // Success flag was added in `EIP-658: Embedding transaction status code in

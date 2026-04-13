@@ -13,6 +13,7 @@ use base_common_network::Base;
 use base_common_rpc_types_engine::BasePayloadAttributes;
 use base_execution_chainspec::BaseChainSpec;
 use base_execution_payload_builder::OpPayloadBuilderAttributes;
+use base_test_utils::build_test_genesis;
 use eyre::{Result, eyre};
 use reth_primitives_traits::{Block as BlockT, RecoveredBlock};
 use reth_provider::{BlockNumReader, BlockReader, ChainSpecProvider};
@@ -69,7 +70,7 @@ impl TestHarnessBuilder {
         init_silenced_tracing();
 
         let chain_spec = self.chain_spec.unwrap_or_else(|| {
-            let genesis = crate::test_utils::build_test_genesis();
+            let genesis = build_test_genesis();
             Arc::new(BaseChainSpec::from_genesis(genesis))
         });
 
@@ -157,9 +158,9 @@ impl TestHarness {
         let eip_1559_params = ((base_fee_params.max_change_denominator as u64) << 32)
             | (base_fee_params.elasticity_multiplier as u64);
 
-        let payload_attributes = OpPayloadBuilderAttributes::<OpTxEnvelope>::try_new(
+        let payload_attributes = OpPayloadBuilderAttributes::<BaseTxEnvelope>::try_new(
             parent_hash,
-            OpPayloadAttributes {
+            BasePayloadAttributes {
                 payload_attributes: PayloadAttributes {
                     timestamp: next_timestamp,
                     parent_beacon_block_root: Some(parent_beacon_block_root),
@@ -237,7 +238,7 @@ impl TestHarness {
     }
 
     /// Return the chain specification used by the harness.
-    pub fn chain_spec(&self) -> Arc<OpChainSpec> {
+    pub fn chain_spec(&self) -> Arc<BaseChainSpec> {
         self.node.blockchain_provider().chain_spec()
     }
 
@@ -251,9 +252,9 @@ impl TestHarness {
 mod tests {
     use alloy_primitives::U256;
     use alloy_provider::Provider;
+    use base_test_utils::{Account, DEVNET_CHAIN_ID};
 
     use super::*;
-    use crate::test_utils::Account;
 
     #[tokio::test]
     async fn test_harness_setup() -> Result<()> {
@@ -261,7 +262,7 @@ mod tests {
 
         let provider = harness.provider();
         let chain_id = provider.get_chain_id().await?;
-        assert_eq!(chain_id, crate::test_utils::DEVNET_CHAIN_ID);
+        assert_eq!(chain_id, DEVNET_CHAIN_ID);
 
         let alice_balance = provider.get_balance(Account::Alice.address()).await?;
         assert!(alice_balance > U256::ZERO);

@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use alloy_primitives::{Address, B64, B256};
-use base_alloy_consensus::OpTxEnvelope;
-use base_alloy_rpc_types_engine::OpPayloadAttributes;
-use base_execution_chainspec::{BASE_MAINNET, OpChainSpecBuilder};
+use base_common_consensus::BaseTxEnvelope;
+use base_common_rpc_types_engine::BasePayloadAttributes;
+use base_execution_chainspec::{BASE_MAINNET, BaseChainSpecBuilder};
 use base_execution_payload_builder::OpPayloadBuilderAttributes;
-use base_node_core::{OpEngineTypes, OpNode};
+use base_node_core::{BaseNode, OpEngineTypes};
 use eyre::Result;
 use reth_e2e_test_utils::testsuite::{
     TestBuilder,
@@ -19,7 +19,7 @@ async fn test_testsuite_op_assert_mine_block() -> Result<()> {
 
     let setup = Setup::default()
         .with_chain_spec(Arc::new(
-            OpChainSpecBuilder::default()
+            BaseChainSpecBuilder::default()
                 .chain(BASE_MAINNET.chain)
                 .genesis(serde_json::from_str(include_str!("../assets/genesis.json")).unwrap())
                 .build()
@@ -33,9 +33,9 @@ async fn test_testsuite_op_assert_mine_block() -> Result<()> {
             vec![],
             Some(B256::ZERO),
             // TODO: refactor once we have actions to generate payload attributes.
-            OpPayloadBuilderAttributes::<OpTxEnvelope>::try_new(
+            OpPayloadBuilderAttributes::<BaseTxEnvelope>::try_new(
                 B256::ZERO,
-                OpPayloadAttributes {
+                BasePayloadAttributes {
                     payload_attributes: alloy_rpc_types_engine::PayloadAttributes {
                         timestamp: std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
@@ -57,7 +57,7 @@ async fn test_testsuite_op_assert_mine_block() -> Result<()> {
             .expect("valid test payload attributes"),
         ));
 
-    test.run::<OpNode>().await?;
+    test.run::<BaseNode>().await?;
 
     Ok(())
 }
@@ -68,7 +68,7 @@ async fn test_testsuite_op_assert_mine_block_isthmus_activated() -> Result<()> {
 
     let setup = Setup::default()
         .with_chain_spec(Arc::new(
-            OpChainSpecBuilder::default()
+            BaseChainSpecBuilder::default()
                 .chain(BASE_MAINNET.chain)
                 .genesis(serde_json::from_str(include_str!("../assets/genesis.json")).unwrap())
                 .isthmus_activated()
@@ -83,9 +83,9 @@ async fn test_testsuite_op_assert_mine_block_isthmus_activated() -> Result<()> {
             vec![],
             Some(B256::ZERO),
             // TODO: refactor once we have actions to generate payload attributes.
-            OpPayloadBuilderAttributes::<OpTxEnvelope>::try_new(
+            OpPayloadBuilderAttributes::<BaseTxEnvelope>::try_new(
                 B256::ZERO,
-                OpPayloadAttributes {
+                BasePayloadAttributes {
                     payload_attributes: alloy_rpc_types_engine::PayloadAttributes {
                         timestamp: std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
@@ -107,7 +107,7 @@ async fn test_testsuite_op_assert_mine_block_isthmus_activated() -> Result<()> {
             .expect("valid test payload attributes"),
         ));
 
-    test.run::<OpNode>().await?;
+    test.run::<BaseNode>().await?;
 
     Ok(())
 }

@@ -23,9 +23,6 @@ where
             <<Self::BuiltPayload as BuiltPayload>::Primitives as NodePrimitives>::Block,
         >,
     ) -> Self::ExecutionData {
-        ExecutionData::from_block_unchecked(
-            block.hash(),
-            &block.into_block().into_ethereum_block(),
-        )
+        ExecutionData::from_block_unchecked(block.hash(), &block.into_block().into_ethereum_block())
     }
 }

@@ -7,6 +7,8 @@ use std::{
 use alloy_consensus::{Eip658Value, Transaction};
 use alloy_eips::{Encodable2718, Typed2718};
 use alloy_evm::Database;
+#[cfg(any(test, feature = "test-utils"))]
+use alloy_primitives::B256;
 use alloy_primitives::{BlockHash, Bytes, TxHash, U256};
 use alloy_rpc_types_eth::Withdrawals;
 use base_access_lists::FBALBuilderDb;
@@ -15,9 +17,9 @@ use base_common_consensus::{BaseReceipt, BaseTransactionSigned, BaseTxType, Depo
 use base_common_evm::{BaseReceiptBuilder, L1BlockInfo, OpSpecId};
 use base_execution_chainspec::BaseChainSpec;
 use base_execution_evm::{BaseEvmConfig, OpNextBlockEnvAttributes};
-use base_execution_payload_builder::{
-    OpPayloadBuilderAttributes, error::BasePayloadBuilderError,
-};
+#[cfg(any(test, feature = "test-utils"))]
+use base_execution_payload_builder::payload::EthPayloadBuilderAttributes;
+use base_execution_payload_builder::{OpPayloadBuilderAttributes, error::BasePayloadBuilderError};
 use base_execution_txpool::{
     BundleTransaction, TimestampedTransaction, estimated_da_size::DataAvailabilitySized,
 };
@@ -35,11 +37,6 @@ use reth_transaction_pool::{BestTransactionsAttributes, PoolTransaction};
 use revm::{DatabaseCommit, context::result::ResultAndState, interpreter::as_u64_saturated};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, trace, warn};
-
-#[cfg(any(test, feature = "test-utils"))]
-use alloy_primitives::B256;
-#[cfg(any(test, feature = "test-utils"))]
-use base_execution_payload_builder::payload::EthPayloadBuilderAttributes;
 
 use crate::{
     BuilderConfig, BuilderMetrics, ExecutionInfo, ExecutionMeteringLimitExceeded, PayloadTxsBounds,

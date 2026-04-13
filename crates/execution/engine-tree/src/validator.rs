@@ -1522,7 +1522,11 @@ where
             BuiltPayload: BuiltPayload<Primitives = BasePrimitives>,
             ExecutionData = ExecutionData,
         >,
-    C: CachedExecutionProvider<BaseTxResult<OpHaltReason, BaseTxType>> + Clone + Send + Sync + 'static,
+    C: CachedExecutionProvider<BaseTxResult<OpHaltReason, BaseTxType>>
+        + Clone
+        + Send
+        + Sync
+        + 'static,
 {
     fn validate_payload_attributes_against_header(
         &self,

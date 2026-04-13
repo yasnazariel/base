@@ -304,9 +304,9 @@ pub fn validate_withdrawals_presence(
 mod tests {
     use alloy_primitives::{Address, B64, B256, b64};
     use alloy_rpc_types_engine::PayloadAttributes;
-    use base_alloy_chains::BaseChainConfig;
-    use base_alloy_consensus::OpTxEnvelope;
-    use base_alloy_rpc_types_engine::OpPayloadAttributes;
+    use base_common_chains::BaseChainConfig;
+    use base_common_consensus::BaseTxEnvelope;
+    use base_common_rpc_types_engine::BasePayloadAttributes;
     use base_execution_chainspec::BASE_SEPOLIA;
     use reth_provider::noop::NoopProvider;
     use reth_trie_common::KeccakKeyHasher;
@@ -330,10 +330,10 @@ mod tests {
         eip_1559_params: Option<B64>,
         min_base_fee: Option<u64>,
         timestamp: u64,
-    ) -> OpPayloadBuilderAttributes<OpTxEnvelope> {
+    ) -> OpPayloadBuilderAttributes<BaseTxEnvelope> {
         OpPayloadBuilderAttributes::try_new(
             B256::ZERO,
-            OpPayloadAttributes {
+            BasePayloadAttributes {
                 gas_limit: Some(1000),
                 eip_1559_params,
                 min_base_fee,

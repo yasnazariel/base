@@ -5,10 +5,11 @@ use alloy_primitives::{B64, B256, Bytes, TxKind, U256, address, hex};
 use alloy_provider::{Provider, RootProvider};
 use alloy_rpc_types_engine::{ForkchoiceUpdated, PayloadAttributes, PayloadStatusEnum};
 use alloy_rpc_types_eth::Block;
-use base_common_consensus::{BaseTypedTransaction, TxDeposit};
+use base_common_consensus::{BaseTxEnvelope, BaseTypedTransaction, TxDeposit};
 use base_common_network::Base;
 use base_common_rpc_types::Transaction;
 use base_common_rpc_types_engine::BasePayloadAttributes;
+use base_execution_payload_builder::OpPayloadBuilderAttributes;
 use chrono::Utc;
 
 use super::{
@@ -140,7 +141,7 @@ impl<RpcProtocol: Protocol> ChainDriver<RpcProtocol> {
 
             // Create a temporary signer for the deposit
             let signer = self.signer.clone().unwrap_or_else(PrivateKeySigner::random);
-            let signed_tx = sign_op_tx(&signer, OpTypedTransaction::Deposit(deposit_tx))?;
+            let signed_tx = sign_op_tx(&signer, BaseTypedTransaction::Deposit(deposit_tx))?;
             signed_tx.encoded_2718().into()
         };
 
@@ -318,7 +319,7 @@ impl<RpcProtocol: Protocol> ChainDriver<RpcProtocol> {
 impl<RpcProtocol: Protocol> ChainDriver<RpcProtocol> {
     async fn fcu(&self, attribs: BasePayloadAttributes) -> eyre::Result<ForkchoiceUpdated> {
         let latest = self.latest().await?.header.hash;
-        let attribs = OpPayloadBuilderAttributes::<OpTxEnvelope>::try_new(latest, attribs, 3)?;
+        let attribs = OpPayloadBuilderAttributes::<BaseTxEnvelope>::try_new(latest, attribs, 3)?;
         let response = self.engine_api.update_forkchoice(latest, latest, Some(attribs)).await?;
 
         Ok(response)

@@ -19,8 +19,8 @@ use base_common_consensus::{
 /// Re-export for use in downstream arguments.
 pub use base_common_rpc_types_engine::BasePayloadAttributes;
 use base_common_rpc_types_engine::{
-    BaseExecutionPayloadEnvelopeV3, BaseExecutionPayloadEnvelopeV4,
-    BaseExecutionPayloadEnvelopeV5, BaseExecutionPayloadV4,
+    BaseExecutionPayloadEnvelopeV3, BaseExecutionPayloadEnvelopeV4, BaseExecutionPayloadEnvelopeV5,
+    BaseExecutionPayloadV4,
 };
 use base_execution_evm::OpNextBlockEnvAttributes;
 use reth_chainspec::EthChainSpec;
@@ -43,6 +43,8 @@ pub struct EthPayloadBuilderAttributes {
     pub suggested_fee_recipient: Address,
     /// Prev-randao value for the payload.
     pub prev_randao: B256,
+    /// Whether withdrawals were provided in the original payload attributes.
+    pub has_withdrawals: bool,
     /// Withdrawals included in the payload.
     pub withdrawals: Withdrawals,
     /// Parent beacon block root.
@@ -88,7 +90,10 @@ impl<T> OpPayloadBuilderAttributes<T> {
                 timestamp: self.payload_attributes.timestamp,
                 prev_randao: self.payload_attributes.prev_randao,
                 suggested_fee_recipient: self.payload_attributes.suggested_fee_recipient,
-                withdrawals: Some(self.payload_attributes.withdrawals.to_vec()),
+                withdrawals: self
+                    .payload_attributes
+                    .has_withdrawals
+                    .then(|| self.payload_attributes.withdrawals.to_vec()),
                 parent_beacon_block_root: self.payload_attributes.parent_beacon_block_root,
             },
             transactions: (!self.transactions.is_empty())
@@ -155,6 +160,7 @@ impl<T: Decodable2718 + Send + Sync + Debug + Unpin + 'static> OpPayloadBuilderA
             timestamp: attributes.payload_attributes.timestamp,
             suggested_fee_recipient: attributes.payload_attributes.suggested_fee_recipient,
             prev_randao: attributes.payload_attributes.prev_randao,
+            has_withdrawals: attributes.payload_attributes.withdrawals.is_some(),
             withdrawals: attributes.payload_attributes.withdrawals.unwrap_or_default().into(),
             parent_beacon_block_root: attributes.payload_attributes.parent_beacon_block_root,
         };
@@ -189,6 +195,7 @@ impl<BaseTransactionSigned> From<EthPayloadAttributes>
                 timestamp: value.timestamp,
                 suggested_fee_recipient: value.suggested_fee_recipient,
                 prev_randao: value.prev_randao,
+                has_withdrawals: value.withdrawals.is_some(),
                 withdrawals: value.withdrawals.unwrap_or_default().into(),
                 parent_beacon_block_root: value.parent_beacon_block_root,
             },
@@ -232,7 +239,7 @@ where
     }
 
     fn withdrawals(&self) -> Option<&Vec<alloy_eips::eip4895::Withdrawal>> {
-        Some(&self.payload_attributes.withdrawals)
+        self.payload_attributes.has_withdrawals.then_some(&self.payload_attributes.withdrawals)
     }
 
     fn parent_beacon_block_root(&self) -> Option<B256> {
@@ -563,8 +570,6 @@ mod tests {
     use reth_payload_primitives::EngineApiMessageVersion;
 
     use super::*;
-    use crate::BasePayloadAttributes;
-
     #[test]
     fn test_payload_id_parity_op_geth() {
         // INFO rollup_boost::server:received fork_choice_updated_v3 from builder and l2_client
