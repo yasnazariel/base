@@ -6,10 +6,10 @@
 //! [`SyncTargetState`] state machine so the sync loop is the single
 //! writer to proofs storage.
 
-use std::{collections::BTreeMap, sync::Mutex};
+use std::{collections::BTreeMap, sync::Arc, sync::Mutex};
 
 use alloy_eips::eip1898::BlockWithParent;
-use reth_trie::LazyTrieData;
+use reth_trie::{HashedPostStateSorted, updates::TrieUpdatesSorted};
 use tokio::sync::Notify;
 use tracing::debug;
 
@@ -17,12 +17,18 @@ use tracing::debug;
 const CACHE_CAPACITY: usize = 1024;
 
 /// Cached trie data for a single block.
+///
+/// Holds the eagerly-extracted sorted trie data instead of a [`LazyTrieData`]
+/// to avoid keeping deferred compute closures (and their captured ancestor
+/// chains) alive in memory.
 #[derive(Debug)]
 pub struct CachedBlockTrieData {
     /// The block identifier with its parent hash.
     pub block_with_parent: BlockWithParent,
-    /// The lazy trie data (hashed state + trie updates).
-    pub trie_data: LazyTrieData,
+    /// Sorted hashed post state for this block.
+    pub hashed_state: Arc<HashedPostStateSorted>,
+    /// Sorted trie updates for this block.
+    pub trie_updates: Arc<TrieUpdatesSorted>,
 }
 
 /// The state of the sync target, describing what the sync loop should do next.
@@ -244,7 +250,7 @@ mod tests {
 
     use alloy_consensus::private::alloy_primitives::B256;
     use alloy_eips::{NumHash, eip1898::BlockWithParent};
-    use reth_trie::{HashedPostStateSorted, LazyTrieData, updates::TrieUpdatesSorted};
+    use reth_trie::{HashedPostStateSorted, updates::TrieUpdatesSorted};
 
     use super::*;
 
@@ -259,10 +265,8 @@ mod tests {
     fn dummy_cached_data(num: u64) -> CachedBlockTrieData {
         CachedBlockTrieData {
             block_with_parent: block_with_parent(num),
-            trie_data: LazyTrieData::ready(
-                Arc::new(HashedPostStateSorted::default()),
-                Arc::new(TrieUpdatesSorted::default()),
-            ),
+            hashed_state: Arc::new(HashedPostStateSorted::default()),
+            trie_updates: Arc::new(TrieUpdatesSorted::default()),
         }
     }
 

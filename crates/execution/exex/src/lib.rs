@@ -483,7 +483,6 @@ where
             verification_interval > 0 && block_number.is_multiple_of(verification_interval);
 
         if let Some(cached) = cached {
-            let sorted = cached.trie_data.get();
             if !should_verify {
                 debug!(
                     target: "base::exex",
@@ -493,8 +492,8 @@ where
 
                 collector.store_block_updates(
                     cached.block_with_parent,
-                    (*sorted.trie_updates).clone(),
-                    (*sorted.hashed_state).clone(),
+                    (*cached.trie_updates).clone(),
+                    (*cached.hashed_state).clone(),
                 )?;
 
                 return Ok(());
@@ -577,11 +576,13 @@ where
         let mut cached_count = 0usize;
         for (&block_number, block) in new.blocks() {
             if let Some(trie_data) = new.trie_data_at(block_number) {
+                let sorted = trie_data.get();
                 sync_target.insert(
                     block_number,
                     CachedBlockTrieData {
                         block_with_parent: block.block_with_parent(),
-                        trie_data: trie_data.clone(),
+                        hashed_state: Arc::clone(&sorted.hashed_state),
+                        trie_updates: Arc::clone(&sorted.trie_updates),
                     },
                 );
                 cached_count += 1;
@@ -640,11 +641,13 @@ where
         // Cache trie data for all blocks in the new chain.
         for (&block_number, block) in new.blocks() {
             if let Some(trie_data) = new.trie_data_at(block_number) {
+                let sorted = trie_data.get();
                 sync_target.insert(
                     block_number,
                     CachedBlockTrieData {
                         block_with_parent: block.block_with_parent(),
-                        trie_data: trie_data.clone(),
+                        hashed_state: Arc::clone(&sorted.hashed_state),
+                        trie_updates: Arc::clone(&sorted.trie_updates),
                     },
                 );
             } else {
