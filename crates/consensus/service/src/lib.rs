@@ -17,33 +17,31 @@ pub use service::{
 
 mod actors;
 pub use actors::{
-    AlloyL1BlockFetcher, BlockStream, BootstrapRole, BuildRequest, CancellableContext, Conductor,
-    ConductorClient, ConductorError, DelayedL1OriginSelectorProvider, DelegateDerivationActor,
-    DelegateL2Client, DelegateL2ClientError, DelegateL2DerivationActor, DerivationActor,
-    DerivationActorRequest, DerivationClientError, DerivationClientResult,
+    AlloyL1BlockFetcher, BlockStream, BootstrapRole, BuildTaskError, CancellableContext, Conductor,
+    ConductorClient, ConductorError, ConsolidateInput, DelayedL1OriginSelectorProvider,
+    DelegateDerivationActor, DelegateL2Client, DelegateL2ClientError, DelegateL2DerivationActor,
+    DerivationActor, DerivationActorRequest, DerivationClientError, DerivationClientResult,
     DerivationDelegateClient, DerivationDelegateClientError, DerivationEngineClient,
     DerivationError, DerivationState, DerivationStateMachine, DerivationStateTransitionError,
-    DerivationStateUpdate, EngineActor, EngineActorRequest, EngineClientError, EngineClientResult,
-    EngineConfig, EngineDerivationClient, EngineError, EngineProcessingRequest, EngineProcessor,
-    EngineRequestReceiver, EngineRpcProcessor, EngineRpcRequest, EngineRpcRequestReceiver,
-    GetPayloadRequest, GossipTransport, L1BlockFetcher, L1OriginSelector, L1OriginSelectorError,
-    L1OriginSelectorProvider, L1WatcherActor, L1WatcherActorError, L1WatcherDerivationClient,
-    L2Finalizer, L2SourceClient, LogRetrier, NetworkActor, NetworkActorError, NetworkBuilder,
-    NetworkBuilderError, NetworkConfig, NetworkDriver, NetworkDriverError, NetworkEngineClient,
-    NetworkHandler, NetworkInboundData, NodeActor, OriginSelector, PayloadBuilder, PayloadSealer,
-    PendingStopSender, PoolActivation, QueuedDerivationEngineClient, QueuedEngineDerivationClient,
-    QueuedEngineRpcClient, QueuedL1WatcherDerivationClient, QueuedNetworkEngineClient,
-    QueuedSequencerAdminAPIClient, QueuedSequencerEngineClient, QueuedUnsafePayloadGossipClient,
-    RecoveryModeGuard, ResetRequest, RpcActor, RpcActorError, RpcContext, SealRequest, SealState,
-    SealStepError, SequencerActor, SequencerActorError, SequencerAdminQuery, SequencerConfig,
-    SequencerEngineClient, UnsafePayloadGossipClient, UnsafePayloadGossipClientError,
-    UnsealedPayloadHandle,
+    DerivationStateUpdate, EngineClient, EngineClientError, EngineClientResult, EngineConfig,
+    EngineError, EngineEvent, EngineHandle, EngineQueries, EngineRpcProcessor,
+    EngineRpcRequestReceiver, EngineState, GossipTransport, L1BlockFetcher, L1OriginSelector,
+    L1OriginSelectorError, L1OriginSelectorProvider, L1WatcherActor, L1WatcherActorError,
+    L1WatcherDerivationClient, L2Finalizer, L2SourceClient, LogRetrier, NetworkActor,
+    NetworkActorError, NetworkBuilder, NetworkBuilderError, NetworkConfig, NetworkDriver,
+    NetworkDriverError, NetworkEngineClient, NetworkHandler, NetworkInboundData, NodeActor,
+    OriginSelector, PayloadBuilder, PayloadSealer, PendingStopSender, PoolActivation,
+    QueuedEngineRpcClient, QueuedL1WatcherDerivationClient, QueuedSequencerAdminAPIClient,
+    QueuedUnsafePayloadGossipClient, RecoveryModeGuard, RpcActor, RpcActorError, RpcContext,
+    SealState, SealStepError, SealTaskError, SequencerActor, SequencerActorError,
+    SequencerAdminQuery, SequencerConfig, SequencerEngineClient, UnsafePayloadGossipClient,
+    UnsafePayloadGossipClientError, UnsealedPayloadHandle,
 };
 
 mod metrics;
 #[cfg(test)]
 pub use actors::{
-    MockConductor, MockEngineDerivationClient, MockOriginSelector, MockSequencerEngineClient,
-    MockUnsafePayloadGossipClient,
+    MockConductor, MockDerivationEngineClient, MockNetworkEngineClient, MockOriginSelector,
+    MockSequencerEngineClient, MockUnsafePayloadGossipClient,
 };
 pub use metrics::Metrics;

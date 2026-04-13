@@ -1,6 +1,8 @@
+//! RPC request processor for engine queries.
+
 use std::sync::Arc;
 
-use base_consensus_engine::{EngineClient, EngineState};
+use base_consensus_engine::{EngineClient, EngineQueries, EngineState};
 use base_consensus_genesis::RollupConfig;
 use derive_more::Constructor;
 use tokio::{
@@ -8,20 +10,18 @@ use tokio::{
     task::JoinHandle,
 };
 
-use crate::{EngineError, EngineRpcRequest};
+use super::EngineError;
 
-/// Requires that the implementor handles [`EngineRpcRequest`]s via the provided channel.
-/// Note: this exists to facilitate unit testing rather than consolidate multiple implementations
-/// under a well-thought-out interface.
+/// Requires that the implementor handles [`EngineQueries`] via the provided channel.
 pub trait EngineRpcRequestReceiver: Send + Sync {
     /// Starts a task to handle engine queries.
     fn start(
         self,
-        request_channel: mpsc::Receiver<EngineRpcRequest>,
+        request_channel: mpsc::Receiver<EngineQueries>,
     ) -> JoinHandle<Result<(), EngineError>>;
 }
 
-/// Processor for [`EngineRpcRequest`] requests.
+/// Processor for engine RPC queries.
 #[derive(Constructor, Debug)]
 pub struct EngineRpcProcessor<EngineClient_: EngineClient> {
     /// An [`EngineClient`] used for creating engine tasks.
@@ -38,23 +38,19 @@ impl<EngineClient_> EngineRpcProcessor<EngineClient_>
 where
     EngineClient_: EngineClient + 'static,
 {
-    async fn handle_rpc_request(&self, request: EngineRpcRequest) -> Result<(), EngineError> {
-        match request {
-            EngineRpcRequest::EngineQuery(req) => {
-                trace!(target: "engine", ?req, "Received engine query.");
+    async fn handle_query(&self, query: EngineQueries) -> Result<(), EngineError> {
+        trace!(target: "engine", ?query, "Received engine query.");
 
-                if let Err(e) = req
-                    .handle(
-                        &self.engine_state_receiver,
-                        &self.engine_queue_length_receiver,
-                        &self.engine_client,
-                        &self.rollup_config,
-                    )
-                    .await
-                {
-                    warn!(target: "engine", err = ?e, "Failed to handle engine query.");
-                }
-            }
+        if let Err(e) = query
+            .handle(
+                &self.engine_state_receiver,
+                &self.engine_queue_length_receiver,
+                &self.engine_client,
+                &self.rollup_config,
+            )
+            .await
+        {
+            warn!(target: "engine", err = ?e, "Failed to handle engine query.");
         }
 
         Ok(())
@@ -67,7 +63,7 @@ where
 {
     fn start(
         self,
-        mut request_channel: mpsc::Receiver<EngineRpcRequest>,
+        mut request_channel: mpsc::Receiver<EngineQueries>,
     ) -> JoinHandle<Result<(), EngineError>> {
         tokio::spawn(async move {
             loop {
@@ -75,7 +71,7 @@ where
                     error!(target: "engine", "Engine rpc request receiver closed unexpectedly");
                     return Err(EngineError::ChannelClosed);
                 };
-                self.handle_rpc_request(query).await?;
+                self.handle_query(query).await?;
             }
         })
     }

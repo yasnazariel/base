@@ -9,13 +9,21 @@
 #[macro_use]
 extern crate tracing;
 
-mod task_queue;
-pub use task_queue::{
-    BuildTask, BuildTaskError, ConsolidateInput, ConsolidateTask, ConsolidateTaskError, Engine,
-    EngineBuildError, EngineResetError, EngineTask, EngineTaskError, EngineTaskErrorSeverity,
-    EngineTaskErrors, EngineTaskExt, FinalizeTask, FinalizeTaskError, GetPayloadTask, InsertTask,
-    InsertTaskError, SealTask, SealTaskError, SynchronizeTask, SynchronizeTaskError,
+mod errors;
+pub use errors::{
+    BuildTaskError, ConsolidateInput, ConsolidateTaskError, EngineBuildError, EngineResetError,
+    EngineTaskError, EngineTaskErrorSeverity, FinalizeTaskError, InsertTaskError, SealTaskError,
+    SynchronizeTaskError,
 };
+
+mod handle;
+pub use handle::{
+    BootstrapRole, DerivationEngineClient, EngineClientError as HandleClientError,
+    EngineClientResult as HandleClientResult, EngineEvent, EngineHandle, NetworkEngineClient,
+    SequencerEngineClient,
+};
+#[cfg(any(test, feature = "test-utils"))]
+pub use handle::{MockDerivationEngineClient, MockNetworkEngineClient, MockSequencerEngineClient};
 
 mod attributes;
 pub use attributes::{AttributesMatch, AttributesMismatch};

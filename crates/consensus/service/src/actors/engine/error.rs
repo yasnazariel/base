@@ -1,12 +1,8 @@
-//! Error type for the [`EngineActor`].
-//!
-//! [`EngineActor`]: super::EngineActor
+//! Error type for the engine module.
 
-use base_consensus_engine::{EngineResetError, EngineTaskErrors};
+use base_consensus_engine::EngineResetError;
 
-/// An error from the [`EngineActor`].
-///
-/// [`EngineActor`]: super::EngineActor
+/// An error from the engine.
 #[derive(thiserror::Error, Debug)]
 pub enum EngineError {
     /// Closed channel error.
@@ -15,7 +11,4 @@ pub enum EngineError {
     /// Engine reset error.
     #[error(transparent)]
     EngineReset(#[from] EngineResetError),
-    /// Engine task error.
-    #[error(transparent)]
-    EngineTask(#[from] EngineTaskErrors),
 }

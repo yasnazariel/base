@@ -3,7 +3,7 @@ use std::{sync::Arc, time::Duration};
 use alloy_eips::BlockNumberOrTag;
 use alloy_provider::RootProvider;
 use base_common_network::Base;
-use base_consensus_engine::{Engine, EngineClient, EngineState};
+use base_consensus_engine::{BootstrapRole, EngineClient, EngineHandle, EngineQueries};
 use base_consensus_genesis::RollupConfig;
 use base_consensus_rpc::RpcBuilder;
 use base_consensus_safedb::{DisabledSafeDB, SafeDBReader};
@@ -11,9 +11,8 @@ use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    AlloyL1BlockFetcher, BlockStream, DelegateL2Client, DelegateL2DerivationActor, EngineActor,
-    EngineActorRequest, EngineConfig, EngineProcessor, EngineRpcProcessor, L1Config,
-    L1WatcherActor, NodeActor, QueuedDerivationEngineClient, QueuedEngineDerivationClient,
+    AlloyL1BlockFetcher, BlockStream, DelegateL2Client, DelegateL2DerivationActor, EngineConfig,
+    EngineRpcProcessor, EngineRpcRequestReceiver, L1Config, L1WatcherActor, NodeActor,
     QueuedEngineRpcClient, QueuedL1WatcherDerivationClient, RpcActor, RpcContext,
     service::node::HEAD_STREAM_POLL_INTERVAL,
 };
@@ -21,7 +20,7 @@ use crate::{
 /// A lightweight node that follows another L2 node by polling its execution
 /// layer RPC and driving the local engine via `NewPayload` + FCU.
 ///
-/// Runs only the [`EngineActor`] and [`DelegateL2DerivationActor`] — no derivation
+/// Runs only the [`EngineHandle`] and [`DelegateL2DerivationActor`] — no derivation
 /// pipeline, P2P, or sequencer.
 #[derive(Debug)]
 pub struct FollowNode {
@@ -70,43 +69,6 @@ impl FollowNode {
         self
     }
 
-    fn create_engine_actor<E: EngineClient + 'static>(
-        &self,
-        engine_client: Arc<E>,
-        cancellation_token: CancellationToken,
-        engine_request_rx: mpsc::Receiver<EngineActorRequest>,
-        derivation_client: QueuedEngineDerivationClient,
-    ) -> EngineActor<EngineProcessor<E, QueuedEngineDerivationClient>, EngineRpcProcessor<E>> {
-        let engine_state = EngineState::default();
-        let (engine_state_tx, engine_state_rx) = watch::channel(engine_state);
-        let (engine_queue_length_tx, engine_queue_length_rx) = watch::channel(0);
-        let engine = Engine::new(engine_state, engine_state_tx, engine_queue_length_tx);
-
-        let engine_processor = EngineProcessor::new(
-            Arc::clone(&engine_client),
-            Arc::clone(&self.config),
-            derivation_client,
-            engine,
-            None,
-            None,  // no conductor in follow mode
-            false, // sequencer_stopped irrelevant for validator/follow mode
-        );
-
-        let engine_rpc_processor = EngineRpcProcessor::new(
-            Arc::clone(&engine_client),
-            Arc::clone(&self.config),
-            engine_state_rx,
-            engine_queue_length_rx,
-        );
-
-        EngineActor::new(
-            cancellation_token,
-            engine_request_rx,
-            engine_processor,
-            engine_rpc_processor,
-        )
-    }
-
     /// Starts the follow node.
     pub async fn start(&self) -> Result<(), String> {
         let engine_client = Arc::new(self.engine_config.clone().build_engine_client());
@@ -114,36 +76,92 @@ impl FollowNode {
     }
 
     /// Starts the follow node with a pre-built engine client.
-    ///
-    /// Enables dependency injection of the engine client for testing scenarios.
-    pub async fn start_with_engine_client<E: EngineClient + 'static>(
+    pub async fn start_with_engine_client<E: EngineClient + std::fmt::Debug + 'static>(
         &self,
         engine_client: Arc<E>,
     ) -> Result<(), String> {
         self.start_inner(engine_client).await
     }
 
-    async fn start_inner<E: EngineClient + 'static>(
+    async fn start_inner<E: EngineClient + std::fmt::Debug + 'static>(
         &self,
         engine_client: Arc<E>,
     ) -> Result<(), String> {
         let cancellation = CancellationToken::new();
 
         let (derivation_actor_request_tx, derivation_actor_request_rx) = mpsc::channel(1024);
-        let (engine_actor_request_tx, engine_actor_request_rx) = mpsc::channel(1024);
 
-        let engine_actor = self.create_engine_actor(
+        // Create the EngineHandle.
+        let (engine_handle, engine_events_rx) =
+            EngineHandle::new(Arc::clone(&engine_client), Arc::clone(&self.config));
+
+        // Bootstrap as a validator (follow nodes are always validators).
+        engine_handle
+            .bootstrap(BootstrapRole::Validator)
+            .await
+            .map_err(|e| format!("Engine bootstrap failed: {e}"))?;
+
+        // Bridge engine events to the derivation actor's request channel.
+        {
+            use base_consensus_derive::{ResetSignal, Signal};
+            use base_consensus_engine::EngineEvent;
+
+            let deriv_tx = derivation_actor_request_tx.clone();
+            let cancel = cancellation.clone();
+            tokio::spawn(async move {
+                let mut rx = engine_events_rx;
+                loop {
+                    tokio::select! {
+                        _ = cancel.cancelled() => break,
+                        event = rx.recv() => {
+                            let Some(event) = event else { break };
+                            let req = match event {
+                                EngineEvent::Reset { safe_head } => {
+                                    info!(target: "engine", safe_head = safe_head.block_info.number, "Engine reset, signaling derivation");
+                                    crate::DerivationActorRequest::ProcessEngineSignalRequest(
+                                        Box::new(ResetSignal { l2_safe_head: safe_head }.signal()),
+                                    )
+                                }
+                                EngineEvent::Flush => {
+                                    info!(target: "engine", "Engine flush, signaling derivation");
+                                    crate::DerivationActorRequest::ProcessEngineSignalRequest(
+                                        Box::new(Signal::FlushChannel),
+                                    )
+                                }
+                                EngineEvent::SyncCompleted { safe_head } => {
+                                    info!(target: "engine", safe_head = safe_head.block_info.number, "EL sync completed");
+                                    crate::DerivationActorRequest::ProcessEngineSyncCompletionRequest(
+                                        Box::new(safe_head),
+                                    )
+                                }
+                                EngineEvent::SafeHeadUpdated { safe_head } => {
+                                    crate::DerivationActorRequest::ProcessEngineSafeHeadUpdateRequest(
+                                        Box::new(safe_head),
+                                    )
+                                }
+                            };
+                            if deriv_tx.send(req).await.is_err() {
+                                break;
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Set up the RPC processor with its own channel.
+        let (rpc_query_tx, rpc_query_rx) = mpsc::channel::<EngineQueries>(1024);
+        let (_, queue_length_rx) = watch::channel(0usize);
+        let engine_rpc_processor = EngineRpcProcessor::new(
             engine_client,
-            cancellation.clone(),
-            engine_actor_request_rx,
-            QueuedEngineDerivationClient::new(derivation_actor_request_tx.clone()),
+            Arc::clone(&self.config),
+            engine_handle.subscribe(),
+            queue_length_rx,
         );
+        let _rpc_handle = engine_rpc_processor.start(rpc_query_rx);
 
         let derivation = DelegateL2DerivationActor::<_>::new(
-            QueuedDerivationEngineClient {
-                engine_actor_request_tx: engine_actor_request_tx.clone(),
-            },
-            engine_actor_request_tx.clone(),
+            engine_handle.clone(),
             cancellation.clone(),
             derivation_actor_request_rx,
             self.local_l2_provider.clone(),
@@ -154,12 +172,9 @@ impl FollowNode {
 
         // Create the RPC server actor if configured.
         let rpc = self.rpc_builder.clone().map(|b| {
-            // Follow nodes do not run derivation, so they never produce confirmed safe
-            // heads to record. Safe head tracking is disabled; the RPC endpoint returns
-            // an error if queried.
             RpcActor::new(
                 b,
-                QueuedEngineRpcClient::new(engine_actor_request_tx.clone()),
+                QueuedEngineRpcClient::new(rpc_query_tx),
                 None::<crate::QueuedSequencerAdminAPIClient>,
                 Arc::new(DisabledSafeDB) as Arc<dyn SafeDBReader>,
             )
@@ -179,7 +194,6 @@ impl FollowNode {
         )?;
 
         let (l1_head_updates_tx, _l1_head_updates_rx) = watch::channel(None);
-        // Create the [`L1WatcherActor`]. Previously known as the DA watcher actor.
         let l1_watcher = L1WatcherActor::new(
             Arc::clone(&self.config),
             AlloyL1BlockFetcher(self.l1_config.engine_provider.clone()),
@@ -205,7 +219,6 @@ impl FollowNode {
                     }
                 )),
                 Some((derivation, ())),
-                Some((engine_actor, ())),
                 Some((l1_watcher, ())),
             ]
         );

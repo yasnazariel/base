@@ -6,40 +6,46 @@ An extensible implementation of the [Base][base-specs] rollup node engine client
 
 ## Overview
 
-The `base-consensus-engine` crate provides a task-based engine client for interacting with Ethereum execution layers. It implements the Engine API specification and manages the execution layer state through a priority-driven task queue system.
+The `base-consensus-engine` crate provides a Mutex-based engine handle for interacting with
+Ethereum execution layers. It implements the Engine API specification and manages execution
+layer state through direct, serialized method calls.
 
 ## Key Components
 
-- **[`Engine`](crate::Engine)** - Main task queue processor that executes engine operations atomically
+- **[`EngineHandle`](crate::EngineHandle)** - The engine. `Clone + Send + Sync` with `&self` methods. Serializes EL calls via a Mutex.
 - **[`EngineClient`](crate::EngineClient)** - HTTP client for Engine API communication with JWT authentication
 - **[`EngineState`](crate::EngineState)** - Tracks the current state of the execution layer
-- **Task Types** - Specialized tasks for different engine operations:
-  - [`InsertTask`](crate::InsertTask) - Insert new payloads into the execution engine
-  - [`BuildTask`](crate::BuildTask) - Build new payloads with automatic forkchoice synchronization
-  - [`ConsolidateTask`](crate::ConsolidateTask) - Consolidate unsafe payloads to advance the safe chain
-  - [`FinalizeTask`](crate::FinalizeTask) - Finalize safe payloads on L1 confirmation
-  - [`SynchronizeTask`](crate::SynchronizeTask) - Internal task for execution layer forkchoice synchronization
+- **[`EngineEvent`](crate::EngineEvent)** - Signals emitted for cross-actor coordination (Reset, Flush, `SyncCompleted`, `SafeHeadUpdated`)
+- **Consumer Traits** - Role-specific interfaces implemented by `EngineHandle`:
+  - [`SequencerEngineClient`](crate::SequencerEngineClient) - Block building, sealing, and insertion
+  - [`DerivationEngineClient`](crate::DerivationEngineClient) - Consolidation, finalization, and reset
+  - [`NetworkEngineClient`](crate::NetworkEngineClient) - Unsafe block insertion from P2P gossip
 
 ## Architecture
 
-The engine implements a task-driven architecture where operations are queued and executed atomically:
+The engine uses a Mutex-based design where operations execute immediately and return results directly:
 
 ```text
-┌─────────────┐    ┌──────────────┐    ┌─────────────┐
-│   Engine    │◄───┤  Task Queue  │◄───┤  Engine     │
-│   Client    │    │   (Priority) │    │  Tasks      │
-└─────────────┘    └──────────────┘    └─────────────┘
-       │                   │                   │
-       ▼                   ▼                   ▼
-┌─────────────┐    ┌──────────────┐    ┌─────────────┐
-│ Engine API  │    │ Engine State │    │  Rollup     │
-│ (HTTP/JWT)  │    │   Updates    │    │  Config     │
-└─────────────┘    └──────────────┘    └─────────────┘
+┌─────────────────────────────────────────────┐
+│  Callers (Sequencer, Derivation, Network)   │
+│  hold EngineHandle (Clone, &self methods)   │
+└──────────────────┬──────────────────────────┘
+                   │ engine_handle.build() / .insert() / .consolidate()
+                   ▼
+┌──────────────────────────────────────────────┐
+│  EngineHandle (Mutex<EngineState>)           │
+│  - Acquires Mutex                            │
+│  - Calls Engine API directly                 │
+│  - Updates state                             │
+│  - Broadcasts via watch channel              │
+│  - Returns result to caller                  │
+└──────────────────────────────────────────────┘
 ```
 
-- **Automatic Forkchoice Handling**: The [`BuildTask`](crate::BuildTask) automatically performs forkchoice updates during block building, eliminating the need for explicit forkchoice management in user code.
-- **Internal Synchronization**: [`SynchronizeTask`](crate::SynchronizeTask) handles internal execution layer synchronization and is primarily used by other tasks rather than directly by users.
-- **Priority-Based Execution**: Tasks are executed in priority order to ensure optimal sequencer performance and block processing efficiency.
+- **No queue, no background task**: Operations execute immediately when the Mutex is available.
+- **Caller-driven retry**: Temporary errors are returned to the caller. The Mutex is released, allowing higher-priority callers to proceed.
+- **Auto-reset on fatal errors**: Reset-severity errors trigger an automatic engine reset.
+- **Event-based coordination**: State changes and signals are emitted via an unbounded channel.
 
 ## Engine API Compatibility
 
@@ -47,21 +53,23 @@ The crate supports multiple Engine API versions with automatic version selection
 
 - **Engine Forkchoice Updated**: V2, V3
 - **Engine New Payload**: V2, V3, V4
-- **Engine Get Payload**: V2, V3, V4
+- **Engine Get Payload**: V2, V3, V4, V5
 
-Version selection follows Base hardfork activation times (Bedrock, Canyon, Delta, Ecotone, Isthmus).
+Version selection follows Base hardfork activation times (Bedrock, Canyon, Delta, Ecotone, Isthmus, Base V1).
 
 ## Features
 
 - `metrics` - Enable Prometheus metrics collection (optional)
+- `test-utils` - Enable test utilities and mock types (optional)
 
 ## Module Organization
 
-- **Task Queue** - Core engine task queue and execution logic via [`Engine`](crate::Engine)
+- **Handle** - Core engine handle and operations via [`EngineHandle`](crate::EngineHandle)
 - **Client** - HTTP client for Engine API communication via [`EngineClient`](crate::EngineClient)
 - **State** - Engine state management and synchronization via [`EngineState`](crate::EngineState)
 - **Versions** - Engine API version selection via [`EngineForkchoiceVersion`](crate::EngineForkchoiceVersion),
   [`EngineNewPayloadVersion`](crate::EngineNewPayloadVersion), [`EngineGetPayloadVersion`](crate::EngineGetPayloadVersion)
+- **Errors** - Error types with severity classification for all engine operations
 - **Attributes** - Payload attribute validation via [`AttributesMatch`](crate::AttributesMatch)
 - **Kinds** - Engine client type identification via [`EngineKind`](crate::EngineKind)
 - **Query** - Engine query interface via [`EngineQueries`](crate::EngineQueries)
@@ -70,26 +78,6 @@ Version selection follows Base hardfork activation times (Bedrock, Canyon, Delta
 <!-- Hyper Links -->
 
 [base-specs]: https://specs.base.org
-
-## Usage
-
-Add the dependency to your `Cargo.toml`:
-
-```toml
-[dependencies]
-base-consensus-engine = { workspace = true }
-```
-
-Submit engine tasks via the `Engine`:
-
-```rust,ignore
-use base_consensus_engine::{Engine, EngineClient, InsertTask};
-
-let client = EngineClient::new(engine_url, jwt_secret)?;
-let engine = Engine::new(client, rollup_config);
-
-engine.submit(InsertTask::new(payload)).await?;
-```
 
 ## License
 

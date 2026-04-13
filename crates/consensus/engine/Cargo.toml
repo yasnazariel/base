@@ -47,10 +47,12 @@ thiserror = { workspace = true, features = ["std"] }
 serde_json = { workspace = true, features = ["std"] }
 derive_more = { workspace = true, features = ["display", "deref", "from_str", "constructor"] }
 
-# metrics
+# optional
 metrics = { workspace = true, optional = true }
+mockall = { workspace = true, optional = true }
 
 [dev-dependencies]
+mockall.workspace = true
 rstest.workspace = true
 arbitrary.workspace = true
 base-consensus-registry.workspace = true
@@ -60,4 +62,4 @@ base-common-rpc-types = {workspace = true, features = ["arbitrary", "k256"]}
 
 [features]
 metrics = [ "base-metrics/metrics", "dep:metrics" ]
-test-utils = [ "base-protocol/test-utils" ]
+test-utils = [ "base-protocol/test-utils", "dep:mockall" ]

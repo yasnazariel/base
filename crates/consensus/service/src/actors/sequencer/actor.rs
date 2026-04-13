@@ -70,8 +70,8 @@ pub struct SequencerActor<
     /// Set in the ticker arm when a seal succeeds (derived from the sealed envelope). Consumed
     /// in the `Ok(true)` sealer arm via [`PayloadBuilder::build_on`], which is called after
     /// `insert_unsafe_payload` has already been fire-and-forgot to the engine. This ordering
-    /// guarantees the engine's `InsertTask` is queued before `BuildTask`, so the EL always
-    /// builds on the correct (just-inserted) parent instead of the stale watch value.
+    /// guarantees the engine's insert completes before the next build starts, so the EL always
+    /// builds on the correct (just-inserted) parent instead of a stale value.
     pub next_build_parent: Option<L2BlockInfo>,
     /// Shared recovery mode flag.
     pub recovery_mode: RecoveryModeGuard,
@@ -216,7 +216,7 @@ where
                 }
                 result = self.engine_client.reset_engine_forkchoice() => match result {
                     Ok(()) => return Ok(()),
-                    Err(EngineClientError::ELSyncing) => {
+                    Err(EngineClientError::ResetError(base_consensus_engine::EngineResetError::ELSyncing)) => {
                         info!(target: "sequencer", "EL sync in progress; deferring initial engine reset");
                     }
                     Err(err) => {

@@ -1,10 +1,5 @@
-//! The [`EngineActor`] and its components.
-
-mod actor;
-pub use actor::EngineActor;
-
-mod client;
-pub use client::{EngineDerivationClient, QueuedEngineDerivationClient};
+//! The engine module — re-exports [`EngineHandle`] and supporting types from the engine crate,
+//! plus the engine-specific service configuration and RPC processor.
 
 mod config;
 pub use config::EngineConfig;
@@ -12,18 +7,15 @@ pub use config::EngineConfig;
 mod error;
 pub use error::EngineError;
 
-mod request;
-pub use request::{
-    BuildRequest, EngineActorRequest, EngineClientError, EngineClientResult, EngineRpcRequest,
-    GetPayloadRequest, ResetRequest, SealRequest,
-};
-
-mod engine_request_processor;
-#[cfg(test)]
-pub use client::MockEngineDerivationClient;
-pub use engine_request_processor::{
-    BootstrapRole, EngineProcessingRequest, EngineProcessor, EngineRequestReceiver,
-};
-
 mod rpc_request_processor;
+pub use base_consensus_engine::{
+    BootstrapRole, BuildTaskError, ConsolidateInput, DerivationEngineClient, EngineClient,
+    EngineEvent, EngineHandle, EngineQueries, EngineState, HandleClientError as EngineClientError,
+    HandleClientResult as EngineClientResult, NetworkEngineClient, SealTaskError,
+    SequencerEngineClient,
+};
+#[cfg(test)]
+pub use base_consensus_engine::{
+    MockDerivationEngineClient, MockNetworkEngineClient, MockSequencerEngineClient,
+};
 pub use rpc_request_processor::{EngineRpcProcessor, EngineRpcRequestReceiver};
