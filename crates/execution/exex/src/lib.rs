@@ -442,12 +442,14 @@ where
             }
 
             let end = (latest + SYNC_BLOCKS_BATCH_SIZE as u64).min(target);
+            let cache_len = sync_target.cache_len();
             info!(
                 target: "base::exex",
                 start = latest + 1,
                 end,
                 target,
                 batch_size = end - latest,
+                cache_len,
                 "Processing proofs storage sync batch"
             );
 
@@ -592,12 +594,14 @@ where
             }
         }
 
-        debug!(
+        let cache_len = sync_target.cache_len();
+        info!(
             target: "base::exex",
             tip = new.tip().number(),
             total_blocks,
             cached_count,
             missing = total_blocks - cached_count,
+            cache_len,
             "Cached notification trie data"
         );
 

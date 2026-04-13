@@ -151,6 +151,11 @@ impl SyncTarget {
         self.state.lock().expect("SyncTarget lock poisoned").is_some()
     }
 
+    /// Returns the number of blocks currently cached.
+    pub fn cache_len(&self) -> usize {
+        self.cache.lock().expect("SyncTarget lock poisoned").len()
+    }
+
     /// Wait for a state change notification.
     ///
     /// Returns immediately if a notification arrived since the last call.
