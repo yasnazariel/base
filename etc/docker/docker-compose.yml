@@ -578,17 +578,29 @@ services:
         condition: service_healthy
       base-client:
         condition: service_healthy
-    ports:
-      - "${L2_INGRESS_HTTP_PORT:-8080}:8080"
     volumes:
       - ./proxyd:/config:ro
     command: ["/config/proxyd-ratelimit.toml"]
     healthcheck:
-      test: ["CMD", "curl", "-sf", "-X", "POST", "-H", "Content-Type: application/json", "--data", "{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"params\":[],\"id\":1}", "http://localhost:8080"]
+      test: ["CMD", "curl", "-sf", "-X", "POST", "-H", "Content-Type: application/json", "-H", "X-Forwarded-For: 127.0.0.1", "--data", "{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"params\":[],\"id\":1}", "http://localhost:8080"]
       interval: 5s
       timeout: 5s
       retries: 30
       start_period: 10s
+    restart: unless-stopped
+
+  rpc-gateway:
+    image: nginx:1.27-alpine
+    container_name: rpc-gateway
+    depends_on:
+      proxyd:
+        condition: service_healthy
+    ports:
+      - "${L2_INGRESS_HTTP_PORT:-8080}:8080"
+    volumes:
+      - ./proxyd/nginx-gateway.conf.template:/etc/nginx/templates/default.conf.template:ro
+    environment:
+      - RPC_SECRET_PATH=${RPC_SECRET_PATH:-09665b2ef064cde3fdb8811e9e546d26}
     restart: unless-stopped
 
   prometheus:

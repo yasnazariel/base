@@ -34,7 +34,7 @@ use base_alloy_consensus::{AA_TX_TYPE_ID, nonce_slot};
 
 use crate::{
     Eip8130InvalidationIndex, Eip8130Pool, Eip8130PoolConfig, Eip8130TxId, OpPooledTx,
-    SharedEip8130Pool, VerifierAllowlist,
+    SharedEip8130Pool, VerifierAdmissionPolicy, VerifierAllowlist, VerifierPurityCache,
 };
 
 /// Tracks additional infos for the current block.
@@ -64,10 +64,10 @@ pub struct OpTransactionValidator<Client, Tx, Evm> {
     /// derived from the tracked L1 block info that is extracted from the first transaction in the
     /// L2 block.
     require_l1_data_gas_fee: bool,
-    /// EIP-8130 verifier allowlist. `None` means all verifiers are accepted.
-    /// When set, only native verifiers and the configured custom verifier
-    /// addresses are accepted into the mempool.
-    verifier_allowlist: Option<Arc<VerifierAllowlist>>,
+    /// EIP-8130 custom verifier admission policy for txpool ingress.
+    verifier_policy: Arc<VerifierAdmissionPolicy>,
+    /// Shared cache of purity verdicts keyed by runtime bytecode hash.
+    verifier_purity_cache: Arc<VerifierPurityCache>,
     /// Gas limit for custom verifier STATICCALL in the txpool EVM.
     custom_verifier_gas_limit: u64,
     /// Shared index of storage-slot dependencies for pending AA transactions,
@@ -116,9 +116,14 @@ impl<Client, Tx, Evm> OpTransactionValidator<Client, Tx, Evm> {
         self.require_l1_data_gas_fee
     }
 
-    /// Sets the EIP-8130 verifier allowlist.
+    /// Sets an allowlist-only EIP-8130 custom verifier policy.
     pub fn with_verifier_allowlist(self, allowlist: VerifierAllowlist) -> Self {
-        Self { verifier_allowlist: Some(Arc::new(allowlist)), ..self }
+        self.with_verifier_admission_policy(VerifierAdmissionPolicy::allowlist_only(allowlist))
+    }
+
+    /// Sets the EIP-8130 custom verifier admission policy.
+    pub fn with_verifier_admission_policy(self, policy: VerifierAdmissionPolicy) -> Self {
+        Self { verifier_policy: Arc::new(policy), ..self }
     }
 
     /// Sets the trusted bytecode hashes for elevated throughput tiers.
@@ -175,7 +180,8 @@ where
             inner: Arc::new(inner),
             block_info: Arc::new(block_info),
             require_l1_data_gas_fee: true,
-            verifier_allowlist: None,
+            verifier_policy: Arc::new(VerifierAdmissionPolicy::default()),
+            verifier_purity_cache: Arc::new(VerifierPurityCache::default()),
             custom_verifier_gas_limit: crate::DEFAULT_CUSTOM_VERIFIER_GAS_LIMIT,
             invalidation_index: Arc::new(RwLock::new(Eip8130InvalidationIndex::default())),
             eip8130_pool: Arc::new(Eip8130Pool::new()),
@@ -264,7 +270,8 @@ where
                 self.block_timestamp(),
                 self.chain_spec().chain().id(),
                 self.client(),
-                self.verifier_allowlist.as_deref(),
+                self.verifier_policy.as_ref(),
+                self.verifier_purity_cache.as_ref(),
                 self.custom_verifier_gas_limit,
                 &self.trusted_payer_bytecodes,
             ) {

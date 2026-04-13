@@ -26,7 +26,7 @@ use base_execution_storage::OpStorage;
 use base_revm::set_custom_verifier_gas_cap;
 use base_txpool::{
     BaseOrdering, BasePooledTransaction, DEFAULT_CUSTOM_VERIFIER_GAS_LIMIT, OpPooledTx,
-    OpTransactionPool, OpTransactionValidator, TimestampedTransaction,
+    OpTransactionPool, OpTransactionValidator, TimestampedTransaction, VerifierAdmissionPolicy,
     maintain_eip8130_invalidation,
 };
 use reth_chain_state::CanonStateSubscriptions;
@@ -236,6 +236,7 @@ impl OpNode {
     where
         Node: FullNodeTypes<Types: OpNodeTypes>,
     {
+        let verifier_policy = self.args.verifier_admission_policy();
         let RollupArgs {
             disable_txpool_gossip,
             compute_pending_block,
@@ -250,7 +251,11 @@ impl OpNode {
         ComponentsBuilder::default()
             .node_types::<Node>()
             .executor(OpExecutorBuilder::default())
-            .pool(OpPoolBuilder::default().with_ordering(ordering))
+            .pool(
+                OpPoolBuilder::default()
+                    .with_ordering(ordering)
+                    .with_verifier_admission_policy(verifier_policy),
+            )
             .payload(BasicPayloadServiceBuilder::new(
                 OpPayloadBuilder::new(compute_pending_block)
                     .with_da_config(self.da_config.clone())
@@ -862,6 +867,8 @@ pub struct OpPoolBuilder<T = BasePooledTransaction> {
     pub pool_config_overrides: PoolBuilderConfigOverrides,
     /// The ordering strategy for the transaction pool.
     pub ordering: BaseOrdering<T>,
+    /// Custom verifier admission policy for txpool ingress.
+    pub verifier_admission_policy: VerifierAdmissionPolicy,
     /// Optional custom verifier gas cap override for txpool admission.
     pub txpool_custom_verifier_gas_limit: Option<u64>,
     /// Optional custom verifier gas cap override for block inclusion.
@@ -878,6 +885,7 @@ impl<T> Default for OpPoolBuilder<T> {
         Self {
             pool_config_overrides: Default::default(),
             ordering: BaseOrdering::default(),
+            verifier_admission_policy: VerifierAdmissionPolicy::default(),
             txpool_custom_verifier_gas_limit: None,
             inclusion_custom_verifier_gas_limit: None,
             _pd: Default::default(),
@@ -890,6 +898,7 @@ impl<T> Clone for OpPoolBuilder<T> {
         Self {
             pool_config_overrides: self.pool_config_overrides.clone(),
             ordering: self.ordering.clone(),
+            verifier_admission_policy: self.verifier_admission_policy.clone(),
             txpool_custom_verifier_gas_limit: self.txpool_custom_verifier_gas_limit,
             inclusion_custom_verifier_gas_limit: self.inclusion_custom_verifier_gas_limit,
             _pd: core::marker::PhantomData,
@@ -910,6 +919,15 @@ impl<T> OpPoolBuilder<T> {
     /// Sets the ordering strategy for the transaction pool.
     pub const fn with_ordering(mut self, ordering: BaseOrdering<T>) -> Self {
         self.ordering = ordering;
+        self
+    }
+
+    /// Sets the custom verifier admission policy for txpool ingress.
+    pub fn with_verifier_admission_policy(
+        mut self,
+        verifier_admission_policy: VerifierAdmissionPolicy,
+    ) -> Self {
+        self.verifier_admission_policy = verifier_admission_policy;
         self
     }
 
@@ -950,6 +968,7 @@ where
         let Self {
             pool_config_overrides,
             ordering,
+            verifier_admission_policy,
             txpool_custom_verifier_gas_limit,
             inclusion_custom_verifier_gas_limit,
             ..
@@ -979,6 +998,7 @@ where
                         // In --dev mode we can't require gas fees because we're unable to decode
                         // the L1 block info
                         .require_l1_data_gas_fee(!ctx.config().dev.dev)
+                        .with_verifier_admission_policy(verifier_admission_policy.clone())
                         .with_custom_verifier_gas_limit(txpool_cap)
                 });
 

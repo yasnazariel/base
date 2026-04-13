@@ -101,6 +101,9 @@ pub use validation::{
     validate_config_change_sequences, validate_expiry, validate_nonce, validate_structure,
 };
 
+mod purity;
+pub use purity::{PurityScanner, PurityVerdict, PurityViolation, ViolationCategory};
+
 #[cfg(feature = "native-verifier")]
 mod native_verifier;
 #[cfg(feature = "native-verifier")]

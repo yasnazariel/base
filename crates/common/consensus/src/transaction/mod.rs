@@ -30,6 +30,7 @@ pub use eip8130::{
     read_sequence, sender_auth_cost, sender_signature_hash, sender_verification_gas,
     sequence_base_slot, total_verification_gas, tx_payload_cost, verifier_kind, write_sequence,
 };
+pub use eip8130::{PurityScanner, PurityVerdict, PurityViolation, ViolationCategory};
 #[cfg(feature = "evm")]
 pub use eip8130::{
     CodePlacement, ExecutionCall, LockState, NONCE_MANAGER_GAS, PhaseResult, PrecompileError,

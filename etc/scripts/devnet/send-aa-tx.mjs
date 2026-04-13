@@ -16,6 +16,9 @@
  *   nonce-rpc    Verify eth_getTransactionCount(nonceKey) RPC matches storage reads + increments
  *   estimate-gas Verify eth_estimateGas / eth_call work with type 0x7B AA requests
  *   custom-verifier  Deploy + register AlwaysValidVerifier as custom EVM verifier (scope=SENDER+PAYER)
+ *   impure-verifier  Deploy an impure custom verifier and assert mempool rejection
+ *   state-read-verifier  Deploy custom verifier using SLOAD and assert mempool rejection
+ *   external-staticcall-verifier  Deploy verifier STATICCALLing non-precompile target and assert mempool rejection
  *   delegate-native  Delegate verifier with canonical auth envelope + nested K1 signer
  *   delegate-p256    Delegate verifier with canonical auth envelope + nested P256 signer
  *   delegate-custom  Delegate verifier wrapping custom STATICCALL verifier path
@@ -37,6 +40,7 @@
  */
 import {
   createPublicClient,
+  createWalletClient,
   http,
   toHex,
   toRlp,
@@ -118,6 +122,9 @@ const ALWAYS_VALID_VERIFIER_ADDRESS = DEPLOYED.alwaysValidVerifier;
 
 // keccak256("ALWAYS_VALID") — fixed owner ID returned by AlwaysValidVerifier
 const ALWAYS_VALID_OWNER_ID = keccak256(toHex(new TextEncoder().encode('ALWAYS_VALID')));
+const IMPURE_VERIFIER_OWNER_ID = keccak256(toHex(new TextEncoder().encode('IMPURE_VERIFIER')));
+const STATE_READ_VERIFIER_OWNER_ID = keccak256(toHex(new TextEncoder().encode('STATE_READ_VERIFIER')));
+const EXTERNAL_STATICCALL_VERIFIER_OWNER_ID = keccak256(toHex(new TextEncoder().encode('EXTERNAL_STATICCALL_VERIFIER')));
 
 // Keep fee selection realistic and avoid underpriced txs as base fee drifts.
 const FALLBACK_PRIORITY_FEE_PER_GAS = 1_000_000n; // 0.001 gwei
@@ -162,6 +169,7 @@ function parseArgs() {
 
 const opts = parseArgs();
 const account = privateKeyToAccount(SENDER_KEY);
+const walletClient = createWalletClient({ transport: http(opts.rpc) });
 const client = createPublicClient({ transport: http(opts.rpc) });
 
 console.log(`Mode:   ${opts.mode}`);
@@ -191,6 +199,82 @@ function encodeOptionalAddress(addr) {
 function rpcOptionalAddress(addrField) {
   if (!addrField || addrField === '0x') return undefined;
   return addrField;
+}
+
+function buildImpureVerifierInitCode(ownerId) {
+  const ownerWord = ownerId.slice(2).padStart(64, '0');
+  const runtime = `0x60016000557f${ownerWord}60005260206000f3`;
+  const runtimeLength = (runtime.length - 2) / 2;
+  if (runtimeLength > 0xff) {
+    throw new Error(`Impure verifier runtime too large for helper: ${runtimeLength} bytes`);
+  }
+
+  const runtimeLenHex = runtimeLength.toString(16).padStart(2, '0');
+  const runtimeOffsetHex = '0c';
+  return `0x60${runtimeLenHex}60${runtimeOffsetHex}60003960${runtimeLenHex}6000f3${runtime.slice(2)}`;
+}
+
+function buildStateReadVerifierInitCode(ownerId) {
+  const ownerWord = ownerId.slice(2).padStart(64, '0');
+  // PUSH1 0x00; SLOAD; POP; return owner_id.
+  const runtime = `0x600054507f${ownerWord}60005260206000f3`;
+  const runtimeLength = (runtime.length - 2) / 2;
+  if (runtimeLength > 0xff) {
+    throw new Error(`State-read verifier runtime too large for helper: ${runtimeLength} bytes`);
+  }
+
+  const runtimeLenHex = runtimeLength.toString(16).padStart(2, '0');
+  const runtimeOffsetHex = '0c';
+  return `0x60${runtimeLenHex}60${runtimeOffsetHex}60003960${runtimeLenHex}6000f3${runtime.slice(2)}`;
+}
+
+function buildExternalStaticcallVerifierInitCode(ownerId) {
+  const ownerWord = ownerId.slice(2).padStart(64, '0');
+  // STATICCALL to address 0x42 (non-precompile target), then return owner_id.
+  const runtime = `0x602060806000600060425afa507f${ownerWord}60005260206000f3`;
+  const runtimeLength = (runtime.length - 2) / 2;
+  if (runtimeLength > 0xff) {
+    throw new Error(
+      `External-staticcall verifier runtime too large for helper: ${runtimeLength} bytes`
+    );
+  }
+
+  const runtimeLenHex = runtimeLength.toString(16).padStart(2, '0');
+  const runtimeOffsetHex = '0c';
+  return `0x60${runtimeLenHex}60${runtimeOffsetHex}60003960${runtimeLenHex}6000f3${runtime.slice(2)}`;
+}
+
+async function deployCustomVerifierInitCode(initCode, label) {
+  const deploymentHash = await walletClient.sendTransaction({
+    account,
+    data: initCode,
+    gas: 300000n,
+    value: 0n,
+    maxPriorityFeePerGas: FALLBACK_PRIORITY_FEE_PER_GAS,
+  });
+  console.log(`${label} deployment tx: ${deploymentHash}`);
+  const receipt = await waitForReceipt(deploymentHash, 30000, 2000);
+  if (!receipt || receipt.status !== '0x1' || !receipt.contractAddress) {
+    throw new Error(
+      `${label} deployment failed (status=${receipt?.status || 'none'}, contract=${receipt?.contractAddress || 'none'})`
+    );
+  }
+  return receipt.contractAddress;
+}
+
+async function deployImpureVerifier(ownerId) {
+  return deployCustomVerifierInitCode(buildImpureVerifierInitCode(ownerId), 'Impure verifier');
+}
+
+async function deployStateReadVerifier(ownerId) {
+  return deployCustomVerifierInitCode(buildStateReadVerifierInitCode(ownerId), 'State-read verifier');
+}
+
+async function deployExternalStaticcallVerifier(ownerId) {
+  return deployCustomVerifierInitCode(
+    buildExternalStaticcallVerifierInitCode(ownerId),
+    'External-staticcall verifier'
+  );
 }
 
 async function getAaNonce() {
@@ -1522,6 +1606,231 @@ async function runCustomVerifier() {
 }
 
 // ─────────────────────────────────────────────────
+// Mode: impure-verifier (custom verifier fails purity policy)
+// ─────────────────────────────────────────────────
+async function runImpureVerifier() {
+  console.log('\n--- Impure Custom Verifier Rejection Test ---');
+  console.log('Deploying custom verifier runtime that executes SSTORE (impure)');
+  const impureVerifierAddress = await deployImpureVerifier(IMPURE_VERIFIER_OWNER_ID);
+  console.log(`Impure verifier: ${impureVerifierAddress}`);
+  console.log(`Impure owner ID: ${IMPURE_VERIFIER_OWNER_ID}`);
+
+  // Step 1: Register impure verifier owner with SENDER scope so auth can reach the verifier check.
+  console.log('\n--- Step 1: Register impure verifier owner ---');
+  const nonce1 = await getAaNonce();
+  const seqSlotHash = sequenceSlot(account.address);
+  const packedSeq = await client.getStorageAt({ address: ACCOUNT_CONFIG_ADDRESS, slot: seqSlotHash });
+  const currentSeq = BigInt(packedSeq || '0x0') & ((1n << 64n) - 1n);
+
+  const operation = {
+    changeType: 1,
+    verifier: impureVerifierAddress,
+    ownerId: IMPURE_VERIFIER_OWNER_ID,
+    scope: 0x01,
+  };
+  const digest = configChangeDigest(account.address, 0n, currentSeq, [operation]);
+  const authSig = await account.sign({ hash: digest });
+  const authorizerAuth = concat([K1_VERIFIER_ADDRESS, authSig]);
+  const configChangeRlp = [
+    toHex(0x01, { size: 1 }),
+    encodeUint(0n),
+    encodeUint(currentSeq),
+    [[
+      toHex(0x01, { size: 1 }),
+      encodeAddress(impureVerifierAddress),
+      IMPURE_VERIFIER_OWNER_ID,
+      toHex(0x01, { size: 1 }),
+    ]],
+    authorizerAuth,
+  ];
+
+  const setupCallsRlp = [[[encodeAddress(opts.probeAddr), encodeFunctionData({ abi: PROBE_ABI, functionName: 'probe' })]]];
+  const unsigned1 = baseTxFields(nonce1, setupCallsRlp, [configChangeRlp]);
+  const { receipt: receipt1 } = await signAndSend(unsigned1, { trace: false });
+  if (receipt1?.status !== '0x1') {
+    console.log(`FAILED: Impure owner registration failed (status ${receipt1?.status || 'unknown'})`);
+    process.exit(1);
+  }
+
+  const ownerSlotHash = ownerConfigSlot(account.address, IMPURE_VERIFIER_OWNER_ID);
+  const ownerConfig = await client.getStorageAt({ address: ACCOUNT_CONFIG_ADDRESS, slot: ownerSlotHash });
+  const verifierHex = `0x${ownerConfig.slice(-40)}`;
+  if (verifierHex.toLowerCase() !== impureVerifierAddress.toLowerCase()) {
+    console.log(`FAILED: Impure verifier not registered (got ${verifierHex})`);
+    process.exit(1);
+  }
+  console.log('SUCCESS: Impure verifier owner registered');
+
+  // Step 2: Use impure custom sender auth and verify txpool rejects it.
+  console.log('\n--- Step 2: Submit AA tx with impure verifier (must be rejected) ---');
+  const nonce2 = await getAaNonce();
+  const callsRlp = [[[encodeAddress(opts.probeAddr), encodeFunctionData({ abi: PROBE_ABI, functionName: 'probe' })]]];
+  const unsigned2 = baseTxFields(nonce2, callsRlp);
+
+  try {
+    await signAndSend(unsigned2, {
+      trace: false,
+      customSenderAuth: () => impureVerifierAddress,
+      exitOnError: false,
+    });
+    console.log('FAILED: Impure custom verifier tx was accepted unexpectedly');
+    process.exit(1);
+  } catch (err) {
+    const rejection = `${err.shortMessage || ''} ${err.details || ''} ${err.message || ''}`
+      .toLowerCase();
+    if (rejection.includes('mempool policy')) {
+      console.log('SUCCESS: Tx rejected by mempool verifier policy as expected');
+      return;
+    }
+    console.log(`FAILED: Tx rejected, but not by verifier policy (${err.details || err.message})`);
+    process.exit(1);
+  }
+}
+
+// ─────────────────────────────────────────────────
+// Mode: state-read-verifier (SLOAD in custom verifier)
+// ─────────────────────────────────────────────────
+async function runStateReadVerifier() {
+  console.log('\n--- State-Read Custom Verifier Rejection Test ---');
+  console.log('Deploying custom verifier runtime that executes SLOAD (state read)');
+  const verifierAddress = await deployStateReadVerifier(STATE_READ_VERIFIER_OWNER_ID);
+  console.log(`State-read verifier: ${verifierAddress}`);
+  console.log(`State-read owner ID: ${STATE_READ_VERIFIER_OWNER_ID}`);
+
+  console.log('\n--- Step 1: Register state-read verifier owner ---');
+  const nonce1 = await getAaNonce();
+  const seqSlotHash = sequenceSlot(account.address);
+  const packedSeq = await client.getStorageAt({ address: ACCOUNT_CONFIG_ADDRESS, slot: seqSlotHash });
+  const currentSeq = BigInt(packedSeq || '0x0') & ((1n << 64n) - 1n);
+
+  const operation = {
+    changeType: 1,
+    verifier: verifierAddress,
+    ownerId: STATE_READ_VERIFIER_OWNER_ID,
+    scope: 0x01,
+  };
+  const digest = configChangeDigest(account.address, 0n, currentSeq, [operation]);
+  const authSig = await account.sign({ hash: digest });
+  const authorizerAuth = concat([K1_VERIFIER_ADDRESS, authSig]);
+  const configChangeRlp = [
+    toHex(0x01, { size: 1 }),
+    encodeUint(0n),
+    encodeUint(currentSeq),
+    [[
+      toHex(0x01, { size: 1 }),
+      encodeAddress(verifierAddress),
+      STATE_READ_VERIFIER_OWNER_ID,
+      toHex(0x01, { size: 1 }),
+    ]],
+    authorizerAuth,
+  ];
+
+  const setupCallsRlp = [[[encodeAddress(opts.probeAddr), encodeFunctionData({ abi: PROBE_ABI, functionName: 'probe' })]]];
+  const unsigned1 = baseTxFields(nonce1, setupCallsRlp, [configChangeRlp]);
+  const { receipt: receipt1 } = await signAndSend(unsigned1, { trace: false });
+  if (receipt1?.status !== '0x1') {
+    console.log(`FAILED: State-read owner registration failed (status ${receipt1?.status || 'unknown'})`);
+    process.exit(1);
+  }
+
+  console.log('\n--- Step 2: Submit AA tx with state-read verifier (must be rejected) ---');
+  const nonce2 = await getAaNonce();
+  const callsRlp = [[[encodeAddress(opts.probeAddr), encodeFunctionData({ abi: PROBE_ABI, functionName: 'probe' })]]];
+  const unsigned2 = baseTxFields(nonce2, callsRlp);
+
+  try {
+    await signAndSend(unsigned2, {
+      trace: false,
+      customSenderAuth: () => verifierAddress,
+      exitOnError: false,
+    });
+    console.log('FAILED: State-read custom verifier tx was accepted unexpectedly');
+    process.exit(1);
+  } catch (err) {
+    const rejection = `${err.shortMessage || ''} ${err.details || ''} ${err.message || ''}`
+      .toLowerCase();
+    if (rejection.includes('mempool policy')) {
+      console.log('SUCCESS: State-read verifier tx rejected by mempool policy as expected');
+      return;
+    }
+    console.log(`FAILED: Tx rejected, but not by verifier policy (${err.details || err.message})`);
+    process.exit(1);
+  }
+}
+
+// ─────────────────────────────────────────────────
+// Mode: external-staticcall-verifier (STATICCALL to non-precompile)
+// ─────────────────────────────────────────────────
+async function runExternalStaticcallVerifier() {
+  console.log('\n--- External-STATICCALL Verifier Rejection Test ---');
+  console.log('Deploying verifier runtime that STATICCALLs non-precompile address 0x42');
+  const verifierAddress =
+    await deployExternalStaticcallVerifier(EXTERNAL_STATICCALL_VERIFIER_OWNER_ID);
+  console.log(`External-staticcall verifier: ${verifierAddress}`);
+  console.log(`External-staticcall owner ID: ${EXTERNAL_STATICCALL_VERIFIER_OWNER_ID}`);
+
+  console.log('\n--- Step 1: Register external-staticcall verifier owner ---');
+  const nonce1 = await getAaNonce();
+  const seqSlotHash = sequenceSlot(account.address);
+  const packedSeq = await client.getStorageAt({ address: ACCOUNT_CONFIG_ADDRESS, slot: seqSlotHash });
+  const currentSeq = BigInt(packedSeq || '0x0') & ((1n << 64n) - 1n);
+
+  const operation = {
+    changeType: 1,
+    verifier: verifierAddress,
+    ownerId: EXTERNAL_STATICCALL_VERIFIER_OWNER_ID,
+    scope: 0x01,
+  };
+  const digest = configChangeDigest(account.address, 0n, currentSeq, [operation]);
+  const authSig = await account.sign({ hash: digest });
+  const authorizerAuth = concat([K1_VERIFIER_ADDRESS, authSig]);
+  const configChangeRlp = [
+    toHex(0x01, { size: 1 }),
+    encodeUint(0n),
+    encodeUint(currentSeq),
+    [[
+      toHex(0x01, { size: 1 }),
+      encodeAddress(verifierAddress),
+      EXTERNAL_STATICCALL_VERIFIER_OWNER_ID,
+      toHex(0x01, { size: 1 }),
+    ]],
+    authorizerAuth,
+  ];
+
+  const setupCallsRlp = [[[encodeAddress(opts.probeAddr), encodeFunctionData({ abi: PROBE_ABI, functionName: 'probe' })]]];
+  const unsigned1 = baseTxFields(nonce1, setupCallsRlp, [configChangeRlp]);
+  const { receipt: receipt1 } = await signAndSend(unsigned1, { trace: false });
+  if (receipt1?.status !== '0x1') {
+    console.log(`FAILED: External-staticcall owner registration failed (status ${receipt1?.status || 'unknown'})`);
+    process.exit(1);
+  }
+
+  console.log('\n--- Step 2: Submit AA tx with external-staticcall verifier (must be rejected) ---');
+  const nonce2 = await getAaNonce();
+  const callsRlp = [[[encodeAddress(opts.probeAddr), encodeFunctionData({ abi: PROBE_ABI, functionName: 'probe' })]]];
+  const unsigned2 = baseTxFields(nonce2, callsRlp);
+
+  try {
+    await signAndSend(unsigned2, {
+      trace: false,
+      customSenderAuth: () => verifierAddress,
+      exitOnError: false,
+    });
+    console.log('FAILED: External-staticcall verifier tx was accepted unexpectedly');
+    process.exit(1);
+  } catch (err) {
+    const rejection = `${err.shortMessage || ''} ${err.details || ''} ${err.message || ''}`
+      .toLowerCase();
+    if (rejection.includes('mempool policy')) {
+      console.log('SUCCESS: External-staticcall verifier tx rejected by mempool policy as expected');
+      return;
+    }
+    console.log(`FAILED: Tx rejected, but not by verifier policy (${err.details || err.message})`);
+    process.exit(1);
+  }
+}
+
+// ─────────────────────────────────────────────────
 // Mode: delegate-native (canonical delegate envelope + K1 nested auth)
 // ─────────────────────────────────────────────────
 async function runDelegateNative() {
@@ -2721,6 +3030,15 @@ switch (opts.mode) {
   case 'custom-verifier':
     await runCustomVerifier();
     break;
+  case 'impure-verifier':
+    await runImpureVerifier();
+    break;
+  case 'state-read-verifier':
+    await runStateReadVerifier();
+    break;
+  case 'external-staticcall-verifier':
+    await runExternalStaticcallVerifier();
+    break;
   case 'delegate-native':
     await runDelegateNative();
     break;
@@ -2747,6 +3065,6 @@ switch (opts.mode) {
     break;
   default:
     console.error(`Unknown mode: ${opts.mode}`);
-    console.error('Available modes: probe, multi-call, sponsor, config-change, p256, webauthn, receipt-test, deploy, nonce-rpc, estimate-gas, custom-verifier, delegate-native, delegate-p256, delegate-custom, owner-change-signing, nonceless, delegation, locked-config, eoa');
+    console.error('Available modes: probe, multi-call, sponsor, config-change, p256, webauthn, receipt-test, deploy, nonce-rpc, estimate-gas, custom-verifier, impure-verifier, state-read-verifier, external-staticcall-verifier, delegate-native, delegate-p256, delegate-custom, owner-change-signing, nonceless, delegation, locked-config, eoa');
     process.exit(1);
 }

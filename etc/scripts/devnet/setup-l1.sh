@@ -54,6 +54,17 @@ echo "=== Generating Execution Layer Genesis ==="
 export CHAIN_ID GENESIS_TIME_HEX BALANCE
 
 envsubst < "$TEMPLATE_DIR/l1-el-genesis.json.template" > "$OUTPUT_DIR/el/genesis.json"
+
+if [ -n "$FAUCET_ADDR" ]; then
+  FAUCET_BALANCE="0x84595161401484a000000"
+  echo "Injecting faucet ($FAUCET_ADDR) into L1 genesis with 10M ETH..."
+  TMP_L1=$(mktemp)
+  jq --arg addr "$FAUCET_ADDR" --arg bal "$FAUCET_BALANCE" \
+    '.alloc[$addr] = {"balance": $bal}' \
+    "$OUTPUT_DIR/el/genesis.json" > "$TMP_L1"
+  mv "$TMP_L1" "$OUTPUT_DIR/el/genesis.json"
+fi
+
 jq '.config' "$OUTPUT_DIR/el/genesis.json" > "$OUTPUT_DIR/el/chain-config.json"
 
 echo "EL genesis written to $OUTPUT_DIR/el/genesis.json"

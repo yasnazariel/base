@@ -68,11 +68,12 @@ impl BaseNode {
     where
         Node: FullNodeTypes<Types: OpNodeTypes>,
     {
+        let verifier_policy = self.args.verifier_admission_policy();
         let RollupArgs { disable_txpool_gossip, compute_pending_block, discovery_v4, .. } =
             self.args;
         ComponentsBuilder::default()
             .node_types::<Node>()
-            .pool(OpPoolBuilder::default())
+            .pool(OpPoolBuilder::default().with_verifier_admission_policy(verifier_policy))
             .executor(OpExecutorBuilder::default())
             .payload(BasicPayloadServiceBuilder::new(
                 OpPayloadBuilder::new(compute_pending_block)

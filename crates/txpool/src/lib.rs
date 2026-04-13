@@ -27,8 +27,9 @@ pub use best::MergedBestTransactions;
 
 mod eip8130_validate;
 pub use eip8130_validate::{
-    DEFAULT_CUSTOM_VERIFIER_GAS_LIMIT, Eip8130ValidationError, Eip8130ValidationOutcome,
-    MAX_AA_TX_ENCODED_BYTES, VerifierAllowlist, compute_account_tier, validate_eip8130_transaction,
+    CustomVerifierPolicy, DEFAULT_CUSTOM_VERIFIER_GAS_LIMIT, Eip8130ValidationError,
+    Eip8130ValidationOutcome, MAX_AA_TX_ENCODED_BYTES, VerifierAdmissionPolicy,
+    VerifierAllowlist, VerifierPurityCache, compute_account_tier, validate_eip8130_transaction,
 };
 
 mod validator;

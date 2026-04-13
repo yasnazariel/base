@@ -58,6 +58,7 @@ pub use transaction::{
     sender_signature_hash, sender_verification_gas, sequence_base_slot, total_verification_gas,
     tx_payload_cost, verifier_kind, write_sequence,
 };
+pub use transaction::{PurityScanner, PurityVerdict, PurityViolation, ViolationCategory};
 #[cfg(feature = "evm")]
 pub use transaction::{
     CodePlacement, ExecutionCall, LockState, NONCE_MANAGER_GAS, PhaseResult, PrecompileError,

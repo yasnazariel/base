@@ -110,7 +110,8 @@ impl TxEip8130 {
         self.account_changes.iter().any(|entry| {
             matches!(entry, AccountChangeEntry::ConfigChange(cc)
                 if auth_verifier_kind(&cc.authorizer_auth)
-                    .is_some_and(|verifier| verifier.is_custom()))
+                    .is_some_and(|verifier| verifier.is_custom())
+                    || Self::auth_uses_delegate_staticcall(&cc.authorizer_auth))
         })
     }
 
@@ -700,9 +701,24 @@ mod tests {
         assert!(tx.authorizer_has_custom_verifier());
         assert!(tx.has_custom_verifier());
 
+        let delegate_target = Address::repeat_byte(0x42);
+        let mut delegate_authorizer = Vec::new();
+        delegate_authorizer.extend_from_slice(super::super::DELEGATE_VERIFIER_ADDRESS.as_slice());
+        delegate_authorizer.extend_from_slice(delegate_target.as_slice());
+        delegate_authorizer.extend_from_slice(custom.as_slice());
+        delegate_authorizer.extend_from_slice(&[0xDD; 12]);
+        tx.account_changes =
+            vec![AccountChangeEntry::ConfigChange(super::super::ConfigChangeEntry {
+                chain_id: 0,
+                sequence: 0,
+                owner_changes: vec![],
+                authorizer_auth: Bytes::from(delegate_authorizer),
+            })];
+        assert!(tx.authorizer_has_custom_verifier());
+        assert!(tx.has_custom_verifier());
+
         // Delegate-wrapped sender auth using STATICCALL path:
         // DELEGATE || delegate_account || CUSTOM || custom_data
-        let delegate_target = Address::repeat_byte(0x42);
         let mut delegate_wrapped = Vec::new();
         delegate_wrapped.extend_from_slice(super::super::DELEGATE_VERIFIER_ADDRESS.as_slice());
         delegate_wrapped.extend_from_slice(delegate_target.as_slice());
