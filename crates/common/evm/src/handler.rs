@@ -1,5 +1,5 @@
 //! Handler related to Base chain
-use alloc::boxed::Box;
+use alloc::{boxed::Box, vec::Vec};
 
 use revm::{
     context::{

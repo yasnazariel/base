@@ -1,6 +1,7 @@
 //! Abstraction over receipt building logic to allow plugging different primitive types into
 //! [`super::BaseBlockExecutor`].
 
+use alloc::boxed::Box;
 use core::fmt::Debug;
 
 use alloy_consensus::{Eip658Value, TransactionEnvelope};

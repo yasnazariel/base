@@ -304,7 +304,7 @@ pub fn validate_withdrawals_presence(
 mod tests {
     use alloy_primitives::{Address, B64, B256, b64};
     use alloy_rpc_types_engine::PayloadAttributes;
-    use base_common_chains::BaseChainConfig;
+    use base_common_chains::ChainConfig;
     use base_common_consensus::BaseTxEnvelope;
     use base_common_rpc_types_engine::BasePayloadAttributes;
     use base_execution_chainspec::BASE_SEPOLIA;
@@ -457,7 +457,7 @@ mod tests {
         let attributes = get_attributes(
             Some(b64!("0000000000000000")),
             Some(1),
-            BaseChainConfig::sepolia().jovian_timestamp,
+            ChainConfig::sepolia().jovian_timestamp,
         );
 
         let result = <engine::OpEngineValidator<_, _, _> as EngineApiValidator<
@@ -475,7 +475,7 @@ mod tests {
             BASE_SEPOLIA.clone(),
             NoopProvider::default(),
         );
-        let attributes = get_attributes(None, Some(1), BaseChainConfig::sepolia().jovian_timestamp);
+        let attributes = get_attributes(None, Some(1), ChainConfig::sepolia().jovian_timestamp);
 
         let result = <engine::OpEngineValidator<_, _, _> as EngineApiValidator<
             OpEngineTypes,
@@ -512,7 +512,7 @@ mod tests {
         let attributes = get_attributes(
             Some(b64!("0000000000000000")),
             None,
-            BaseChainConfig::sepolia().jovian_timestamp,
+            ChainConfig::sepolia().jovian_timestamp,
         );
 
         let result = <engine::OpEngineValidator<_, _, _> as EngineApiValidator<
