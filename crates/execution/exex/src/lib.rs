@@ -1118,7 +1118,1002 @@ mod tests {
         // Because we didn't spawn the actual worker thread in this test, storage should still be at
         // 0. This proves the 'handle_notification' returned instantly without doing the
         // heavy lifting.
-        let latest = proofs.get_latest_block_number().expect("get").expect("ok").0;
-        assert_eq!(latest, 0, "Main thread should not have processed the blocks synchronously");
+        let latest = proofs.get_latest_block_number().expect("get").expect("ok");
+        assert_eq!(latest.0, 0, "Main thread should not have processed the blocks synchronously");
+    }
+
+    /// Proves that cloning `LazyTrieData` (old behavior) keeps the `DeferredTrieData`
+    /// handle alive — preventing the engine from freeing `ComputedTrieData` (including
+    /// the cumulative `TrieInputSorted` overlay). Extracting just the sorted Arcs (new
+    /// behavior) releases the handle immediately.
+    #[test]
+    fn lazy_trie_data_clone_retains_deferred_trie_data() {
+        use reth_chain_state::DeferredTrieData;
+        use reth_trie::{SortedTrieData, TrieInputSorted};
+
+        let hashed_state = Arc::new(HashedPostStateSorted::default());
+        let trie_updates = Arc::new(TrieUpdatesSorted::default());
+
+        // Simulate the cumulative overlay that would be held in ComputedTrieData.
+        let overlay = Arc::new(TrieInputSorted::default());
+
+        let computed = reth_chain_state::ComputedTrieData::with_trie_input(
+            Arc::clone(&hashed_state),
+            Arc::clone(&trie_updates),
+            B256::ZERO,
+            Arc::clone(&overlay),
+        );
+
+        // Create a DeferredTrieData in Ready state (simulates post-execution).
+        let deferred = DeferredTrieData::ready(computed);
+
+        // Create a LazyTrieData::deferred closure capturing the handle —
+        // this is exactly what blocks_to_chain() does.
+        let deferred_clone = deferred.clone();
+        let lazy = LazyTrieData::deferred(move || {
+            let data = deferred_clone.wait_cloned();
+            SortedTrieData::new(data.hashed_state, data.trie_updates)
+        });
+
+        // Clone the LazyTrieData (old behavior: what handle_chain_committed used to do).
+        let lazy_clone = lazy.clone();
+
+        // Drop the original LazyTrieData and the original DeferredTrieData.
+        // This simulates the engine dropping the block from CanonicalInMemoryState.
+        drop(lazy);
+        drop(deferred);
+
+        // The overlay Arc should still be alive because lazy_clone holds:
+        //   lazy_clone.compute -> Arc<dyn Fn> -> DeferredTrieData -> Arc<Mutex<Ready(ComputedTrieData)>> -> overlay
+        assert_eq!(
+            Arc::strong_count(&overlay), 2,
+            "Old behavior: LazyTrieData clone keeps the overlay alive (refcount should be 2: \
+             one in ComputedTrieData via DeferredTrieData, one our local)"
+        );
+
+        // Now simulate the new behavior: call .get() to extract sorted data,
+        // then keep only the Arcs.
+        let sorted = lazy_clone.get();
+        let kept_hashed = Arc::clone(&sorted.hashed_state);
+        let kept_updates = Arc::clone(&sorted.trie_updates);
+
+        // Drop the LazyTrieData clone entirely.
+        drop(lazy_clone);
+
+        // The overlay should now be freed — only our local Arc remains.
+        assert_eq!(
+            Arc::strong_count(&overlay), 1,
+            "New behavior: after dropping LazyTrieData, the overlay is freed (refcount should be 1: \
+             only our local reference)"
+        );
+
+        // The sorted data we actually need is still alive.
+        assert!(Arc::strong_count(&kept_hashed) >= 1);
+        assert!(Arc::strong_count(&kept_updates) >= 1);
+    }
+
+    /// Proves that a chain of `DeferredTrieData` ancestors is kept alive when
+    /// any descendant's `LazyTrieData` clone exists. This simulates the
+    /// engine's in-memory block chain where each block's `DeferredTrieData`
+    /// holds references to all ancestor blocks' deferred handles.
+    #[test]
+    fn ancestor_chain_retained_by_lazy_clone() {
+        use reth_chain_state::DeferredTrieData;
+        use reth_trie::{HashedPostState, SortedTrieData, TrieInputSorted, updates::TrieUpdates};
+
+        let ancestor_overlay = Arc::new(TrieInputSorted::default());
+
+        // Block A: root of the chain, with a cumulative overlay.
+        let block_a = DeferredTrieData::ready(
+            reth_chain_state::ComputedTrieData::with_trie_input(
+                Arc::new(HashedPostStateSorted::default()),
+                Arc::new(TrieUpdatesSorted::default()),
+                B256::ZERO,
+                Arc::clone(&ancestor_overlay),
+            ),
+        );
+
+        // Block B: pending, with block_a as ancestor.
+        let block_b = DeferredTrieData::pending(
+            Arc::new(HashedPostState::default()),
+            Arc::new(TrieUpdates::default()),
+            B256::ZERO,
+            vec![block_a.clone()],
+        );
+
+        // Simulate blocks_to_chain: create LazyTrieData for block B.
+        let block_b_clone = block_b.clone();
+        let lazy_b = LazyTrieData::deferred(move || {
+            let data = block_b_clone.wait_cloned();
+            SortedTrieData::new(data.hashed_state, data.trie_updates)
+        });
+
+        // Clone it (old behavior).
+        let lazy_b_clone = lazy_b.clone();
+
+        // Engine drops everything: original lazy, block_a, block_b.
+        drop(lazy_b);
+        drop(block_a);
+        drop(block_b);
+
+        // Block A's overlay is still alive via:
+        //   lazy_b_clone -> closure -> DeferredTrieData(block_b) -> Pending.ancestors -> DeferredTrieData(block_a) -> Ready -> overlay
+        assert_eq!(
+            Arc::strong_count(&ancestor_overlay), 2,
+            "Ancestor overlay kept alive through pending descendant's LazyTrieData clone"
+        );
+
+        // Call .get() to trigger computation, then drop the LazyTrieData.
+        let sorted = lazy_b_clone.get();
+        let _kept = Arc::clone(&sorted.hashed_state);
+        drop(lazy_b_clone);
+
+        // After wait_cloned(), Pending transitions to Ready which drops ancestors.
+        // Then dropping LazyTrieData drops the closure + DeferredTrieData.
+        assert_eq!(
+            Arc::strong_count(&ancestor_overlay), 1,
+            "After extracting sorted data and dropping LazyTrieData, ancestor overlay is freed"
+        );
+    }
+
+    /// Simulates the SyncTarget holding multiple entries (old behavior) and
+    /// proves each entry independently retains its overlay. Dropping entries
+    /// one-by-one frees overlays incrementally.
+    #[test]
+    fn sync_target_entries_independently_retain_overlays() {
+        use reth_chain_state::DeferredTrieData;
+        use reth_trie::{SortedTrieData, TrieInputSorted};
+
+        let num_blocks = 10;
+        let mut overlays = Vec::new();
+        let mut lazy_clones = Vec::new();
+
+        for _ in 0..num_blocks {
+            let overlay = Arc::new(TrieInputSorted::default());
+            overlays.push(Arc::clone(&overlay));
+
+            let deferred = DeferredTrieData::ready(
+                reth_chain_state::ComputedTrieData::with_trie_input(
+                    Arc::new(HashedPostStateSorted::default()),
+                    Arc::new(TrieUpdatesSorted::default()),
+                    B256::ZERO,
+                    overlay,
+                ),
+            );
+
+            let deferred_clone = deferred.clone();
+            let lazy = LazyTrieData::deferred(move || {
+                let data = deferred_clone.wait_cloned();
+                SortedTrieData::new(data.hashed_state, data.trie_updates)
+            });
+            lazy_clones.push(lazy.clone());
+            // Drop original lazy + deferred (engine side).
+            drop(lazy);
+            drop(deferred);
+        }
+
+        // All overlays held alive by lazy_clones.
+        for (i, overlay) in overlays.iter().enumerate() {
+            assert_eq!(
+                Arc::strong_count(overlay), 2,
+                "Overlay {i} should be retained by its LazyTrieData clone"
+            );
+        }
+
+        // Drop entries one-by-one (simulates SyncTarget eviction via pop_first).
+        for i in 0..num_blocks {
+            drop(lazy_clones.remove(0));
+            assert_eq!(
+                Arc::strong_count(&overlays[i]), 1,
+                "Overlay {i} should be freed after its LazyTrieData clone is dropped"
+            );
+            // Remaining overlays still held.
+            for (j, overlay) in overlays.iter().enumerate().skip(i + 1) {
+                assert_eq!(
+                    Arc::strong_count(overlay), 2,
+                    "Overlay {j} should still be retained"
+                );
+            }
+        }
+    }
+
+    /// Proves that the new behavior (eagerly extracting sorted data into
+    /// `CachedBlockTrieData`) releases overlays immediately, even when
+    /// the cached data itself is kept alive.
+    #[test]
+    fn cached_block_trie_data_does_not_retain_overlay() {
+        use reth_chain_state::DeferredTrieData;
+        use reth_trie::{SortedTrieData, TrieInputSorted};
+
+        let overlay = Arc::new(TrieInputSorted::default());
+
+        let deferred = DeferredTrieData::ready(
+            reth_chain_state::ComputedTrieData::with_trie_input(
+                Arc::new(HashedPostStateSorted::default()),
+                Arc::new(TrieUpdatesSorted::default()),
+                B256::ZERO,
+                Arc::clone(&overlay),
+            ),
+        );
+
+        // Simulate blocks_to_chain creating LazyTrieData.
+        let deferred_clone = deferred.clone();
+        let lazy = LazyTrieData::deferred(move || {
+            let data = deferred_clone.wait_cloned();
+            SortedTrieData::new(data.hashed_state, data.trie_updates)
+        });
+
+        // New behavior: eagerly extract sorted data into CachedBlockTrieData.
+        let sorted = lazy.get();
+        let cached = CachedBlockTrieData {
+            block_with_parent: BlockWithParent::new(
+                B256::ZERO,
+                NumHash::new(1, B256::ZERO),
+            ),
+            hashed_state: Arc::clone(&sorted.hashed_state),
+            trie_updates: Arc::clone(&sorted.trie_updates),
+        };
+
+        // Drop everything except the cached data.
+        drop(lazy);
+        drop(deferred);
+
+        // Overlay is freed — CachedBlockTrieData doesn't hold it.
+        assert_eq!(
+            Arc::strong_count(&overlay), 1,
+            "CachedBlockTrieData does not retain the overlay"
+        );
+
+        // The cached data is still usable.
+        assert!(Arc::strong_count(&cached.hashed_state) >= 1);
+        assert!(Arc::strong_count(&cached.trie_updates) >= 1);
+    }
+
+    /// Builds a large `TrieInputSorted` overlay to simulate real-world cumulative
+    /// state. Each entry is a (B256, Account) pair — 32 bytes key + ~80 bytes value.
+    fn build_large_overlay(num_accounts: usize) -> reth_trie::TrieInputSorted {
+        use reth_primitives_traits::Account;
+        use reth_trie::TrieInputSorted;
+
+        let accounts: Vec<(B256, Option<Account>)> = (0..num_accounts)
+            .map(|i| {
+                let mut key = [0u8; 32];
+                key[0..8].copy_from_slice(&(i as u64).to_be_bytes());
+                (B256::new(key), Some(Account { nonce: i as u64, ..Default::default() }))
+            })
+            .collect();
+        let state = Arc::new(HashedPostStateSorted::new(accounts, Default::default()));
+        let nodes = Arc::new(TrieUpdatesSorted::default());
+        TrieInputSorted::new(nodes, state, Default::default())
+    }
+
+    /// Measures the memory impact of old vs new behavior with realistic overlay sizes.
+    ///
+    /// Old behavior: 100 `LazyTrieData` clones retain 100 independent cumulative overlays.
+    /// New behavior: 100 `CachedBlockTrieData` entries hold only sorted per-block data,
+    /// releasing the overlays immediately.
+    ///
+    /// Each overlay contains 10,000 account entries (~1.1 MB each). With 100 entries:
+    /// - Old behavior retains ~110 MB of overlays
+    /// - New behavior retains ~0 MB of overlays
+    #[test]
+    fn memory_impact_old_vs_new_behavior() {
+        use reth_chain_state::DeferredTrieData;
+        use reth_trie::SortedTrieData;
+
+        let accounts_per_overlay = 10_000;
+        let num_blocks = 100;
+
+        // --- Old behavior: LazyTrieData clones ---
+        let mut old_overlays = Vec::new();
+        let mut old_lazy_clones: Vec<LazyTrieData> = Vec::new();
+
+        for _ in 0..num_blocks {
+            let overlay = Arc::new(build_large_overlay(accounts_per_overlay));
+            old_overlays.push(Arc::clone(&overlay));
+
+            let deferred = DeferredTrieData::ready(
+                reth_chain_state::ComputedTrieData::with_trie_input(
+                    Arc::new(HashedPostStateSorted::default()),
+                    Arc::new(TrieUpdatesSorted::default()),
+                    B256::ZERO,
+                    overlay,
+                ),
+            );
+
+            let deferred_clone = deferred.clone();
+            let lazy = LazyTrieData::deferred(move || {
+                let data = deferred_clone.wait_cloned();
+                SortedTrieData::new(data.hashed_state, data.trie_updates)
+            });
+            old_lazy_clones.push(lazy.clone());
+            drop(lazy);
+            drop(deferred);
+        }
+
+        // Verify all overlays are retained.
+        let old_retained = old_overlays
+            .iter()
+            .filter(|o| Arc::strong_count(o) > 1)
+            .count();
+        assert_eq!(old_retained, num_blocks, "Old behavior: all {num_blocks} overlays retained");
+
+        // Drop all LazyTrieData clones (simulates switching to new behavior).
+        drop(old_lazy_clones);
+
+        // All overlays freed.
+        let old_freed = old_overlays
+            .iter()
+            .filter(|o| Arc::strong_count(o) == 1)
+            .count();
+        assert_eq!(old_freed, num_blocks, "After dropping old clones: all overlays freed");
+
+        drop(old_overlays);
+
+        // --- New behavior: eagerly extracted CachedBlockTrieData ---
+        let mut new_overlays = Vec::new();
+        let mut new_cached_entries: Vec<CachedBlockTrieData> = Vec::new();
+
+        for i in 0..num_blocks {
+            let overlay = Arc::new(build_large_overlay(accounts_per_overlay));
+            new_overlays.push(Arc::clone(&overlay));
+
+            let deferred = DeferredTrieData::ready(
+                reth_chain_state::ComputedTrieData::with_trie_input(
+                    Arc::new(HashedPostStateSorted::default()),
+                    Arc::new(TrieUpdatesSorted::default()),
+                    B256::ZERO,
+                    overlay,
+                ),
+            );
+
+            let deferred_clone = deferred.clone();
+            let lazy = LazyTrieData::deferred(move || {
+                let data = deferred_clone.wait_cloned();
+                SortedTrieData::new(data.hashed_state, data.trie_updates)
+            });
+
+            // New behavior: eagerly extract, then drop LazyTrieData.
+            let sorted = lazy.get();
+            new_cached_entries.push(CachedBlockTrieData {
+                block_with_parent: BlockWithParent::new(
+                    B256::ZERO,
+                    NumHash::new(i as u64, B256::ZERO),
+                ),
+                hashed_state: Arc::clone(&sorted.hashed_state),
+                trie_updates: Arc::clone(&sorted.trie_updates),
+            });
+            drop(lazy);
+            drop(deferred);
+        }
+
+        // Verify NO overlays are retained.
+        let new_retained = new_overlays
+            .iter()
+            .filter(|o| Arc::strong_count(o) > 1)
+            .count();
+        assert_eq!(new_retained, 0, "New behavior: zero overlays retained");
+
+        // Cached entries are still usable.
+        for entry in &new_cached_entries {
+            assert!(Arc::strong_count(&entry.hashed_state) >= 1);
+            assert!(Arc::strong_count(&entry.trie_updates) >= 1);
+        }
+    }
+
+    /// Simulates growing cumulative overlays (each block extends the previous)
+    /// and proves the old behavior retains ALL cumulative data while new behavior
+    /// only keeps per-block sorted data.
+    #[test]
+    fn growing_cumulative_overlays_freed_by_new_behavior() {
+        use reth_chain_state::DeferredTrieData;
+        use reth_trie::SortedTrieData;
+
+        let num_blocks = 20;
+        let accounts_per_block = 1_000;
+
+        // Simulate growing cumulative overlays: block N's overlay contains
+        // state changes from ALL blocks [0..N].
+        let mut overlays = Vec::new();
+        let mut lazy_clones: Vec<LazyTrieData> = Vec::new();
+
+        for block_idx in 0..num_blocks {
+            // Each overlay grows: block 0 has 1000, block 1 has 2000, etc.
+            let cumulative_accounts = (block_idx + 1) * accounts_per_block;
+            let overlay = Arc::new(build_large_overlay(cumulative_accounts));
+            overlays.push(Arc::clone(&overlay));
+
+            let deferred = DeferredTrieData::ready(
+                reth_chain_state::ComputedTrieData::with_trie_input(
+                    Arc::new(HashedPostStateSorted::default()),
+                    Arc::new(TrieUpdatesSorted::default()),
+                    B256::ZERO,
+                    overlay,
+                ),
+            );
+
+            let deferred_clone = deferred.clone();
+            let lazy = LazyTrieData::deferred(move || {
+                let data = deferred_clone.wait_cloned();
+                SortedTrieData::new(data.hashed_state, data.trie_updates)
+            });
+            lazy_clones.push(lazy.clone());
+            drop(lazy);
+            drop(deferred);
+        }
+
+        // All 20 growing overlays retained — total is O(N^2) memory:
+        // overlay[0] = 1000 accounts, overlay[1] = 2000, ..., overlay[19] = 20000
+        // Sum = 1000 * (1+2+...+20) = 210,000 account entries held
+        for (i, overlay) in overlays.iter().enumerate() {
+            assert_eq!(
+                Arc::strong_count(overlay), 2,
+                "Growing overlay {i} retained by old behavior"
+            );
+        }
+
+        // New behavior: extract and drop.
+        let mut cached_entries: Vec<CachedBlockTrieData> = Vec::new();
+        for (i, lazy) in lazy_clones.into_iter().enumerate() {
+            let sorted = lazy.get();
+            cached_entries.push(CachedBlockTrieData {
+                block_with_parent: BlockWithParent::new(
+                    B256::ZERO,
+                    NumHash::new(i as u64, B256::ZERO),
+                ),
+                hashed_state: Arc::clone(&sorted.hashed_state),
+                trie_updates: Arc::clone(&sorted.trie_updates),
+            });
+            // lazy dropped here at end of iteration
+        }
+
+        // All overlays freed.
+        for (i, overlay) in overlays.iter().enumerate() {
+            assert_eq!(
+                Arc::strong_count(overlay), 1,
+                "Growing overlay {i} freed after extracting sorted data"
+            );
+        }
+
+        // Cached entries still usable.
+        assert_eq!(cached_entries.len(), num_blocks);
+    }
+
+    /// Creates a chain where trie data uses `DeferredTrieData` closures (like the
+    /// real engine's `blocks_to_chain`), each backed by a large cumulative overlay.
+    /// Returns the chain and the overlay Arcs so callers can verify refcounts.
+    fn mk_chain_with_deferred_overlays(
+        from: u64,
+        to: u64,
+        accounts_per_overlay: usize,
+    ) -> (
+        Chain<reth_ethereum_primitives::EthPrimitives>,
+        Vec<Arc<reth_trie::TrieInputSorted>>,
+    ) {
+        use reth_chain_state::DeferredTrieData;
+        use reth_trie::SortedTrieData;
+
+        let mut blocks: Vec<RecoveredBlock<Block>> = Vec::new();
+        let mut trie_data = BTreeMap::new();
+        let mut overlays = Vec::new();
+
+        for n in from..=to {
+            blocks.push(mk_block(n));
+
+            let overlay = Arc::new(build_large_overlay(accounts_per_overlay));
+            overlays.push(Arc::clone(&overlay));
+
+            let deferred = DeferredTrieData::ready(
+                reth_chain_state::ComputedTrieData::with_trie_input(
+                    Arc::new(HashedPostStateSorted::default()),
+                    Arc::new(TrieUpdatesSorted::default()),
+                    B256::ZERO,
+                    overlay,
+                ),
+            );
+
+            let deferred_clone = deferred.clone();
+            let lazy = LazyTrieData::deferred(move || {
+                let data = deferred_clone.wait_cloned();
+                SortedTrieData::new(data.hashed_state, data.trie_updates)
+            });
+            trie_data.insert(n, lazy);
+        }
+
+        let execution_outcome: ExecutionOutcome<Receipt> = ExecutionOutcome {
+            bundle: Default::default(),
+            receipts: Vec::new(),
+            requests: Vec::new(),
+            first_block: from,
+        };
+
+        (Chain::new(blocks, execution_outcome, trie_data), overlays)
+    }
+
+    /// Integration test: notifications with deferred trie data are handled
+    /// correctly and overlays are freed after caching into SyncTarget.
+    #[tokio::test]
+    async fn handle_notification_frees_deferred_overlays() {
+        let dir = tempdir_path();
+        let store = Arc::new(MdbxProofsStorage::new(dir.as_path()).expect("env"));
+        let proofs: OpProofsStorage<Arc<MdbxProofsStorage>> = Arc::clone(&store).into();
+        init_storage(proofs.clone());
+        store_blocks(1, 5, &proofs);
+
+        let (ctx, _handle) =
+            reth_exex_test_utils::test_exex_context().await.expect("exex test context");
+        let exex = build_test_exex(ctx, proofs);
+        let sync_target = SyncTarget::new();
+
+        let (chain, overlays) = mk_chain_with_deferred_overlays(6, 10, 5_000);
+
+        // Overlays have refcount 2: our local + DeferredTrieData inside LazyTrieData.
+        for (i, overlay) in overlays.iter().enumerate() {
+            assert_eq!(
+                Arc::strong_count(overlay), 2,
+                "Overlay {i} starts with refcount 2"
+            );
+        }
+
+        let notification = ExExNotification::ChainCommitted { new: Arc::new(chain) };
+        exex.handle_notification(notification, &sync_target)
+            .expect("handle_notification");
+
+        // After handle_notification (new behavior): the LazyTrieData was consumed
+        // via .get() and only sorted Arcs are kept in SyncTarget. The DeferredTrieData
+        // closure is dropped, releasing the overlays.
+        for (i, overlay) in overlays.iter().enumerate() {
+            assert_eq!(
+                Arc::strong_count(overlay), 1,
+                "Overlay {i} freed after handle_notification (only local ref remains)"
+            );
+        }
+
+        assert_eq!(sync_target.cache_len(), 5);
+    }
+
+    /// Integration test: consuming SyncTarget entries (simulating sync_forward)
+    /// doesn't resurrect overlay references.
+    #[tokio::test]
+    async fn sync_target_take_does_not_retain_overlays() {
+        let dir = tempdir_path();
+        let store = Arc::new(MdbxProofsStorage::new(dir.as_path()).expect("env"));
+        let proofs: OpProofsStorage<Arc<MdbxProofsStorage>> = Arc::clone(&store).into();
+        init_storage(proofs.clone());
+        store_blocks(1, 5, &proofs);
+
+        let (ctx, _handle) =
+            reth_exex_test_utils::test_exex_context().await.expect("exex test context");
+        let exex = build_test_exex(ctx, proofs);
+        let sync_target = SyncTarget::new();
+
+        let (chain, overlays) = mk_chain_with_deferred_overlays(6, 10, 5_000);
+
+        let notification = ExExNotification::ChainCommitted { new: Arc::new(chain) };
+        exex.handle_notification(notification, &sync_target)
+            .expect("handle_notification");
+
+        for overlay in &overlays {
+            assert_eq!(Arc::strong_count(overlay), 1);
+        }
+
+        // Consume entries from SyncTarget (simulates sync_forward's take() calls).
+        for n in 6..=10 {
+            let entry = sync_target.take(n).expect("block should be in cache");
+            let _hashed = (*entry.hashed_state).clone();
+            let _updates = (*entry.trie_updates).clone();
+        }
+
+        assert_eq!(sync_target.cache_len(), 0);
+
+        for (i, overlay) in overlays.iter().enumerate() {
+            assert_eq!(
+                Arc::strong_count(overlay), 1,
+                "Overlay {i} still freed after consuming from SyncTarget"
+            );
+        }
+    }
+
+    /// Integration test: SyncTarget eviction via capacity overflow frees overlays.
+    #[tokio::test]
+    async fn sync_target_eviction_frees_overlays() {
+        let dir = tempdir_path();
+        let store = Arc::new(MdbxProofsStorage::new(dir.as_path()).expect("env"));
+        let proofs: OpProofsStorage<Arc<MdbxProofsStorage>> = Arc::clone(&store).into();
+        init_storage(proofs.clone());
+
+        let (ctx, _handle) =
+            reth_exex_test_utils::test_exex_context().await.expect("exex test context");
+        let exex = build_test_exex(ctx, proofs);
+        let sync_target = SyncTarget::new();
+
+        let mut all_overlays = Vec::new();
+        let batch_size = 50u64;
+        let total_blocks = 1030u64;
+        let mut block_start = 1u64;
+
+        while block_start <= total_blocks {
+            let batch_end = (block_start + batch_size - 1).min(total_blocks);
+            let (chain, overlays) =
+                mk_chain_with_deferred_overlays(block_start, batch_end, 100);
+            all_overlays.extend(overlays);
+
+            let notification =
+                ExExNotification::ChainCommitted { new: Arc::new(chain) };
+            exex.handle_notification(notification, &sync_target)
+                .expect("handle_notification");
+
+            block_start = batch_end + 1;
+        }
+
+        for (i, overlay) in all_overlays.iter().enumerate() {
+            assert_eq!(
+                Arc::strong_count(overlay), 1,
+                "Overlay {i} freed immediately after handle_notification"
+            );
+        }
+
+        assert!(sync_target.cache_len() <= 1024);
+    }
+
+    /// Proves that `LazyTrieData.get()` does NOT drop the compute closure.
+    /// Even after the `OnceLock` is populated, the closure (and its captured
+    /// `DeferredTrieData`) remains alive. This is the core reth behavior
+    /// that causes memory retention with the old approach.
+    #[test]
+    fn lazy_trie_data_get_does_not_drop_closure() {
+        use reth_chain_state::DeferredTrieData;
+        use reth_trie::SortedTrieData;
+
+        let overlay = Arc::new(reth_trie::TrieInputSorted::default());
+
+        let deferred = DeferredTrieData::ready(
+            reth_chain_state::ComputedTrieData::with_trie_input(
+                Arc::new(HashedPostStateSorted::default()),
+                Arc::new(TrieUpdatesSorted::default()),
+                B256::ZERO,
+                Arc::clone(&overlay),
+            ),
+        );
+
+        let deferred_clone = deferred.clone();
+        let lazy = LazyTrieData::deferred(move || {
+            let data = deferred_clone.wait_cloned();
+            SortedTrieData::new(data.hashed_state, data.trie_updates)
+        });
+        drop(deferred);
+
+        // Before get(): overlay alive via closure.
+        assert_eq!(Arc::strong_count(&overlay), 2);
+
+        // Call get() — populates the OnceLock.
+        let _sorted = lazy.get();
+
+        // After get(): overlay STILL alive — closure is NOT dropped.
+        assert_eq!(
+            Arc::strong_count(&overlay), 2,
+            "get() does not drop the compute closure; overlay still retained"
+        );
+
+        drop(lazy);
+        assert_eq!(Arc::strong_count(&overlay), 1, "Only dropping LazyTrieData frees it");
+    }
+
+    /// Integration test: reorg path (`ChainReorged`) also frees overlays for
+    /// the new chain's trie data.
+    #[tokio::test]
+    async fn handle_reorg_frees_deferred_overlays() {
+        let dir = tempdir_path();
+        let store = Arc::new(MdbxProofsStorage::new(dir.as_path()).expect("env"));
+        let proofs: OpProofsStorage<Arc<MdbxProofsStorage>> = Arc::clone(&store).into();
+        init_storage(proofs.clone());
+        store_blocks(1, 5, &proofs);
+
+        let (ctx, _handle) =
+            reth_exex_test_utils::test_exex_context().await.expect("exex test context");
+        let exex = build_test_exex(ctx, proofs);
+        let sync_target = SyncTarget::new();
+
+        // First, commit blocks 6-10.
+        let (old_chain, _old_overlays) = mk_chain_with_deferred_overlays(6, 10, 1_000);
+        let notification = ExExNotification::ChainCommitted { new: Arc::new(old_chain) };
+        exex.handle_notification(notification, &sync_target).expect("commit");
+
+        // Now reorg: old chain is 6-10, new chain is 6-8 (shorter fork).
+        let (old_chain_for_reorg, _) = mk_chain_with_deferred_overlays(6, 10, 1_000);
+        let (new_chain, new_overlays) = mk_chain_with_deferred_overlays(6, 8, 2_000);
+
+        for overlay in &new_overlays {
+            assert_eq!(Arc::strong_count(overlay), 2);
+        }
+
+        let notification = ExExNotification::ChainReorged {
+            old: Arc::new(old_chain_for_reorg),
+            new: Arc::new(new_chain),
+        };
+        exex.handle_notification(notification, &sync_target).expect("reorg");
+
+        // New chain overlays freed immediately.
+        for (i, overlay) in new_overlays.iter().enumerate() {
+            assert_eq!(
+                Arc::strong_count(overlay), 1,
+                "Reorg new chain overlay {i} freed after handle_notification"
+            );
+        }
+    }
+
+    /// Proves that when the engine and exex share a `DeferredTrieData` handle,
+    /// the engine dropping its reference doesn't free the overlay as long as
+    /// the exex's `LazyTrieData` clone exists (old behavior). With the new
+    /// behavior, the overlay is freed as soon as the sorted data is extracted.
+    #[test]
+    fn shared_deferred_handle_engine_drops_first() {
+        use reth_chain_state::DeferredTrieData;
+        use reth_trie::SortedTrieData;
+
+        let overlay = Arc::new(reth_trie::TrieInputSorted::default());
+
+        // Engine creates the DeferredTrieData (simulates ExecutedBlock).
+        let engine_handle = DeferredTrieData::ready(
+            reth_chain_state::ComputedTrieData::with_trie_input(
+                Arc::new(HashedPostStateSorted::default()),
+                Arc::new(TrieUpdatesSorted::default()),
+                B256::ZERO,
+                Arc::clone(&overlay),
+            ),
+        );
+
+        // ExEx receives a clone via blocks_to_chain's LazyTrieData closure.
+        let exex_handle = engine_handle.clone();
+        let lazy = LazyTrieData::deferred(move || {
+            let data = exex_handle.wait_cloned();
+            SortedTrieData::new(data.hashed_state, data.trie_updates)
+        });
+        let lazy_clone = lazy.clone();
+        drop(lazy);
+
+        // Engine persists the block and drops its handle.
+        drop(engine_handle);
+
+        // Old behavior: overlay still alive because exex's LazyTrieData clone holds it.
+        assert_eq!(
+            Arc::strong_count(&overlay), 2,
+            "Engine dropped handle, but exex's LazyTrieData clone keeps overlay alive"
+        );
+
+        // New behavior: extract sorted data, drop LazyTrieData.
+        let sorted = lazy_clone.get();
+        let _kept_hashed = Arc::clone(&sorted.hashed_state);
+        let _kept_updates = Arc::clone(&sorted.trie_updates);
+        drop(lazy_clone);
+
+        assert_eq!(
+            Arc::strong_count(&overlay), 1,
+            "After extracting and dropping, overlay is freed"
+        );
+    }
+
+    /// End-to-end simulation of sustained catch-up: the exex receives many
+    /// batches of notifications (like during chain sync), processes them into
+    /// SyncTarget, and entries are consumed by the sync loop. Verifies that
+    /// overlays from ALL batches are freed — no cumulative memory growth.
+    #[tokio::test]
+    async fn e2e_sustained_catchup_no_memory_growth() {
+        let dir = tempdir_path();
+        let store = Arc::new(MdbxProofsStorage::new(dir.as_path()).expect("env"));
+        let proofs: OpProofsStorage<Arc<MdbxProofsStorage>> = Arc::clone(&store).into();
+        init_storage(proofs.clone());
+
+        let (ctx, _handle) =
+            reth_exex_test_utils::test_exex_context().await.expect("exex test context");
+        let exex = build_test_exex(ctx, proofs.clone());
+        let sync_target = SyncTarget::new();
+
+        let batches = 20;
+        let blocks_per_batch = 50u64;
+        let accounts_per_overlay = 5_000;
+        let mut all_overlays: Vec<Arc<reth_trie::TrieInputSorted>> = Vec::new();
+
+        for batch in 0..batches {
+            let start = batch * blocks_per_batch + 1;
+            let end = start + blocks_per_batch - 1;
+
+            let (chain, overlays) =
+                mk_chain_with_deferred_overlays(start, end, accounts_per_overlay);
+            all_overlays.extend(overlays);
+
+            let notification =
+                ExExNotification::ChainCommitted { new: Arc::new(chain) };
+            exex.handle_notification(notification, &sync_target)
+                .expect("handle_notification");
+
+            // Simulate sync loop consuming the batch.
+            for n in start..=end {
+                if let Some(entry) = sync_target.take(n) {
+                    let _h = (*entry.hashed_state).clone();
+                    let _u = (*entry.trie_updates).clone();
+                }
+            }
+        }
+
+        // Total: 1000 blocks processed in 20 batches.
+        // ALL overlays should be freed — no cumulative memory growth.
+        let retained = all_overlays
+            .iter()
+            .filter(|o| Arc::strong_count(o) > 1)
+            .count();
+        assert_eq!(
+            retained, 0,
+            "After processing {batches} batches ({} blocks), zero overlays retained",
+            batches * blocks_per_batch
+        );
+
+        assert_eq!(sync_target.cache_len(), 0);
+    }
+
+    /// End-to-end test: notifications arrive faster than the sync loop consumes
+    /// them (simulates the slow-write scenario). SyncTarget fills up, older
+    /// entries are evicted, but ALL overlays are still freed.
+    #[tokio::test]
+    async fn e2e_notifications_faster_than_sync() {
+        let dir = tempdir_path();
+        let store = Arc::new(MdbxProofsStorage::new(dir.as_path()).expect("env"));
+        let proofs: OpProofsStorage<Arc<MdbxProofsStorage>> = Arc::clone(&store).into();
+        init_storage(proofs.clone());
+
+        let (ctx, _handle) =
+            reth_exex_test_utils::test_exex_context().await.expect("exex test context");
+        let exex = build_test_exex(ctx, proofs.clone());
+        let sync_target = SyncTarget::new();
+
+        let mut all_overlays = Vec::new();
+        let total_notifications = 30;
+        let blocks_per_notification = 10u64;
+
+        // Send 30 notifications (300 blocks total) without consuming any.
+        for batch in 0..total_notifications {
+            let start = batch * blocks_per_notification + 1;
+            let end = start + blocks_per_notification - 1;
+
+            let (chain, overlays) =
+                mk_chain_with_deferred_overlays(start, end, 1_000);
+            all_overlays.extend(overlays);
+
+            let notification =
+                ExExNotification::ChainCommitted { new: Arc::new(chain) };
+            exex.handle_notification(notification, &sync_target)
+                .expect("handle_notification");
+        }
+
+        // All 300 overlays freed immediately (new behavior), even though
+        // SyncTarget still holds cached entries.
+        let retained = all_overlays
+            .iter()
+            .filter(|o| Arc::strong_count(o) > 1)
+            .count();
+        assert_eq!(retained, 0, "All overlays freed despite no sync consumption");
+
+        // SyncTarget has entries (up to capacity).
+        assert!(sync_target.cache_len() > 0);
+
+        // Now consume everything.
+        for n in 1..=(total_notifications * blocks_per_notification) {
+            sync_target.take(n);
+        }
+
+        // Still zero retained.
+        let retained_after = all_overlays
+            .iter()
+            .filter(|o| Arc::strong_count(o) > 1)
+            .count();
+        assert_eq!(retained_after, 0, "Still zero after full consumption");
+    }
+
+    /// Contrasts old vs new behavior in an e2e-style scenario: sends many
+    /// notifications and caches them using both approaches, proving that
+    /// the old `LazyTrieData::clone()` approach retains overlays while the
+    /// new eager-extraction approach does not.
+    #[test]
+    fn e2e_old_vs_new_overlay_retention() {
+        use reth_chain_state::DeferredTrieData;
+        use reth_trie::SortedTrieData;
+
+        let total_blocks = 200;
+        let accounts_per_overlay = 2_000;
+
+        // --- Old behavior: clone LazyTrieData into a Vec (simulating SyncTarget) ---
+        let mut old_cache: Vec<LazyTrieData> = Vec::new();
+        let mut old_overlays = Vec::new();
+
+        for i in 0..total_blocks {
+            let overlay = Arc::new(build_large_overlay(accounts_per_overlay));
+            old_overlays.push(Arc::clone(&overlay));
+
+            let deferred = DeferredTrieData::ready(
+                reth_chain_state::ComputedTrieData::with_trie_input(
+                    Arc::new(HashedPostStateSorted::default()),
+                    Arc::new(TrieUpdatesSorted::default()),
+                    B256::new([i as u8; 32]),
+                    overlay,
+                ),
+            );
+
+            let deferred_clone = deferred.clone();
+            let lazy = LazyTrieData::deferred(move || {
+                let data = deferred_clone.wait_cloned();
+                SortedTrieData::new(data.hashed_state, data.trie_updates)
+            });
+
+            // Old behavior: cache the LazyTrieData clone.
+            old_cache.push(lazy.clone());
+
+            // Engine drops its side.
+            drop(lazy);
+            drop(deferred);
+        }
+
+        let old_retained = old_overlays.iter().filter(|o| Arc::strong_count(o) > 1).count();
+        assert_eq!(
+            old_retained, total_blocks,
+            "Old behavior: ALL {total_blocks} overlays retained while cache is alive"
+        );
+
+        // Simulate sync loop consuming entries (like process_block).
+        for lazy in &old_cache {
+            let _sorted = lazy.get();
+        }
+
+        // Even after get(), overlays are STILL retained.
+        let old_retained_after_get =
+            old_overlays.iter().filter(|o| Arc::strong_count(o) > 1).count();
+        assert_eq!(
+            old_retained_after_get, total_blocks,
+            "Old behavior: overlays STILL retained even after get() — closure not dropped"
+        );
+
+        // Only dropping the cache frees them.
+        drop(old_cache);
+        let old_freed = old_overlays.iter().filter(|o| Arc::strong_count(o) == 1).count();
+        assert_eq!(old_freed, total_blocks, "Old behavior: overlays freed after cache dropped");
+
+        // --- New behavior: eagerly extract sorted data (like CachedBlockTrieData) ---
+        let mut new_cache: Vec<(Arc<HashedPostStateSorted>, Arc<TrieUpdatesSorted>)> = Vec::new();
+        let mut new_overlays = Vec::new();
+
+        for i in 0..total_blocks {
+            let overlay = Arc::new(build_large_overlay(accounts_per_overlay));
+            new_overlays.push(Arc::clone(&overlay));
+
+            let deferred = DeferredTrieData::ready(
+                reth_chain_state::ComputedTrieData::with_trie_input(
+                    Arc::new(HashedPostStateSorted::default()),
+                    Arc::new(TrieUpdatesSorted::default()),
+                    B256::new([i as u8; 32]),
+                    overlay,
+                ),
+            );
+
+            let deferred_clone = deferred.clone();
+            let lazy = LazyTrieData::deferred(move || {
+                let data = deferred_clone.wait_cloned();
+                SortedTrieData::new(data.hashed_state, data.trie_updates)
+            });
+
+            // New behavior: extract immediately, drop LazyTrieData.
+            let sorted = lazy.get();
+            new_cache.push((Arc::clone(&sorted.hashed_state), Arc::clone(&sorted.trie_updates)));
+            drop(lazy);
+            drop(deferred);
+        }
+
+        // Overlays freed IMMEDIATELY — even while cache is alive.
+        let new_retained = new_overlays.iter().filter(|o| Arc::strong_count(o) > 1).count();
+        assert_eq!(
+            new_retained, 0,
+            "New behavior: ALL overlays freed immediately, cache holds only sorted data"
+        );
+
+        // Cache is still usable.
+        assert_eq!(new_cache.len(), total_blocks);
     }
 }

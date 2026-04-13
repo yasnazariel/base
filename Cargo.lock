@@ -3803,6 +3803,7 @@ dependencies = [
  "base-node-core",
  "eyre",
  "futures",
+ "reth-chain-state",
  "reth-db",
  "reth-ethereum-primitives",
  "reth-execution-types",
