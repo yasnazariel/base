@@ -108,6 +108,8 @@ base_metrics::define_metrics! {
     rejection_cache_size: gauge,
     #[describe("Transactions skipped because metering data has not yet arrived")]
     metering_data_pending_skip: counter,
+    #[describe("Metering updates that arrived after the transaction was already included in a payload")]
+    metering_data_arrived_after_payload_inclusion: counter,
     #[describe("Transactions rejected by per-tx DA size limit")]
     tx_da_size_exceeded_total: counter,
     #[describe("Transactions rejected by block DA size limit")]

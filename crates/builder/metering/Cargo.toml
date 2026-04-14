@@ -21,3 +21,5 @@ base-builder-core.workspace = true
 moka = { workspace = true, features = ["sync"] }
 
 [dev-dependencies]
+metrics.workspace = true
+metrics-exporter-prometheus.workspace = true

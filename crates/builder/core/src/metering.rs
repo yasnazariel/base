@@ -21,10 +21,18 @@ pub trait MeteringProvider: Debug + Send + Sync + 'static {
 
     /// Removes metering data for the given transaction hashes.
     ///
-    /// Used to eagerly evict entries for transactions that have been included in
-    /// a flashblock so they don't occupy LRU slots that should go to pending
-    /// transactions.
+    /// Used for generic eviction paths where the builder no longer wants to retain
+    /// the cached metering entries.
     fn remove(&self, _tx_hashes: &[TxHash]) {}
+
+    /// Marks transactions as included in the current payload and evicts their metering data.
+    ///
+    /// Implementations can use this hook to observe metering updates that arrive after payload
+    /// inclusion without conflating them with other evictions, such as permanently rejected
+    /// transactions.
+    fn mark_payload_included(&self, tx_hashes: &[TxHash]) {
+        self.remove(tx_hashes);
+    }
 
     /// Clears all stored metering data.
     fn clear(&self) {}

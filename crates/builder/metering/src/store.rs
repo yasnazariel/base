@@ -4,7 +4,10 @@
 //! to bound memory usage. Uses [`moka`] for the LRU cache that promotes
 //! entries on access, preventing premature eviction of frequently-read data.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::{
+    sync::atomic::{AtomicBool, Ordering},
+    time::Duration,
+};
 
 use alloy_primitives::TxHash;
 use base_builder_core::{BuilderMetrics, MeteringProvider};
@@ -15,6 +18,8 @@ use moka::{notification::RemovalCause, sync::Cache};
 pub struct MeteringStore {
     /// LRU cache mapping transaction hash to metering data.
     cache: Cache<TxHash, MeterBundleResponse>,
+    /// Recently included transaction hashes used to detect late metering updates.
+    recently_included: Cache<TxHash, ()>,
     /// Whether resource metering is enabled.
     metering_enabled: AtomicBool,
 }
@@ -23,12 +28,15 @@ impl core::fmt::Debug for MeteringStore {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("MeteringStore")
             .field("entries", &self.cache.entry_count())
+            .field("recently_included", &self.recently_included.entry_count())
             .field("metering_enabled", &self.metering_enabled.load(Ordering::Relaxed))
             .finish()
     }
 }
 
 impl MeteringStore {
+    const RECENTLY_INCLUDED_TTL: Duration = Duration::from_secs(60);
+
     /// Creates a new [`MeteringStore`] with the given metering flag and max capacity.
     pub fn new(enable_resource_metering: bool, max_capacity: usize) -> Self {
         let cache = Cache::builder()
@@ -39,8 +47,16 @@ impl MeteringStore {
                 }
             })
             .build();
+        let recently_included = Cache::builder()
+            .max_capacity(max_capacity as u64)
+            .time_to_live(Self::RECENTLY_INCLUDED_TTL)
+            .build();
 
-        Self { cache, metering_enabled: AtomicBool::new(enable_resource_metering) }
+        Self {
+            cache,
+            recently_included,
+            metering_enabled: AtomicBool::new(enable_resource_metering),
+        }
     }
 
     /// Returns the number of stored entries.
@@ -68,6 +84,9 @@ impl MeteringProvider for MeteringStore {
     }
 
     fn insert(&self, tx_hash: TxHash, metering: MeterBundleResponse) {
+        if self.recently_included.contains_key(&tx_hash) {
+            BuilderMetrics::metering_data_arrived_after_payload_inclusion().increment(1);
+        }
         self.cache.insert(tx_hash, metering);
         BuilderMetrics::metering_store_size().set(self.cache.entry_count() as f64);
     }
@@ -79,8 +98,17 @@ impl MeteringProvider for MeteringStore {
         BuilderMetrics::metering_store_size().set(self.cache.entry_count() as f64);
     }
 
+    fn mark_payload_included(&self, tx_hashes: &[TxHash]) {
+        for hash in tx_hashes {
+            self.cache.invalidate(hash);
+            self.recently_included.insert(*hash, ());
+        }
+        BuilderMetrics::metering_store_size().set(self.cache.entry_count() as f64);
+    }
+
     fn clear(&self) {
         self.cache.invalidate_all();
+        self.recently_included.invalidate_all();
         BuilderMetrics::metering_store_size().set(0.0);
     }
 
@@ -98,6 +126,7 @@ impl Default for MeteringStore {
 #[cfg(test)]
 mod tests {
     use alloy_primitives::{B256, TxHash, U256};
+    use metrics_exporter_prometheus::PrometheusBuilder;
 
     use super::*;
 
@@ -219,6 +248,45 @@ mod tests {
         assert!(
             store.get(&promoted).is_some(),
             "frequently accessed entry should survive eviction"
+        );
+    }
+
+    #[test]
+    fn test_late_metering_after_payload_inclusion_records_metric() {
+        let recorder = PrometheusBuilder::new().build_recorder();
+        let handle = recorder.handle();
+        let store = MeteringStore::new(true, 100);
+        let tx_hash = TxHash::random();
+
+        metrics::with_local_recorder(&recorder, || {
+            store.mark_payload_included(&[tx_hash]);
+            store.insert(tx_hash, create_test_metering(1000));
+        });
+
+        assert!(store.get(&tx_hash).is_some(), "late metering should preserve existing behavior");
+
+        let rendered = handle.render();
+        assert!(
+            rendered.contains("base_builder_metering_data_arrived_after_payload_inclusion 1")
+        );
+    }
+
+    #[test]
+    fn test_non_payload_eviction_does_not_record_late_metering_metric() {
+        let recorder = PrometheusBuilder::new().build_recorder();
+        let handle = recorder.handle();
+        let store = MeteringStore::new(true, 100);
+        let tx_hash = TxHash::random();
+
+        metrics::with_local_recorder(&recorder, || {
+            store.remove(&[tx_hash]);
+            store.insert(tx_hash, create_test_metering(1000));
+        });
+
+        let rendered = handle.render();
+        assert!(
+            !rendered.contains("base_builder_metering_data_arrived_after_payload_inclusion"),
+            "permanent rejections should not be counted as payload-inclusion races"
         );
     }
 }
