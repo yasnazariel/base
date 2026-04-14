@@ -6,7 +6,10 @@
 //! [`SyncTargetState`] state machine so the sync loop is the single
 //! writer to proofs storage.
 
-use std::{collections::BTreeMap, sync::Arc, sync::Mutex};
+use std::{
+    collections::BTreeMap,
+    sync::{Arc, Mutex},
+};
 
 use alloy_eips::eip1898::BlockWithParent;
 use reth_trie::{HashedPostStateSorted, updates::TrieUpdatesSorted};
@@ -14,7 +17,7 @@ use tokio::sync::Notify;
 use tracing::debug;
 
 /// Maximum number of blocks to cache trie data for.
-const CACHE_CAPACITY: usize = 1024;
+const CACHE_CAPACITY: usize = 64;
 
 /// Cached trie data for a single block.
 ///
