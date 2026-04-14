@@ -22,7 +22,7 @@ use alloy_eips::eip2718::Decodable2718;
 use alloy_evm::Evm;
 use alloy_primitives::B256;
 use base_common_consensus::{
-    BaseBlock, BasePrimitives, BaseReceipt, BaseTransactionSigned, BaseTxType,
+    BaseBlock, BasePrimitives, BaseReceipt, BaseTransactionSigned, OpTxType,
 };
 use base_common_evm::{
     BaseBlockExecutor, BaseBlockExecutorFactory, BaseEvm, BaseEvmFactory, BaseTxResult,
@@ -155,7 +155,7 @@ where
                 BaseEvmFactory,
             >,
         > + 'static,
-    C: CachedExecutionProvider<BaseTxResult<OpHaltReason, BaseTxType>> + Clone,
+    C: CachedExecutionProvider<BaseTxResult<OpHaltReason, OpTxType>> + Clone,
 {
     /// Creates a new `TreePayloadValidator`.
     #[allow(clippy::too_many_arguments)]
@@ -1522,7 +1522,7 @@ where
             BuiltPayload: BuiltPayload<Primitives = BasePrimitives>,
             ExecutionData = ExecutionData,
         >,
-    C: CachedExecutionProvider<BaseTxResult<OpHaltReason, BaseTxType>>
+    C: CachedExecutionProvider<BaseTxResult<OpHaltReason, OpTxType>>
         + Clone
         + Send
         + Sync
