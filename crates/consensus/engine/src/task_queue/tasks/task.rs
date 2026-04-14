@@ -152,7 +152,7 @@ impl<EngineClient_: EngineClient> EngineTask<EngineClient_> {
         match self {
             Self::Insert(_) => Metrics::INSERT_TASK_LABEL,
             Self::Consolidate(_) => Metrics::CONSOLIDATE_TASK_LABEL,
-            Self::DelegatedForkchoice(_) => Metrics::CONSOLIDATE_TASK_LABEL,
+            Self::DelegatedForkchoice(_) => Metrics::DELEGATED_FORKCHOICE_TASK_LABEL,
             Self::Build(_) => Metrics::BUILD_TASK_LABEL,
             Self::Seal(_) => Metrics::SEAL_TASK_LABEL,
             Self::GetPayload(_) => Metrics::GET_PAYLOAD_TASK_LABEL,
