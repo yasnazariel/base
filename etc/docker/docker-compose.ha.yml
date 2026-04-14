@@ -372,6 +372,122 @@ services:
       test: ["CMD", "curl", "-sf", "http://localhost:${L2_SEQ2_CL_RPC_PORT}/healthz"]
       <<: *sequencer-healthcheck
 
+  base-follow:
+    image: base-reth-node:local
+    build:
+      context: ../..
+      dockerfile: etc/docker/Dockerfile.rust-services
+      args:
+        PROFILE: "${CARGO_PROFILE:-dev}"
+      target: client
+    container_name: base-follow
+    depends_on:
+      base-client:
+        condition: service_healthy
+    ports:
+      - "${L2_FOLLOW_HTTP_PORT}:${L2_FOLLOW_HTTP_PORT}"           # HTTP RPC
+      - "${L2_FOLLOW_WS_PORT}:${L2_FOLLOW_WS_PORT}"               # WebSocket
+      - "${L2_FOLLOW_AUTH_PORT}:${L2_FOLLOW_AUTH_PORT}"           # Auth RPC (Engine API)
+      - "${L2_FOLLOW_P2P_PORT}:${L2_FOLLOW_P2P_PORT}"             # P2P
+      - "${L2_FOLLOW_METRICS_PORT}:${L2_FOLLOW_METRICS_PORT}"     # Metrics
+    volumes:
+      - ../../.devnet/l2/follow:/data
+      - ../../.devnet/l1/configs:/genesis:ro
+      - ../../.devnet/l2/configs:/genesis/l2:ro
+    environment:
+      - OTEL_SERVICE_NAME=base-follow
+    entrypoint: /app/base-client
+    command:
+      - node
+      - --chain=/genesis/l2/genesis.json
+      - --datadir=/data
+      - --tracing-otlp=http://jaeger:4318
+      - --tracing-otlp.filter=debug,providers::state::overlay=off,trie=off
+      - --http
+      - --http.addr=0.0.0.0
+      - --http.port=${L2_FOLLOW_HTTP_PORT}
+      - --http.api=admin,eth,web3,net,rpc,debug,txpool,miner
+      - --http.corsdomain=*
+      - --ws
+      - --ws.addr=0.0.0.0
+      - --ws.port=${L2_FOLLOW_WS_PORT}
+      - --ws.api=eth,web3,net,txpool,debug
+      - --ws.origins=*
+      - --authrpc.port=${L2_FOLLOW_AUTH_PORT}
+      - --authrpc.addr=0.0.0.0
+      - --authrpc.jwtsecret=/genesis/jwt.hex
+      - --port=${L2_FOLLOW_P2P_PORT}
+      - --discovery.port=${L2_FOLLOW_P2P_PORT}
+      - --metrics=0.0.0.0:${L2_FOLLOW_METRICS_PORT}
+      - --txpool.nolocals
+      - --rpc.txfeecap=0
+      - --rpc.gascap=600000000
+      - --rpc.eth-proof-window=1209600
+      - --enable-metering
+      - --metering.gas-limit=${METERING_GAS_LIMIT}
+      - --metering.execution-time-us=${METERING_EXECUTION_TIME_US}
+      - --metering.state-root-time-us=${METERING_STATE_ROOT_TIME_US}
+      - --metering.da-bytes=${METERING_DA_BYTES}
+      - --metering.target-flashblocks-per-block=${METERING_TARGET_FLASHBLOCKS_PER_BLOCK}
+      - --color=never
+      - -vvv
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/${L2_FOLLOW_HTTP_PORT}"]
+      <<: *sequencer-healthcheck
+
+  base-follow-cl:
+    <<: *sequencer-cl-base
+    container_name: base-follow-cl
+    depends_on:
+      base-client:
+        condition: service_healthy
+      base-follow:
+        condition: service_healthy
+    ports:
+      - "${L2_FOLLOW_CL_RPC_PORT}:${L2_FOLLOW_CL_RPC_PORT}"           # RPC
+      - "${L2_FOLLOW_CL_METRICS_PORT}:${L2_FOLLOW_CL_METRICS_PORT}"   # Metrics
+    volumes:
+      - ../../.devnet/l1/configs:/genesis:ro
+      - ../../.devnet/l2/configs:/genesis/l2:ro
+      - ../../etc/scripts/devnet/delayed-follow.sh:/usr/local/bin/delayed-follow.sh:ro
+    environment:
+      - L2_FOLLOW_START_DELAY_SECS=${L2_FOLLOW_START_DELAY_SECS}
+    entrypoint: ["/bin/sh", "/usr/local/bin/delayed-follow.sh"]
+    command:
+      - follow
+      - --source-l2-rpc
+      - http://base-client:${L2_CLIENT_HTTP_PORT}
+      - --l2-rpc-url
+      - http://base-follow:${L2_FOLLOW_HTTP_PORT}
+      - --l2-engine-rpc
+      - http://base-follow:${L2_FOLLOW_AUTH_PORT}
+      - --l2-engine-jwt-secret
+      - /genesis/jwt.hex
+      - --chain
+      - ${L2_CHAIN_ID}
+      - --l1-eth-rpc
+      - http://l1-el:${L1_HTTP_PORT}
+      - --l1-beacon
+      - http://l1-cl:${L1_CL_HTTP_PORT}
+      - --l2-config-file
+      - /genesis/l2/rollup.json
+      - --l1-config-file
+      - /genesis/el/chain-config.json
+      - --l1-slot-duration-override
+      - "4"
+      - --rpc.addr
+      - "0.0.0.0"
+      - --rpc.port
+      - "${L2_FOLLOW_CL_RPC_PORT}"
+      - --metrics.enabled
+      - --metrics.addr
+      - "0.0.0.0"
+      - --metrics.port
+      - "${L2_FOLLOW_CL_METRICS_PORT}"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:${L2_FOLLOW_CL_RPC_PORT}/healthz"]
+      <<: *sequencer-healthcheck
+
   op-conductor-0:
     <<: *conductor-base
     container_name: op-conductor-0

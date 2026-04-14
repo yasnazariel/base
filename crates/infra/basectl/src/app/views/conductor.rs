@@ -12,8 +12,9 @@ use crate::{
     app::{Action, Resources, View},
     commands::COLOR_BASE_BLUE,
     rpc::{
-        ConductorNodeStatus, PausedPeers, ValidatorNodeStatus, pause_sequencer_node,
-        restart_conductor_node, transfer_conductor_leader, unpause_sequencer_node,
+        ConductorNodeStatus, PausedPeers, ValidatorNodeStatus, ValidatorRuntimeState,
+        pause_sequencer_node, pause_validator_node, restart_conductor_node,
+        transfer_conductor_leader, unpause_sequencer_node, unpause_validator_node,
     },
     tui::{Keybinding, Toast},
 };
@@ -24,6 +25,7 @@ const KEYBINDINGS: &[Keybinding] = &[
     Keybinding { key: "Enter", description: "Transfer to selected" },
     Keybinding { key: "r", description: "Restart selected node" },
     Keybinding { key: "p", description: "Pause/unpause conductor" },
+    Keybinding { key: "f", description: "Pause/unpause follow replica" },
     Keybinding { key: "Esc", description: "Back to home" },
     Keybinding { key: "?", description: "Toggle help" },
 ];
@@ -93,6 +95,38 @@ impl ConductorView {
             let (tx, rx) = mpsc::channel(1);
             self.pause_rx = Some((node.name.clone(), rx));
             tokio::spawn(pause_sequencer_node(node, tx));
+        }
+    }
+
+    fn start_follow_pause_toggle(&mut self, resources: &mut Resources) {
+        let Some(ref nodes) = resources.config.validators else {
+            resources.toasts.push(Toast::warning("No validator replicas configured"));
+            return;
+        };
+        let Some(node) = nodes
+            .iter()
+            .find(|node| node.follow_source.is_some() && node.docker_cl.is_some())
+            .cloned()
+        else {
+            resources.toasts.push(Toast::warning("No controllable follow replica configured"));
+            return;
+        };
+
+        let is_paused = resources
+            .validators
+            .nodes
+            .iter()
+            .find(|status| status.name == node.name)
+            .and_then(|status| status.runtime_state.as_ref())
+            .is_some_and(|state| matches!(state, ValidatorRuntimeState::Paused));
+
+        let (tx, rx) = mpsc::channel(1);
+        self.op_rx = Some(rx);
+        self.op_pending = true;
+        if is_paused {
+            tokio::spawn(unpause_validator_node(node, tx));
+        } else {
+            tokio::spawn(pause_validator_node(node, tx));
         }
     }
 }
@@ -166,6 +200,9 @@ impl View for ConductorView {
             KeyCode::Char('p') if !self.op_pending && node_count > 0 => {
                 self.start_pause_toggle(resources);
             }
+            KeyCode::Char('f') if !self.op_pending => {
+                self.start_follow_pause_toggle(resources);
+            }
             _ => {}
         }
 
@@ -200,9 +237,9 @@ impl View for ConductorView {
             }
         } else {
             // Conductor table: 2 border + 1 header + 16 data rows = 19 lines.
-            // Validator table: 2 border + 1 header + 14 data rows = 17 lines.
+            // Replica table: 2 border + 1 header + 17 data rows = 20 lines.
             let conductor_height = 19u16;
-            let validator_height = 17u16;
+            let validator_height = 20u16;
             let sections = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
@@ -289,6 +326,10 @@ fn render_footer(f: &mut Frame<'_>, area: Rect, op_pending: bool) {
         spans.push(Span::styled("[p]", key_style));
         spans.push(Span::raw(" "));
         spans.push(Span::styled("pause/unpause conductor", desc_style));
+        spans.push(sep.clone());
+        spans.push(Span::styled("[f]", key_style));
+        spans.push(Span::raw(" "));
+        spans.push(Span::styled("pause/unpause follow replica", desc_style));
     }
 
     spans.push(sep);
@@ -622,7 +663,7 @@ fn render_cluster_table(
 
 fn render_validator_table(f: &mut Frame<'_>, area: Rect, nodes: &[ValidatorNodeStatus]) {
     let block = Block::default()
-        .title(" Validators ")
+        .title(" Replica Nodes ")
         .borders(Borders::ALL)
         .border_style(Style::default().fg(COLOR_BASE_BLUE));
 
@@ -647,6 +688,89 @@ fn render_validator_table(f: &mut Frame<'_>, area: Rect, nodes: &[ValidatorNodeS
     let header = Row::new(header_cells)
         .style(Style::default().fg(Color::White).add_modifier(Modifier::BOLD))
         .height(1);
+
+    let node_by_name: HashMap<&str, &ValidatorNodeStatus> =
+        nodes.iter().map(|node| (node.name.as_str(), node)).collect();
+
+    // ── Role row ───────────────────────────────────────────────────────────
+    let mut role_cells = vec![
+        Cell::from("  Role").style(Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+    ];
+    for node in nodes {
+        let (label, style) = match node.follow_source.as_deref() {
+            Some(source) => (
+                format!("   follow <- {source}"),
+                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            ),
+            None => ("   validator".to_string(), Style::default().fg(Color::White)),
+        };
+        role_cells.push(Cell::from(label).style(style));
+    }
+    let role_row = Row::new(role_cells).height(1);
+
+    // ── State row ──────────────────────────────────────────────────────────
+    let mut state_cells = vec![
+        Cell::from("  State").style(Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+    ];
+    for node in nodes {
+        let (label, style) = match (&node.follow_source, node.runtime_state.as_ref()) {
+            (Some(_), Some(ValidatorRuntimeState::Delaying { remaining_secs })) => (
+                format!(
+                    "   Delaying startup to demonstrate catch-up... {}",
+                    format_countdown(*remaining_secs)
+                ),
+                Style::default().fg(Color::Yellow),
+            ),
+            (Some(_), Some(ValidatorRuntimeState::Paused)) => {
+                ("   paused from basectl".to_string(), Style::default().fg(Color::Cyan))
+            }
+            (Some(_), Some(ValidatorRuntimeState::Starting)) => {
+                ("   starting...".to_string(), Style::default().fg(Color::Yellow))
+            }
+            (Some(_), Some(ValidatorRuntimeState::Running)) => {
+                ("   active".to_string(), Style::default().fg(Color::Green))
+            }
+            (Some(_), Some(ValidatorRuntimeState::Stopped)) => {
+                ("   stopped".to_string(), Style::default().fg(Color::Red))
+            }
+            (Some(_), Some(ValidatorRuntimeState::Unknown)) => {
+                ("   unknown".to_string(), Style::default().fg(Color::DarkGray))
+            }
+            (Some(_), None) => ("   ?".to_string(), Style::default().fg(Color::DarkGray)),
+            (None, _) => ("   active".to_string(), Style::default().fg(Color::White)),
+        };
+        state_cells.push(Cell::from(label).style(style));
+    }
+    let state_row = Row::new(state_cells).height(1);
+
+    // ── Source lag row ─────────────────────────────────────────────────────
+    // Follower health is judged by its unsafe-head distance from the configured source.
+    let mut source_lag_cells = vec![
+        Cell::from("  Source Lag")
+            .style(Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+    ];
+    for node in nodes {
+        let (label, style) = match node.follow_source.as_deref() {
+            Some(source) => match node_by_name.get(source) {
+                Some(source_node) => match (source_node.unsafe_l2_block, node.unsafe_l2_block) {
+                    (Some(source_head), Some(local_head)) => {
+                        let lag = source_head.saturating_sub(local_head);
+                        let color = match lag {
+                            0 => Color::Green,
+                            1..=3 => Color::Yellow,
+                            _ => Color::Red,
+                        };
+                        (format!("   {lag} blk"), Style::default().fg(color))
+                    }
+                    _ => ("   ?".to_string(), Style::default().fg(Color::DarkGray)),
+                },
+                None => ("   missing".to_string(), Style::default().fg(Color::Red)),
+            },
+            None => ("   -".to_string(), Style::default().fg(Color::DarkGray)),
+        };
+        source_lag_cells.push(Cell::from(label).style(style));
+    }
+    let source_lag_row = Row::new(source_lag_cells).height(1);
 
     // ── CL section header ──────────────────────────────────────────────────
     let cl_section = section_row("CL", node_count);
@@ -751,10 +875,11 @@ fn render_validator_table(f: &mut Frame<'_>, area: Rect, nodes: &[ValidatorNodeS
             .style(Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
     ];
     for node in nodes {
-        let (label, style) = match node.cl_peer_count {
-            Some(0) => ("   0".to_string(), Style::default().fg(Color::Red)),
-            Some(n) => (format!("   {n}"), Style::default().fg(Color::Green)),
-            None => ("   ?".to_string(), Style::default().fg(Color::Red)),
+        let (label, style) = match (node.follow_source.as_ref(), node.cl_peer_count) {
+            (_, Some(0)) => ("   0".to_string(), Style::default().fg(Color::Red)),
+            (_, Some(n)) => (format!("   {n}"), Style::default().fg(Color::Green)),
+            (Some(_), None) => ("   -".to_string(), Style::default().fg(Color::DarkGray)),
+            (None, None) => ("   ?".to_string(), Style::default().fg(Color::Red)),
         };
         cl_peers_cells.push(Cell::from(label).style(style));
     }
@@ -809,6 +934,9 @@ fn render_validator_table(f: &mut Frame<'_>, area: Rect, nodes: &[ValidatorNodeS
     let spacer = Row::new(vec![Cell::from("")]).height(1);
 
     let rows = vec![
+        role_row,
+        state_row,
+        source_lag_row,
         // ── CL ───────────────────────────────────────────────────────────
         spacer.clone(),
         cl_section,
@@ -843,4 +971,10 @@ fn section_row(label: &str, node_count: usize) -> Row<'static> {
         cells.push(Cell::from("──────────────").style(sep_style));
     }
     Row::new(cells).height(1)
+}
+
+fn format_countdown(remaining_secs: u64) -> String {
+    let minutes = remaining_secs / 60;
+    let seconds = remaining_secs % 60;
+    format!("{minutes:02}:{seconds:02}")
 }

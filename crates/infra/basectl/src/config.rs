@@ -22,6 +22,18 @@ pub struct ProofsConfig {
 pub struct ValidatorNodeConfig {
     /// Human-readable name for this node (e.g. "base-client").
     pub name: String,
+    /// Optional source node name when this node is a follow replica.
+    ///
+    /// When set, the HA conductor view renders this node as a follower and
+    /// compares its unsafe head against the named source.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub follow_source: Option<String>,
+    /// Optional startup delay for this node's CL container.
+    ///
+    /// Used by local devnet replicas to intentionally start late and
+    /// demonstrate catch-up behavior in the HA conductor view.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub startup_delay_secs: Option<u64>,
     /// Consensus-layer JSON-RPC endpoint (serves `optimism_*` and `opp2p_*` methods).
     pub cl_rpc: Url,
     /// Execution-layer JSON-RPC endpoint for this node.
@@ -276,13 +288,26 @@ impl ChainConfig {
                     flashblocks_ws: Some(Url::parse("ws://localhost:11111").unwrap()),
                 },
             ]),
-            validators: Some(vec![ValidatorNodeConfig {
-                name: "base-client".to_string(),
-                cl_rpc: Url::parse("http://localhost:8549").unwrap(),
-                el_rpc: Some(Url::parse("http://localhost:8545").unwrap()),
-                docker_el: Some("base-client".to_string()),
-                docker_cl: Some("base-client-cl".to_string()),
-            }]),
+            validators: Some(vec![
+                ValidatorNodeConfig {
+                    name: "base-client".to_string(),
+                    follow_source: None,
+                    startup_delay_secs: None,
+                    cl_rpc: Url::parse("http://localhost:8549").unwrap(),
+                    el_rpc: Some(Url::parse("http://localhost:8545").unwrap()),
+                    docker_el: Some("base-client".to_string()),
+                    docker_cl: Some("base-client-cl".to_string()),
+                },
+                ValidatorNodeConfig {
+                    name: "base-follow".to_string(),
+                    follow_source: Some("base-client".to_string()),
+                    startup_delay_secs: Some(60),
+                    cl_rpc: Url::parse("http://localhost:12549").unwrap(),
+                    el_rpc: Some(Url::parse("http://localhost:12545").unwrap()),
+                    docker_el: Some("base-follow".to_string()),
+                    docker_cl: Some("base-follow-cl".to_string()),
+                },
+            ]),
             proofs: None,
         }
     }
@@ -431,6 +456,14 @@ mod tests {
         assert_eq!(devnet.l1_rpc.as_str(), "http://localhost:4545/");
         assert!(devnet.op_node_rpc.is_some());
         assert_eq!(devnet.op_node_rpc.unwrap().as_str(), "http://localhost:7549/");
+        let validators = devnet.validators.expect("devnet validators missing");
+        assert_eq!(validators.len(), 2);
+        assert_eq!(validators[0].name, "base-client");
+        assert_eq!(validators[0].follow_source, None);
+        assert_eq!(validators[0].startup_delay_secs, None);
+        assert_eq!(validators[1].name, "base-follow");
+        assert_eq!(validators[1].follow_source.as_deref(), Some("base-client"));
+        assert_eq!(validators[1].startup_delay_secs, Some(60));
     }
 
     #[tokio::test]

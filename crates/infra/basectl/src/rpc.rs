@@ -13,6 +13,7 @@ use base_common_network::Base;
 use base_consensus_rpc::{BaseP2PApiClient, ConductorApiClient, RollupNodeApiClient};
 use futures::{StreamExt, stream};
 use jsonrpsee::{core::client::ClientT, http_client::HttpClientBuilder, rpc_params};
+use serde::Deserialize;
 use tokio::sync::{mpsc, watch};
 use tokio_tungstenite::connect_async;
 use tracing::warn;
@@ -972,6 +973,56 @@ pub async fn unpause_sequencer_node(
     let _ = result_tx.send(outcome.map_err(|e| e.to_string())).await;
 }
 
+/// Pauses a validator replica by freezing its CL container.
+pub async fn pause_validator_node(
+    node: ValidatorNodeConfig,
+    result_tx: mpsc::Sender<Result<String, String>>,
+) {
+    let outcome: anyhow::Result<String> = async {
+        let container = node.docker_cl.as_deref().ok_or_else(|| {
+            anyhow::anyhow!("no CL docker container configured for {}", node.name)
+        })?;
+        let out = tokio::process::Command::new("docker")
+            .args(["pause", container])
+            .output()
+            .await
+            .map_err(|e| anyhow::anyhow!("docker pause {container}: {e}"))?;
+        if !out.status.success() {
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            return Err(anyhow::anyhow!("docker pause {container} failed: {}", stderr.trim()));
+        }
+        Ok(format!("paused {} ({container})", node.name))
+    }
+    .await;
+
+    let _ = result_tx.send(outcome.map_err(|e| e.to_string())).await;
+}
+
+/// Unpauses a validator replica by resuming its CL container.
+pub async fn unpause_validator_node(
+    node: ValidatorNodeConfig,
+    result_tx: mpsc::Sender<Result<String, String>>,
+) {
+    let outcome: anyhow::Result<String> = async {
+        let container = node.docker_cl.as_deref().ok_or_else(|| {
+            anyhow::anyhow!("no CL docker container configured for {}", node.name)
+        })?;
+        let out = tokio::process::Command::new("docker")
+            .args(["unpause", container])
+            .output()
+            .await
+            .map_err(|e| anyhow::anyhow!("docker unpause {container}: {e}"))?;
+        if !out.status.success() {
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            return Err(anyhow::anyhow!("docker unpause {container} failed: {}", stderr.trim()));
+        }
+        Ok(format!("unpaused {} ({container})", node.name))
+    }
+    .await;
+
+    let _ = result_tx.send(outcome.map_err(|e| e.to_string())).await;
+}
+
 /// Polls all conductor nodes every 200 ms and forwards status snapshots.
 ///
 /// Builds one pair of HTTP clients per node (conductor RPC + CL RPC) before
@@ -1100,6 +1151,12 @@ pub async fn run_conductor_poller(
 pub struct ValidatorNodeStatus {
     /// Human-readable name for this node.
     pub name: String,
+    /// Source node name when this node runs in follow mode.
+    pub follow_source: Option<String>,
+    /// Startup delay configured for this node's CL container, if any.
+    pub startup_delay_secs: Option<u64>,
+    /// Observed runtime state of the node's CL container, if known.
+    pub runtime_state: Option<ValidatorRuntimeState>,
 
     // ── CL (consensus layer) ─────────────────────────────────────────────
     /// Unsafe L2 block number from `optimism_syncStatus`.
@@ -1128,6 +1185,77 @@ pub struct ValidatorNodeStatus {
     pub el_peer_count: Option<u32>,
 }
 
+/// Runtime state of a validator replica's CL container.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ValidatorRuntimeState {
+    /// The CL container is intentionally delaying startup.
+    Delaying {
+        /// Countdown remaining before the delayed startup wrapper execs the
+        /// follow-node process.
+        remaining_secs: u64,
+    },
+    /// The CL container is paused via Docker.
+    Paused,
+    /// The CL container is running but its RPC is not yet responsive.
+    Starting,
+    /// The CL container is running and its RPC is responsive.
+    Running,
+    /// The CL container is not running.
+    Stopped,
+    /// Docker state could not be determined.
+    Unknown,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct DockerContainerState {
+    #[serde(rename = "Paused")]
+    paused: bool,
+    #[serde(rename = "Running")]
+    running: bool,
+    #[serde(rename = "StartedAt")]
+    started_at: String,
+}
+
+async fn inspect_docker_container_state(container: &str) -> Option<DockerContainerState> {
+    let output = tokio::process::Command::new("docker")
+        .args(["inspect", "--format", "{{json .State}}", container])
+        .output()
+        .await
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    serde_json::from_slice(&output.stdout).ok()
+}
+
+fn validator_runtime_state(
+    docker_state: Option<&DockerContainerState>,
+    startup_delay_secs: Option<u64>,
+    rpc_ready: bool,
+) -> Option<ValidatorRuntimeState> {
+    let docker_state = docker_state?;
+    if docker_state.paused {
+        return Some(ValidatorRuntimeState::Paused);
+    }
+    if !docker_state.running {
+        return Some(ValidatorRuntimeState::Stopped);
+    }
+    if let Some(delay_secs) = startup_delay_secs {
+        if let Ok(started_at) = chrono::DateTime::parse_from_rfc3339(&docker_state.started_at) {
+            let elapsed = chrono::Utc::now()
+                .signed_duration_since(started_at.with_timezone(&chrono::Utc))
+                .num_seconds()
+                .max(0) as u64;
+            if elapsed < delay_secs {
+                return Some(ValidatorRuntimeState::Delaying {
+                    remaining_secs: delay_secs - elapsed,
+                });
+            }
+        }
+    }
+    Some(if rpc_ready { ValidatorRuntimeState::Running } else { ValidatorRuntimeState::Starting })
+}
+
 /// Polls all validator nodes every 200 ms and forwards status snapshots.
 pub async fn run_validator_poller(
     nodes: Vec<ValidatorNodeConfig>,
@@ -1136,7 +1264,7 @@ pub async fn run_validator_poller(
     const POLL_INTERVAL: Duration = Duration::from_millis(200);
     const RPC_TIMEOUT: Duration = Duration::from_millis(500);
 
-    let clients: Vec<(String, _, _)> = nodes
+    let clients: Vec<(String, Option<String>, Option<u64>, Option<String>, _, _)> = nodes
         .into_iter()
         .filter_map(|node| {
             let cl_client = HttpClientBuilder::default()
@@ -1155,7 +1283,14 @@ pub async fn run_validator_poller(
                     })
                     .ok()
             });
-            Some((node.name, cl_client, el_client))
+            Some((
+                node.name,
+                node.follow_source,
+                node.startup_delay_secs,
+                node.docker_cl,
+                cl_client,
+                el_client,
+            ))
         })
         .collect();
 
@@ -1166,8 +1301,8 @@ pub async fn run_validator_poller(
         interval.tick().await;
 
         let statuses = futures::future::join_all(clients.iter().map(
-            |(name, cl_client, el_client)| async move {
-                let (sync, cl_peer_stats, el_block_r, el_syncing_r, el_peers_r) = tokio::join!(
+            |(name, follow_source, startup_delay_secs, docker_cl, cl_client, el_client)| async move {
+                let (sync, cl_peer_stats, el_block_r, el_syncing_r, el_peers_r, docker_state) = tokio::join!(
                     RollupNodeApiClient::sync_status(cl_client),
                     BaseP2PApiClient::opp2p_peer_stats(cl_client),
                     async {
@@ -1197,11 +1332,26 @@ pub async fn run_validator_poller(
                             None
                         }
                     },
+                    async {
+                        match docker_cl.as_deref() {
+                            Some(container) => inspect_docker_container_state(container).await,
+                            None => None,
+                        }
+                    },
                 );
 
                 let sync = sync.ok();
+                let runtime_state = if docker_cl.is_some() {
+                    validator_runtime_state(docker_state.as_ref(), *startup_delay_secs, sync.is_some())
+                        .or(Some(ValidatorRuntimeState::Unknown))
+                } else {
+                    None
+                };
                 ValidatorNodeStatus {
                     name: name.clone(),
+                    follow_source: follow_source.clone(),
+                    startup_delay_secs: *startup_delay_secs,
+                    runtime_state,
                     unsafe_l2_block: sync.as_ref().map(|s| s.unsafe_l2.block_info.number),
                     unsafe_l2_hash: sync.as_ref().map(|s| s.unsafe_l2.block_info.hash),
                     safe_l2_block: sync.as_ref().map(|s| s.safe_l2.block_info.number),
@@ -1448,7 +1598,10 @@ async fn find_latest_proposal<P: Provider + Clone>(
 
 #[cfg(test)]
 mod tests {
-    use super::effective_priority_fee_per_gas;
+    use super::{
+        DockerContainerState, ValidatorRuntimeState, effective_priority_fee_per_gas,
+        validator_runtime_state,
+    };
 
     #[test]
     fn priority_fee_uses_effective_gas_price_when_base_fee_known() {
@@ -1463,5 +1616,38 @@ mod tests {
     #[test]
     fn priority_fee_is_unknown_for_legacy_txs_when_base_fee_unknown() {
         assert_eq!(effective_priority_fee_per_gas(None, 125, None), None);
+    }
+
+    #[test]
+    fn validator_runtime_state_reports_delay_before_rpc_is_live() {
+        let started_at = (chrono::Utc::now() - chrono::TimeDelta::seconds(10)).to_rfc3339();
+        let docker_state = DockerContainerState { paused: false, running: true, started_at };
+        assert_eq!(
+            validator_runtime_state(Some(&docker_state), Some(60), false),
+            Some(ValidatorRuntimeState::Delaying { remaining_secs: 50 })
+        );
+    }
+
+    #[test]
+    fn validator_runtime_state_reports_paused_before_other_states() {
+        let docker_state = DockerContainerState {
+            paused: true,
+            running: true,
+            started_at: chrono::Utc::now().to_rfc3339(),
+        };
+        assert_eq!(
+            validator_runtime_state(Some(&docker_state), Some(60), true),
+            Some(ValidatorRuntimeState::Paused)
+        );
+    }
+
+    #[test]
+    fn validator_runtime_state_reports_starting_after_delay_expires() {
+        let started_at = (chrono::Utc::now() - chrono::TimeDelta::seconds(90)).to_rfc3339();
+        let docker_state = DockerContainerState { paused: false, running: true, started_at };
+        assert_eq!(
+            validator_runtime_state(Some(&docker_state), Some(60), false),
+            Some(ValidatorRuntimeState::Starting)
+        );
     }
 }
