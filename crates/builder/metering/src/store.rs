@@ -6,7 +6,7 @@
 
 use std::{
     sync::atomic::{AtomicBool, Ordering},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use alloy_primitives::TxHash;
@@ -18,8 +18,9 @@ use moka::{notification::RemovalCause, sync::Cache};
 pub struct MeteringStore {
     /// LRU cache mapping transaction hash to metering data.
     cache: Cache<TxHash, MeterBundleResponse>,
-    /// Recently included transaction hashes used to detect late metering updates.
-    recently_included: Cache<TxHash, ()>,
+    /// Recently included transaction hashes and inclusion times used to detect late metering
+    /// updates.
+    recently_included: Cache<TxHash, Instant>,
     /// Whether resource metering is enabled.
     metering_enabled: AtomicBool,
 }
@@ -84,8 +85,11 @@ impl MeteringProvider for MeteringStore {
     }
 
     fn insert(&self, tx_hash: TxHash, metering: MeterBundleResponse) {
-        if self.recently_included.contains_key(&tx_hash) {
+        if let Some(included_at) = self.recently_included.get(&tx_hash) {
+            self.recently_included.invalidate(&tx_hash);
             BuilderMetrics::metering_data_arrived_after_payload_inclusion().increment(1);
+            BuilderMetrics::metering_data_arrived_after_payload_inclusion_latency_ms()
+                .record(included_at.elapsed().as_secs_f64() * 1000.0);
         }
         self.cache.insert(tx_hash, metering);
         BuilderMetrics::metering_store_size().set(self.cache.entry_count() as f64);
@@ -99,9 +103,10 @@ impl MeteringProvider for MeteringStore {
     }
 
     fn mark_payload_included(&self, tx_hashes: &[TxHash]) {
+        let included_at = Instant::now();
         for hash in tx_hashes {
             self.cache.invalidate(hash);
-            self.recently_included.insert(*hash, ());
+            self.recently_included.insert(*hash, included_at);
         }
         BuilderMetrics::metering_store_size().set(self.cache.entry_count() as f64);
     }
@@ -127,6 +132,7 @@ impl Default for MeteringStore {
 mod tests {
     use alloy_primitives::{B256, TxHash, U256};
     use metrics_exporter_prometheus::PrometheusBuilder;
+    use std::time::Duration;
 
     use super::*;
 
@@ -260,15 +266,32 @@ mod tests {
 
         metrics::with_local_recorder(&recorder, || {
             store.mark_payload_included(&[tx_hash]);
+            std::thread::sleep(Duration::from_millis(10));
             store.insert(tx_hash, create_test_metering(1000));
         });
 
         assert!(store.get(&tx_hash).is_some(), "late metering should preserve existing behavior");
 
         let rendered = handle.render();
-        assert!(
-            rendered.contains("base_builder_metering_data_arrived_after_payload_inclusion 1")
-        );
+        assert!(rendered.contains("base_builder_metering_data_arrived_after_payload_inclusion 1"));
+        assert!(rendered.contains(
+            "base_builder_metering_data_arrived_after_payload_inclusion_latency_ms_count 1"
+        ));
+        let latency_sum_line = rendered
+            .lines()
+            .find(|line| {
+                line.starts_with(
+                    "base_builder_metering_data_arrived_after_payload_inclusion_latency_ms_sum ",
+                )
+            })
+            .expect("latency histogram sum line should be present");
+        let latency_sum_ms = latency_sum_line
+            .rsplit(' ')
+            .next()
+            .expect("histogram sum line should have a value")
+            .parse::<f64>()
+            .expect("histogram sum should be a number");
+        assert!(latency_sum_ms >= 5.0, "expected late metering latency >= 5ms");
     }
 
     #[test]
@@ -287,6 +310,11 @@ mod tests {
         assert!(
             !rendered.contains("base_builder_metering_data_arrived_after_payload_inclusion"),
             "permanent rejections should not be counted as payload-inclusion races"
+        );
+        assert!(
+            !rendered
+                .contains("base_builder_metering_data_arrived_after_payload_inclusion_latency_ms"),
+            "permanent rejections should not emit the late metering latency histogram"
         );
     }
 }
