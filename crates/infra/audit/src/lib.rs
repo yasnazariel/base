@@ -41,7 +41,7 @@ pub struct AuditConnector;
 
 impl AuditConnector {
     /// Connects a bundle event receiver to a publisher, spawning a task to forward events.
-    pub fn connect<P>(event_rx: mpsc::UnboundedReceiver<BundleEvent>, publisher: P)
+    pub fn connect<P>(event_rx: mpsc::Receiver<BundleEvent>, publisher: P)
     where
         P: BundleEventPublisher + 'static,
     {

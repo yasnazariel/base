@@ -141,6 +141,13 @@ pub struct Config {
     #[arg(long, env = "TIPS_INGRESS_BUNDLE_CACHE_TTL", default_value = "20")]
     pub bundle_cache_ttl: u64,
 
+    /// Capacity of the bounded audit event channel.
+    ///
+    /// When the channel is full, new audit events are dropped to avoid blocking
+    /// the RPC handler. Size this to handle peak tx throughput × Kafka stall time.
+    #[arg(long, env = "TIPS_INGRESS_AUDIT_CHANNEL_CAPACITY", default_value = "512")]
+    pub audit_channel_capacity: usize,
+
     /// Enable sending to builder
     #[arg(long, env = "TIPS_INGRESS_SEND_TO_BUILDER", default_value = "false")]
     pub send_to_builder: bool,
