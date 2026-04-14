@@ -108,10 +108,10 @@ base_metrics::define_metrics! {
     rejection_cache_size: gauge,
     #[describe("Transactions skipped because metering data has not yet arrived")]
     metering_data_pending_skip: counter,
+    #[describe("Milliseconds between first MeteringDataPending skip and metering data arrival")]
+    metering_data_pending_lateness_ms: histogram,
     #[describe("Metering updates that arrived after the transaction was already included in a payload")]
     metering_data_arrived_after_payload_inclusion: counter,
-    #[describe("Milliseconds between payload inclusion and late metering arrival")]
-    metering_data_arrived_after_payload_inclusion_latency_ms: histogram,
     #[describe("Transactions rejected by per-tx DA size limit")]
     tx_da_size_exceeded_total: counter,
     #[describe("Transactions rejected by block DA size limit")]

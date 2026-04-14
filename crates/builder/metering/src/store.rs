@@ -18,9 +18,11 @@ use moka::{notification::RemovalCause, sync::Cache};
 pub struct MeteringStore {
     /// LRU cache mapping transaction hash to metering data.
     cache: Cache<TxHash, MeterBundleResponse>,
-    /// Recently included transaction hashes and inclusion times used to detect late metering
-    /// updates.
-    recently_included: Cache<TxHash, Instant>,
+    /// Recently included transaction hashes used to detect metering that arrived too late to help
+    /// the current payload.
+    recently_included: Cache<TxHash, ()>,
+    /// First observed `MeteringDataPending` timestamp for each transaction.
+    pending_since: Cache<TxHash, Instant>,
     /// Whether resource metering is enabled.
     metering_enabled: AtomicBool,
 }
@@ -30,6 +32,7 @@ impl core::fmt::Debug for MeteringStore {
         f.debug_struct("MeteringStore")
             .field("entries", &self.cache.entry_count())
             .field("recently_included", &self.recently_included.entry_count())
+            .field("pending_since", &self.pending_since.entry_count())
             .field("metering_enabled", &self.metering_enabled.load(Ordering::Relaxed))
             .finish()
     }
@@ -37,6 +40,7 @@ impl core::fmt::Debug for MeteringStore {
 
 impl MeteringStore {
     const RECENTLY_INCLUDED_TTL: Duration = Duration::from_secs(60);
+    const PENDING_SINCE_TTL: Duration = Duration::from_secs(60);
 
     /// Creates a new [`MeteringStore`] with the given metering flag and max capacity.
     pub fn new(enable_resource_metering: bool, max_capacity: usize) -> Self {
@@ -52,10 +56,15 @@ impl MeteringStore {
             .max_capacity(max_capacity as u64)
             .time_to_live(Self::RECENTLY_INCLUDED_TTL)
             .build();
+        let pending_since = Cache::builder()
+            .max_capacity(max_capacity as u64)
+            .time_to_live(Self::PENDING_SINCE_TTL)
+            .build();
 
         Self {
             cache,
             recently_included,
+            pending_since,
             metering_enabled: AtomicBool::new(enable_resource_metering),
         }
     }
@@ -85,11 +94,14 @@ impl MeteringProvider for MeteringStore {
     }
 
     fn insert(&self, tx_hash: TxHash, metering: MeterBundleResponse) {
-        if let Some(included_at) = self.recently_included.get(&tx_hash) {
+        if self.recently_included.contains_key(&tx_hash) {
             self.recently_included.invalidate(&tx_hash);
             BuilderMetrics::metering_data_arrived_after_payload_inclusion().increment(1);
-            BuilderMetrics::metering_data_arrived_after_payload_inclusion_latency_ms()
-                .record(included_at.elapsed().as_secs_f64() * 1000.0);
+        }
+        if let Some(pending_since) = self.pending_since.get(&tx_hash) {
+            self.pending_since.invalidate(&tx_hash);
+            BuilderMetrics::metering_data_pending_lateness_ms()
+                .record(pending_since.elapsed().as_secs_f64() * 1000.0);
         }
         self.cache.insert(tx_hash, metering);
         BuilderMetrics::metering_store_size().set(self.cache.entry_count() as f64);
@@ -98,15 +110,20 @@ impl MeteringProvider for MeteringStore {
     fn remove(&self, tx_hashes: &[TxHash]) {
         for hash in tx_hashes {
             self.cache.invalidate(hash);
+            self.pending_since.invalidate(hash);
+            self.recently_included.invalidate(hash);
         }
         BuilderMetrics::metering_store_size().set(self.cache.entry_count() as f64);
     }
 
+    fn mark_metering_data_pending(&self, tx_hash: TxHash) {
+        self.pending_since.entry_by_ref(&tx_hash).or_insert_with(Instant::now);
+    }
+
     fn mark_payload_included(&self, tx_hashes: &[TxHash]) {
-        let included_at = Instant::now();
         for hash in tx_hashes {
             self.cache.invalidate(hash);
-            self.recently_included.insert(*hash, included_at);
+            self.recently_included.insert(*hash, ());
         }
         BuilderMetrics::metering_store_size().set(self.cache.entry_count() as f64);
     }
@@ -114,6 +131,7 @@ impl MeteringProvider for MeteringStore {
     fn clear(&self) {
         self.cache.invalidate_all();
         self.recently_included.invalidate_all();
+        self.pending_since.invalidate_all();
         BuilderMetrics::metering_store_size().set(0.0);
     }
 
@@ -266,7 +284,6 @@ mod tests {
 
         metrics::with_local_recorder(&recorder, || {
             store.mark_payload_included(&[tx_hash]);
-            std::thread::sleep(Duration::from_millis(10));
             store.insert(tx_hash, create_test_metering(1000));
         });
 
@@ -274,16 +291,32 @@ mod tests {
 
         let rendered = handle.render();
         assert!(rendered.contains("base_builder_metering_data_arrived_after_payload_inclusion 1"));
-        assert!(rendered.contains(
-            "base_builder_metering_data_arrived_after_payload_inclusion_latency_ms_count 1"
-        ));
+        assert!(
+            !rendered.contains("base_builder_metering_data_pending_lateness_ms"),
+            "payload inclusion alone should not emit the pending-lateness histogram"
+        );
+    }
+
+    #[test]
+    fn test_late_metering_after_pending_skip_records_lateness_histogram() {
+        let recorder = PrometheusBuilder::new().build_recorder();
+        let handle = recorder.handle();
+        let store = MeteringStore::new(true, 100);
+        let tx_hash = TxHash::random();
+
+        metrics::with_local_recorder(&recorder, || {
+            store.mark_metering_data_pending(tx_hash);
+            std::thread::sleep(Duration::from_millis(10));
+            store.mark_payload_included(&[tx_hash]);
+            std::thread::sleep(Duration::from_millis(10));
+            store.insert(tx_hash, create_test_metering(1000));
+        });
+
+        let rendered = handle.render();
+        assert!(rendered.contains("base_builder_metering_data_pending_lateness_ms_count 1"));
         let latency_sum_line = rendered
             .lines()
-            .find(|line| {
-                line.starts_with(
-                    "base_builder_metering_data_arrived_after_payload_inclusion_latency_ms_sum ",
-                )
-            })
+            .find(|line| line.starts_with("base_builder_metering_data_pending_lateness_ms_sum "))
             .expect("latency histogram sum line should be present");
         let latency_sum_ms = latency_sum_line
             .rsplit(' ')
@@ -291,7 +324,36 @@ mod tests {
             .expect("histogram sum line should have a value")
             .parse::<f64>()
             .expect("histogram sum should be a number");
-        assert!(latency_sum_ms >= 5.0, "expected late metering latency >= 5ms");
+        assert!(latency_sum_ms >= 15.0, "expected pending lateness >= 15ms");
+    }
+
+    #[test]
+    fn test_repeated_pending_marks_preserve_first_timestamp() {
+        let recorder = PrometheusBuilder::new().build_recorder();
+        let handle = recorder.handle();
+        let store = MeteringStore::new(true, 100);
+        let tx_hash = TxHash::random();
+
+        metrics::with_local_recorder(&recorder, || {
+            store.mark_metering_data_pending(tx_hash);
+            std::thread::sleep(Duration::from_millis(10));
+            store.mark_metering_data_pending(tx_hash);
+            std::thread::sleep(Duration::from_millis(10));
+            store.insert(tx_hash, create_test_metering(1000));
+        });
+
+        let rendered = handle.render();
+        let latency_sum_line = rendered
+            .lines()
+            .find(|line| line.starts_with("base_builder_metering_data_pending_lateness_ms_sum "))
+            .expect("latency histogram sum line should be present");
+        let latency_sum_ms = latency_sum_line
+            .rsplit(' ')
+            .next()
+            .expect("histogram sum line should have a value")
+            .parse::<f64>()
+            .expect("histogram sum should be a number");
+        assert!(latency_sum_ms >= 15.0, "expected first pending timestamp to be preserved");
     }
 
     #[test]
@@ -302,6 +364,7 @@ mod tests {
         let tx_hash = TxHash::random();
 
         metrics::with_local_recorder(&recorder, || {
+            store.mark_metering_data_pending(tx_hash);
             store.remove(&[tx_hash]);
             store.insert(tx_hash, create_test_metering(1000));
         });
@@ -312,9 +375,8 @@ mod tests {
             "permanent rejections should not be counted as payload-inclusion races"
         );
         assert!(
-            !rendered
-                .contains("base_builder_metering_data_arrived_after_payload_inclusion_latency_ms"),
-            "permanent rejections should not emit the late metering latency histogram"
+            !rendered.contains("base_builder_metering_data_pending_lateness_ms"),
+            "permanent rejections should not emit the pending-lateness histogram"
         );
     }
 }

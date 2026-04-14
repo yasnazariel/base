@@ -25,6 +25,12 @@ pub trait MeteringProvider: Debug + Send + Sync + 'static {
     /// the cached metering entries.
     fn remove(&self, _tx_hashes: &[TxHash]) {}
 
+    /// Marks that metering data was needed for a transaction but not yet available.
+    ///
+    /// Implementations can use this hook to measure how long metering arrives after the builder
+    /// first encounters a `MeteringDataPending` decision.
+    fn mark_metering_data_pending(&self, _tx_hash: TxHash) {}
+
     /// Marks transactions as included in the current payload and evicts their metering data.
     ///
     /// Implementations can use this hook to observe metering updates that arrive after payload
