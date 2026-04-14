@@ -139,7 +139,7 @@ impl TxDeposit {
     }
 
     /// Get the transaction type
-    pub(crate) const fn tx_type(&self) -> OpTxType {
+    pub const fn tx_type(&self) -> OpTxType {
         OpTxType::Deposit
     }
 
