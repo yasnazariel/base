@@ -643,7 +643,7 @@ mod tests {
     use alloy_rpc_types_eth::Block as RpcBlock;
     use base_common_rpc_types::Transaction as OpTransaction;
     use base_consensus_engine::{
-        Engine, EngineState,
+        Engine, EngineState, EngineTaskErrors, FinalizeTaskError,
         test_utils::{test_block_info, test_engine_client_builder},
     };
     use base_consensus_genesis::{ChainGenesis, RollupConfig, SystemConfig};
@@ -1032,6 +1032,90 @@ mod tests {
             state.sync_state.finalized_head(),
             L2BlockInfo::default(),
             "finalized head must remain zeroed"
+        );
+    }
+
+    /// Regression test: demonstrates the follow-node restart crash.
+    ///
+    /// When a follow node restarts, `EngineProcessor` boots as a [`BootstrapRole::Validator`]:
+    /// it seeds `unsafe_head` from reth's latest block but leaves `safe_head` at the default
+    /// (zero).  The first `ProcessUnsafeL2Block` eventually triggers `el_sync_finished` and a
+    /// reset, but `find_starting_forkchoice` can only establish a *conservative* safe head
+    /// (seq_window blocks behind the current tip) — much lower than the chain's actual
+    /// finalized block.
+    ///
+    /// `DelegateL2DerivationActor::update_safe_and_finalized` sends `ProcessSafeL2Signal` and
+    /// `ProcessFinalizedL2BlockNumber` in that order, but `ProcessSafeL2Signal` requires two
+    /// RPC calls to succeed (`get_block_number` **and** `get_payload_by_number`), while
+    /// `ProcessFinalizedL2BlockNumber` only requires one.  If the payload fetch fails, the
+    /// safe signal is skipped but the finalize signal is still sent.
+    ///
+    /// `FinalizeTask::execute` checks `safe_head.number >= block_number` before doing anything
+    /// else.  With `safe_head = 0` and `block_number = 50`, the check fails and returns
+    /// `FinalizeTaskError::BlockNotSafe`, which has `Critical` severity — crashing the node.
+    ///
+    /// This test reproduces that crash: it starts an `EngineProcessor` in validator/follow mode,
+    /// waits for bootstrap to complete (safe still zero), then sends
+    /// `ProcessFinalizedL2BlockNumber(50)` without a preceding `ProcessSafeL2Signal`.
+    ///
+    /// **Expected behaviour (unfixed):** the processor task exits with
+    /// `Err(EngineError::EngineTask(EngineTaskErrors::Finalize(FinalizeTaskError::BlockNotSafe)))`.
+    #[tokio::test]
+    async fn follow_node_restart_finalize_before_safe_crashes() {
+        // Validator bootstrap: bootstrap_validator seeds engine state from reth's Latest block
+        // info but sends no FCU and leaves safe_head at the default (zero).
+        let client = Arc::new(
+            test_engine_client_builder()
+                .with_block_info_by_tag(BlockNumberOrTag::Latest, test_block_info(100))
+                .build(),
+        );
+
+        // The processor crashes in drain() before any derivation client method is reached —
+        // no expectations needed.
+        let mock_derivation = MockEngineDerivationClient::new();
+
+        let (state_tx, state_rx) = watch::channel(EngineState::default());
+        let (queue_tx, _) = watch::channel(0usize);
+        let engine = Engine::new(EngineState::default(), state_tx, queue_tx);
+
+        // Follow-node / validator mode: no unsafe_head_tx, no conductor.
+        let processor = EngineProcessor::new(
+            Arc::clone(&client),
+            Arc::new(RollupConfig::default()),
+            mock_derivation,
+            engine,
+            None,
+            None,
+            false,
+        );
+
+        let (req_tx, req_rx) = mpsc::channel(8);
+        let handle = processor.start(req_rx);
+
+        // Wait for bootstrap to seed unsafe_head so the main loop is blocking on recv().
+        state_rx
+            .clone()
+            .wait_for(|s| s.sync_state.unsafe_head().block_info.number == 100)
+            .await
+            .expect("bootstrap did not complete");
+
+        // Send a finalize for block 50 — safe_head is still 0. No safe signal was sent first.
+        // FinalizeTask::execute checks `safe_head.number >= block_number` first; 0 < 50
+        // returns BlockNotSafe (Critical), which kills the processor.
+        req_tx
+            .send(EngineProcessingRequest::ProcessFinalizedL2BlockNumber(Box::new(50)))
+            .await
+            .expect("failed to send finalize request");
+
+        let result = handle.await.expect("task panicked");
+        assert!(
+            matches!(
+                result,
+                Err(crate::EngineError::EngineTask(EngineTaskErrors::Finalize(
+                    FinalizeTaskError::BlockNotSafe
+                )))
+            ),
+            "expected BlockNotSafe critical error, got {result:?}"
         );
     }
 

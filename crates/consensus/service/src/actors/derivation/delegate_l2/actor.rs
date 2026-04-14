@@ -373,7 +373,9 @@ where
     }
 
     async fn update_safe_and_finalized(&self) -> Result<(), DerivationError> {
-        if let Ok(safe_number) = self.l2_source.get_block_number(BlockNumberOrTag::Safe).await {
+        let safe_sent = if let Ok(safe_number) =
+            self.l2_source.get_block_number(BlockNumberOrTag::Safe).await
+        {
             let clamped_safe = safe_number.min(self.engine_head);
             if let Ok(safe_payload) = self.l2_source.get_payload_by_number(clamped_safe).await {
                 let safe_l2 = L2BlockInfo {
@@ -389,14 +391,28 @@ where
                     .engine_client
                     .send_safe_l2_signal(ConsolidateInput::BlockInfo(safe_l2))
                     .await;
+                true
+            } else {
+                false
             }
-        }
+        } else {
+            false
+        };
 
-        if let Ok(finalized_number) =
-            self.l2_source.get_block_number(BlockNumberOrTag::Finalized).await
-        {
-            let clamped_finalized = finalized_number.min(self.engine_head);
-            let _ = self.engine_client.send_finalized_l2_block(clamped_finalized).await;
+        // Only advance the finalized head when the safe signal was also sent this
+        // tick.  After a restart the engine's safe head is reset to a conservative
+        // value (seq_window_size blocks behind unsafe).  If we send a FinalizeTask
+        // before a ConsolidateTask has pushed safe past the finalized target, the
+        // engine asserts safe >= finalized and crashes with BlockNotSafe (Critical).
+        // Deferring finalized until safe is known-good prevents that condition; the
+        // next tick will retry both.
+        if safe_sent {
+            if let Ok(finalized_number) =
+                self.l2_source.get_block_number(BlockNumberOrTag::Finalized).await
+            {
+                let clamped_finalized = finalized_number.min(self.engine_head);
+                let _ = self.engine_client.send_finalized_l2_block(clamped_finalized).await;
+            }
         }
 
         Ok(())
@@ -416,7 +432,8 @@ mod tests {
 
     use super::*;
     use crate::actors::derivation::{
-        delegate_l2::client::MockL2SourceClient, engine_client::MockDerivationEngineClient,
+        delegate_l2::client::{DelegateL2ClientError, MockL2SourceClient},
+        engine_client::MockDerivationEngineClient,
     };
 
     fn dummy_l2_block_info(number: u64) -> L2BlockInfo {
@@ -619,6 +636,53 @@ mod tests {
                 other => panic!("Expected ProcessUnsafeL2BlockRequest, got {other:?}"),
             }
         }
+    }
+
+    // Regression test: after a follow-node restart the engine resets its safe
+    // head to a conservative value far behind the remote finalized head.  If
+    // `get_payload_by_number` fails for the safe block we must NOT send the
+    // finalized signal; doing so would enqueue a FinalizeTask whose target
+    // exceeds the engine's safe head, crashing with BlockNotSafe (Critical).
+    #[tokio::test]
+    async fn finalize_not_sent_when_safe_payload_unavailable() {
+        let mut engine_client = MockDerivationEngineClient::new();
+        let mut l2_source = MockL2SourceClient::new();
+
+        // Block 1 is needed for the sync loop (sent_head=0 → target=1).
+        l2_source
+            .expect_get_payload_by_number()
+            .with(eq(1))
+            .returning(|n| Ok(dummy_payload_envelope(n)));
+
+        // Safe tag returns block 3, but the payload fetch for it fails.
+        l2_source
+            .expect_get_block_number()
+            .with(eq(BlockNumberOrTag::Safe))
+            .returning(|_| Ok(3));
+        l2_source
+            .expect_get_payload_by_number()
+            .with(eq(3))
+            .returning(|n| Err(DelegateL2ClientError::BlockNotFound(format!("{n}"))));
+
+        // Neither get_block_number(Finalized) nor send_finalized_l2_block should
+        // be reached — mockall will panic if they are called unexpectedly.
+        engine_client.expect_send_safe_l2_signal().times(0);
+        engine_client.expect_send_finalized_l2_block().times(0);
+
+        // engine_head=5 so clamped_safe = 3.min(5) = 3 (exercises the payload
+        // failure branch rather than the block-number-fetch failure branch).
+        let (mut task, mut engine_rx, _) = make_sync_task(engine_client, l2_source, 5, 0, 1);
+
+        let new_head = task.sync_from_source().await.unwrap();
+        assert_eq!(new_head, 1);
+
+        // Only the unsafe insert for block 1 should have been sent.
+        let req = engine_rx.try_recv().unwrap();
+        assert!(
+            matches!(req, EngineActorRequest::ProcessUnsafeL2BlockRequest(_)),
+            "expected ProcessUnsafeL2BlockRequest, got {req:?}"
+        );
+        assert!(engine_rx.is_empty(), "unexpected extra engine requests");
     }
 
     #[tokio::test]
