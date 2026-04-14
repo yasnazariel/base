@@ -10,6 +10,7 @@ use aws_sdk_s3::{
 use base_bundles::AcceptedBundle;
 use futures::future;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use tracing::info;
 
 use crate::{
@@ -53,8 +54,10 @@ pub enum BundleHistoryEvent {
         key: String,
         /// Event timestamp.
         timestamp: i64,
-        /// The accepted bundle.
-        bundle: Box<AcceptedBundle>,
+        /// The accepted bundle with transaction input data stripped to reduce
+        /// S3 object size. Stored as a JSON value so that the UI can read it
+        /// directly without needing the full `AcceptedBundle` type.
+        bundle: Value,
     },
     /// Bundle was cancelled.
     Cancelled {
@@ -118,6 +121,23 @@ pub struct BundleHistory {
     pub history: Vec<BundleHistoryEvent>,
 }
 
+/// Serializes an `AcceptedBundle` to a JSON value with transaction `input`
+/// fields replaced by `"0x"`. The calldata is the dominant contributor to
+/// S3 object size (~284 KB → ~2 KB) and is not displayed by the UI.
+fn strip_bundle_input(bundle: &AcceptedBundle) -> Value {
+    let mut value = serde_json::to_value(bundle).unwrap_or_default();
+    if let Some(txs) = value.get_mut("txs").and_then(|v| v.as_array_mut()) {
+        for tx in txs {
+            if let Some(inner) = tx.get_mut("inner")
+                && let Some(obj) = inner.as_object_mut()
+            {
+                obj.insert("input".to_string(), Value::String("0x".to_string()));
+            }
+        }
+    }
+    value
+}
+
 fn update_bundle_history_transform(
     bundle_history: BundleHistory,
     event: &Event,
@@ -139,7 +159,7 @@ fn update_bundle_history_transform(
         BundleEvent::Received { bundle, .. } => BundleHistoryEvent::Received {
             key: event.key.clone(),
             timestamp: event.timestamp,
-            bundle: bundle.clone(),
+            bundle: strip_bundle_input(bundle),
         },
         BundleEvent::Cancelled { .. } => {
             BundleHistoryEvent::Cancelled { key: event.key.clone(), timestamp: event.timestamp }
@@ -440,9 +460,13 @@ mod tests {
             BundleHistoryEvent::Received { key, timestamp: ts, bundle: b } => {
                 assert_eq!(key, "test-key");
                 assert_eq!(*ts, 1234567890);
-                assert_eq!(b.block_number, bundle.block_number);
+                let block_number = b["block_number"].as_str().unwrap();
+                assert_eq!(
+                    u64::from_str_radix(block_number.trim_start_matches("0x"), 16).unwrap(),
+                    bundle.block_number
+                );
             }
-            _ => panic!("Expected Created event"),
+            _ => panic!("Expected Received event"),
         }
     }
 
@@ -451,7 +475,7 @@ mod tests {
         let existing_event = BundleHistoryEvent::Received {
             key: "duplicate-key".to_string(),
             timestamp: 1111111111,
-            bundle: Box::new(create_bundle_from_txn_data()),
+            bundle: strip_bundle_input(&create_bundle_from_txn_data()),
         };
         let bundle_history = BundleHistory { history: vec![existing_event] };
 
