@@ -46,7 +46,7 @@ impl EngineDerivationClient for NoopDerivationClient {
     }
 }
 
-fn syncing_fcu() -> ForkchoiceUpdated {
+const fn syncing_fcu() -> ForkchoiceUpdated {
     ForkchoiceUpdated {
         payload_status: PayloadStatus {
             status: PayloadStatusEnum::Syncing,
