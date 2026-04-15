@@ -1898,6 +1898,15 @@ fn format_tx_type(tx_type: &TxTypeConfig) -> String {
             };
             format!("osaka {t}")
         }
+        TxTypeConfig::UniswapV2 { .. } => "uniswap_v2".into(),
+        TxTypeConfig::UniswapV3 { fee, .. } => format!("uniswap_v3 (fee {fee})"),
+        TxTypeConfig::AerodromeV2 { stable, .. } => {
+            let pool = if *stable { "stable" } else { "volatile" };
+            format!("aerodrome_v2 ({pool})")
+        }
+        TxTypeConfig::AerodromeCl { tick_spacing, .. } => {
+            format!("aerodrome_cl (tick {tick_spacing})")
+        }
     }
 }
 
