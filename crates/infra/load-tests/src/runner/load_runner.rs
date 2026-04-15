@@ -974,7 +974,9 @@ impl LoadRunner {
             debug!(submitted, "final batch submitted");
         }
 
+        // stop_flag drains the confirmer; cancel_token stops the WebSocket watchers.
         self.stop_flag.store(true, Ordering::SeqCst);
+        self.cancel_token.cancel();
 
         if let Some(display) = &self.display {
             display.finish();
@@ -1410,6 +1412,7 @@ impl LoadRunner {
     /// handles draining confirmations and cancelling background tasks.
     pub fn stop(&self) {
         self.stop_flag.store(true, Ordering::SeqCst);
+        self.cancel_token.cancel();
     }
 
     /// Returns a clone of the stop flag for external coordination.
