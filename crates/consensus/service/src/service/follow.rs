@@ -12,10 +12,10 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     AlloyL1BlockFetcher, BlockStream, DelegateL2Client, DelegateL2DerivationActor, EngineActor,
-    EngineActorRequest, EngineConfig, EngineProcessor, EngineRpcProcessor, L1Config,
-    L1WatcherActor, NodeActor, QueuedDerivationEngineClient, QueuedEngineDerivationClient,
-    QueuedEngineRpcClient, QueuedL1WatcherDerivationClient, RpcActor, RpcContext,
-    service::node::HEAD_STREAM_POLL_INTERVAL,
+    EngineActorRequest, EngineConfig, EngineProcessor, EngineRpcProcessor,
+    EngineRpcRequestReceiver, L1Config, L1WatcherActor, NodeActor, QueuedDerivationEngineClient,
+    QueuedEngineDerivationClient, QueuedEngineRpcClient, QueuedL1WatcherDerivationClient, RpcActor,
+    RpcContext, service::node::HEAD_STREAM_POLL_INTERVAL,
 };
 
 /// A lightweight node that follows another L2 node by polling its execution
@@ -76,7 +76,7 @@ impl FollowNode {
         cancellation_token: CancellationToken,
         engine_request_rx: mpsc::Receiver<EngineActorRequest>,
         derivation_client: QueuedEngineDerivationClient,
-    ) -> EngineActor<EngineProcessor<E, QueuedEngineDerivationClient>, EngineRpcProcessor<E>> {
+    ) -> (EngineActor<EngineProcessor<E, QueuedEngineDerivationClient>>, EngineRpcProcessor<E>) {
         let engine_state = EngineState::default();
         let (engine_state_tx, engine_state_rx) = watch::channel(engine_state);
         let (engine_queue_length_tx, engine_queue_length_rx) = watch::channel(0);
@@ -99,12 +99,13 @@ impl FollowNode {
             engine_queue_length_rx,
         );
 
-        EngineActor::new(
+        let engine_actor = EngineActor::new(
             cancellation_token,
             engine_request_rx,
             engine_processor,
-            engine_rpc_processor,
-        )
+        );
+
+        (engine_actor, engine_rpc_processor)
     }
 
     /// Starts the follow node.
@@ -131,13 +132,16 @@ impl FollowNode {
 
         let (derivation_actor_request_tx, derivation_actor_request_rx) = mpsc::channel(1024);
         let (engine_actor_request_tx, engine_actor_request_rx) = mpsc::channel(1024);
+        let (engine_rpc_tx, engine_rpc_rx) = mpsc::channel(1024);
 
-        let engine_actor = self.create_engine_actor(
+        let (engine_actor, engine_rpc_processor) = self.create_engine_actor(
             engine_client,
             cancellation.clone(),
             engine_actor_request_rx,
             QueuedEngineDerivationClient::new(derivation_actor_request_tx.clone()),
         );
+
+        let _engine_rpc_handle = engine_rpc_processor.start(engine_rpc_rx);
 
         let derivation = DelegateL2DerivationActor::<_>::new(
             QueuedDerivationEngineClient {
@@ -152,14 +156,10 @@ impl FollowNode {
         .with_proofs(self.proofs_enabled)
         .with_proofs_max_blocks_ahead(self.proofs_max_blocks_ahead);
 
-        // Create the RPC server actor if configured.
         let rpc = self.rpc_builder.clone().map(|b| {
-            // Follow nodes do not run derivation, so they never produce confirmed safe
-            // heads to record. Safe head tracking is disabled; the RPC endpoint returns
-            // an error if queried.
             RpcActor::new(
                 b,
-                QueuedEngineRpcClient::new(engine_actor_request_tx.clone()),
+                QueuedEngineRpcClient::new(engine_rpc_tx),
                 None::<crate::QueuedSequencerAdminAPIClient>,
                 Arc::new(DisabledSafeDB) as Arc<dyn SafeDBReader>,
             )

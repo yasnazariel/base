@@ -23,11 +23,11 @@ use crate::{
     AlloyL1BlockFetcher, Conductor, ConductorClient, DelayedL1OriginSelectorProvider,
     DelegateDerivationActor, DerivationActor, DerivationDelegateClient, DerivationError,
     EngineActor, EngineActorRequest, EngineConfig, EngineProcessor, EngineRpcProcessor,
-    L1OriginSelector, L1WatcherActor, NetworkActor, NetworkBuilder, NetworkConfig, NodeActor,
-    NodeMode, PayloadBuilder, QueuedDerivationEngineClient, QueuedEngineDerivationClient,
-    QueuedEngineRpcClient, QueuedL1WatcherDerivationClient, QueuedNetworkEngineClient,
-    QueuedSequencerAdminAPIClient, QueuedSequencerEngineClient, RecoveryModeGuard, RpcActor,
-    RpcContext, SequencerActor, SequencerConfig,
+    EngineRpcRequestReceiver, L1OriginSelector, L1WatcherActor, NetworkActor, NetworkBuilder,
+    NetworkConfig, NodeActor, NodeMode, PayloadBuilder, QueuedDerivationEngineClient,
+    QueuedEngineDerivationClient, QueuedEngineRpcClient, QueuedL1WatcherDerivationClient,
+    QueuedNetworkEngineClient, QueuedSequencerAdminAPIClient, QueuedSequencerEngineClient,
+    RecoveryModeGuard, RpcActor, RpcContext, SequencerActor, SequencerConfig,
     actors::{BlockStream, NetworkInboundData, QueuedUnsafePayloadGossipClient},
 };
 
@@ -218,7 +218,8 @@ impl RollupNode {
         derivation_client: QueuedEngineDerivationClient,
         unsafe_head_tx: watch::Sender<L2BlockInfo>,
         conductor: Option<Arc<dyn Conductor>>,
-    ) -> EngineActor<EngineProcessor<E, QueuedEngineDerivationClient>, EngineRpcProcessor<E>> {
+    ) -> (EngineActor<EngineProcessor<E, QueuedEngineDerivationClient>>, EngineRpcProcessor<E>)
+    {
         let engine_state = EngineState::default();
         let (engine_state_tx, engine_state_rx) = watch::channel(engine_state);
         let (engine_queue_length_tx, engine_queue_length_rx) = watch::channel(0);
@@ -241,12 +242,10 @@ impl RollupNode {
             engine_queue_length_rx,
         );
 
-        EngineActor::new(
-            cancellation_token,
-            engine_request_rx,
-            engine_processor,
-            engine_rpc_processor,
-        )
+        let engine_actor =
+            EngineActor::new(cancellation_token, engine_request_rx, engine_processor);
+
+        (engine_actor, engine_rpc_processor)
     }
 
     /// Starts the rollup node service.
@@ -342,6 +341,7 @@ impl RollupNode {
         let (derivation_actor_request_tx, derivation_actor_request_rx) = mpsc::channel(1024);
 
         let (engine_actor_request_tx, engine_actor_request_rx) = mpsc::channel(1024);
+        let (engine_rpc_tx, engine_rpc_rx) = mpsc::channel(1024);
         let (unsafe_head_tx, unsafe_head_rx) = watch::channel(L2BlockInfo::default());
 
         // Create the conductor client early — the engine processor needs it for the
@@ -357,7 +357,7 @@ impl RollupNode {
         let engine_conductor: Option<Arc<dyn Conductor>> =
             conductor.clone().map(|c| Arc::new(c) as Arc<dyn Conductor>);
 
-        let engine_actor = self.create_engine_actor(
+        let (engine_actor, engine_rpc_processor) = self.create_engine_actor(
             engine_client,
             cancellation.clone(),
             engine_actor_request_rx,
@@ -365,6 +365,8 @@ impl RollupNode {
             unsafe_head_tx,
             engine_conductor,
         );
+
+        let _engine_rpc_handle = engine_rpc_processor.start(engine_rpc_rx);
 
         // Select the concrete derivation actor implementation based on
         // RollupNode configuration.
@@ -498,7 +500,7 @@ impl RollupNode {
         let rpc = self.rpc_builder().map(|b| {
             RpcActor::new(
                 b,
-                QueuedEngineRpcClient::new(engine_actor_request_tx.clone()),
+                QueuedEngineRpcClient::new(engine_rpc_tx),
                 sequencer_admin_client,
                 safe_db_reader,
             )
