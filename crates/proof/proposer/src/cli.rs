@@ -7,6 +7,8 @@ use base_cli_utils::CliStyles;
 use clap::Parser;
 use url::Url;
 
+use crate::constants::RECOVERY_SCAN_CONCURRENCY;
+
 base_cli_utils::define_cli_env!("BASE_PROPOSER");
 base_cli_utils::define_log_args!("BASE_PROPOSER");
 base_cli_utils::define_metrics_args!("BASE_PROPOSER", 7300);
@@ -149,6 +151,14 @@ pub struct ProposerArgs {
         default_value = "1"
     )]
     pub max_parallel_proofs: usize,
+
+    /// Maximum number of concurrent RPC calls during the recovery scan.
+    #[arg(
+        long = "recovery-scan-concurrency",
+        env = cli_env!("RECOVERY_SCAN_CONCURRENCY"),
+        default_value_t = RECOVERY_SCAN_CONCURRENCY
+    )]
+    pub recovery_scan_concurrency: usize,
 
     /// Address of the `TEEProverRegistry` contract on L1.
     /// When set, the proposer validates signers before on-chain submission.
