@@ -78,17 +78,11 @@ impl EngineQueries {
 
         match self {
             Self::Config(sender) => {
-                if sender.is_closed() {
-                    return Ok(());
-                }
                 sender
                     .send((**rollup_config).clone())
                     .map_err(|_| EngineQueriesError::OutputChannelClosed)
             }
             Self::State(sender) => {
-                if sender.is_closed() {
-                    return Ok(());
-                }
                 sender.send(state).map_err(|_| EngineQueriesError::OutputChannelClosed)
             }
             Self::OutputAtBlock { block, sender } => {
@@ -98,6 +92,14 @@ impl EngineQueries {
                 }
                 let output_block = client.l2_block_by_label(block).await?;
                 let output_block = output_block.ok_or(EngineQueriesError::NoL2BlockFound(block))?;
+
+                // Re-check after the network call — the caller may have timed out while
+                // we were fetching the block.
+                if sender.is_closed() {
+                    debug!(target: "engine", block = %block, "dropping stale OutputAtBlock query after block fetch");
+                    return Ok(());
+                }
+
                 // Cloning the l2 block below is cheaper than sending a network request to get the
                 // l2 block info. Querying the `L2BlockInfo` from the client ends up
                 // fetching the full l2 block again.
@@ -137,25 +139,16 @@ impl EngineQueries {
                     .map_err(|_| EngineQueriesError::OutputChannelClosed)
             }
             Self::StateReceiver(subscription) => {
-                if subscription.is_closed() {
-                    return Ok(());
-                }
                 subscription
                     .send(state_recv.clone())
                     .map_err(|_| EngineQueriesError::OutputChannelClosed)
             }
             Self::QueueLengthReceiver(subscription) => {
-                if subscription.is_closed() {
-                    return Ok(());
-                }
                 subscription
                     .send(queue_length_recv.clone())
                     .map_err(|_| EngineQueriesError::OutputChannelClosed)
             }
             Self::TaskQueueLength(sender) => {
-                if sender.is_closed() {
-                    return Ok(());
-                }
                 let queue_length = *queue_length_recv.borrow();
                 if sender.send(queue_length).is_err() {
                     warn!(target: "engine", "Failed to send task queue length response");
