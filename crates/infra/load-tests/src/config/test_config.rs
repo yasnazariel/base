@@ -371,12 +371,8 @@ impl TestConfig {
             return Err(BaselineError::Config("sender_count must be > 0".into()));
         }
 
-        if let Some(url) = &self.rpc_ws_url {
-            Self::validate_ws_url(url, "rpc_ws_url")?;
-        }
-        if let Some(url) = &self.flashblocks_ws_url {
-            Self::validate_ws_url(url, "flashblocks_ws_url")?;
-        }
+        Self::validate_ws_url(&self.rpc_ws_url, "rpc_ws_url")?;
+        Self::validate_ws_url(&self.flashblocks_ws_url, "flashblocks_ws_url")?;
 
         Ok(())
     }
@@ -484,8 +480,8 @@ impl TestConfig {
             batch_size: 5,
             batch_timeout: Duration::from_millis(50),
             max_gas_price: crate::runner::DEFAULT_MAX_GAS_PRICE,
-            rpc_ws_url: self.rpc_ws_url.clone(),
-            flashblocks_ws_url: self.flashblocks_ws_url.clone(),
+            rpc_ws_url: Some(self.rpc_ws_url.clone()),
+            flashblocks_ws_url: Some(self.flashblocks_ws_url.clone()),
         })
     }
 
@@ -533,6 +529,7 @@ impl TestConfig {
                 let token_out = parse_address(token_out, "uniswap_v2 token_out")?;
                 let min_amount = parse_amount(min_amount, "uniswap_v2 min_amount")?;
                 let max_amount = parse_amount(max_amount, "uniswap_v2 max_amount")?;
+                validate_swap_amounts(min_amount, max_amount, "uniswap_v2")?;
                 TxType::UniswapV2 { router, token_in, token_out, min_amount, max_amount }
             }
             TxTypeConfig::UniswapV3 {
@@ -548,6 +545,7 @@ impl TestConfig {
                 let token_out = parse_address(token_out, "uniswap_v3 token_out")?;
                 let min_amount = parse_amount(min_amount, "uniswap_v3 min_amount")?;
                 let max_amount = parse_amount(max_amount, "uniswap_v3 max_amount")?;
+                validate_swap_amounts(min_amount, max_amount, "uniswap_v3")?;
                 TxType::UniswapV3 { router, token_in, token_out, fee: *fee, min_amount, max_amount }
             }
             TxTypeConfig::AerodromeV2 {
@@ -565,6 +563,7 @@ impl TestConfig {
                 let factory = parse_address(factory, "aerodrome_v2 factory")?;
                 let min_amount = parse_amount(min_amount, "aerodrome_v2 min_amount")?;
                 let max_amount = parse_amount(max_amount, "aerodrome_v2 max_amount")?;
+                validate_swap_amounts(min_amount, max_amount, "aerodrome_v2")?;
                 TxType::AerodromeV2 {
                     router,
                     token_in,
@@ -588,6 +587,7 @@ impl TestConfig {
                 let token_out = parse_address(token_out, "aerodrome_cl token_out")?;
                 let min_amount = parse_amount(min_amount, "aerodrome_cl min_amount")?;
                 let max_amount = parse_amount(max_amount, "aerodrome_cl max_amount")?;
+                validate_swap_amounts(min_amount, max_amount, "aerodrome_cl")?;
                 if !(-8_388_608..=8_388_607).contains(tick_spacing) {
                     return Err(BaselineError::Config(format!(
                         "aerodrome_cl tick_spacing {tick_spacing} exceeds i24 range"
@@ -614,6 +614,15 @@ fn parse_address(s: &str, field: &str) -> Result<Address> {
 
 fn parse_amount(s: &str, field: &str) -> Result<U256> {
     s.parse::<U256>().map_err(|e| BaselineError::Config(format!("invalid {field} '{s}': {e}")))
+}
+
+fn validate_swap_amounts(min: U256, max: U256, tx_type: &str) -> Result<()> {
+    if min > max {
+        return Err(BaselineError::Config(format!(
+            "{tx_type} min_amount ({min}) exceeds max_amount ({max})"
+        )));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -791,18 +800,18 @@ rpc_ws_url: wss://localhost:8546
 flashblocks_ws_url: wss://localhost:7111
 "#;
         let config = TestConfig::from_yaml(yaml).unwrap();
-        assert_eq!(config.rpc_ws_url.as_ref().unwrap().scheme(), "wss");
-        assert_eq!(config.flashblocks_ws_url.as_ref().unwrap().scheme(), "wss");
+        assert_eq!(config.rpc_ws_url.scheme(), "wss");
+        assert_eq!(config.flashblocks_ws_url.scheme(), "wss");
     }
 
     #[test]
-    fn accepts_omitted_ws_urls() {
+    fn uses_default_ws_urls_when_omitted() {
         let yaml = r#"
 rpc: http://localhost:8545
 "#;
         let config = TestConfig::from_yaml(yaml).unwrap();
-        assert!(config.rpc_ws_url.is_none());
-        assert!(config.flashblocks_ws_url.is_none());
+        assert_eq!(config.rpc_ws_url.scheme(), "ws");
+        assert_eq!(config.flashblocks_ws_url.scheme(), "ws");
     }
 
     #[test]

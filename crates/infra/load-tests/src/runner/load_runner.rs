@@ -208,7 +208,11 @@ impl LoadRunner {
                 TxType::UniswapV2 { router, token_in, token_out, min_amount, max_amount } => {
                     generator = generator.with_payload(
                         UniswapV2Payload::new(
-                            *router, *token_in, *token_out, *min_amount, *max_amount,
+                            *router,
+                            *token_in,
+                            *token_out,
+                            *min_amount,
+                            *max_amount,
                         ),
                         weight_pct,
                     );
@@ -291,10 +295,8 @@ impl LoadRunner {
                     OsakaTarget::Clz => 80_000,
                     OsakaTarget::P256verifyOsaka | OsakaTarget::ModexpOsaka => 30_000,
                 },
-                TxType::UniswapV2 { .. } => 200_000,
-                TxType::UniswapV3 { .. } => 250_000,
-                TxType::AerodromeV2 { .. } => 200_000,
-                TxType::AerodromeCl { .. } => 250_000,
+                TxType::UniswapV2 { .. } | TxType::AerodromeV2 { .. } => 200_000,
+                TxType::UniswapV3 { .. } | TxType::AerodromeCl { .. } => 250_000,
             };
             weighted_gas += gas_estimate * tx_config.weight as u64;
         }
@@ -572,18 +574,16 @@ impl LoadRunner {
             match &tx_config.tx_type {
                 TxType::UniswapV2 { token_in, token_out, .. }
                 | TxType::UniswapV3 { token_in, token_out, .. }
+                | TxType::AerodromeV2 { token_in, token_out, .. }
                 | TxType::AerodromeCl { token_in, token_out, .. } => {
                     tokens.insert(*token_in);
                     tokens.insert(*token_out);
                 }
-                TxType::AerodromeV2 { token_in, token_out, .. } => {
-                    tokens.insert(*token_in);
-                    tokens.insert(*token_out);
-                }
-                TxType::Erc20 { contract } => {
-                    tokens.insert(*contract);
-                }
-                TxType::Transfer | TxType::Calldata { .. } | TxType::Precompile { .. } | TxType::Osaka { .. } => {}
+                TxType::Transfer
+                | TxType::Calldata { .. }
+                | TxType::Erc20 { .. }
+                | TxType::Precompile { .. }
+                | TxType::Osaka { .. } => {}
             }
         }
         tokens.into_iter().collect()
@@ -606,11 +606,16 @@ impl LoadRunner {
             return Ok(());
         }
 
-        info!(token_count = tokens.len(), accounts = self.accounts.len(), "distributing swap tokens");
+        info!(
+            token_count = tokens.len(),
+            accounts = self.accounts.len(),
+            "distributing swap tokens"
+        );
 
         let funder_address = funding_key.address();
         let wallet = EthereumWallet::from(funding_key);
-        let funder_provider = Arc::new(create_wallet_provider(self.config.rpc_http_url.clone(), wallet));
+        let funder_provider =
+            Arc::new(create_wallet_provider(self.config.rpc_http_url.clone(), wallet));
         let chain_id = self.config.chain_id;
         let max_gas_price = self.config.max_gas_price;
 
@@ -624,9 +629,10 @@ impl LoadRunner {
             .await
             .map_err(|e| BaselineError::Rpc(e.to_string()))?;
 
-        let sender_addresses: Vec<Address> = self.accounts.accounts().iter().map(|a| a.address).collect();
+        let sender_addresses: Vec<Address> =
+            self.accounts.accounts().iter().map(|a| a.address).collect();
         let total_txs = tokens.len() * sender_addresses.len();
-        let pb = Self::progress_bar(total_txs as u64, "Distributing tokens");
+        let pb = self.progress_bar(total_txs as u64, "Distributing tokens");
 
         for token in &tokens {
             let mut pending_txs: Vec<(TxHash, Address)> = Vec::new();
@@ -968,9 +974,7 @@ impl LoadRunner {
             debug!(submitted, "final batch submitted");
         }
 
-        // stop_flag drains the confirmer; cancel_token stops the WebSocket watchers.
         self.stop_flag.store(true, Ordering::SeqCst);
-        self.cancel_token.cancel();
 
         if let Some(display) = &self.display {
             display.finish();
@@ -1406,7 +1410,6 @@ impl LoadRunner {
     /// handles draining confirmations and cancelling background tasks.
     pub fn stop(&self) {
         self.stop_flag.store(true, Ordering::SeqCst);
-        self.cancel_token.cancel();
     }
 
     /// Returns a clone of the stop flag for external coordination.

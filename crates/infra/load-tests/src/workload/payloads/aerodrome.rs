@@ -127,8 +127,8 @@ pub struct AerodromeClPayload {
     pub token_in: Address,
     /// Output token address.
     pub token_out: Address,
-    /// Tick spacing.
-    pub tick_spacing: i32,
+    /// Tick spacing (pre-converted to `i24` at construction time).
+    pub tick_spacing: I24,
     /// Minimum swap amount.
     pub min_amount: U256,
     /// Maximum swap amount.
@@ -137,7 +137,12 @@ pub struct AerodromeClPayload {
 
 impl AerodromeClPayload {
     /// Creates a new `AerodromeCl` payload.
-    pub const fn new(
+    ///
+    /// # Panics
+    ///
+    /// Panics if `tick_spacing` does not fit in an `i24`. Callers must validate
+    /// the range before calling (config parsing validates this).
+    pub fn new(
         router: Address,
         token_in: Address,
         token_out: Address,
@@ -145,6 +150,8 @@ impl AerodromeClPayload {
         min_amount: U256,
         max_amount: U256,
     ) -> Self {
+        let tick_spacing =
+            I24::try_from(tick_spacing).expect("tick_spacing validated to fit i24 at config parse");
         Self { router, token_in, token_out, tick_spacing, min_amount, max_amount }
     }
 }
@@ -173,9 +180,7 @@ impl Payload for AerodromeClPayload {
             params: IAerodromeClRouter::ExactInputSingleParams {
                 tokenIn: input,
                 tokenOut: output,
-                // SAFETY: tick_spacing is validated to fit i24 at config parse time.
-                tickSpacing: I24::try_from(self.tick_spacing)
-                    .expect("validated at config parse time"),
+                tickSpacing: self.tick_spacing,
                 recipient: to,
                 deadline: U256::from(u64::MAX),
                 amountIn: amount,

@@ -77,10 +77,26 @@ interface ICLFactory {
         returns (address pool);
 }
 
-interface ICLPool {
-    function mint(address recipient, int24 tickLower, int24 tickUpper, uint128 amount, bytes calldata data)
+interface ICLPositionManager {
+    struct MintParams {
+        address token0;
+        address token1;
+        int24 tickSpacing;
+        int24 tickLower;
+        int24 tickUpper;
+        uint256 amount0Desired;
+        uint256 amount1Desired;
+        uint256 amount0Min;
+        uint256 amount1Min;
+        address recipient;
+        uint256 deadline;
+        uint160 sqrtPriceX96;
+    }
+
+    function mint(MintParams calldata params)
         external
-        returns (uint256 amount0, uint256 amount1);
+        payable
+        returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1);
 }
 
 contract SeedDexPools is Script {
@@ -197,11 +213,34 @@ contract SeedDexPools is Script {
 
     function _seedAerodromeCl(address tokenA, address tokenB) internal {
         address clFactory = vm.envAddress("AERODROME_CL_FACTORY");
+        address clPositionManager = vm.envAddress("AERODROME_CL_POSITION_MANAGER");
         int24 tickSpacing = int24(int256(vm.envOr("AERODROME_TICK_SPACING", uint256(100))));
 
         (address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
 
         address pool = ICLFactory(clFactory).createPool(token0, token1, tickSpacing, SQRT_PRICE_1_1);
         console.log("Aerodrome CL pool:", pool);
+
+        MockERC20(token0).approve(clPositionManager, type(uint256).max);
+        MockERC20(token1).approve(clPositionManager, type(uint256).max);
+
+        int24 maxTick = (int24(887272) / tickSpacing) * tickSpacing;
+        ICLPositionManager(clPositionManager).mint(
+            ICLPositionManager.MintParams({
+                token0: token0,
+                token1: token1,
+                tickSpacing: tickSpacing,
+                tickLower: -maxTick,
+                tickUpper: maxTick,
+                amount0Desired: LIQUIDITY_AMOUNT,
+                amount1Desired: LIQUIDITY_AMOUNT,
+                amount0Min: 0,
+                amount1Min: 0,
+                recipient: msg.sender,
+                deadline: block.timestamp + 1 hours,
+                sqrtPriceX96: 0
+            })
+        );
+        console.log("Aerodrome CL liquidity seeded");
     }
 }
