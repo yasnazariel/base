@@ -254,26 +254,38 @@ where
                         L1WatcherQueries::L1State(sender) => {
                             let current_l1 = *latest_head.borrow();
 
-                            let head_l1 = match self.l1_provider.get_block(BlockId::latest()).await {
-                                    Ok(block) => block,
-                                    Err(e) => {
-                                        warn!(target: "l1_watcher", error = ?e, "failed to query l1 provider for latest head block");
-                                        None
-                                    }}.map(|block| block.into_consensus().into());
-
-                            let finalized_l1 = match self.l1_provider.get_block(BlockId::finalized()).await {
-                                    Ok(block) => block,
-                                    Err(e) => {
-                                        warn!(target: "l1_watcher", error = ?e, "failed to query l1 provider for latest finalized block");
-                                        None
-                                    }}.map(|block| block.into_consensus().into());
-
-                            let safe_l1 = match self.l1_provider.get_block(BlockId::safe()).await {
-                                    Ok(block) => block,
-                                    Err(e) => {
-                                        warn!(target: "l1_watcher", error = ?e, "failed to query l1 provider for latest safe block");
-                                        None
-                                    }}.map(|block| block.into_consensus().into());
+                            let (head_l1, finalized_l1, safe_l1) = tokio::join!(
+                                async {
+                                    match self.l1_provider.get_block(BlockId::latest()).await {
+                                        Ok(block) => block,
+                                        Err(e) => {
+                                            warn!(target: "l1_watcher", error = ?e, "failed to query l1 provider for latest head block");
+                                            None
+                                        }
+                                    }
+                                    .map(|block| block.into_consensus().into())
+                                },
+                                async {
+                                    match self.l1_provider.get_block(BlockId::finalized()).await {
+                                        Ok(block) => block,
+                                        Err(e) => {
+                                            warn!(target: "l1_watcher", error = ?e, "failed to query l1 provider for latest finalized block");
+                                            None
+                                        }
+                                    }
+                                    .map(|block| block.into_consensus().into())
+                                },
+                                async {
+                                    match self.l1_provider.get_block(BlockId::safe()).await {
+                                        Ok(block) => block,
+                                        Err(e) => {
+                                            warn!(target: "l1_watcher", error = ?e, "failed to query l1 provider for latest safe block");
+                                            None
+                                        }
+                                    }
+                                    .map(|block| block.into_consensus().into())
+                                },
+                            );
 
                             if let Err(e) = sender.send(L1State {
                                 current_l1,
