@@ -121,11 +121,11 @@ pub struct TestConfig {
     pub swap_token_amount: String,
 
     /// WebSocket JSON-RPC endpoint URL for block subscription.
-    #[serde(default = "default_rpc_ws_url", alias = "ws_url")]
-    pub rpc_ws_url: Url,
+    #[serde(default, alias = "ws_url")]
+    pub rpc_ws_url: Option<Url>,
     /// WebSocket URL for flashblocks subscription.
-    #[serde(default = "default_flashblocks_ws_url", alias = "flashblocks_url")]
-    pub flashblocks_ws_url: Url,
+    #[serde(default, alias = "flashblocks_url")]
+    pub flashblocks_ws_url: Option<Url>,
 }
 
 impl Default for TestConfig {
@@ -144,8 +144,8 @@ impl Default for TestConfig {
             transactions: vec![WeightedTxType { weight: 100, tx_type: TxTypeConfig::Transfer }],
             looper_contract: None,
             swap_token_amount: default_swap_token_amount(),
-            rpc_ws_url: default_rpc_ws_url(),
-            flashblocks_ws_url: default_flashblocks_ws_url(),
+            rpc_ws_url: None,
+            flashblocks_ws_url: None,
         }
     }
 }
@@ -339,14 +339,6 @@ fn default_swap_token_amount() -> String {
     "1000000000000000000000".to_string() // 1000 tokens (1000e18)
 }
 
-fn default_rpc_ws_url() -> Url {
-    Url::parse("ws://localhost:8546").expect("valid default rpc_ws_url")
-}
-
-fn default_flashblocks_ws_url() -> Url {
-    Url::parse("ws://localhost:7111").expect("valid default flashblocks_ws_url")
-}
-
 impl TestConfig {
     /// Loads configuration from a YAML file.
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self> {
@@ -371,8 +363,12 @@ impl TestConfig {
             return Err(BaselineError::Config("sender_count must be > 0".into()));
         }
 
-        Self::validate_ws_url(&self.rpc_ws_url, "rpc_ws_url")?;
-        Self::validate_ws_url(&self.flashblocks_ws_url, "flashblocks_ws_url")?;
+        if let Some(url) = &self.rpc_ws_url {
+            Self::validate_ws_url(url, "rpc_ws_url")?;
+        }
+        if let Some(url) = &self.flashblocks_ws_url {
+            Self::validate_ws_url(url, "flashblocks_ws_url")?;
+        }
 
         Ok(())
     }
@@ -480,8 +476,8 @@ impl TestConfig {
             batch_size: 5,
             batch_timeout: Duration::from_millis(50),
             max_gas_price: crate::runner::DEFAULT_MAX_GAS_PRICE,
-            rpc_ws_url: Some(self.rpc_ws_url.clone()),
-            flashblocks_ws_url: Some(self.flashblocks_ws_url.clone()),
+            rpc_ws_url: self.rpc_ws_url.clone(),
+            flashblocks_ws_url: self.flashblocks_ws_url.clone(),
         })
     }
 
@@ -800,18 +796,18 @@ rpc_ws_url: wss://localhost:8546
 flashblocks_ws_url: wss://localhost:7111
 "#;
         let config = TestConfig::from_yaml(yaml).unwrap();
-        assert_eq!(config.rpc_ws_url.scheme(), "wss");
-        assert_eq!(config.flashblocks_ws_url.scheme(), "wss");
+        assert_eq!(config.rpc_ws_url.as_ref().unwrap().scheme(), "wss");
+        assert_eq!(config.flashblocks_ws_url.as_ref().unwrap().scheme(), "wss");
     }
 
     #[test]
-    fn uses_default_ws_urls_when_omitted() {
+    fn accepts_omitted_ws_urls() {
         let yaml = r#"
 rpc: http://localhost:8545
 "#;
         let config = TestConfig::from_yaml(yaml).unwrap();
-        assert_eq!(config.rpc_ws_url.scheme(), "ws");
-        assert_eq!(config.flashblocks_ws_url.scheme(), "ws");
+        assert!(config.rpc_ws_url.is_none());
+        assert!(config.flashblocks_ws_url.is_none());
     }
 
     #[test]
