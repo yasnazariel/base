@@ -69,12 +69,14 @@ async fn launch(
     module: RpcModule<()>,
 ) -> Result<ServerHandle, std::io::Error> {
     let middleware = tower::ServiceBuilder::new()
+        .layer(TimeoutLayer::with_status_code(StatusCode::REQUEST_TIMEOUT, config.http_timeout))
+        .layer(tower::limit::ConcurrencyLimitLayer::new(config.max_concurrent_requests.get()))
+        .layer(tower::load_shed::LoadShedLayer::new())
         .layer(EthHealthCheckLayer)
         .layer(
             ProxyGetRequestLayer::new([("/healthz", "healthz")])
                 .expect("Critical: Failed to build GET method proxy"),
-        )
-        .layer(TimeoutLayer::with_status_code(StatusCode::REQUEST_TIMEOUT, config.http_timeout));
+        );
     let server = Server::builder().set_http_middleware(middleware).build(config.socket).await?;
 
     if let Ok(addr) = server.local_addr() {
@@ -171,7 +173,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::{net::SocketAddr, time::Duration};
+    use std::{net::SocketAddr, num::NonZeroUsize, time::Duration};
 
     use super::*;
 
@@ -185,6 +187,7 @@ mod tests {
             ws_enabled: false,
             dev_enabled: false,
             http_timeout: Duration::from_secs(60),
+            max_concurrent_requests: NonZeroUsize::new(1024).expect("nonzero"),
         };
         let result = launch(&launcher, RpcModule::new(())).await;
         assert!(result.is_ok());
@@ -200,6 +203,7 @@ mod tests {
             ws_enabled: false,
             dev_enabled: false,
             http_timeout: Duration::from_secs(60),
+            max_concurrent_requests: NonZeroUsize::new(1024).expect("nonzero"),
         };
         let mut modules = RpcModule::new(());
 
