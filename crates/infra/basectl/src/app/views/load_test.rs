@@ -575,7 +575,10 @@ impl LoadTestView {
                     }
                 }
 
-                if has_swap_tokens && let Some(funder) = funder.clone() {
+                if has_swap_tokens
+                    && current_run == run_count
+                    && let Some(funder) = funder.clone()
+                {
                     let _ = phase_tx.send(RunPhase::TokenDistribution);
                     let fut = runner.setup_swap_tokens(funder, swap_token_amount);
                     if let Err(e) = Box::pin(fut).await {

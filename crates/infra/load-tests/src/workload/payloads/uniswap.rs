@@ -133,6 +133,9 @@ impl Payload for UniswapV3Payload {
             U256::from(rng.gen_range(min..=max))
         };
 
+        // Randomly swap direction to exercise both sides of the pool.
+        // V3 pools are keyed by (token0, token1, fee) with token0 < token1,
+        // so the fee tier is direction-agnostic and this is safe.
         let (input, output) = if rng.random::<bool>() {
             (self.token_in, self.token_out)
         } else {
