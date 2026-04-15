@@ -57,10 +57,10 @@ pub enum TxType {
     UniswapV2 {
         /// Router contract address.
         router: Address,
-        /// WETH contract address.
-        weth: Address,
+        /// Input token address.
+        token_in: Address,
         /// Output token address.
-        token: Address,
+        token_out: Address,
         /// Minimum swap amount.
         min_amount: U256,
         /// Maximum swap amount.
@@ -85,10 +85,10 @@ pub enum TxType {
     AerodromeV2 {
         /// Router contract address.
         router: Address,
-        /// WETH contract address.
-        weth: Address,
+        /// Input token address.
+        token_in: Address,
         /// Output token address.
-        token: Address,
+        token_out: Address,
         /// Use stable pool.
         stable: bool,
         /// Factory address.

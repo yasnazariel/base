@@ -205,9 +205,11 @@ impl LoadRunner {
                     generator =
                         generator.with_payload(OsakaPayload::new(target.clone()), weight_pct);
                 }
-                TxType::UniswapV2 { router, weth, token, min_amount, max_amount } => {
+                TxType::UniswapV2 { router, token_in, token_out, min_amount, max_amount } => {
                     generator = generator.with_payload(
-                        UniswapV2Payload::new(*router, *weth, *token, *min_amount, *max_amount),
+                        UniswapV2Payload::new(
+                            *router, *token_in, *token_out, *min_amount, *max_amount,
+                        ),
                         weight_pct,
                     );
                 }
@@ -226,8 +228,8 @@ impl LoadRunner {
                 }
                 TxType::AerodromeV2 {
                     router,
-                    weth,
-                    token,
+                    token_in,
+                    token_out,
                     stable,
                     factory,
                     min_amount,
@@ -236,8 +238,8 @@ impl LoadRunner {
                     generator = generator.with_payload(
                         AerodromeV2Payload::new(
                             *router,
-                            *weth,
-                            *token,
+                            *token_in,
+                            *token_out,
                             *stable,
                             *factory,
                             *min_amount,
@@ -561,6 +563,129 @@ impl LoadRunner {
 
         info!(funded = accounts_to_fund.len(), "funding complete");
         Ok(())
+    }
+
+    /// Collects unique token addresses from configured swap transaction types.
+    fn collect_swap_tokens(&self) -> Vec<Address> {
+        let mut tokens = std::collections::HashSet::new();
+        for tx_config in &self.config.transactions {
+            match &tx_config.tx_type {
+                TxType::UniswapV2 { token_in, token_out, .. }
+                | TxType::UniswapV3 { token_in, token_out, .. }
+                | TxType::AerodromeCl { token_in, token_out, .. } => {
+                    tokens.insert(*token_in);
+                    tokens.insert(*token_out);
+                }
+                TxType::AerodromeV2 { token_in, token_out, .. } => {
+                    tokens.insert(*token_in);
+                    tokens.insert(*token_out);
+                }
+                TxType::Erc20 { contract } => {
+                    tokens.insert(*contract);
+                }
+                TxType::Transfer | TxType::Calldata { .. } | TxType::Precompile { .. } | TxType::Osaka { .. } => {}
+            }
+        }
+        tokens.into_iter().collect()
+    }
+
+    /// Distributes swap tokens from the funder to all sender accounts.
+    ///
+    /// Scans the configured transaction types for token addresses, then transfers
+    /// `amount_per_token` of each token to every sender. Designed for use with
+    /// `FreeTransferERC20` tokens that require no prior approval.
+    #[instrument(skip(self, funding_key), fields(accounts = self.accounts.len()))]
+    pub async fn setup_swap_tokens(
+        &self,
+        funding_key: PrivateKeySigner,
+        amount_per_token: U256,
+    ) -> Result<()> {
+        let tokens = self.collect_swap_tokens();
+        if tokens.is_empty() {
+            debug!("no swap tokens configured, skipping token setup");
+            return Ok(());
+        }
+
+        info!(token_count = tokens.len(), accounts = self.accounts.len(), "distributing swap tokens");
+
+        let funder_address = funding_key.address();
+        let wallet = EthereumWallet::from(funding_key);
+        let funder_provider = Arc::new(create_wallet_provider(self.config.rpc_http_url.clone(), wallet));
+        let chain_id = self.config.chain_id;
+        let max_gas_price = self.config.max_gas_price;
+
+        let gas_price = self.client.get_gas_price().await?;
+        let max_priority_fee = (gas_price / 10).max(1);
+        let max_fee = gas_price.saturating_mul(2).max(max_priority_fee).min(max_gas_price);
+
+        let mut nonce = funder_provider
+            .get_transaction_count(funder_address)
+            .pending()
+            .await
+            .map_err(|e| BaselineError::Rpc(e.to_string()))?;
+
+        let sender_addresses: Vec<Address> = self.accounts.accounts().iter().map(|a| a.address).collect();
+        let total_txs = tokens.len() * sender_addresses.len();
+        let pb = Self::progress_bar(total_txs as u64, "Distributing tokens");
+
+        for token in &tokens {
+            let mut pending_txs: Vec<(TxHash, Address)> = Vec::new();
+
+            for chunk in sender_addresses.chunks(FUNDING_BATCH_SIZE) {
+                let send_futs = chunk.iter().map(|&sender| {
+                    let transfer_data = Self::encode_erc20_transfer(sender, amount_per_token);
+                    let tx = TransactionRequest::default()
+                        .with_to(*token)
+                        .with_input(transfer_data)
+                        .with_nonce(nonce)
+                        .with_chain_id(chain_id)
+                        .with_gas_limit(65_000)
+                        .with_max_fee_per_gas(max_fee)
+                        .with_max_priority_fee_per_gas(max_priority_fee);
+                    nonce += 1;
+
+                    let provider = Arc::clone(&funder_provider);
+                    async move {
+                        let result = provider.send_transaction(tx).await;
+                        (result, sender)
+                    }
+                });
+
+                let mut send_stream = stream::iter(send_futs).buffer_unordered(FUNDING_BATCH_SIZE);
+
+                while let Some((result, sender)) = send_stream.next().await {
+                    match result {
+                        Ok(pending) => {
+                            let tx_hash = *pending.tx_hash();
+                            debug!(token = %token, to = %sender, tx_hash = %tx_hash, "token transfer sent");
+                            pending_txs.push((tx_hash, sender));
+                        }
+                        Err(e) => {
+                            warn!(token = %token, to = %sender, error = %e, "token transfer failed");
+                        }
+                    }
+                }
+
+                Self::await_confirmations(&self.client, &mut pending_txs, &pb).await?;
+                pending_txs.clear();
+            }
+
+            info!(token = %token, recipients = sender_addresses.len(), "token distribution complete");
+        }
+
+        pb.finish_and_clear();
+        info!(tokens = tokens.len(), total_transfers = total_txs, "swap token setup complete");
+        Ok(())
+    }
+
+    fn encode_erc20_transfer(to: Address, amount: U256) -> Bytes {
+        let mut data = Vec::with_capacity(68);
+        // transfer(address,uint256) selector: 0xa9059cbb
+        data.extend_from_slice(&[0xa9, 0x05, 0x9c, 0xbb]);
+        data.extend_from_slice(&[0u8; 12]);
+        data.extend_from_slice(to.as_slice());
+        data.extend_from_slice(&amount.to_be_bytes::<32>());
+        Bytes::from(data)
     }
 
     /// Runs the load test and returns metrics summary.
