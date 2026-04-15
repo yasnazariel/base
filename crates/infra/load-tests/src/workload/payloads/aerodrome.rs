@@ -17,12 +17,13 @@ sol! {
             address factory;
         }
 
-        function swapExactETHForTokens(
+        function swapExactTokensForTokens(
+            uint256 amountIn,
             uint256 amountOutMin,
             Route[] calldata routes,
             address to,
             uint256 deadline
-        ) external payable returns (uint256[] memory amounts);
+        ) external returns (uint256[] memory amounts);
     }
 
     interface IAerodromeClRouter {
@@ -48,10 +49,10 @@ sol! {
 pub struct AerodromeV2Payload {
     /// Router contract address.
     pub router: Address,
-    /// WETH contract address.
-    pub weth: Address,
+    /// Input token address.
+    pub token_in: Address,
     /// Output token address.
-    pub token: Address,
+    pub token_out: Address,
     /// Whether to use stable pool.
     pub stable: bool,
     /// Factory address.
@@ -66,14 +67,14 @@ impl AerodromeV2Payload {
     /// Creates a new `AerodromeV2` payload.
     pub const fn new(
         router: Address,
-        weth: Address,
-        token: Address,
+        token_in: Address,
+        token_out: Address,
         stable: bool,
         factory: Address,
         min_amount: U256,
         max_amount: U256,
     ) -> Self {
-        Self { router, weth, token, stable, factory, min_amount, max_amount }
+        Self { router, token_in, token_out, stable, factory, min_amount, max_amount }
     }
 }
 
@@ -91,11 +92,18 @@ impl Payload for AerodromeV2Payload {
             U256::from(rng.gen_range(min..=max))
         };
 
-        let call = IAerodromeRouter::swapExactETHForTokensCall {
+        let (input, output) = if rng.random::<bool>() {
+            (self.token_in, self.token_out)
+        } else {
+            (self.token_out, self.token_in)
+        };
+
+        let call = IAerodromeRouter::swapExactTokensForTokensCall {
+            amountIn: amount,
             amountOutMin: U256::ZERO,
             routes: vec![IAerodromeRouter::Route {
-                from: self.weth,
-                to: self.token,
+                from: input,
+                to: output,
                 stable: self.stable,
                 factory: self.factory,
             }],
@@ -106,7 +114,6 @@ impl Payload for AerodromeV2Payload {
         TransactionRequest::default()
             .with_to(self.router)
             .with_input(Bytes::from(call.abi_encode()))
-            .with_value(amount)
             .with_gas_limit(200_000)
     }
 }
@@ -156,10 +163,16 @@ impl Payload for AerodromeClPayload {
             U256::from(rng.gen_range(min..=max))
         };
 
+        let (input, output) = if rng.random::<bool>() {
+            (self.token_in, self.token_out)
+        } else {
+            (self.token_out, self.token_in)
+        };
+
         let call = IAerodromeClRouter::exactInputSingleCall {
             params: IAerodromeClRouter::ExactInputSingleParams {
-                tokenIn: self.token_in,
-                tokenOut: self.token_out,
+                tokenIn: input,
+                tokenOut: output,
                 // SAFETY: tick_spacing is validated to fit i24 at config parse time.
                 tickSpacing: I24::try_from(self.tick_spacing)
                     .expect("validated at config parse time"),

@@ -115,12 +115,17 @@ pub struct TestConfig {
     #[serde(default)]
     pub looper_contract: Option<String>,
 
-    /// WebSocket JSON-RPC endpoint URL for block subscription (enables block latency tracking).
-    #[serde(default, alias = "ws_url")]
-    pub rpc_ws_url: Option<Url>,
-    /// WebSocket URL for flashblocks subscription (enables flashblock latency tracking).
-    #[serde(default, alias = "flashblocks_url")]
-    pub flashblocks_ws_url: Option<Url>,
+    /// Amount of each swap token to distribute to each sender (in wei, as string).
+    /// Only used when swap transaction types are configured.
+    #[serde(default = "default_swap_token_amount")]
+    pub swap_token_amount: String,
+
+    /// WebSocket JSON-RPC endpoint URL for block subscription.
+    #[serde(default = "default_rpc_ws_url", alias = "ws_url")]
+    pub rpc_ws_url: Url,
+    /// WebSocket URL for flashblocks subscription.
+    #[serde(default = "default_flashblocks_ws_url", alias = "flashblocks_url")]
+    pub flashblocks_ws_url: Url,
 }
 
 impl Default for TestConfig {
@@ -138,8 +143,9 @@ impl Default for TestConfig {
             chain_id: None,
             transactions: vec![WeightedTxType { weight: 100, tx_type: TxTypeConfig::Transfer }],
             looper_contract: None,
-            rpc_ws_url: None,
-            flashblocks_ws_url: None,
+            swap_token_amount: default_swap_token_amount(),
+            rpc_ws_url: default_rpc_ws_url(),
+            flashblocks_ws_url: default_flashblocks_ws_url(),
         }
     }
 }
@@ -159,6 +165,7 @@ impl fmt::Debug for TestConfig {
             .field("chain_id", &self.chain_id)
             .field("transactions", &self.transactions)
             .field("looper_contract", &self.looper_contract)
+            .field("swap_token_amount", &self.swap_token_amount)
             .field("rpc_ws_url", &self.rpc_ws_url)
             .field("flashblocks_ws_url", &self.flashblocks_ws_url)
             .finish()
@@ -227,14 +234,14 @@ pub enum TxTypeConfig {
         /// Target Osaka feature.
         target: OsakaTarget,
     },
-    /// Uniswap V2 style swap (ETH -> token).
+    /// Uniswap V2 style swap (token -> token).
     UniswapV2 {
         /// Router contract address.
         router: String,
-        /// WETH contract address.
-        weth: String,
+        /// Input token address.
+        token_in: String,
         /// Output token address.
-        token: String,
+        token_out: String,
         /// Minimum swap amount in wei.
         #[serde(default = "default_swap_min_amount")]
         min_amount: String,
@@ -264,10 +271,10 @@ pub enum TxTypeConfig {
     AerodromeV2 {
         /// Router contract address.
         router: String,
-        /// WETH contract address.
-        weth: String,
+        /// Input token address.
+        token_in: String,
         /// Output token address.
-        token: String,
+        token_out: String,
         /// Whether to use stable pool (default false).
         #[serde(default)]
         stable: bool,
@@ -326,6 +333,10 @@ const fn default_uniswap_v3_fee() -> u32 {
 
 const fn default_aerodrome_tick_spacing() -> i32 {
     100
+}
+
+fn default_swap_token_amount() -> String {
+    "1000000000000000000000".to_string() // 1000 tokens (1000e18)
 }
 
 fn default_rpc_ws_url() -> Url {
@@ -430,6 +441,16 @@ impl TestConfig {
         })
     }
 
+    /// Parses the swap token amount string into a U256.
+    pub fn parse_swap_token_amount(&self) -> Result<alloy_primitives::U256> {
+        self.swap_token_amount.parse().map_err(|e| {
+            BaselineError::Config(format!(
+                "invalid swap_token_amount '{}': {e}",
+                self.swap_token_amount
+            ))
+        })
+    }
+
     /// Converts this test config into a `LoadConfig` for runtime use.
     pub fn to_load_config(
         &self,
@@ -506,13 +527,13 @@ impl TestConfig {
                 }
             }
             TxTypeConfig::Osaka { target } => TxType::Osaka { target: target.clone() },
-            TxTypeConfig::UniswapV2 { router, weth, token, min_amount, max_amount } => {
+            TxTypeConfig::UniswapV2 { router, token_in, token_out, min_amount, max_amount } => {
                 let router = parse_address(router, "uniswap_v2 router")?;
-                let weth = parse_address(weth, "uniswap_v2 weth")?;
-                let token = parse_address(token, "uniswap_v2 token")?;
+                let token_in = parse_address(token_in, "uniswap_v2 token_in")?;
+                let token_out = parse_address(token_out, "uniswap_v2 token_out")?;
                 let min_amount = parse_amount(min_amount, "uniswap_v2 min_amount")?;
                 let max_amount = parse_amount(max_amount, "uniswap_v2 max_amount")?;
-                TxType::UniswapV2 { router, weth, token, min_amount, max_amount }
+                TxType::UniswapV2 { router, token_in, token_out, min_amount, max_amount }
             }
             TxTypeConfig::UniswapV3 {
                 router,
@@ -531,23 +552,23 @@ impl TestConfig {
             }
             TxTypeConfig::AerodromeV2 {
                 router,
-                weth,
-                token,
+                token_in,
+                token_out,
                 stable,
                 factory,
                 min_amount,
                 max_amount,
             } => {
                 let router = parse_address(router, "aerodrome_v2 router")?;
-                let weth = parse_address(weth, "aerodrome_v2 weth")?;
-                let token = parse_address(token, "aerodrome_v2 token")?;
+                let token_in = parse_address(token_in, "aerodrome_v2 token_in")?;
+                let token_out = parse_address(token_out, "aerodrome_v2 token_out")?;
                 let factory = parse_address(factory, "aerodrome_v2 factory")?;
                 let min_amount = parse_amount(min_amount, "aerodrome_v2 min_amount")?;
                 let max_amount = parse_amount(max_amount, "aerodrome_v2 max_amount")?;
                 TxType::AerodromeV2 {
                     router,
-                    weth,
-                    token,
+                    token_in,
+                    token_out,
                     stable: *stable,
                     factory,
                     min_amount,
@@ -792,16 +813,16 @@ transactions:
   - weight: 10
     type: uniswap_v2
     router: "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D"
-    weth: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
-    token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+    token_in: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+    token_out: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
 "#;
         let config = TestConfig::from_yaml(yaml).unwrap();
         assert_eq!(config.transactions.len(), 1);
         match &config.transactions[0].tx_type {
-            TxTypeConfig::UniswapV2 { router, weth, token, min_amount, max_amount } => {
+            TxTypeConfig::UniswapV2 { router, token_in, token_out, min_amount, max_amount } => {
                 assert!(router.starts_with("0x"));
-                assert!(weth.starts_with("0x"));
-                assert!(token.starts_with("0x"));
+                assert!(token_in.starts_with("0x"));
+                assert!(token_out.starts_with("0x"));
                 assert_eq!(min_amount, &default_swap_min_amount());
                 assert_eq!(max_amount, &default_swap_max_amount());
             }
@@ -839,8 +860,8 @@ transactions:
   - weight: 10
     type: aerodrome_v2
     router: "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43"
-    weth: "0x4200000000000000000000000000000000000006"
-    token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+    token_in: "0x4200000000000000000000000000000000000006"
+    token_out: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
     factory: "0x420DD381b31aEf6683db6B902084cB0FFECe40Da"
     stable: false
 "#;

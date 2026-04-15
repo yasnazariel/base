@@ -10,12 +10,13 @@ use crate::workload::SeededRng;
 
 sol! {
     interface IUniswapV2Router {
-        function swapExactETHForTokens(
+        function swapExactTokensForTokens(
+            uint256 amountIn,
             uint256 amountOutMin,
             address[] calldata path,
             address to,
             uint256 deadline
-        ) external payable returns (uint256[] memory amounts);
+        ) external returns (uint256[] memory amounts);
     }
 
     interface IUniswapV3Router {
@@ -39,8 +40,8 @@ sol! {
 #[derive(Debug, Clone)]
 pub struct UniswapV2Payload {
     router: Address,
-    weth: Address,
-    token: Address,
+    token_in: Address,
+    token_out: Address,
     min_amount: U256,
     max_amount: U256,
 }
@@ -49,12 +50,12 @@ impl UniswapV2Payload {
     /// Creates a new `UniswapV2` payload.
     pub const fn new(
         router: Address,
-        weth: Address,
-        token: Address,
+        token_in: Address,
+        token_out: Address,
         min_amount: U256,
         max_amount: U256,
     ) -> Self {
-        Self { router, weth, token, min_amount, max_amount }
+        Self { router, token_in, token_out, min_amount, max_amount }
     }
 }
 
@@ -72,9 +73,16 @@ impl Payload for UniswapV2Payload {
             U256::from(rng.gen_range(min..=max))
         };
 
-        let call = IUniswapV2Router::swapExactETHForTokensCall {
+        let (input, output) = if rng.random::<bool>() {
+            (self.token_in, self.token_out)
+        } else {
+            (self.token_out, self.token_in)
+        };
+
+        let call = IUniswapV2Router::swapExactTokensForTokensCall {
+            amountIn: amount,
             amountOutMin: U256::ZERO,
-            path: vec![self.weth, self.token],
+            path: vec![input, output],
             to,
             deadline: U256::from(u64::MAX),
         };
@@ -82,7 +90,6 @@ impl Payload for UniswapV2Payload {
         TransactionRequest::default()
             .with_to(self.router)
             .with_input(Bytes::from(call.abi_encode()))
-            .with_value(amount)
             .with_gas_limit(200_000)
     }
 }
@@ -126,10 +133,16 @@ impl Payload for UniswapV3Payload {
             U256::from(rng.gen_range(min..=max))
         };
 
+        let (input, output) = if rng.random::<bool>() {
+            (self.token_in, self.token_out)
+        } else {
+            (self.token_out, self.token_in)
+        };
+
         let call = IUniswapV3Router::exactInputSingleCall {
             params: IUniswapV3Router::ExactInputSingleParams {
-                tokenIn: self.token_in,
-                tokenOut: self.token_out,
+                tokenIn: input,
+                tokenOut: output,
                 fee: U24::from(self.fee),
                 recipient: to,
                 amountIn: amount,
