@@ -39,12 +39,12 @@ base_metrics::define_metrics! {
 /// Miner API extension for OP, exposes settings for the data availability configuration via the
 /// `miner_` API.
 #[derive(Debug, Clone)]
-pub struct BaseMinerExtApi {
+pub struct OpMinerExtApi {
     da_config: BaseDAConfig,
     gas_limit_config: GasLimitConfig,
 }
 
-impl BaseMinerExtApi {
+impl OpMinerExtApi {
     /// Instantiate the miner API extension with the given, sharable data availability
     /// configuration.
     pub const fn new(da_config: BaseDAConfig, gas_limit_config: GasLimitConfig) -> Self {
@@ -53,7 +53,7 @@ impl BaseMinerExtApi {
 }
 
 #[async_trait]
-impl MinerApiExtServer for BaseMinerExtApi {
+impl MinerApiExtServer for OpMinerExtApi {
     /// Handler for `miner_setMaxDASize` RPC method.
     async fn set_max_da_size(&self, max_tx_size: U64, max_block_size: U64) -> RpcResult<bool> {
         debug!(target: "rpc", max_tx_size = %max_tx_size, max_block_size = %max_block_size, "Setting max DA size");

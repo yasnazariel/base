@@ -1,5 +1,5 @@
 use base_common_consensus::BasePrimitives;
-use base_common_rpc_types_engine::{BasePayloadAttributes, ExecutionData};
+use base_common_rpc_types_engine::ExecutionData;
 use reth_payload_primitives::{BuiltPayload, PayloadTypes};
 use reth_primitives_traits::{Block, NodePrimitives, SealedBlock};
 
@@ -16,8 +16,7 @@ where
 {
     type ExecutionData = ExecutionData;
     type BuiltPayload = OpBuiltPayload<N>;
-    type PayloadAttributes = BasePayloadAttributes;
-    type PayloadBuilderAttributes = OpPayloadBuilderAttributes<N::SignedTx>;
+    type PayloadAttributes = OpPayloadBuilderAttributes<N::SignedTx>;
 
     fn block_to_payload(
         block: SealedBlock<

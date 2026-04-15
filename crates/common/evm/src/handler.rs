@@ -1,5 +1,5 @@
 //! Handler related to Base chain
-use alloc::boxed::Box;
+use alloc::{boxed::Box, vec::Vec};
 
 use revm::{
     context::{
@@ -10,7 +10,7 @@ use revm::{
     context_interface::{
         Block, Cfg, ContextTr, JournalTr, Transaction,
         context::ContextError,
-        result::{EVMError, ExecutionResult, FromStringError},
+        result::{EVMError, ExecutionResult, FromStringError, ResultGas},
     },
     handler::{
         EthFrame, EvmTr, FrameResult, Handler, MainnetHandler,
@@ -304,6 +304,7 @@ where
         &mut self,
         evm: &mut Self::Evm,
         frame_result: <<Self::Evm as EvmTr>::Frame as FrameTr>::FrameResult,
+        result_gas: ResultGas,
     ) -> Result<ExecutionResult<Self::HaltReason>, Self::Error> {
         match core::mem::replace(evm.ctx().error(), Ok(())) {
             Err(ContextError::Db(e)) => return Err(e.into()),
@@ -311,8 +312,8 @@ where
             Ok(_) => (),
         }
 
-        let exec_result =
-            post_execution::output(evm.ctx(), frame_result).map_haltreason(OpHaltReason::Base);
+        let exec_result = post_execution::output(evm.ctx(), frame_result, result_gas)
+            .map_haltreason(OpHaltReason::Base);
 
         if exec_result.is_halt() {
             let is_deposit = evm.ctx().tx().tx_type() == DEPOSIT_TRANSACTION_TYPE;
@@ -364,7 +365,11 @@ where
             let gas_used =
                 if spec.is_enabled_in(OpSpecId::REGOLITH) || !is_system_tx { gas_limit } else { 0 };
             // clear the journal
-            output = Ok(ExecutionResult::Halt { reason: OpHaltReason::FailedDeposit, gas_used })
+            output = Ok(ExecutionResult::Halt {
+                reason: OpHaltReason::FailedDeposit,
+                gas: ResultGas::new(gas_limit, gas_used, 0, 0, 0),
+                logs: Vec::new(),
+            })
         }
 
         // do the cleanup

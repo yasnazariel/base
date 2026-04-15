@@ -7,10 +7,12 @@ use base_common_chains::Upgrades;
 use base_common_consensus::BaseBlock;
 use base_common_rpc_types_engine::{
     BaseExecutionPayloadEnvelopeV3, BaseExecutionPayloadEnvelopeV4, BaseExecutionPayloadEnvelopeV5,
-    BasePayloadAttributes, ExecutionData,
+    ExecutionData,
 };
 use base_execution_consensus::isthmus;
-use base_execution_payload_builder::{BasePayloadTypes, OpExecutionPayloadValidator};
+use base_execution_payload_builder::{
+    BasePayloadTypes, OpExecutionPayloadValidator, OpPayloadBuilderAttributes,
+};
 use base_protocol::Predeploys;
 use reth_consensus::ConsensusError;
 use reth_node_api::{
@@ -37,7 +39,6 @@ impl<T: PayloadTypes<ExecutionData = ExecutionData>> PayloadTypes for OpEngineTy
     type ExecutionData = T::ExecutionData;
     type BuiltPayload = T::BuiltPayload;
     type PayloadAttributes = T::PayloadAttributes;
-    type PayloadBuilderAttributes = T::PayloadBuilderAttributes;
 
     fn block_to_payload(
         block: SealedBlock<
@@ -163,7 +164,7 @@ where
 impl<Types, P, Tx, ChainSpec> EngineApiValidator<Types> for OpEngineValidator<P, Tx, ChainSpec>
 where
     Types: PayloadTypes<
-            PayloadAttributes = BasePayloadAttributes,
+            PayloadAttributes = OpPayloadBuilderAttributes<Tx>,
             ExecutionData = ExecutionData,
             BuiltPayload: BuiltPayload<Primitives: NodePrimitives<SignedTx = Tx>>,
         >,
@@ -204,7 +205,7 @@ where
         validate_version_specific_fields(
             self.chain_spec(),
             version,
-            PayloadOrAttributes::<ExecutionData, BasePayloadAttributes>::PayloadAttributes(
+            PayloadOrAttributes::<ExecutionData, Types::PayloadAttributes>::PayloadAttributes(
                 attributes,
             ),
         )?;
@@ -304,6 +305,8 @@ mod tests {
     use alloy_primitives::{Address, B64, B256, b64};
     use alloy_rpc_types_engine::PayloadAttributes;
     use base_common_chains::ChainConfig;
+    use base_common_consensus::BaseTxEnvelope;
+    use base_common_rpc_types_engine::BasePayloadAttributes;
     use base_execution_chainspec::BASE_SEPOLIA;
     use reth_provider::noop::NoopProvider;
     use reth_trie_common::KeccakKeyHasher;
@@ -323,25 +326,30 @@ mod tests {
         }};
     }
 
-    const fn get_attributes(
+    fn get_attributes(
         eip_1559_params: Option<B64>,
         min_base_fee: Option<u64>,
         timestamp: u64,
-    ) -> BasePayloadAttributes {
-        BasePayloadAttributes {
-            gas_limit: Some(1000),
-            eip_1559_params,
-            min_base_fee,
-            transactions: None,
-            no_tx_pool: None,
-            payload_attributes: PayloadAttributes {
-                timestamp,
-                prev_randao: B256::ZERO,
-                suggested_fee_recipient: Address::ZERO,
-                withdrawals: Some(vec![]),
-                parent_beacon_block_root: Some(B256::ZERO),
+    ) -> OpPayloadBuilderAttributes<BaseTxEnvelope> {
+        OpPayloadBuilderAttributes::try_new(
+            B256::ZERO,
+            BasePayloadAttributes {
+                gas_limit: Some(1000),
+                eip_1559_params,
+                min_base_fee,
+                transactions: None,
+                no_tx_pool: None,
+                payload_attributes: PayloadAttributes {
+                    timestamp,
+                    prev_randao: B256::ZERO,
+                    suggested_fee_recipient: Address::ZERO,
+                    withdrawals: Some(vec![]),
+                    parent_beacon_block_root: Some(B256::ZERO),
+                },
             },
-        }
+            3,
+        )
+        .expect("valid test payload attributes")
     }
 
     #[test]

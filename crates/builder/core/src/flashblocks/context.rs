@@ -7,7 +7,9 @@ use std::{
 use alloy_consensus::{Eip658Value, Transaction};
 use alloy_eips::{Encodable2718, Typed2718};
 use alloy_evm::Database;
-use alloy_primitives::{B256, BlockHash, Bytes, TxHash, U256};
+#[cfg(any(test, feature = "test-utils"))]
+use alloy_primitives::B256;
+use alloy_primitives::{BlockHash, Bytes, TxHash, U256};
 use alloy_rpc_types_eth::Withdrawals;
 use base_access_lists::FBALBuilderDb;
 use base_common_chains::Upgrades;
@@ -15,6 +17,8 @@ use base_common_consensus::{BaseReceipt, BaseTransactionSigned, DepositReceipt, 
 use base_common_evm::{BaseReceiptBuilder, L1BlockInfo, OpSpecId};
 use base_execution_chainspec::BaseChainSpec;
 use base_execution_evm::{BaseEvmConfig, OpNextBlockEnvAttributes};
+#[cfg(any(test, feature = "test-utils"))]
+use base_execution_payload_builder::payload::EthPayloadBuilderAttributes;
 use base_execution_payload_builder::{OpPayloadBuilderAttributes, error::BasePayloadBuilderError};
 use base_execution_txpool::{
     BundleTransaction, TimestampedTransaction, estimated_da_size::DataAvailabilitySized,
@@ -26,9 +30,8 @@ use reth_evm::{
 };
 use reth_node_api::PayloadBuilderError;
 use reth_payload_builder::PayloadId;
-use reth_payload_primitives::PayloadBuilderAttributes;
-use reth_primitives::SealedHeader;
-use reth_primitives_traits::{InMemorySize, SignedTransaction};
+use reth_payload_primitives::PayloadAttributes;
+use reth_primitives_traits::{InMemorySize, SealedHeader, SignedTransaction};
 use reth_revm::{State, context::Block};
 use reth_transaction_pool::{BestTransactionsAttributes, PoolTransaction};
 use revm::{DatabaseCommit, context::result::ResultAndState, interpreter::as_u64_saturated};
@@ -123,9 +126,7 @@ pub struct FlashblockDiagnostics {
     pub txs_rejected_other: u64,
     /// Minimum effective priority fee (tip per gas) among included transactions.
     pub min_priority_fee: Option<u64>,
-    /// Transaction hashes permanently rejected due to per-tx intrinsic limits
-    /// (e.g. tx DA size exceeded, tx execution time exceeded). These will never
-    /// be includable and should be evicted from the pool.
+    /// Transaction hashes permanently rejected due to per-tx intrinsic limits.
     pub permanently_rejected_txs: Vec<TxHash>,
 }
 
@@ -344,7 +345,7 @@ impl OpPayloadBuilderCtx {
     }
 
     /// Returns the block number for the block.
-    pub const fn block_number(&self) -> u64 {
+    pub fn block_number(&self) -> u64 {
         as_u64_saturated!(self.evm_env.block_env.number)
     }
 
@@ -408,7 +409,7 @@ impl OpPayloadBuilderCtx {
 
     /// Returns the unique id for this payload job.
     pub fn payload_id(&self) -> PayloadId {
-        self.attributes().payload_id()
+        self.attributes().payload_id(&self.parent_hash())
     }
 
     /// Returns true if regolith is active for the payload.
@@ -778,10 +779,10 @@ impl OpPayloadBuilderCtx {
 
                     let priority_fee = tx.effective_tip_per_gas(base_fee).unwrap_or(0) as f64;
                     record_rejected_tx_priority_fee(&err, priority_fee);
-
                     if err.is_permanent() {
                         diag.permanently_rejected_txs.push(tx_hash);
                     }
+
                     log_txn(Err(err));
                     best_txs.mark_invalid(tx.signer(), tx.nonce());
                     continue;
@@ -1050,7 +1051,7 @@ impl OpPayloadBuilderCtx {
         let timestamp = parent.timestamp + 2;
 
         let attributes = OpPayloadBuilderAttributes {
-            payload_attributes: reth_payload_builder::EthPayloadBuilderAttributes {
+            payload_attributes: EthPayloadBuilderAttributes {
                 id: PayloadId::new([0; 8]),
                 parent: parent.hash(),
                 timestamp,
@@ -1074,7 +1075,8 @@ impl OpPayloadBuilderCtx {
             .next_evm_env(&parent, &block_env_attributes)
             .expect("failed to create test evm env");
 
-        let config = PayloadConfig::new(parent, attributes);
+        let payload_id = attributes.payload_id(&parent.hash());
+        let config = PayloadConfig::new(parent, attributes, payload_id);
 
         Self {
             evm_config,

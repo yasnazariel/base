@@ -25,9 +25,6 @@ alloy-primitives.workspace = true
 alloy-consensus = { workspace = true, features = ["std"] }
 alloy-rpc-types-eth = { workspace = true, features = ["std"] }
 
-# Reth (optional, behind "reth" feature)
-reth-rpc-convert = { workspace = true, optional = true }
-
 [dev-dependencies]
 rstest.workspace = true
 
@@ -46,4 +43,4 @@ serde = [
 	"base-common-consensus/serde",
 	"base-common-rpc-types/serde",
 ]
-reth = [ "dep:reth-rpc-convert", "std" ]
+reth = [ "std" ]
