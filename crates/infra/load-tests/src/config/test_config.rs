@@ -539,6 +539,12 @@ impl TestConfig {
                 let router = parse_address(router, "uniswap_v3 router")?;
                 let token_in = parse_address(token_in, "uniswap_v3 token_in")?;
                 let token_out = parse_address(token_out, "uniswap_v3 token_out")?;
+                let max_u24: u32 = (1 << 24) - 1;
+                if *fee > max_u24 {
+                    return Err(BaselineError::Config(format!(
+                        "uniswap_v3 fee {fee} exceeds u24 max ({max_u24})"
+                    )));
+                }
                 let min_amount = parse_amount(min_amount, "uniswap_v3 min_amount")?;
                 let max_amount = parse_amount(max_amount, "uniswap_v3 max_amount")?;
                 validate_swap_amounts(min_amount, max_amount, "uniswap_v3")?;
@@ -616,6 +622,17 @@ fn validate_swap_amounts(min: U256, max: U256, tx_type: &str) -> Result<()> {
     if min > max {
         return Err(BaselineError::Config(format!(
             "{tx_type} min_amount ({min}) exceeds max_amount ({max})"
+        )));
+    }
+    let u128_max = U256::from(u128::MAX);
+    if min > u128_max {
+        return Err(BaselineError::Config(format!(
+            "{tx_type} min_amount ({min}) exceeds u128::MAX — swap calls require u128 amounts"
+        )));
+    }
+    if max > u128_max {
+        return Err(BaselineError::Config(format!(
+            "{tx_type} max_amount ({max}) exceeds u128::MAX — swap calls require u128 amounts"
         )));
     }
     Ok(())

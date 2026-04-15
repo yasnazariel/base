@@ -7,11 +7,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-use alloy_network::{Ethereum, EthereumWallet, TransactionBuilder};
+use alloy_network::{Ethereum, EthereumWallet, ReceiptResponse, TransactionBuilder};
 use alloy_primitives::{Address, Bytes, TxHash, U256, utils::format_ether};
 use alloy_provider::{Provider, RootProvider};
 use alloy_rpc_types::TransactionRequest;
 use alloy_signer_local::PrivateKeySigner;
+use alloy_sol_types::{SolCall, sol};
 use base_tx_manager::NonceManager;
 use futures::stream::{self, StreamExt};
 use indicatif::{ProgressBar, ProgressStyle};
@@ -568,7 +569,7 @@ impl LoadRunner {
     }
 
     /// Collects unique token addresses from configured swap transaction types.
-    fn collect_swap_tokens(&self) -> Vec<Address> {
+    pub fn collect_swap_tokens(&self) -> Vec<Address> {
         let mut tokens = std::collections::HashSet::new();
         for tx_config in &self.config.transactions {
             match &tx_config.tx_type {
@@ -632,16 +633,36 @@ impl LoadRunner {
         let sender_addresses: Vec<Address> =
             self.accounts.accounts().iter().map(|a| a.address).collect();
         let total_txs = tokens.len() * sender_addresses.len();
+
+        // Pre-flight balance check — abort before sending any TXs if the funder
+        // cannot cover the total gas cost for all token transfers.
+        let gas_cost_per_tx = U256::from(65_000u64).saturating_mul(U256::from(max_fee));
+        let total_gas_cost = gas_cost_per_tx.saturating_mul(U256::from(total_txs));
+        let funder_balance = self.client.get_balance(funder_address).await?;
+
+        if funder_balance < total_gas_cost {
+            let shortfall = total_gas_cost.saturating_sub(funder_balance);
+            return Err(BaselineError::Transaction(format!(
+                "funder {} has insufficient balance for token distribution: has {} ETH, needs {} ETH (gas for {} txs), shortfall {} ETH",
+                funder_address,
+                format_ether(funder_balance),
+                format_ether(total_gas_cost),
+                total_txs,
+                format_ether(shortfall),
+            )));
+        }
+
         let pb = self.progress_bar(total_txs as u64, "Distributing tokens");
+        let mut failed_count: usize = 0;
+        let token_count = tokens.len();
 
-        for token in &tokens {
-            let mut pending_txs: Vec<(TxHash, Address)> = Vec::new();
-
-            for chunk in sender_addresses.chunks(FUNDING_BATCH_SIZE) {
-                let send_futs = chunk.iter().map(|&sender| {
+        for token in tokens {
+            let txs: Vec<(TransactionRequest, Address)> = sender_addresses
+                .iter()
+                .map(|&sender| {
                     let transfer_data = Self::encode_erc20_transfer(sender, amount_per_token);
                     let tx = TransactionRequest::default()
-                        .with_to(*token)
+                        .with_to(token)
                         .with_input(transfer_data)
                         .with_nonce(nonce)
                         .with_chain_id(chain_id)
@@ -649,7 +670,16 @@ impl LoadRunner {
                         .with_max_fee_per_gas(max_fee)
                         .with_max_priority_fee_per_gas(max_priority_fee);
                     nonce += 1;
+                    (tx, sender)
+                })
+                .collect();
 
+            let mut txs_remaining = txs.into_iter().peekable();
+            while txs_remaining.peek().is_some() {
+                let batch: Vec<_> = txs_remaining.by_ref().take(FUNDING_BATCH_SIZE).collect();
+                let mut pending_txs: Vec<(TxHash, Address)> = Vec::new();
+
+                let send_futs = batch.into_iter().map(|(tx, sender)| {
                     let provider = Arc::clone(&funder_provider);
                     async move {
                         let result = provider.send_transaction(tx).await;
@@ -668,30 +698,34 @@ impl LoadRunner {
                         }
                         Err(e) => {
                             warn!(token = %token, to = %sender, error = %e, "token transfer failed");
+                            failed_count += 1;
                         }
                     }
                 }
 
                 Self::await_confirmations(&self.client, &mut pending_txs, &pb).await?;
-                pending_txs.clear();
             }
 
             info!(token = %token, recipients = sender_addresses.len(), "token distribution complete");
         }
 
         pb.finish_and_clear();
-        info!(tokens = tokens.len(), total_transfers = total_txs, "swap token setup complete");
+
+        if failed_count > 0 {
+            return Err(BaselineError::Transaction(format!(
+                "{failed_count}/{total_txs} token transfers failed — senders with missing tokens will revert on swap"
+            )));
+        }
+
+        info!(tokens = token_count, total_transfers = total_txs, "swap token setup complete");
         Ok(())
     }
 
     fn encode_erc20_transfer(to: Address, amount: U256) -> Bytes {
-        let mut data = Vec::with_capacity(68);
-        // transfer(address,uint256) selector: 0xa9059cbb
-        data.extend_from_slice(&[0xa9, 0x05, 0x9c, 0xbb]);
-        data.extend_from_slice(&[0u8; 12]);
-        data.extend_from_slice(to.as_slice());
-        data.extend_from_slice(&amount.to_be_bytes::<32>());
-        Bytes::from(data)
+        sol! {
+            function transfer(address to, uint256 amount) external returns (bool);
+        }
+        Bytes::from(transferCall { to, amount }.abi_encode())
     }
 
     /// Runs the load test and returns metrics summary.
@@ -1325,8 +1359,12 @@ impl LoadRunner {
             let mut still_pending = Vec::new();
             for (tx_hash, address, receipt) in receipts {
                 match receipt {
-                    Ok(Some(_)) => {
-                        debug!(tx_hash = %tx_hash, address = %address, "tx confirmed");
+                    Ok(Some(r)) => {
+                        if r.status() {
+                            debug!(tx_hash = %tx_hash, address = %address, "tx confirmed");
+                        } else {
+                            warn!(tx_hash = %tx_hash, address = %address, "tx reverted");
+                        }
                         pb.inc(1);
                     }
                     Ok(None) => {

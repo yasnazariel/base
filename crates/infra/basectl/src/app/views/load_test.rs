@@ -71,6 +71,8 @@ enum RunPhase {
     Bootstrap,
     /// Distributing ETH from the funder wallet to each sender account.
     Funding,
+    /// Distributing swap tokens to each sender account.
+    TokenDistribution,
     Running,
     Draining,
 }
@@ -482,7 +484,6 @@ impl LoadTestView {
         let continuous_for_task = Arc::clone(&continuous_flag);
 
         let task_handle = tokio::spawn(async move {
-            // Fetch chain_id from the network's RPC — required for transaction signing.
             let client = RpcClient::new(cfg.rpc.clone());
             let chain_id = client.chain_id().await.ok();
 
@@ -502,7 +503,14 @@ impl LoadTestView {
                 }
             };
 
-            // Capture before load_config is consumed by LoadRunner::new.
+            let swap_token_amount = match cfg.parse_swap_token_amount() {
+                Ok(a) => a,
+                Err(e) => {
+                    let _ = done_tx.send(Err(e.to_string())).await;
+                    return;
+                }
+            };
+
             let chain_id_val = load_config.chain_id;
             let max_gas_price = load_config.max_gas_price;
             let sender_count = cfg.sender_count;
@@ -520,7 +528,6 @@ impl LoadTestView {
 
             let is_local = is_local_rpc(&cfg.rpc);
 
-            // Resolve funder: explicit override > $FUNDER_KEY env var > devnet auto-select.
             let funder =
                 if let Ok(f) = TestConfig::resolve_funder_key(funder_key_override.as_deref()) {
                     Some(f)
@@ -534,6 +541,7 @@ impl LoadTestView {
                 runner.set_funder_address(funder.address().to_string());
             }
 
+            let has_swap_tokens = !runner.collect_swap_tokens().is_empty();
             let mut current_run = run_count;
             let mut last_result: Result<MetricsSummary, String>;
 
@@ -541,9 +549,6 @@ impl LoadTestView {
                 let _ = run_count_tx.send(current_run);
 
                 if let Some(ref funder) = funder {
-                    // On local devnets, top up the funder from Hardhat reserve accounts if
-                    // needed. This runs each iteration so the funder stays topped up over long
-                    // continuous sessions.
                     if is_local {
                         let _ = phase_tx.send(RunPhase::Bootstrap);
                         if let Err(e) = ensure_funder_balance(
@@ -557,8 +562,6 @@ impl LoadTestView {
                         )
                         .await
                         {
-                            // Non-fatal: fund_accounts will surface a clearer error if truly
-                            // short.
                             let _ =
                                 done_tx.send(Err(format!("devnet bootstrap failed: {e}"))).await;
                             return;
@@ -572,15 +575,19 @@ impl LoadTestView {
                     }
                 }
 
+                if has_swap_tokens && let Some(funder) = funder.clone() {
+                    let _ = phase_tx.send(RunPhase::TokenDistribution);
+                    let fut = runner.setup_swap_tokens(funder, swap_token_amount);
+                    if let Err(e) = Box::pin(fut).await {
+                        let _ = done_tx.send(Err(format!("token distribution failed: {e}"))).await;
+                        return;
+                    }
+                }
+
                 let _ = phase_tx.send(RunPhase::Running);
                 let result = runner.run().await;
-                // run() always sets stop_flag=true on exit to signal the confirmer.
-                // Reset it here so the next iteration's run() starts clean, and so
-                // the break condition below only fires on a user-initiated stop
-                // (which stores false into continuous_for_task via stop_run()).
                 stop_flag_for_runner.store(false, Ordering::SeqCst);
 
-                // Drain accounts back to funder regardless of run outcome.
                 if let Some(ref funder) = funder {
                     let _ = phase_tx.send(RunPhase::Draining);
                     runner.drain_accounts(funder.clone()).await.ok();
@@ -1286,6 +1293,7 @@ fn render_running_status(
     let (phase_icon, phase_label, phase_color) = match phase {
         RunPhase::Bootstrap => ("⟳", " BOOTSTRAPPING", Color::Cyan),
         RunPhase::Funding => ("⟳", " FUNDING", Color::Yellow),
+        RunPhase::TokenDistribution => ("⟳", " DISTRIBUTING TOKENS", Color::Yellow),
         RunPhase::Running => ("▶", " RUNNING", Color::Green),
         RunPhase::Draining => ("⟳", " DRAINING", Color::Yellow),
     };
@@ -1330,6 +1338,7 @@ fn render_running_status(
         let msg = match phase {
             RunPhase::Bootstrap => "  Topping up funder from devnet reserves…",
             RunPhase::Funding => "  Funding sender accounts…",
+            RunPhase::TokenDistribution => "  Distributing swap tokens to senders…",
             RunPhase::Draining => "  Draining sender accounts…",
             RunPhase::Running => unreachable!(),
         };

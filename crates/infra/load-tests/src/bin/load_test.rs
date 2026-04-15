@@ -146,7 +146,7 @@ async fn run_load_test(args: Vec<String>) -> Result<()> {
     runner.fund_accounts(funding_key.clone(), funding_amount).await?;
     println!("Accounts funded.");
 
-    if !swap_token_amount.is_zero() {
+    if !runner.collect_swap_tokens().is_empty() {
         println!("Distributing swap tokens...");
         runner.setup_swap_tokens(funding_key.clone(), swap_token_amount).await?;
         println!("Swap tokens distributed.");
