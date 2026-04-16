@@ -6,7 +6,7 @@ use std::{
 };
 
 use alloy_consensus::{BlockHeader, Header, Sealed};
-use alloy_eips::{BlockId, eip1898::BlockNumberOrTag};
+use alloy_eips::{BlockId, eip1898::BlockNumberOrTag, eip2718::Encodable2718};
 use alloy_genesis::{Genesis, GenesisAccount};
 use alloy_network::{Ethereum, Network};
 use alloy_primitives::{Address, B256, BlockHash, StorageKey, U256};
@@ -21,7 +21,7 @@ use alloy_rpc_types_eth::{
 };
 use alloy_transport::{TransportError, TransportErrorKind, TransportResult};
 use async_trait::async_trait;
-use base_common_consensus::BasePrimitives;
+use base_common_consensus::{BaseBlock, BasePrimitives};
 use base_common_network::Base;
 use base_common_provider::BaseEngineApi;
 use base_common_rpc_types::Transaction as BaseTransaction;
@@ -492,6 +492,76 @@ impl ActionEngineClient {
         let hdr = block.header();
         let state_root = hdr.state_root();
         let block_hash = block.hash();
+
+        if let Some(expected_root) = self.block_registry.get_state_root(block_number) {
+            assert_eq!(
+                state_root, expected_root,
+                "state root mismatch at block {block_number}: computed={state_root}, expected={expected_root}",
+            );
+        }
+
+        self.block_registry.insert(block_number, block_hash, Some(state_root));
+        guard.executed_headers.insert(block_number, hdr.clone());
+        Ok(block_hash)
+    }
+
+    /// Execute a fully-formed [`BaseBlock`] through the production engine, returning the block hash.
+    ///
+    /// Unlike [`execute_from_attrs`], this method extracts all necessary fields directly from the
+    /// block (including `parent_beacon_block_root`), making it suitable for follow-node tests where
+    /// only the completed block is available rather than the original attributes.
+    ///
+    /// If this block number was already executed (e.g. pre-built by a co-located sequencer), the
+    /// stored block hash is returned immediately without re-executing.
+    ///
+    /// [`execute_from_attrs`]: ActionEngineClient::execute_from_attrs
+    pub fn execute_block(&self, block: &BaseBlock) -> TransportResult<B256> {
+        let mut guard = self.inner.lock().expect("action engine inner lock poisoned");
+
+        let block_number = block.header.number;
+
+        // Skip re-execution if already committed (e.g. pre-built by sequencer sharing this client).
+        if let Some(existing) = guard.executed_headers.get(&block_number) {
+            return Ok(existing.hash_slow());
+        }
+
+        // Encode all transactions to their EIP-2718 wire format.
+        let txs: Vec<alloy_primitives::Bytes> = block
+            .body
+            .transactions
+            .iter()
+            .map(|tx| {
+                let mut buf = Vec::new();
+                tx.encode_2718(&mut buf);
+                alloy_primitives::Bytes::from(buf)
+            })
+            .collect();
+
+        let attrs = BasePayloadAttributes {
+            payload_attributes: alloy_rpc_types_engine::PayloadAttributes {
+                timestamp: block.header.timestamp,
+                prev_randao: block.header.mix_hash,
+                suggested_fee_recipient: block.header.beneficiary,
+                // Withdrawals are always empty on OP Stack — EIP-4895 is enabled but the
+                // system never produces real withdrawals.
+                withdrawals: Some(vec![]),
+                parent_beacon_block_root: block.header.parent_beacon_block_root,
+            },
+            transactions: Some(txs),
+            no_tx_pool: Some(true),
+            gas_limit: Some(block.header.gas_limit),
+            // eip_1559_params and min_base_fee are Holocene/Jovian fields. The default harness
+            // config only activates up to Fjord, so None/Some(0) are correct defaults. Tests
+            // that need post-Holocene blocks should extend this as needed.
+            eip_1559_params: None,
+            min_base_fee: Some(0),
+        };
+
+        let built = Self::build_and_commit(&mut guard, block.header.parent_hash, attrs)?;
+        let built_block = built.block();
+        let hdr = built_block.header();
+        let state_root = hdr.state_root();
+        let block_hash = built_block.hash();
 
         if let Some(expected_root) = self.block_registry.get_state_root(block_number) {
             assert_eq!(

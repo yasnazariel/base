@@ -50,3 +50,6 @@ pub use node::{
     ActionPipeline, BlobVerifierPipeline, DerivedBlock, NodeStepResult, TestRollupNode,
     VerifierError, VerifierPipeline,
 };
+
+mod follow_node;
+pub use follow_node::{ActionL2SourceBridge, TestFollowNode};

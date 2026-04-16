@@ -10,9 +10,9 @@ use base_protocol::{BlockInfo, L1BlockInfoTx, L2BlockInfo};
 
 use crate::{
     ActionBlobDataSource, ActionDataSource, ActionEngineClient, ActionL1ChainProvider,
-    ActionL2ChainProvider, ActionL2Source, ActionPipeline, BlobVerifierPipeline, L1Miner,
-    L1MinerConfig, L2Sequencer, SharedL1Chain, TestGossipTransport, TestRollupNode,
-    VerifierPipeline, block_info_from,
+    ActionL2ChainProvider, ActionL2Source, ActionL2SourceBridge, ActionPipeline,
+    BlobVerifierPipeline, L1Miner, L1MinerConfig, L2Sequencer, SharedL1Chain, TestFollowNode,
+    TestGossipTransport, TestRollupNode, VerifierPipeline, block_info_from,
 };
 
 /// Top-level test harness that owns all actors for a single action test.
@@ -295,6 +295,35 @@ impl ActionTestHarness {
             rollup_config,
             l2_provider,
         )
+    }
+
+    /// Create a [`TestFollowNode`] wired to a sequencer's block-hash registry.
+    ///
+    /// The follow node shares the sequencer's [`SharedBlockHashRegistry`] so that
+    /// state-root validation in `execute_v1_inner` passes: the sequencer populates
+    /// state roots as it builds blocks; the follow node asserts them when it
+    /// re-executes.
+    ///
+    /// The returned node and an empty [`ActionL2SourceBridge`] are returned together.
+    /// Push sequencer blocks into the bridge and then call [`TestFollowNode::sync_up_to`].
+    ///
+    /// [`SharedBlockHashRegistry`]: crate::SharedBlockHashRegistry
+    pub fn create_test_follow_node(
+        &self,
+        sequencer: &L2Sequencer,
+        l1_chain: SharedL1Chain,
+    ) -> (TestFollowNode, ActionL2SourceBridge) {
+        let rollup_config = Arc::new(self.rollup_config.clone());
+        let genesis_head = self.l2_genesis();
+        let source = ActionL2SourceBridge::new();
+        let engine = ActionEngineClient::new(
+            Arc::clone(&rollup_config),
+            genesis_head,
+            sequencer.block_hash_registry(),
+            l1_chain,
+        );
+        let node = TestFollowNode::new(engine, source.clone(), genesis_head, rollup_config);
+        (node, source)
     }
 
     /// Decode the [`L1BlockInfoTx`] from the first deposit transaction of an
