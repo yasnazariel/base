@@ -25,7 +25,7 @@ pub use actors::{
     DerivationError, DerivationState, DerivationStateMachine, DerivationStateTransitionError,
     DerivationStateUpdate, EngineActor, EngineActorRequest, EngineClientError, EngineClientResult,
     EngineConfig, EngineDerivationClient, EngineError, EngineProcessingRequest, EngineProcessor,
-    EngineRequestReceiver, EngineRpcProcessor, EngineRpcRequest, EngineRpcRequestReceiver,
+    EngineQueryActor, EngineRequestReceiver, EngineRpcRequest,
     GetPayloadRequest, GossipTransport, L1BlockFetcher, L1OriginSelector, L1OriginSelectorError,
     L1OriginSelectorProvider, L1WatcherActor, L1WatcherActorError, L1WatcherDerivationClient,
     L2Finalizer, L2SourceClient, LogRetrier, NetworkActor, NetworkActorError, NetworkBuilder,

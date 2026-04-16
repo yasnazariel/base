@@ -12,10 +12,9 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     AlloyL1BlockFetcher, BlockStream, DelegateL2Client, DelegateL2DerivationActor, EngineActor,
-    EngineActorRequest, EngineConfig, EngineProcessor, EngineRpcProcessor,
-    EngineRpcRequestReceiver, L1Config, L1WatcherActor, NodeActor, QueuedDerivationEngineClient,
-    QueuedEngineDerivationClient, QueuedEngineRpcClient, QueuedL1WatcherDerivationClient, RpcActor,
-    RpcContext, service::node::HEAD_STREAM_POLL_INTERVAL,
+    EngineActorRequest, EngineConfig, EngineProcessor, EngineQueryActor, L1Config, L1WatcherActor,
+    NodeActor, QueuedDerivationEngineClient, QueuedEngineDerivationClient, QueuedEngineRpcClient,
+    QueuedL1WatcherDerivationClient, RpcActor, RpcContext, service::node::HEAD_STREAM_POLL_INTERVAL,
 };
 
 /// A lightweight node that follows another L2 node by polling its execution
@@ -76,7 +75,7 @@ impl FollowNode {
         cancellation_token: CancellationToken,
         engine_request_rx: mpsc::Receiver<EngineActorRequest>,
         derivation_client: QueuedEngineDerivationClient,
-    ) -> (EngineActor<EngineProcessor<E, QueuedEngineDerivationClient>>, EngineRpcProcessor<E>) {
+    ) -> (EngineActor<EngineProcessor<E, QueuedEngineDerivationClient>>, EngineQueryActor<E>) {
         let engine_state = EngineState::default();
         let (engine_state_tx, engine_state_rx) = watch::channel(engine_state);
         let (engine_queue_length_tx, engine_queue_length_rx) = watch::channel(0);
@@ -92,11 +91,12 @@ impl FollowNode {
             false, // sequencer_stopped irrelevant for validator/follow mode
         );
 
-        let engine_rpc_processor = EngineRpcProcessor::new(
+        let engine_query_actor = EngineQueryActor::new(
             Arc::clone(&engine_client),
             Arc::clone(&self.config),
             engine_state_rx,
             engine_queue_length_rx,
+            cancellation_token.clone(),
         );
 
         let engine_actor = EngineActor::new(
@@ -105,7 +105,7 @@ impl FollowNode {
             engine_processor,
         );
 
-        (engine_actor, engine_rpc_processor)
+        (engine_actor, engine_query_actor)
     }
 
     /// Starts the follow node.
@@ -134,14 +134,12 @@ impl FollowNode {
         let (engine_actor_request_tx, engine_actor_request_rx) = mpsc::channel(1024);
         let (engine_rpc_tx, engine_rpc_rx) = mpsc::channel(1024);
 
-        let (engine_actor, engine_rpc_processor) = self.create_engine_actor(
+        let (engine_actor, engine_query_actor) = self.create_engine_actor(
             engine_client,
             cancellation.clone(),
             engine_actor_request_rx,
             QueuedEngineDerivationClient::new(derivation_actor_request_tx.clone()),
         );
-
-        let _engine_rpc_handle = engine_rpc_processor.start(engine_rpc_rx);
 
         let derivation = DelegateL2DerivationActor::<_>::new(
             QueuedDerivationEngineClient {
@@ -206,6 +204,7 @@ impl FollowNode {
                 )),
                 Some((derivation, ())),
                 Some((engine_actor, ())),
+                Some((engine_query_actor, engine_rpc_rx)),
                 Some((l1_watcher, ())),
             ]
         );

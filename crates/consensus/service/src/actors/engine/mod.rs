@@ -25,5 +25,5 @@ pub use engine_request_processor::{
     BootstrapRole, EngineProcessingRequest, EngineProcessor, EngineRequestReceiver,
 };
 
-mod rpc_request_processor;
-pub use rpc_request_processor::{EngineRpcProcessor, EngineRpcRequestReceiver};
+mod engine_query_actor;
+pub use engine_query_actor::EngineQueryActor;

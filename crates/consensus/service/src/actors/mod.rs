@@ -11,8 +11,8 @@ pub use engine::MockEngineDerivationClient;
 pub use engine::{
     BootstrapRole, BuildRequest, EngineActor, EngineActorRequest, EngineClientError,
     EngineClientResult, EngineConfig, EngineDerivationClient, EngineError, EngineProcessingRequest,
-    EngineProcessor, EngineRequestReceiver, EngineRpcProcessor, EngineRpcRequest,
-    EngineRpcRequestReceiver, GetPayloadRequest, QueuedEngineDerivationClient, ResetRequest,
+    EngineProcessor, EngineQueryActor, EngineRequestReceiver, EngineRpcRequest,
+    GetPayloadRequest, QueuedEngineDerivationClient, ResetRequest,
     SealRequest,
 };
 
