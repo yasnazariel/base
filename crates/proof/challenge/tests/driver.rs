@@ -50,7 +50,7 @@ fn game_state(l2_block_number: u64) -> MockGameState {
 }
 
 fn empty_verifier() -> Arc<MockAggregateVerifier> {
-    Arc::new(MockAggregateVerifier { games: HashMap::new() })
+    Arc::new(MockAggregateVerifier::new(HashMap::new()))
 }
 
 /// Builds a test driver with the given mocks.
@@ -118,7 +118,7 @@ fn single_game_factory() -> Arc<MockDisputeGameFactory> {
 }
 
 fn single_game_verifier(state: MockGameState) -> Arc<MockAggregateVerifier> {
-    Arc::new(MockAggregateVerifier { games: HashMap::from([(addr(0), state)]) })
+    Arc::new(MockAggregateVerifier::new(HashMap::from([(addr(0), state)])))
 }
 
 fn tee_config(
@@ -275,7 +275,7 @@ async fn test_step_invalid_game_proof_succeeded() {
 
     let tx_manager = default_tx_manager();
 
-    let mut driver = test_driver(factory, verifier, l2, zk, tx_manager);
+    let mut driver = test_driver(factory, Arc::clone(&verifier), l2, zk, tx_manager);
 
     // Step 1: proof initiated, not yet polled.
     driver.step().await.unwrap();
@@ -283,6 +283,9 @@ async fn test_step_invalid_game_proof_succeeded() {
         driver.pending_proofs.contains_key(&addr(0)),
         "proof should be pending after initiation"
     );
+
+    // Simulate the on-chain effect of a successful challenge: game is resolved.
+    verifier.update_game(addr(0), MockGameState { status: 1, ..game_state(20) });
 
     // Step 2: proof polled → Succeeded → nullification submitted → entry removed.
     driver.step().await.unwrap();
@@ -406,7 +409,7 @@ async fn test_step_pending_proof_skips_prove_block() {
 
     let tx_manager = default_tx_manager();
 
-    let mut driver = test_driver(factory, verifier, l2, Arc::clone(&zk), tx_manager);
+    let mut driver = test_driver(factory, Arc::clone(&verifier), l2, Arc::clone(&zk), tx_manager);
 
     // Step 1: proof is initiated but not ready (Unspecified) → session stored.
     driver.step().await.unwrap();
@@ -417,6 +420,9 @@ async fn test_step_pending_proof_skips_prove_block() {
 
     // Simulate the proof completing before the next poll.
     zk.state.lock().unwrap().proof_status = ProofJobStatus::Succeeded as i32;
+
+    // Simulate the on-chain effect: game is resolved after challenge tx.
+    verifier.update_game(addr(0), MockGameState { status: 1, ..game_state(20) });
 
     // Step 2: same game re-discovered → polls existing session, proof succeeds,
     // challenge tx submitted, session removed from pending_proofs.
@@ -439,7 +445,7 @@ async fn test_step_nullification_failure_preserves_proof() {
         Ok(receipt_with_status(true, DEFAULT_TX_HASH)),
     ]);
 
-    let mut driver = test_driver(factory, verifier, l2, zk, tx_manager);
+    let mut driver = test_driver(factory, Arc::clone(&verifier), l2, zk, tx_manager);
 
     // Step 1: proof initiated but not yet polled.
     driver.step().await.unwrap();
@@ -454,6 +460,9 @@ async fn test_step_nullification_failure_preserves_proof() {
     // Entry must still be in pending_proofs as ReadyToSubmit.
     let entry = driver.pending_proofs.get(&addr(0)).expect("proof should be preserved");
     assert!(entry.is_ready(), "phase should be ReadyToSubmit after tx failure");
+
+    // Simulate the on-chain effect of a successful challenge: game is resolved.
+    verifier.update_game(addr(0), MockGameState { status: 1, ..game_state(20) });
 
     // Step 3: poll_pending_proofs re-submits the challenge tx, now it succeeds.
     driver.step().await.unwrap();
@@ -529,7 +538,7 @@ async fn test_step_proof_retry_succeeds() {
 
     let tx_manager = default_tx_manager();
 
-    let mut driver = test_driver(factory, verifier, l2, Arc::clone(&zk), tx_manager);
+    let mut driver = test_driver(factory, Arc::clone(&verifier), l2, Arc::clone(&zk), tx_manager);
 
     // Step 1: proof initiated, not yet polled.
     driver.step().await.unwrap();
@@ -551,6 +560,9 @@ async fn test_step_proof_retry_succeeds() {
     // Simulate proof succeeding on the retry session.
     zk.state.lock().unwrap().proof_status = ProofJobStatus::Succeeded as i32;
 
+    // Simulate the on-chain effect of a successful challenge: game is resolved.
+    verifier.update_game(addr(0), MockGameState { status: 1, ..game_state(20) });
+
     // Step 3: proof succeeds, challenge tx submitted, entry removed.
     driver.step().await.unwrap();
     assert!(
@@ -566,7 +578,7 @@ async fn test_step_proof_exceeds_max_retries() {
     let zk = failed_zk_prover("fail-forever");
 
     let tx_manager = default_tx_manager();
-    let mut driver = test_driver(factory, verifier, l2, zk, tx_manager);
+    let mut driver = test_driver(factory, Arc::clone(&verifier), l2, zk, tx_manager);
 
     // Step 1: proof initiated, not yet polled.
     driver.step().await.unwrap();
@@ -582,6 +594,10 @@ async fn test_step_proof_exceeds_max_retries() {
         let entry = driver.pending_proofs.get(&addr(0)).expect("entry should exist during retries");
         assert_eq!(entry.retry_count, i + 1);
     }
+
+    // Simulate the on-chain effect: mark the game as resolved so the
+    // stateless scanner does not re-discover it after the entry is dropped.
+    verifier.update_game(addr(0), MockGameState { status: 1, ..game_state(20) });
 
     // One more step: poll returns Failed → retry_count becomes max_retries + 1,
     // handle_proof_retry sees retry_count > MAX_PROOF_RETRIES and drops the entry.
@@ -649,7 +665,7 @@ async fn test_step_invalid_game_tee_fails_zk_succeeds() {
 
     let mut driver = test_driver_with_tee(
         factory,
-        verifier,
+        Arc::clone(&verifier),
         l2,
         zk,
         tx_manager,
@@ -663,6 +679,9 @@ async fn test_step_invalid_game_tee_fails_zk_succeeds() {
         driver.pending_proofs.contains_key(&addr(0)),
         "ZK proof should be pending after TEE fallback"
     );
+
+    // Simulate the on-chain effect of a successful challenge: game is resolved.
+    verifier.update_game(addr(0), MockGameState { status: 1, ..game_state(20) });
 
     // Step 2: proof polled → Succeeded → challenge tx submitted → entry removed.
     driver.step().await.unwrap();
@@ -887,6 +906,144 @@ async fn test_step_valid_zk_proposal_skipped() {
     driver.step().await.unwrap();
 
     assert!(driver.pending_proofs.is_empty(), "valid ZK proposal should not trigger any proof");
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Dual-proof games: both TEE and ZK proofs verified (no challenge)
+// ──────────────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_step_dual_proof_invalid_without_tee_config_falls_back_to_zk_nullify() {
+    // A game with both TEE and ZK proofs verified (via verifyProposalProof,
+    // not challenge) where the output roots are invalid and no TEE config is
+    // available should fall back to a ZK proof with DisputeIntent::Nullify.
+    let (l2, factory, root_15, _root_20) = base_game_mocks();
+
+    let verifier = single_game_verifier(MockGameState {
+        tee_prover: DEFAULT_TEE_PROVER,
+        zk_prover: ZK_PROVER_ADDR,
+        intermediate_output_roots: vec![root_15, BOGUS_ROOT],
+        ..game_state(20)
+    });
+
+    let mut driver = test_driver(factory, verifier, l2, default_zk_prover(), default_tx_manager());
+    driver.step().await.unwrap();
+
+    let entry = driver
+        .pending_proofs
+        .get(&addr(0))
+        .expect("ZK nullification proof should be pending for dual-proof game");
+    assert_eq!(
+        entry.intent,
+        DisputeIntent::Nullify,
+        "dual-proof game without TEE config should fall back to ZK Nullify"
+    );
+}
+
+#[tokio::test]
+async fn test_step_dual_proof_invalid_with_tee_config_nullifies_tee_first() {
+    // A game with both TEE and ZK proofs verified where output roots are
+    // invalid and a TEE config is available should attempt TEE nullification
+    // first (fast path). After TEE nullification the game will be rescanned
+    // as InvalidZkProposal on the next tick.
+    let (l2, factory, root_15, root_20) = base_game_mocks();
+
+    let verifier = single_game_verifier(MockGameState {
+        tee_prover: DEFAULT_TEE_PROVER,
+        zk_prover: ZK_PROVER_ADDR,
+        intermediate_output_roots: vec![root_15, BOGUS_ROOT],
+        ..game_state(20)
+    });
+
+    let l1_head = Arc::new(MockL1HeadProvider::success(DEFAULT_L1_HEAD, 100));
+
+    let aggregate_proposal = Proposal {
+        output_root: root_20,
+        signature: Bytes::from(vec![0u8; 65]),
+        l1_origin_hash: DEFAULT_L1_HEAD,
+        l1_origin_number: 1000,
+        l2_block_number: 20,
+        prev_output_root: root_15,
+        config_hash: B256::ZERO,
+    };
+    let tee_provider = Arc::new(MockTeeProofProvider::success(ProofResult::Tee {
+        aggregate_proposal,
+        proposals: vec![],
+    }));
+
+    let tx_manager = default_tx_manager();
+
+    let mut driver = test_driver_with_tee(
+        factory,
+        verifier,
+        l2,
+        default_zk_prover(),
+        tx_manager,
+        Some(tee_config(tee_provider, l1_head)),
+    );
+
+    driver.step().await.unwrap();
+
+    // TEE proof was submitted synchronously; no pending ZK proof should remain.
+    assert!(
+        !driver.pending_proofs.contains_key(&addr(0)),
+        "TEE proof should have been submitted directly for dual-proof game"
+    );
+}
+
+#[tokio::test]
+async fn test_step_dual_proof_valid_skipped() {
+    // A game with both TEE and ZK proofs verified where output roots are
+    // valid should not trigger any action.
+    let factory = single_game_factory();
+    let verifier = single_game_verifier(MockGameState {
+        tee_prover: DEFAULT_TEE_PROVER,
+        zk_prover: ZK_PROVER_ADDR,
+        ..game_state(14)
+    });
+    let l2 = default_l2();
+
+    let mut driver = test_driver(factory, verifier, l2, default_zk_prover(), default_tx_manager());
+    driver.step().await.unwrap();
+
+    assert!(driver.pending_proofs.is_empty(), "valid dual-proof game should not trigger any proof");
+}
+
+#[tokio::test]
+async fn test_step_dual_proof_tee_fails_falls_back_to_zk_nullify() {
+    // A dual-proof game where the TEE proof fails should fall back to ZK
+    // with DisputeIntent::Nullify (not Challenge).
+    let (l2, factory, root_15, _root_20) = base_game_mocks();
+
+    let verifier = single_game_verifier(MockGameState {
+        tee_prover: DEFAULT_TEE_PROVER,
+        zk_prover: ZK_PROVER_ADDR,
+        intermediate_output_roots: vec![root_15, BOGUS_ROOT],
+        ..game_state(20)
+    });
+
+    let tee = Arc::new(MockTeeProofProvider::failure("enclave unreachable"));
+
+    let mut driver = test_driver_with_tee(
+        factory,
+        verifier,
+        l2,
+        default_zk_prover(),
+        default_tx_manager(),
+        Some(tee_config(tee, Arc::new(MockL1HeadProvider::failure("dummy")))),
+    );
+
+    driver.step().await.unwrap();
+
+    let entry = driver
+        .pending_proofs
+        .get(&addr(0))
+        .expect("ZK proof should be pending after TEE fallback for dual-proof game");
+    assert_eq!(
+        entry.intent,
+        DisputeIntent::Nullify,
+        "dual-proof TEE fallback must use Nullify intent, not Challenge"
+    );
 }
 
 // ──────────────────────────────────────────────────────────────────────────
