@@ -20,8 +20,8 @@ base_metrics::define_metrics! {
     s3_put_duration: histogram,
     #[describe("Total events processed")]
     events_processed: counter,
-    #[describe("Total S3 writes skipped due to dedup")]
-    s3_writes_skipped: counter,
+    #[describe("S3 write-once conflicts (412/409, expected under duplication)")]
+    s3_write_conflicts: counter,
     #[describe("Number of in-flight archive tasks")]
     in_flight_archive_tasks: gauge,
     #[describe("Number of failed archive tasks")]

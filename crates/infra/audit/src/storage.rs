@@ -1,4 +1,11 @@
-use std::{fmt, fmt::Debug, time::Instant};
+//! S3-backed storage for audit events using write-once semantics.
+//!
+//! Each audit event is stored as a separate S3 object keyed by
+//! `bundles/{bundle_id}/{event_key}.json`. Duplicate writes are
+//! rejected atomically by S3 via `If-None-Match: *` (HTTP 412),
+//! eliminating the need for read-modify-write retry loops.
+
+use std::{fmt, time::Instant};
 
 use alloy_primitives::TxHash;
 use anyhow::Result;
@@ -10,7 +17,7 @@ use aws_sdk_s3::{
 use base_bundles::AcceptedBundle;
 use futures::future;
 use serde::{Deserialize, Serialize};
-use tracing::info;
+use tracing::{debug, warn};
 
 use crate::{
     metrics::Metrics,
@@ -18,20 +25,48 @@ use crate::{
     types::{BundleEvent, BundleId, DropReason, TransactionId},
 };
 
+/// Maximum number of retries for transient S3 errors (not conflicts).
+const MAX_TRANSIENT_RETRIES: usize = 3;
+
+/// Base delay in milliseconds between transient error retries.
+const TRANSIENT_RETRY_BASE_DELAY_MS: u64 = 100;
+
 /// S3 key types for storing different event types.
+///
+/// Each event is stored as its own object to avoid read-modify-write contention.
 #[derive(Debug)]
-pub enum S3Key {
-    /// Key for bundle events.
-    Bundle(BundleId),
-    /// Key for transaction lookups by hash.
-    TransactionByHash(TxHash),
+pub enum S3Key<'a> {
+    /// Key for a single bundle event: `bundles/{bundle_id}/{event_key}.json`
+    BundleEvent {
+        /// The bundle's unique identifier.
+        bundle_id: BundleId,
+        /// The event-specific key used for deduplication.
+        event_key: &'a str,
+    },
+    /// Prefix for listing all events of a bundle: `bundles/{bundle_id}/`
+    BundlePrefix(BundleId),
+    /// Key for a transaction-to-bundle mapping: `transactions/by_hash/{tx_hash}/{bundle_id}.json`
+    TransactionByHash {
+        /// Transaction hash.
+        tx_hash: TxHash,
+        /// Bundle containing this transaction.
+        bundle_id: BundleId,
+    },
+    /// Prefix for listing all bundles containing a transaction: `transactions/by_hash/{tx_hash}/`
+    TransactionPrefix(TxHash),
 }
 
-impl fmt::Display for S3Key {
+impl fmt::Display for S3Key<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Bundle(bundle_id) => write!(f, "bundles/{bundle_id}"),
-            Self::TransactionByHash(hash) => write!(f, "transactions/by_hash/{hash}"),
+            Self::BundleEvent { bundle_id, event_key } => {
+                write!(f, "bundles/{bundle_id}/{event_key}.json")
+            }
+            Self::BundlePrefix(bundle_id) => write!(f, "bundles/{bundle_id}/"),
+            Self::TransactionByHash { tx_hash, bundle_id } => {
+                write!(f, "transactions/by_hash/{tx_hash}/{bundle_id}.json")
+            }
+            Self::TransactionPrefix(tx_hash) => write!(f, "transactions/by_hash/{tx_hash}/"),
         }
     }
 }
@@ -109,6 +144,17 @@ impl BundleHistoryEvent {
             | Self::Dropped { key, .. } => key,
         }
     }
+
+    /// Returns the timestamp of the event.
+    pub const fn timestamp(&self) -> i64 {
+        match self {
+            Self::Received { timestamp, .. }
+            | Self::Cancelled { timestamp, .. }
+            | Self::BuilderIncluded { timestamp, .. }
+            | Self::BlockIncluded { timestamp, .. }
+            | Self::Dropped { timestamp, .. } => *timestamp,
+        }
+    }
 }
 
 /// History of events for a bundle.
@@ -118,24 +164,9 @@ pub struct BundleHistory {
     pub history: Vec<BundleHistoryEvent>,
 }
 
-fn update_bundle_history_transform(
-    bundle_history: BundleHistory,
-    event: &Event,
-) -> Option<BundleHistory> {
-    let mut history = bundle_history.history;
-    let bundle_id = event.event.bundle_id();
-
-    // Check for deduplication - if event with same key already exists, skip
-    if history.iter().any(|h| h.key() == event.key) {
-        info!(
-            bundle_id = %bundle_id,
-            event_key = %event.key,
-            "Event already exists, skipping due to deduplication"
-        );
-        return None;
-    }
-
-    let history_event = match &event.event {
+/// Converts a [`BundleEvent`] and its metadata into a [`BundleHistoryEvent`] for storage.
+fn into_history_event(event: &Event) -> BundleHistoryEvent {
+    match &event.event {
         BundleEvent::Received { bundle, .. } => BundleHistoryEvent::Received {
             key: event.key.clone(),
             timestamp: event.timestamp,
@@ -166,32 +197,7 @@ fn update_bundle_history_transform(
             timestamp: event.timestamp,
             reason: reason.clone(),
         },
-    };
-
-    history.push(history_event);
-    let bundle_history = BundleHistory { history };
-
-    info!(
-        bundle_id = %bundle_id,
-        event_count = bundle_history.history.len(),
-        "Updated bundle history"
-    );
-
-    Some(bundle_history)
-}
-
-fn update_transaction_metadata_transform(
-    transaction_metadata: TransactionMetadata,
-    bundle_id: BundleId,
-) -> Option<TransactionMetadata> {
-    let mut bundle_ids = transaction_metadata.bundle_ids;
-
-    if bundle_ids.contains(&bundle_id) {
-        return None;
     }
-
-    bundle_ids.push(bundle_id);
-    Some(TransactionMetadata { bundle_ids })
 }
 
 /// Trait for writing bundle events to storage.
@@ -213,7 +219,11 @@ pub trait BundleEventS3Reader {
     ) -> Result<Option<TransactionMetadata>>;
 }
 
-/// S3-backed event reader and writer.
+/// S3-backed event reader and writer using write-once semantics.
+///
+/// Each event is stored as a separate S3 object. Writes use `If-None-Match: *`
+/// so that only the first writer succeeds; subsequent duplicate writes receive
+/// a 412 Precondition Failed and are treated as successful no-ops.
 #[derive(Clone, Debug)]
 pub struct S3EventReaderWriter {
     s3_client: S3Client,
@@ -226,122 +236,129 @@ impl S3EventReaderWriter {
         Self { s3_client, bucket }
     }
 
-    async fn update_bundle_history(&self, event: Event) -> Result<()> {
-        let s3_key = S3Key::Bundle(event.event.bundle_id()).to_string();
+    /// Writes a single event object to S3 with write-once semantics.
+    ///
+    /// Uses `If-None-Match: *` so that only the first PUT for a given key
+    /// succeeds. Returns `Ok(())` for both successful writes and duplicate
+    /// 412 responses. Only retries on transient S3 errors (5xx, timeouts).
+    async fn write_once(&self, key: &str, body: &[u8]) -> Result<()> {
+        for attempt in 0..MAX_TRANSIENT_RETRIES {
+            let put_start = Instant::now();
+            let result = self
+                .s3_client
+                .put_object()
+                .bucket(&self.bucket)
+                .key(key)
+                .body(ByteStream::from(body.to_vec()))
+                .if_none_match("*")
+                .send()
+                .await;
 
-        self.idempotent_write::<BundleHistory, _>(&s3_key, |current_history| {
-            update_bundle_history_transform(current_history, &event)
-        })
-        .await
-    }
+            Metrics::s3_put_duration().record(put_start.elapsed().as_secs_f64());
 
-    async fn update_transaction_by_hash_index(
-        &self,
-        tx_id: &TransactionId,
-        bundle_id: BundleId,
-    ) -> Result<()> {
-        let s3_key = S3Key::TransactionByHash(tx_id.hash);
-        let key = s3_key.to_string();
-
-        self.idempotent_write::<TransactionMetadata, _>(&key, |current_metadata| {
-            update_transaction_metadata_transform(current_metadata, bundle_id)
-        })
-        .await
-    }
-
-    async fn idempotent_write<T, F>(&self, key: &str, mut transform_fn: F) -> Result<()>
-    where
-        T: for<'de> Deserialize<'de> + Serialize + Default + Debug,
-        F: FnMut(T) -> Option<T>,
-    {
-        const MAX_RETRIES: usize = 5;
-        const BASE_DELAY_MS: u64 = 100;
-
-        for attempt in 0..MAX_RETRIES {
-            let get_start = Instant::now();
-            let (current_value, etag) = self.get_object_with_etag::<T>(key).await?;
-            Metrics::s3_get_duration().record(get_start.elapsed().as_secs_f64());
-
-            let value = current_value.unwrap_or_default();
-
-            match transform_fn(value) {
-                Some(new_value) => {
-                    let content = serde_json::to_string(&new_value)?;
-
-                    let mut put_request = self
-                        .s3_client
-                        .put_object()
-                        .bucket(&self.bucket)
-                        .key(key)
-                        .body(ByteStream::from(content.into_bytes()));
-
-                    if let Some(etag) = etag {
-                        put_request = put_request.if_match(etag);
-                    } else {
-                        put_request = put_request.if_none_match("*");
-                    }
-
-                    let put_start = Instant::now();
-                    match put_request.send().await {
-                        Ok(_) => {
-                            Metrics::s3_put_duration().record(put_start.elapsed().as_secs_f64());
-                            info!(
-                                s3_key = %key,
-                                attempt = attempt + 1,
-                                "Successfully wrote object with idempotent write"
-                            );
-                            return Ok(());
-                        }
-                        Err(e) => {
-                            Metrics::s3_put_duration().record(put_start.elapsed().as_secs_f64());
-
-                            if attempt < MAX_RETRIES - 1 {
-                                let delay = BASE_DELAY_MS * 2_u64.pow(attempt as u32);
-                                info!(
-                                    s3_key = %key,
-                                    attempt = attempt + 1,
-                                    delay_ms = delay,
-                                    error = %e,
-                                    "Conflict detected, retrying with backoff"
-                                );
-                                tokio::time::sleep(tokio::time::Duration::from_millis(delay)).await;
-                            } else {
-                                return Err(anyhow::anyhow!(
-                                    "Failed to write after {MAX_RETRIES} attempts: {e}"
-                                ));
-                            }
-                        }
-                    }
-                }
-                None => {
-                    Metrics::s3_writes_skipped().increment(1);
-                    info!(
-                        s3_key = %key,
-                        "Transform function returned None, no write required"
-                    );
+            match result {
+                Ok(_) => {
+                    debug!(s3_key = %key, "Wrote event object");
                     return Ok(());
+                }
+                Err(ref e) if is_conditional_check_failed(e) => {
+                    Metrics::s3_write_conflicts().increment(1);
+                    debug!(s3_key = %key, "Event already exists, skipping (412/409)");
+                    return Ok(());
+                }
+                Err(e) => {
+                    if attempt < MAX_TRANSIENT_RETRIES - 1 {
+                        let delay = TRANSIENT_RETRY_BASE_DELAY_MS * 2_u64.pow(attempt as u32);
+                        warn!(
+                            s3_key = %key,
+                            attempt = attempt + 1,
+                            delay_ms = delay,
+                            error = %e,
+                            "Transient S3 error, retrying"
+                        );
+                        tokio::time::sleep(tokio::time::Duration::from_millis(delay)).await;
+                    } else {
+                        return Err(anyhow::anyhow!(
+                            "Failed to write {key} after {MAX_TRANSIENT_RETRIES} attempts: {e}"
+                        ));
+                    }
                 }
             }
         }
 
-        Err(anyhow::anyhow!("Exceeded maximum retry attempts"))
+        unreachable!("loop always returns")
     }
 
-    async fn get_object_with_etag<T>(&self, key: &str) -> Result<(Option<T>, Option<String>)>
+    /// Writes the bundle history event to S3.
+    async fn write_bundle_event(&self, event: &Event) -> Result<()> {
+        let bundle_id = event.event.bundle_id();
+        let s3_key = S3Key::BundleEvent { bundle_id, event_key: &event.key }.to_string();
+        let history_event = into_history_event(event);
+        let body = serde_json::to_vec(&history_event)?;
+        self.write_once(&s3_key, &body).await
+    }
+
+    /// Writes a transaction-to-bundle index entry to S3.
+    async fn write_transaction_index(
+        &self,
+        tx_id: &TransactionId,
+        bundle_id: BundleId,
+    ) -> Result<()> {
+        let s3_key = S3Key::TransactionByHash { tx_hash: tx_id.hash, bundle_id }.to_string();
+        // The object content is minimal — just the bundle_id for discoverability.
+        // The key itself encodes the relationship.
+        let body = serde_json::to_vec(&bundle_id)?;
+        self.write_once(&s3_key, &body).await
+    }
+
+    /// Lists all object keys under the given prefix.
+    async fn list_keys(&self, prefix: &str) -> Result<Vec<String>> {
+        let mut keys = Vec::new();
+        let mut continuation_token = None;
+
+        loop {
+            let mut request = self.s3_client.list_objects_v2().bucket(&self.bucket).prefix(prefix);
+
+            if let Some(token) = continuation_token.take() {
+                request = request.continuation_token(token);
+            }
+
+            let response = request.send().await?;
+
+            for obj in response.contents() {
+                if let Some(key) = obj.key() {
+                    keys.push(key.to_string());
+                }
+            }
+
+            match response.next_continuation_token() {
+                Some(token) => continuation_token = Some(token.to_string()),
+                None => break,
+            }
+        }
+
+        Ok(keys)
+    }
+
+    /// Gets a single object from S3 and deserializes it.
+    async fn get_object<T>(&self, key: &str) -> Result<Option<T>>
     where
         T: for<'de> Deserialize<'de>,
     {
-        match self.s3_client.get_object().bucket(&self.bucket).key(key).send().await {
+        let get_start = Instant::now();
+        let result = self.s3_client.get_object().bucket(&self.bucket).key(key).send().await;
+        Metrics::s3_get_duration().record(get_start.elapsed().as_secs_f64());
+
+        match result {
             Ok(response) => {
-                let etag = response.e_tag().map(|s| s.to_string());
                 let body = response.body.collect().await?;
                 let value: T = serde_json::from_slice(&body.into_bytes())?;
-                Ok((Some(value), etag))
+                Ok(Some(value))
             }
             Err(e) => match &e {
                 SdkError::ServiceError(service_err) => match service_err.err() {
-                    GetObjectError::NoSuchKey(_) => Ok((None, None)),
-                    _ => Err(anyhow::anyhow!("Failed to get object: {e}")),
+                    GetObjectError::NoSuchKey(_) => Ok(None),
+                    _ => Err(anyhow::anyhow!("Failed to get object {key}: {e}")),
                 },
                 _ => {
                     let error_string = e.to_string();
@@ -349,9 +366,9 @@ impl S3EventReaderWriter {
                         || error_string.contains("NotFound")
                         || error_string.contains("404")
                     {
-                        Ok((None, None))
+                        Ok(None)
                     } else {
-                        Err(anyhow::anyhow!("Failed to get object: {e}"))
+                        Err(anyhow::anyhow!("Failed to get object {key}: {e}"))
                     }
                 }
             },
@@ -366,22 +383,16 @@ impl EventWriter for S3EventReaderWriter {
         let transaction_ids = event.event.transaction_ids();
 
         let bundle_start = Instant::now();
-        let bundle_future = self.update_bundle_history(event);
+        let bundle_future = self.write_bundle_event(&event);
 
-        let tx_start = Instant::now();
-        let tx_futures: Vec<_> =
-            transaction_ids
-                .into_iter()
-                .map(|tx_id| async move {
-                    self.update_transaction_by_hash_index(&tx_id, bundle_id).await
-                })
-                .collect();
+        let tx_futures: Vec<_> = transaction_ids
+            .into_iter()
+            .map(|tx_id| async move { self.write_transaction_index(&tx_id, bundle_id).await })
+            .collect();
 
-        // Run the bundle and transaction futures concurrently and wait for them to complete
         tokio::try_join!(bundle_future, future::try_join_all(tx_futures))?;
 
         Metrics::update_bundle_history_duration().record(bundle_start.elapsed().as_secs_f64());
-        Metrics::update_tx_indexes_duration().record(tx_start.elapsed().as_secs_f64());
 
         Ok(())
     }
@@ -389,164 +400,198 @@ impl EventWriter for S3EventReaderWriter {
 
 #[async_trait]
 impl BundleEventS3Reader for S3EventReaderWriter {
+    /// Reconstructs a bundle's full history by listing all event objects
+    /// under `bundles/{bundle_id}/` and assembling them sorted by timestamp.
     async fn get_bundle_history(&self, bundle_id: BundleId) -> Result<Option<BundleHistory>> {
-        let s3_key = S3Key::Bundle(bundle_id).to_string();
-        let (bundle_history, _) = self.get_object_with_etag::<BundleHistory>(&s3_key).await?;
-        Ok(bundle_history)
+        let prefix = S3Key::BundlePrefix(bundle_id).to_string();
+        let keys = self.list_keys(&prefix).await?;
+
+        if keys.is_empty() {
+            return Ok(None);
+        }
+
+        let get_futures: Vec<_> =
+            keys.iter().map(|key| self.get_object::<BundleHistoryEvent>(key)).collect();
+
+        let results = future::try_join_all(get_futures).await?;
+
+        let mut history: Vec<BundleHistoryEvent> = results.into_iter().flatten().collect();
+        history.sort_by_key(|e| e.timestamp());
+
+        Ok(Some(BundleHistory { history }))
     }
 
+    /// Reconstructs transaction metadata by listing all bundle mapping objects
+    /// under `transactions/by_hash/{tx_hash}/` and extracting bundle IDs.
     async fn get_transaction_metadata(
         &self,
         tx_hash: TxHash,
     ) -> Result<Option<TransactionMetadata>> {
-        let s3_key = S3Key::TransactionByHash(tx_hash).to_string();
-        let (transaction_metadata, _) =
-            self.get_object_with_etag::<TransactionMetadata>(&s3_key).await?;
-        Ok(transaction_metadata)
+        let prefix = S3Key::TransactionPrefix(tx_hash).to_string();
+        let keys = self.list_keys(&prefix).await?;
+
+        if keys.is_empty() {
+            return Ok(None);
+        }
+
+        // Extract bundle IDs from the S3 keys: transactions/by_hash/{tx_hash}/{bundle_id}.json
+        let bundle_ids: Vec<BundleId> = keys
+            .iter()
+            .filter_map(|key| {
+                let filename = key.rsplit('/').next()?;
+                let uuid_str = filename.strip_suffix(".json")?;
+                uuid_str.parse().ok()
+            })
+            .collect();
+
+        if bundle_ids.is_empty() {
+            return Ok(None);
+        }
+
+        Ok(Some(TransactionMetadata { bundle_ids }))
+    }
+}
+
+/// Returns `true` if the S3 error indicates a conditional write conflict
+/// (412 Precondition Failed or 409 `ConditionalRequestConflict`).
+fn is_conditional_check_failed<E: std::fmt::Display>(err: &SdkError<E>) -> bool {
+    match err {
+        SdkError::ServiceError(service_err) => {
+            let raw = service_err.raw();
+            let status = raw.status().as_u16();
+            status == 412 || status == 409
+        }
+        _ => {
+            // Fallback: check error string for known conditional failure messages
+            let error_string = err.to_string();
+            error_string.contains("PreconditionFailed")
+                || error_string.contains("ConditionalRequestConflict")
+                || error_string.contains("412")
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use alloy_primitives::TxHash;
-    use base_bundles::{BundleExtensions, test_utils::create_bundle_from_txn_data};
-    use uuid::Uuid;
-
     use super::*;
-    use crate::{
-        reader::Event,
-        types::{BundleEvent, DropReason},
-    };
 
-    fn create_test_event(key: &str, timestamp: i64, bundle_event: BundleEvent) -> Event {
-        Event { key: key.to_string(), timestamp, event: bundle_event }
+    #[test]
+    fn test_s3_key_bundle_event_format() {
+        let bundle_id = uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
+        let key = S3Key::BundleEvent { bundle_id, event_key: "abc-123" }.to_string();
+        assert_eq!(key, "bundles/550e8400-e29b-41d4-a716-446655440000/abc-123.json");
     }
 
     #[test]
-    fn test_update_bundle_history_transform_adds_new_event() {
-        let bundle_history = BundleHistory { history: vec![] };
+    fn test_s3_key_bundle_prefix_format() {
+        let bundle_id = uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
+        let key = S3Key::BundlePrefix(bundle_id).to_string();
+        assert_eq!(key, "bundles/550e8400-e29b-41d4-a716-446655440000/");
+    }
+
+    #[test]
+    fn test_s3_key_transaction_by_hash_format() {
+        let bundle_id = uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
+        let tx_hash = TxHash::from([1u8; 32]);
+        let key = S3Key::TransactionByHash { tx_hash, bundle_id }.to_string();
+        assert_eq!(key, format!("transactions/by_hash/{tx_hash}/{bundle_id}.json"));
+    }
+
+    #[test]
+    fn test_s3_key_transaction_prefix_format() {
+        let tx_hash = TxHash::from([1u8; 32]);
+        let key = S3Key::TransactionPrefix(tx_hash).to_string();
+        assert_eq!(key, format!("transactions/by_hash/{tx_hash}/"));
+    }
+
+    #[test]
+    fn test_into_history_event_received() {
+        use base_bundles::{BundleExtensions, test_utils::create_bundle_from_txn_data};
+
         let bundle = create_bundle_from_txn_data();
-        let bundle_id = Uuid::new_v5(&Uuid::NAMESPACE_OID, bundle.bundle_hash().as_slice());
+        let bundle_id =
+            uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, bundle.bundle_hash().as_slice());
         let bundle_event = BundleEvent::Received { bundle_id, bundle: Box::new(bundle.clone()) };
-        let event = create_test_event("test-key", 1234567890, bundle_event);
+        let event =
+            Event { key: "test-key".to_string(), timestamp: 1234567890, event: bundle_event };
 
-        let result = update_bundle_history_transform(bundle_history, &event);
-
-        assert!(result.is_some());
-        let bundle_history = result.unwrap();
-        assert_eq!(bundle_history.history.len(), 1);
-
-        match &bundle_history.history[0] {
-            BundleHistoryEvent::Received { key, timestamp: ts, bundle: b } => {
+        let history_event = into_history_event(&event);
+        match history_event {
+            BundleHistoryEvent::Received { key, timestamp, bundle: b } => {
                 assert_eq!(key, "test-key");
-                assert_eq!(*ts, 1234567890);
+                assert_eq!(timestamp, 1234567890);
                 assert_eq!(b.block_number, bundle.block_number);
             }
-            _ => panic!("Expected Created event"),
+            _ => panic!("Expected Received event"),
         }
     }
 
     #[test]
-    fn test_update_bundle_history_transform_skips_duplicate_key() {
-        let existing_event = BundleHistoryEvent::Received {
-            key: "duplicate-key".to_string(),
-            timestamp: 1111111111,
-            bundle: Box::new(create_bundle_from_txn_data()),
+    fn test_into_history_event_all_variants() {
+        use base_bundles::{BundleExtensions, test_utils::create_bundle_from_txn_data};
+
+        let bundle = create_bundle_from_txn_data();
+        let bundle_id =
+            uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, bundle.bundle_hash().as_slice());
+
+        // Received
+        let event = Event {
+            key: "k1".to_string(),
+            timestamp: 100,
+            event: BundleEvent::Received { bundle_id, bundle: Box::new(bundle) },
         };
-        let bundle_history = BundleHistory { history: vec![existing_event] };
+        assert!(matches!(into_history_event(&event), BundleHistoryEvent::Received { .. }));
 
-        let bundle = create_bundle_from_txn_data();
-        let bundle_id = Uuid::new_v5(&Uuid::NAMESPACE_OID, bundle.bundle_hash().as_slice());
-        let bundle_event = BundleEvent::Received { bundle_id, bundle: Box::new(bundle) };
-        let event = create_test_event("duplicate-key", 1234567890, bundle_event);
-
-        let result = update_bundle_history_transform(bundle_history, &event);
-
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn test_update_bundle_history_transform_handles_all_event_types() {
-        let bundle_history = BundleHistory { history: vec![] };
-        let bundle = create_bundle_from_txn_data();
-        let bundle_id = Uuid::new_v5(&Uuid::NAMESPACE_OID, bundle.bundle_hash().as_slice());
-
-        let bundle_event = BundleEvent::Received { bundle_id, bundle: Box::new(bundle) };
-        let event = create_test_event("test-key", 1234567890, bundle_event);
-        let result = update_bundle_history_transform(bundle_history.clone(), &event);
-        assert!(result.is_some());
-
-        let bundle_event = BundleEvent::Cancelled { bundle_id };
-        let event = create_test_event("test-key-2", 1234567890, bundle_event);
-        let result = update_bundle_history_transform(bundle_history.clone(), &event);
-        assert!(result.is_some());
-
-        let bundle_event = BundleEvent::BuilderIncluded {
-            bundle_id,
-            builder: "test-builder".to_string(),
-            block_number: 12345,
-            flashblock_index: 1,
+        // Cancelled
+        let event = Event {
+            key: "k2".to_string(),
+            timestamp: 200,
+            event: BundleEvent::Cancelled { bundle_id },
         };
-        let event = create_test_event("test-key-3", 1234567890, bundle_event);
-        let result = update_bundle_history_transform(bundle_history.clone(), &event);
-        assert!(result.is_some());
+        assert!(matches!(into_history_event(&event), BundleHistoryEvent::Cancelled { .. }));
 
-        let bundle_event = BundleEvent::BlockIncluded {
-            bundle_id,
-            block_number: 12345,
-            block_hash: TxHash::from([1u8; 32]),
+        // BuilderIncluded
+        let event = Event {
+            key: "k3".to_string(),
+            timestamp: 300,
+            event: BundleEvent::BuilderIncluded {
+                bundle_id,
+                builder: "builder-1".to_string(),
+                block_number: 12345,
+                flashblock_index: 1,
+            },
         };
-        let event = create_test_event("test-key-4", 1234567890, bundle_event);
-        let result = update_bundle_history_transform(bundle_history.clone(), &event);
-        assert!(result.is_some());
+        assert!(matches!(into_history_event(&event), BundleHistoryEvent::BuilderIncluded { .. }));
 
-        let bundle_event = BundleEvent::Dropped { bundle_id, reason: DropReason::TimedOut };
-        let event = create_test_event("test-key-5", 1234567890, bundle_event);
-        let result = update_bundle_history_transform(bundle_history, &event);
-        assert!(result.is_some());
+        // BlockIncluded
+        let event = Event {
+            key: "k4".to_string(),
+            timestamp: 400,
+            event: BundleEvent::BlockIncluded {
+                bundle_id,
+                block_number: 12345,
+                block_hash: TxHash::from([1u8; 32]),
+            },
+        };
+        assert!(matches!(into_history_event(&event), BundleHistoryEvent::BlockIncluded { .. }));
+
+        // Dropped
+        let event = Event {
+            key: "k5".to_string(),
+            timestamp: 500,
+            event: BundleEvent::Dropped { bundle_id, reason: DropReason::TimedOut },
+        };
+        assert!(matches!(into_history_event(&event), BundleHistoryEvent::Dropped { .. }));
     }
 
     #[test]
-    fn test_update_transaction_metadata_transform_adds_new_bundle() {
-        let metadata = TransactionMetadata { bundle_ids: vec![] };
-        let bundle = create_bundle_from_txn_data();
-        let bundle_id = Uuid::new_v5(&Uuid::NAMESPACE_OID, bundle.bundle_hash().as_slice());
+    fn test_bundle_id_parsed_from_s3_key() {
+        let bundle_id = uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
+        let key = format!("transactions/by_hash/0xabc/{bundle_id}.json");
 
-        let result = update_transaction_metadata_transform(metadata, bundle_id);
-
-        assert!(result.is_some());
-        let metadata = result.unwrap();
-        assert_eq!(metadata.bundle_ids.len(), 1);
-        assert_eq!(metadata.bundle_ids[0], bundle_id);
-    }
-
-    #[test]
-    fn test_update_transaction_metadata_transform_skips_existing_bundle() {
-        let bundle = create_bundle_from_txn_data();
-        let bundle_id = Uuid::new_v5(&Uuid::NAMESPACE_OID, bundle.bundle_hash().as_slice());
-        let metadata = TransactionMetadata { bundle_ids: vec![bundle_id] };
-
-        let result = update_transaction_metadata_transform(metadata, bundle_id);
-
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn test_update_transaction_metadata_transform_adds_to_existing_bundles() {
-        // Some different, dummy bundle IDs since create_bundle_from_txn_data() returns the same bundle ID
-        // Even if the same txn is contained across multiple bundles, the bundle ID will be different since the
-        // UUID is based on the bundle hash.
-        let existing_bundle_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
-        let new_bundle_id = Uuid::parse_str("6ba7b810-9dad-11d1-80b4-00c04fd430c8").unwrap();
-
-        let metadata = TransactionMetadata { bundle_ids: vec![existing_bundle_id] };
-
-        let result = update_transaction_metadata_transform(metadata, new_bundle_id);
-
-        assert!(result.is_some());
-        let metadata = result.unwrap();
-        assert_eq!(metadata.bundle_ids.len(), 2);
-        assert!(metadata.bundle_ids.contains(&existing_bundle_id));
-        assert!(metadata.bundle_ids.contains(&new_bundle_id));
+        let filename = key.rsplit('/').next().unwrap();
+        let uuid_str = filename.strip_suffix(".json").unwrap();
+        let parsed: uuid::Uuid = uuid_str.parse().unwrap();
+        assert_eq!(parsed, bundle_id);
     }
 }
