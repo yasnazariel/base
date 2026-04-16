@@ -5,6 +5,8 @@ use alloy_provider::{Provider, RootProvider};
 use async_trait::async_trait;
 use base_common_network::Base;
 use base_consensus_engine::DelegatedForkchoiceUpdate;
+use base_consensus_genesis::ChainGenesis;
+use base_consensus_safedb::{DisabledSafeDB, SafeHeadListener};
 use base_protocol::L2BlockInfo;
 use futures::future::OptionFuture;
 use serde::Deserialize;
@@ -47,6 +49,8 @@ where
     sent_head: u64,
     proofs_enabled: bool,
     proofs_max_blocks_ahead: u64,
+    safe_head_listener: Arc<dyn SafeHeadListener>,
+    genesis: Option<ChainGenesis>,
 }
 
 impl<DerivationEngineClient_, L2Source> CancellableContext
@@ -84,6 +88,8 @@ where
             sent_head: 0,
             proofs_enabled: false,
             proofs_max_blocks_ahead: DEFAULT_PROOFS_MAX_BLOCKS_AHEAD,
+            safe_head_listener: Arc::new(DisabledSafeDB),
+            genesis: None,
         }
     }
 
@@ -99,6 +105,18 @@ where
     /// proofs `ExEx` head.
     pub const fn with_proofs_max_blocks_ahead(mut self, max_blocks_ahead: u64) -> Self {
         self.proofs_max_blocks_ahead = max_blocks_ahead;
+        self
+    }
+
+    /// Enables safe head tracking. Requires the chain genesis to decode L1
+    /// origin info from each safe block's L1 info deposit transaction.
+    pub fn with_safe_head_listener(
+        mut self,
+        listener: Arc<dyn SafeHeadListener>,
+        genesis: ChainGenesis,
+    ) -> Self {
+        self.safe_head_listener = listener;
+        self.genesis = Some(genesis);
         self
     }
 }
@@ -200,6 +218,8 @@ where
                     let engine_actor_request_tx = self.engine_actor_request_tx.clone();
                     let local_l2_provider = self.local_l2_provider.clone();
                     let sent_head = self.sent_head;
+                    let safe_head_listener = Arc::clone(&self.safe_head_listener);
+                    let genesis = self.genesis;
 
                     sync_task = Some(tokio::spawn(async move {
                         SyncFromSourceTask::new(
@@ -210,6 +230,8 @@ where
                             sent_head,
                             target_block,
                             l2_source,
+                            safe_head_listener,
+                            genesis,
                         )
                         .sync_from_source()
                         .await
@@ -308,6 +330,8 @@ pub(super) struct SyncFromSourceTask<DerivationEngineClient_, L2Source> {
     sent_head: u64,
     target_block: u64,
     l2_source: Arc<L2Source>,
+    safe_head_listener: Arc<dyn SafeHeadListener>,
+    genesis: Option<ChainGenesis>,
 }
 
 impl<DerivationEngineClient_, L2Source> SyncFromSourceTask<DerivationEngineClient_, L2Source>
@@ -315,7 +339,7 @@ where
     DerivationEngineClient_: DerivationEngineClient,
     L2Source: L2SourceClient,
 {
-    pub(super) const fn new(
+    pub(super) fn new(
         engine_client: Arc<DerivationEngineClient_>,
         engine_actor_request_tx: mpsc::Sender<EngineActorRequest>,
         cancellation_token: CancellationToken,
@@ -323,6 +347,8 @@ where
         sent_head: u64,
         target_block: u64,
         l2_source: Arc<L2Source>,
+        safe_head_listener: Arc<dyn SafeHeadListener>,
+        genesis: Option<ChainGenesis>,
     ) -> Self {
         Self {
             engine_client,
@@ -332,6 +358,8 @@ where
             sent_head,
             target_block,
             l2_source,
+            safe_head_listener,
+            genesis,
         }
     }
 
@@ -396,17 +424,60 @@ where
         let source_hash = safe_payload.execution_payload.block_hash();
 
         // Detect hash mismatch between source and local EL for the delegated safe block.
-        if let Ok(Some(local_block)) =
-            self.local_l2_provider.get_block_by_number(clamped_safe.into()).await
-            && local_block.header.hash != source_hash
-        {
-            warn!(
-                target: "derivation",
-                block_number = clamped_safe,
-                local_hash = %local_block.header.hash,
-                source_hash = %source_hash,
-                "Delegated safe block hash mismatch between source and local EL"
-            );
+        // When the chains disagree we skip the safe head DB write: we are in a fork-diverged
+        // state and recording either version would be misleading. The next sync cycle will
+        // retry once the local engine has caught up.
+        let chains_agree =
+            match self.local_l2_provider.get_block_by_number(clamped_safe.into()).await {
+                Ok(Some(local_block)) if local_block.header.hash != source_hash => {
+                    warn!(
+                        target: "derivation",
+                        block_number = clamped_safe,
+                        local_hash = %local_block.header.hash,
+                        source_hash = %source_hash,
+                        "Delegated safe block hash mismatch between source and local EL"
+                    );
+                    false
+                }
+                _ => true,
+            };
+
+        // Record the safe head in the database when tracking is enabled and the local chain
+        // agrees with the source. The L1 origin is decoded from the block's L1 info deposit
+        // transaction and used as the DB key. Note: this uses l1_origin (the L1 epoch the L2
+        // block references) rather than the true L1 inclusion block (where the batch was
+        // posted). The inclusion block is >= l1_origin, so query results may lag by up to one
+        // sequencing window compared to a full derivation node. This mirrors the fallback used
+        // by the full DerivationActor for EL-sync safe heads.
+        if chains_agree {
+            if let Some(genesis) = self.genesis {
+                match L2BlockInfo::from_payload_and_genesis(
+                    safe_payload.execution_payload,
+                    safe_payload.parent_beacon_block_root,
+                    &genesis,
+                ) {
+                    Ok(l2_info) => {
+                        let l1_block = base_protocol::BlockInfo {
+                            number: l2_info.l1_origin.number,
+                            hash: l2_info.l1_origin.hash,
+                            ..Default::default()
+                        };
+                        if let Err(e) =
+                            self.safe_head_listener.safe_head_updated(l2_info, l1_block).await
+                        {
+                            error!(target: "derivation", error = %e, "failed to record safe head update");
+                        }
+                    }
+                    Err(e) => {
+                        warn!(
+                            target: "derivation",
+                            error = %e,
+                            block = clamped_safe,
+                            "failed to extract L2BlockInfo from safe payload; safe head db not updated"
+                        );
+                    }
+                }
+            }
         }
 
         let safe_l2 = L2BlockInfo {
@@ -442,6 +513,7 @@ mod tests {
     use alloy_primitives::B256;
     use alloy_rpc_types_engine::ExecutionPayloadV1;
     use base_common_rpc_types_engine::{BaseExecutionPayload, BaseExecutionPayloadEnvelope};
+    use base_consensus_safedb::DisabledSafeDB;
     use base_protocol::{BlockInfo, L2BlockInfo};
     use mockall::{Sequence, predicate::*};
     use tokio::sync::mpsc;
@@ -539,6 +611,8 @@ mod tests {
             sent_head,
             target_block,
             Arc::new(l2_source),
+            Arc::new(DisabledSafeDB),
+            None,
         );
 
         (task, engine_rx, cancel)

@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use alloy_eips::BlockNumberOrTag;
 use alloy_provider::RootProvider;
@@ -6,7 +6,7 @@ use base_common_network::Base;
 use base_consensus_engine::{Engine, EngineClient, EngineState};
 use base_consensus_genesis::RollupConfig;
 use base_consensus_rpc::RpcBuilder;
-use base_consensus_safedb::{DisabledSafeDB, SafeDBReader};
+use base_consensus_safedb::{DisabledSafeDB, SafeDB, SafeDBReader, SafeHeadListener};
 use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 
@@ -33,6 +33,7 @@ pub struct FollowNode {
     proofs_max_blocks_ahead: u64,
     l1_config: L1Config,
     rpc_builder: Option<RpcBuilder>,
+    safedb_path: Option<PathBuf>,
 }
 
 impl FollowNode {
@@ -54,6 +55,7 @@ impl FollowNode {
             l1_config,
             proofs_enabled: false,
             proofs_max_blocks_ahead: 512,
+            safedb_path: None,
         }
     }
 
@@ -67,6 +69,16 @@ impl FollowNode {
     /// proofs `ExEx` head.
     pub const fn with_proofs_max_blocks_ahead(mut self, max_blocks_ahead: u64) -> Self {
         self.proofs_max_blocks_ahead = max_blocks_ahead;
+        self
+    }
+
+    /// Enables safe head tracking backed by a [`SafeDB`] at the given path.
+    ///
+    /// When set, the node records L1→L2 safe head mappings on each sync cycle
+    /// and the `optimism_safeHeadAtL1Block` RPC endpoint returns real data
+    /// instead of an error.
+    pub fn with_safedb_path(mut self, path: PathBuf) -> Self {
+        self.safedb_path = Some(path);
         self
     }
 
@@ -141,7 +153,21 @@ impl FollowNode {
             QueuedEngineDerivationClient::new(derivation_actor_request_tx.clone()),
         );
 
-        let derivation = DelegateL2DerivationActor::<_>::new(
+        let (safe_head_listener, safe_db_reader): (
+            Arc<dyn SafeHeadListener>,
+            Arc<dyn SafeDBReader>,
+        ) = if let Some(path) = &self.safedb_path {
+            let db = Arc::new(
+                SafeDB::open(path)
+                    .map_err(|e| format!("failed to open safe head database: {e}"))?,
+            );
+            (Arc::clone(&db) as Arc<dyn SafeHeadListener>, db as Arc<dyn SafeDBReader>)
+        } else {
+            let db = Arc::new(DisabledSafeDB);
+            (Arc::clone(&db) as Arc<dyn SafeHeadListener>, db as Arc<dyn SafeDBReader>)
+        };
+
+        let mut derivation = DelegateL2DerivationActor::<_>::new(
             QueuedDerivationEngineClient {
                 engine_actor_request_tx: engine_actor_request_tx.clone(),
             },
@@ -154,16 +180,18 @@ impl FollowNode {
         .with_proofs(self.proofs_enabled)
         .with_proofs_max_blocks_ahead(self.proofs_max_blocks_ahead);
 
+        if self.safedb_path.is_some() {
+            derivation = derivation
+                .with_safe_head_listener(Arc::clone(&safe_head_listener), self.config.genesis);
+        }
+
         // Create the RPC server actor if configured.
         let rpc = self.rpc_builder.clone().map(|b| {
-            // Follow nodes do not run derivation, so they never produce confirmed safe
-            // heads to record. Safe head tracking is disabled; the RPC endpoint returns
-            // an error if queried.
             RpcActor::new(
                 b,
                 QueuedEngineRpcClient::new(engine_actor_request_tx.clone()),
                 None::<crate::QueuedSequencerAdminAPIClient>,
-                Arc::new(DisabledSafeDB) as Arc<dyn SafeDBReader>,
+                safe_db_reader,
             )
         });
 
