@@ -947,7 +947,7 @@ async fn run_checks_streaming(
     tx: mpsc::Sender<CheckUpdate>,
 ) {
     match hardfork {
-        "V1" => run_v1_checks_streaming(rpc_url, tx).await,
+        "V1" => run_v1_checks_streaming(rpc_url, mode, tx).await,
         "Jovian" => run_jovian_checks_streaming(rpc_url, mode, tx).await,
         _ => {}
     }
@@ -1151,6 +1151,7 @@ const CLZ_ONE_RES: &str = "0x000000000000000000000000000000000000000000000000000
 const CLZ_HIBIT_RES: &str = "0x0000000000000000000000000000000000000000000000000000000000000000";
 const CLZ_4BITS_RES: &str = "0x0000000000000000000000000000000000000000000000000000000000000004";
 const PROBE_SUCCESS: &str = "0x0000000000000000000000000000000000000000000000000000000000000001";
+const PROBE_FAILURE: &str = "0x0000000000000000000000000000000000000000000000000000000000000000";
 
 const MODEXP_OVERSIZED: &str = concat!(
     "0x",
@@ -1161,6 +1162,13 @@ const MODEXP_OVERSIZED: &str = concat!(
 
 fn norm(h: &str) -> String {
     h.trim().trim_matches('"').to_lowercase()
+}
+
+fn is_v1_unavailable_error(error: &str) -> bool {
+    let error = error.to_ascii_lowercase();
+    ["notactivated", "invalid opcode", "undefined opcode", "opcode 0x1e", "unsupported opcode"]
+        .iter()
+        .any(|pattern| error.contains(pattern))
 }
 
 fn make_rpc_client(rpc_url: &str) -> Result<HttpClient, String> {
@@ -1201,43 +1209,128 @@ async fn eth_call_override(
 }
 
 fn evaluate_opcode_check(
-    _name: &str,
     result: &Result<String, String>,
     expected: &str,
+    mode: CheckMode,
 ) -> CheckResult {
-    let (passed, detail) = match result {
-        Err(e) => (false, format!("call failed: {e}")),
-        Ok(actual) => {
+    match (mode, result) {
+        (CheckMode::Before, Ok(actual)) => CheckResult {
+            passed: Some(false),
+            detail: format!(
+                "unexpectedly available before V1: {}",
+                actual.get(..20).unwrap_or(actual)
+            ),
+        },
+        (CheckMode::Before, Err(error)) if is_v1_unavailable_error(error) => {
+            CheckResult { passed: Some(true), detail: format!("unavailable before V1: {error}") }
+        }
+        (CheckMode::Before, Err(error)) => {
+            CheckResult { passed: Some(false), detail: format!("call failed: {error}") }
+        }
+        (CheckMode::After, Err(error)) => {
+            CheckResult { passed: Some(false), detail: format!("unavailable after V1: {error}") }
+        }
+        (CheckMode::After, Ok(actual)) => {
             if norm(actual) == norm(expected) {
-                (true, format!("→ {}", actual.get(..20).unwrap_or(actual)))
+                CheckResult {
+                    passed: Some(true),
+                    detail: format!("→ {}", actual.get(..20).unwrap_or(actual)),
+                }
             } else {
-                (false, format!("got {}", actual.get(..20).unwrap_or(actual)))
+                CheckResult {
+                    passed: Some(false),
+                    detail: format!("got {}", actual.get(..20).unwrap_or(actual)),
+                }
             }
         }
-    };
-    CheckResult { passed: Some(passed), detail }
+    }
 }
 
 fn evaluate_gas_probe(
     result: &Result<String, String>,
     gas_label: &str,
     after_desc: &str,
+    before_desc: &str,
+    mode: CheckMode,
 ) -> CheckResult {
     let actual = match result {
         Err(e) => return CheckResult { passed: Some(false), detail: format!("RPC error: {e}") },
         Ok(v) => norm(v),
     };
     let success_val = norm(PROBE_SUCCESS);
+    let failure_val = norm(PROBE_FAILURE);
 
     let (passed, detail) = if actual == success_val {
-        (false, format!("{gas_label} CALL succeeded — expected OOG ({after_desc} after V1)"))
+        match mode {
+            CheckMode::Before => {
+                (true, format!("{gas_label} CALL succeeded ({before_desc} before V1)"))
+            }
+            CheckMode::After => (
+                false,
+                format!("{gas_label} CALL succeeded — expected OOG ({after_desc} after V1)"),
+            ),
+        }
+    } else if actual == failure_val {
+        match mode {
+            CheckMode::Before => (
+                false,
+                format!("{gas_label} CALL hit OOG — expected success ({before_desc} before V1)"),
+            ),
+            CheckMode::After => (true, format!("{gas_label} CALL OOG ({after_desc} after V1)")),
+        }
     } else {
-        (true, format!("{gas_label} CALL OOG ({after_desc} after V1)"))
+        (false, format!("unexpected result: {actual}"))
     };
     CheckResult { passed: Some(passed), detail }
 }
 
-async fn run_v1_checks_streaming(rpc_url: String, tx: mpsc::Sender<CheckUpdate>) {
+fn evaluate_modexp_size_check(result: &Result<String, String>, mode: CheckMode) -> CheckResult {
+    match (mode, result) {
+        (CheckMode::Before, Ok(value)) => CheckResult {
+            passed: Some(true),
+            detail: format!("oversized input accepted before V1: {value}"),
+        },
+        (CheckMode::Before, Err(error)) => CheckResult {
+            passed: Some(false),
+            detail: format!("oversized input unexpectedly rejected before V1: {error}"),
+        },
+        (CheckMode::After, Err(error)) => CheckResult {
+            passed: Some(true),
+            detail: format!("oversized input rejected after V1: {error}"),
+        },
+        (CheckMode::After, Ok(value)) => CheckResult {
+            passed: Some(false),
+            detail: format!("unexpectedly accepted after V1: {value}"),
+        },
+    }
+}
+
+fn evaluate_eth_config_check(
+    result: &Result<serde_json::Value, String>,
+    mode: CheckMode,
+) -> CheckResult {
+    match (mode, result) {
+        (CheckMode::Before, Ok(_)) => CheckResult {
+            passed: Some(false),
+            detail: "unexpectedly available before V1".to_string(),
+        },
+        (CheckMode::Before, Err(error)) => {
+            CheckResult { passed: Some(true), detail: format!("unavailable before V1: {error}") }
+        }
+        (CheckMode::After, Ok(_)) => {
+            CheckResult { passed: Some(true), detail: "available after V1".to_string() }
+        }
+        (CheckMode::After, Err(error)) => {
+            CheckResult { passed: Some(false), detail: format!("unavailable after V1: {error}") }
+        }
+    }
+}
+
+async fn run_v1_checks_streaming(
+    rpc_url: String,
+    mode: CheckMode,
+    tx: mpsc::Sender<CheckUpdate>,
+) {
     macro_rules! send_start {
         ($name:expr) => {
             if tx.send(CheckUpdate::Starting($name.to_string())).await.is_err() {
@@ -1303,19 +1396,13 @@ async fn run_v1_checks_streaming(rpc_url: String, tx: mpsc::Sender<CheckUpdate>)
         send_start!(name);
         let r =
             eth_call_override(&client, CLZ_PROBE_ADDR, calldata, CLZ_PROBE_ADDR, CLZ_RUNTIME).await;
-        send_result!(name, evaluate_opcode_check(name, &r, expected));
+        send_result!(name, evaluate_opcode_check(&r, expected, mode));
     }
 
     // ── MODEXP size limit ──────────────────────────────────────────────────────
     send_start!("MODEXP size limit");
     let r = eth_call(&client, MODEXP_ADDR, MODEXP_OVERSIZED).await;
-    let modexp_size = r.map_or_else(
-        |_| CheckResult {
-            passed: Some(true),
-            detail: "oversized input rejected (correct)".to_string(),
-        },
-        |v| CheckResult { passed: Some(false), detail: format!("unexpectedly accepted: {v}") },
-    );
+    let modexp_size = evaluate_modexp_size_check(&r, mode);
     send_result!("MODEXP size limit", modexp_size);
 
     // ── MODEXP min gas (200 → 500) ─────────────────────────────────────────────
@@ -1328,7 +1415,7 @@ async fn run_v1_checks_streaming(rpc_url: String, tx: mpsc::Sender<CheckUpdate>)
         MODEXP_GAS_PROBE_RUNTIME,
     )
     .await;
-    send_result!("MODEXP min gas", evaluate_gas_probe(&r, "400-gas", "min=500"));
+    send_result!("MODEXP min gas", evaluate_gas_probe(&r, "400-gas", "min=500", "min=200", mode));
 
     // ── P256VERIFY gas (3450 → 6900) ───────────────────────────────────────────
     send_start!("P256VERIFY gas");
@@ -1340,7 +1427,10 @@ async fn run_v1_checks_streaming(rpc_url: String, tx: mpsc::Sender<CheckUpdate>)
         P256_GAS_PROBE_RUNTIME,
     )
     .await;
-    send_result!("P256VERIFY gas", evaluate_gas_probe(&r, "5000-gas", "cost=6900"));
+    send_result!(
+        "P256VERIFY gas",
+        evaluate_gas_probe(&r, "5000-gas", "cost=6900", "cost=3450", mode)
+    );
 
     // ── eth_config RPC method ──────────────────────────────────────────────────
     send_start!("eth_config");
@@ -1348,9 +1438,68 @@ async fn run_v1_checks_streaming(rpc_url: String, tx: mpsc::Sender<CheckUpdate>)
         ClientT::request::<serde_json::Value, _>(&client, "eth_config", rpc_params![])
             .await
             .map_err(|e| e.to_string());
-    let eth_config_check = match cfg_result {
-        Ok(_) => CheckResult { passed: Some(true), detail: "available after V1".to_string() },
-        Err(e) => CheckResult { passed: Some(false), detail: format!("unavailable after V1: {e}") },
-    };
+    let eth_config_check = evaluate_eth_config_check(&cfg_result, mode);
     send_result!("eth_config", eth_config_check);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        CheckMode, evaluate_eth_config_check, evaluate_gas_probe, evaluate_modexp_size_check,
+        evaluate_opcode_check,
+    };
+    use serde_json::json;
+
+    #[test]
+    fn opcode_checks_pass_before_v1_when_opcode_is_unavailable() {
+        let result = evaluate_opcode_check(
+            &Err("invalid opcode: opcode 0x1e".to_string()),
+            "0x01",
+            CheckMode::Before,
+        );
+
+        assert_eq!(result.passed, Some(true));
+        assert!(result.detail.contains("before V1"));
+    }
+
+    #[test]
+    fn opcode_checks_fail_before_v1_when_opcode_is_available() {
+        let result = evaluate_opcode_check(&Ok("0x01".to_string()), "0x01", CheckMode::Before);
+
+        assert_eq!(result.passed, Some(false));
+        assert!(result.detail.contains("unexpectedly available before V1"));
+    }
+
+    #[test]
+    fn modexp_size_limit_preserves_before_mode() {
+        let result = evaluate_modexp_size_check(&Ok("0xdeadbeef".to_string()), CheckMode::Before);
+
+        assert_eq!(result.passed, Some(true));
+        assert!(result.detail.contains("accepted before V1"));
+    }
+
+    #[test]
+    fn gas_probe_preserves_before_mode() {
+        let result = evaluate_gas_probe(
+            &Ok("0x0000000000000000000000000000000000000000000000000000000000000001".to_string()),
+            "400-gas",
+            "min=500",
+            "min=200",
+            CheckMode::Before,
+        );
+
+        assert_eq!(result.passed, Some(true));
+        assert!(result.detail.contains("before V1"));
+    }
+
+    #[test]
+    fn eth_config_check_preserves_before_mode() {
+        let unavailable =
+            evaluate_eth_config_check(&Err("method not found".to_string()), CheckMode::Before);
+        let available = evaluate_eth_config_check(&Ok(json!({"chainId": 8453})), CheckMode::Before);
+
+        assert_eq!(unavailable.passed, Some(true));
+        assert!(unavailable.detail.contains("before V1"));
+        assert_eq!(available.passed, Some(false));
+    }
 }
