@@ -227,12 +227,15 @@ impl RegistrationChecker {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, atomic::Ordering};
+    use std::{
+        collections::HashMap,
+        sync::{Arc, atomic::Ordering},
+    };
 
     use base_proof_contracts::TEEProverRegistryClient;
 
     use super::*;
-    use crate::test_utils::MockRegistry;
+    use crate::test_utils::{AddressBasedMockRegistry, MockRegistry};
 
     fn test_checker_with_mock(
         registry: impl TEEProverRegistryClient + 'static,
@@ -251,6 +254,32 @@ mod tests {
             dummy_url,
         );
         RegistrationChecker::new(vec![transport], registry)
+    }
+
+    fn two_transport_checker(
+        registry: impl TEEProverRegistryClient + 'static,
+    ) -> RegistrationChecker {
+        let s1 = Arc::new(base_proof_tee_nitro_enclave::Server::new_local().unwrap());
+        let s2 = Arc::new(base_proof_tee_nitro_enclave::Server::new_local().unwrap());
+        let t1 = Arc::new(NitroTransport::local(s1));
+        let t2 = Arc::new(NitroTransport::local(s2));
+        RegistrationChecker::new(vec![t1, t2], registry)
+    }
+
+    async fn transport_signer_address(transport: &NitroTransport) -> Address {
+        let public_key = transport
+            .signer_public_key()
+            .await
+            .expect("signer public key should be available in tests");
+        let verifying_key = VerifyingKey::from_sec1_bytes(&public_key)
+            .expect("signer public key should parse in tests");
+        public_key_to_address(&verifying_key)
+    }
+
+    async fn two_transport_signers(checker: &RegistrationChecker) -> (Address, Address) {
+        let signer_one = transport_signer_address(&checker.transports[0]).await;
+        let signer_two = transport_signer_address(&checker.transports[1]).await;
+        (signer_one, signer_two)
     }
 
     #[tokio::test]
@@ -331,5 +360,119 @@ mod tests {
 
         assert!(checker.require_valid_signer().await.is_ok());
         assert_eq!(call_count.load(Ordering::Relaxed), 2);
+    }
+
+    #[tokio::test]
+    async fn select_single_valid_returns_it() {
+        let registry = AddressBasedMockRegistry::new(HashMap::new());
+        let checker = two_transport_checker(registry.clone());
+        let (signer_one, signer_two) = two_transport_signers(&checker).await;
+
+        {
+            let mut validity_map = registry
+                .validity_map
+                .lock()
+                .expect("validity map lock should succeed");
+            validity_map.insert(signer_one, true);
+            validity_map.insert(signer_two, false);
+        }
+
+        let valid = checker.select_valid_enclave().await.expect("valid signer expected");
+        assert_eq!(valid.index, 0);
+        assert_eq!(valid.signer, signer_one);
+    }
+
+    #[tokio::test]
+    async fn select_second_valid_returns_index_1() {
+        let registry = AddressBasedMockRegistry::new(HashMap::new());
+        let checker = two_transport_checker(registry.clone());
+        let (signer_one, signer_two) = two_transport_signers(&checker).await;
+
+        {
+            let mut validity_map = registry
+                .validity_map
+                .lock()
+                .expect("validity map lock should succeed");
+            validity_map.insert(signer_one, false);
+            validity_map.insert(signer_two, true);
+        }
+
+        let valid = checker.select_valid_enclave().await.expect("valid signer expected");
+        assert_eq!(valid.index, 1);
+        assert_eq!(valid.signer, signer_two);
+    }
+
+    #[tokio::test]
+    async fn select_both_valid_returns_first() {
+        let registry = AddressBasedMockRegistry::new(HashMap::new());
+        let checker = two_transport_checker(registry.clone());
+        let (signer_one, signer_two) = two_transport_signers(&checker).await;
+
+        {
+            let mut validity_map = registry
+                .validity_map
+                .lock()
+                .expect("validity map lock should succeed");
+            validity_map.insert(signer_one, true);
+            validity_map.insert(signer_two, true);
+        }
+
+        let valid = checker.select_valid_enclave().await.expect("valid signer expected");
+        assert_eq!(valid.index, 0);
+        assert_eq!(valid.signer, signer_one);
+    }
+
+    #[tokio::test]
+    async fn select_none_valid_returns_no_valid_signer() {
+        let registry = AddressBasedMockRegistry::new(HashMap::new());
+        let checker = two_transport_checker(registry);
+        let (signer_one, signer_two) = two_transport_signers(&checker).await;
+
+        let err = checker
+            .select_valid_enclave()
+            .await
+            .expect_err("expected no valid signer error");
+
+        match err {
+            RegistrationError::NoValidSigner { signers } => {
+                assert_eq!(signers.len(), 2);
+                assert!(signers.contains(&signer_one));
+                assert!(signers.contains(&signer_two));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    // select_skips_failed_key_fetch is not directly testable because NitroTransport::local
+    // always returns a signer public key and RegistrationChecker is hard-wired to NitroTransport.
+
+    #[tokio::test]
+    async fn health_latches_with_multi_transport() {
+        let registry = AddressBasedMockRegistry::new(HashMap::new());
+        let checker = two_transport_checker(registry.clone());
+        let (signer_one, signer_two) = two_transport_signers(&checker).await;
+
+        {
+            let mut validity_map = registry
+                .validity_map
+                .lock()
+                .expect("validity map lock should succeed");
+            validity_map.insert(signer_one, true);
+            validity_map.insert(signer_two, false);
+        }
+
+        assert!(checker.check_health().await.expect("health should be ok"));
+
+        {
+            let mut validity_map = registry
+                .validity_map
+                .lock()
+                .expect("validity map lock should succeed");
+            validity_map.insert(signer_one, false);
+            validity_map.insert(signer_two, false);
+        }
+
+        registry.should_fail.store(true, Ordering::Relaxed);
+        assert!(checker.check_health().await.expect("latched health should stay ok"));
     }
 }

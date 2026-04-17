@@ -1,8 +1,12 @@
 //! Shared test utilities for the `base-proof-tee-nitro-host` crate.
 
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, AtomicUsize, Ordering},
+use std::{
+    collections::HashMap,
+    sync::{
+        Arc,
+        Mutex,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+    },
 };
 
 use alloy_primitives::Address;
@@ -20,6 +24,23 @@ pub struct MockRegistry {
     pub call_count: Arc<AtomicUsize>,
     /// When `true`, `is_valid_signer` returns a [`ContractError::Validation`] error.
     pub should_fail: Arc<AtomicBool>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AddressBasedMockRegistry {
+    pub validity_map: Arc<Mutex<HashMap<Address, bool>>>,
+    pub call_count: Arc<AtomicUsize>,
+    pub should_fail: Arc<AtomicBool>,
+}
+
+impl AddressBasedMockRegistry {
+    pub fn new(validity_map: HashMap<Address, bool>) -> Self {
+        Self {
+            validity_map: Arc::new(Mutex::new(validity_map)),
+            call_count: Arc::new(AtomicUsize::new(0)),
+            should_fail: Arc::new(AtomicBool::new(false)),
+        }
+    }
 }
 
 impl MockRegistry {
@@ -44,6 +65,39 @@ impl TEEProverRegistryClient for MockRegistry {
             return Err(base_proof_contracts::ContractError::Validation("mock RPC failure".into()));
         }
         Ok(self.valid.load(Ordering::Relaxed))
+    }
+
+    async fn is_registered_signer(
+        &self,
+        _signer: Address,
+    ) -> Result<bool, base_proof_contracts::ContractError> {
+        unimplemented!()
+    }
+
+    async fn get_registered_signers(
+        &self,
+    ) -> Result<Vec<Address>, base_proof_contracts::ContractError> {
+        unimplemented!()
+    }
+}
+
+#[async_trait]
+impl TEEProverRegistryClient for AddressBasedMockRegistry {
+    async fn is_valid_signer(
+        &self,
+        signer: Address,
+    ) -> Result<bool, base_proof_contracts::ContractError> {
+        self.call_count.fetch_add(1, Ordering::Relaxed);
+        if self.should_fail.load(Ordering::Relaxed) {
+            return Err(base_proof_contracts::ContractError::Validation(
+                "mock RPC failure".into(),
+            ));
+        }
+        let validity_map = self
+            .validity_map
+            .lock()
+            .expect("AddressBasedMockRegistry validity map mutex poisoned");
+        Ok(validity_map.get(&signer).copied().unwrap_or(false))
     }
 
     async fn is_registered_signer(
