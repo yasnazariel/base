@@ -85,8 +85,10 @@ impl NitroProverServer {
                     .map_err(|e| eyre::eyre!("invalid L1 RPC URL: {e}"))?;
                 let registry =
                     TEEProverRegistryContractClient::new(config.registry_address, l1_url);
-                let checker =
-                    Arc::new(RegistrationChecker::new(vec![Arc::clone(&self.transport)], registry));
+                let checker = Arc::new(
+                    RegistrationChecker::new(vec![Arc::clone(&self.transport)], registry)
+                        .map_err(|e| eyre::eyre!("registration checker init failed: {e}"))?,
+                );
                 module.merge(
                     RegistrationHealthzRpc::new(env!("CARGO_PKG_VERSION"), Arc::clone(&checker))
                         .into_rpc(),

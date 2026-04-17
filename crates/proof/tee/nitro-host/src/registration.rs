@@ -90,15 +90,15 @@ impl std::fmt::Debug for RegistrationChecker {
 impl RegistrationChecker {
     /// Creates a new checker for the given transports and registry client.
     ///
-    /// # Panics
-    ///
-    /// Panics if `transports` is empty.
+    /// Returns an error if `transports` is empty.
     pub fn new(
         transports: Vec<Arc<NitroTransport>>,
         registry: impl TEEProverRegistryClient + 'static,
-    ) -> Self {
-        assert!(!transports.is_empty(), "at least one transport is required");
-        Self { transports, registry: Box::new(registry), healthy: OnceCell::new() }
+    ) -> Result<Self, RegistrationError> {
+        if transports.is_empty() {
+            return Err(RegistrationError::Setup("at least one transport is required".into()));
+        }
+        Ok(Self { transports, registry: Box::new(registry), healthy: OnceCell::new() })
     }
 
     async fn signer_address(transport: &NitroTransport) -> Result<Address, RegistrationError> {
@@ -247,7 +247,7 @@ mod tests {
     ) -> RegistrationChecker {
         let server = Arc::new(base_proof_tee_nitro_enclave::Server::new_local().unwrap());
         let transport = Arc::new(NitroTransport::local(server));
-        RegistrationChecker::new(vec![transport], registry)
+        RegistrationChecker::new(vec![transport], registry).unwrap()
     }
 
     fn test_checker() -> RegistrationChecker {
@@ -258,7 +258,7 @@ mod tests {
             alloy_primitives::Address::ZERO,
             dummy_url,
         );
-        RegistrationChecker::new(vec![transport], registry)
+        RegistrationChecker::new(vec![transport], registry).unwrap()
     }
 
     #[tokio::test]
