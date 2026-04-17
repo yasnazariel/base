@@ -51,13 +51,20 @@ pub enum RegistrationError {
         /// The signer address that failed validation.
         signer: Address,
     },
+    /// No enclave signer is currently valid in `TEEProverRegistry`.
     #[error("no valid signer found among: {signers:?}")]
-    NoValidSigner { signers: Vec<Address> },
+    NoValidSigner {
+        /// The signer addresses that were checked.
+        signers: Vec<Address>,
+    },
 }
 
+/// A signer that has been confirmed valid on-chain via `TEEProverRegistry`.
 #[derive(Debug)]
 pub struct ValidSigner {
+    /// Index of the enclave in the configured transport list.
     pub index: usize,
+    /// Ethereum address of the valid signer.
     pub signer: Address,
 }
 
@@ -183,6 +190,7 @@ impl RegistrationChecker {
         }
     }
 
+    /// Selects the first enclave whose signer is currently valid on-chain.
     pub async fn select_valid_enclave(&self) -> Result<ValidSigner, RegistrationError> {
         let mut discovered = Vec::new();
         let mut valid_signers = Vec::new();
