@@ -207,6 +207,14 @@ base_metrics::define_metrics! {
     tx_accounts_modified: histogram,
     #[describe("Number of storage slots modified by a transaction (from EVM post-state)")]
     tx_storage_slots_modified: histogram,
+    #[describe("Number of state root tasks started")]
+    state_root_task_started_count: counter,
+    #[describe("Number of state root tasks completed successfully")]
+    state_root_task_completed_count: counter,
+    #[describe("Number of state root tasks that encountered errors")]
+    state_root_task_error_count: counter,
+    #[describe("Histogram of state root task duration (completed tasks only)")]
+    state_root_task_duration: histogram,
 }
 
 impl BuilderMetrics {

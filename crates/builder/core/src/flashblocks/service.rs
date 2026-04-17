@@ -9,6 +9,8 @@ use base_node_runner::{
     BaseNode, BaseNodeTypes, PayloadServiceBuilder as BasePayloadServiceBuilder,
 };
 use derive_more::Debug;
+use reth_engine_primitives::TreeConfig;
+use reth_engine_tree::tree::{PayloadProcessor, precompile_cache::PrecompileCacheMap};
 use reth_node_api::NodeTypes;
 use reth_node_builder::{
     BuilderContext,
@@ -16,9 +18,13 @@ use reth_node_builder::{
 };
 use reth_payload_builder::{PayloadBuilderHandle, PayloadBuilderService};
 use reth_provider::CanonStateSubscriptions;
+use reth_trie_db::ChangesetCache;
 use tracing::info;
 
-use super::{PayloadHandler, generator::BlockPayloadJobGenerator, payload::BasePayloadBuilder};
+use super::{
+    PayloadHandler, generator::BlockPayloadJobGenerator, payload::BasePayloadBuilder,
+    state_root_task::StateRootTaskDeps,
+};
 use crate::{
     BuilderConfig,
     traits::{NodeBounds, PoolBounds},
@@ -46,13 +52,33 @@ impl FlashblocksServiceBuilder {
 
         let ws_pub: Arc<WebSocketPublisher> =
             WebSocketPublisher::new(self.0.flashblocks_ws_addr)?.into();
+
+        // PayloadProcessor is reused across blocks for warm sparse trie.
+        let evm_config = BaseEvmConfig::base(ctx.chain_spec());
+        // Production uses default TreeConfig (cache pruning ON). The
+        // state_root benchmark disables pruning to keep the trie warm across
+        // iterations — that is intentional and not meant to mirror production.
+        let tree_config = TreeConfig::default();
+        let changeset_cache = ChangesetCache::new();
+        let runtime = reth_tasks::Runtime::with_existing_handle(tokio::runtime::Handle::current())?;
+        let payload_processor = PayloadProcessor::new(
+            runtime,
+            evm_config.clone(),
+            &tree_config,
+            PrecompileCacheMap::default(),
+        );
+
+        let state_root_deps =
+            StateRootTaskDeps::new(payload_processor, changeset_cache, tree_config);
+
         let payload_builder = BasePayloadBuilder::new(
-            BaseEvmConfig::base(ctx.chain_spec()),
+            evm_config,
             pool,
             ctx.provider().clone(),
             self.0.clone(),
             built_payload_tx,
             ws_pub,
+            state_root_deps,
         );
         let payload_generator = BlockPayloadJobGenerator::with_builder(
             ctx.provider().clone(),

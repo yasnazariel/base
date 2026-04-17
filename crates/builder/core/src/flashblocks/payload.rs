@@ -25,7 +25,10 @@ use base_execution_payload_builder::{BaseBuiltPayload, BasePayloadBuilderAttribu
 use either::Either;
 use eyre::WrapErr as _;
 use reth_basic_payload_builder::BuildOutcome;
-use reth_evm::{ConfigureEvm, execute::BlockBuilder};
+use reth_evm::{
+    ConfigureEvm,
+    execute::{BlockBuilder, BlockExecutor},
+};
 use reth_execution_types::ChangedAccount;
 use reth_node_api::{Block, BuiltPayloadExecutedBlock, PayloadBuilderError};
 use reth_payload_primitives::PayloadBuilderAttributes;
@@ -54,6 +57,10 @@ use crate::{
         best_txs::BestFlashblocksTxs,
         context::BasePayloadBuilderCtx,
         generator::{BlockCell, BuildArguments},
+        state_root_task::{
+            BuilderStateHook, StateRootHandle, StateRootTaskDeps, finalize_state_root,
+            spawn_state_root_task,
+        },
     },
     traits::{ClientBounds, PoolBounds},
 };
@@ -85,7 +92,7 @@ pub struct FlashblocksExecutionInfo {
 }
 
 /// Base payload builder
-#[derive(Debug, Clone)]
+#[derive(derive_more::Debug, Clone)]
 pub(super) struct BasePayloadBuilder<Pool, Client> {
     /// The type responsible for creating the evm.
     pub evm_config: BaseEvmConfig,
@@ -101,6 +108,9 @@ pub(super) struct BasePayloadBuilder<Pool, Client> {
     pub ws_pub: Arc<WebSocketPublisher>,
     /// System configuration for the builder
     pub config: BuilderConfig,
+    /// Reusable state-root-task dependencies.
+    /// Warm sparse trie persisted across blocks; one `build_payload` at a time.
+    state_root_deps: StateRootTaskDeps,
 }
 
 impl<Pool, Client> BasePayloadBuilder<Pool, Client> {
@@ -112,8 +122,9 @@ impl<Pool, Client> BasePayloadBuilder<Pool, Client> {
         config: BuilderConfig,
         payload_tx: mpsc::Sender<BaseBuiltPayload>,
         ws_pub: Arc<WebSocketPublisher>,
+        state_root_deps: StateRootTaskDeps,
     ) -> Self {
-        Self { evm_config, pool, client, payload_tx, ws_pub, config }
+        Self { evm_config, pool, client, payload_tx, ws_pub, config, state_root_deps }
     }
 }
 
@@ -250,12 +261,23 @@ where
         let state_provider = self.client.state_by_block_hash(ctx.parent().hash())?;
         let db = StateProviderDatabase::new(state_provider);
 
+        // Spawn background state root task (parallel sparse trie computation).
+        let (state_hook, handle) = spawn_state_root_task(
+            &self.state_root_deps,
+            &self.client,
+            ctx.parent().hash(),
+            ctx.parent().state_root,
+            ctx.block_number(),
+        )?;
+        let mut state_root_handle = Some(handle);
+        let _finish_guard = state_hook.finish_guard();
+
         // 1. execute the pre steps and seal an early block with that
         let sequencer_tx_start_time = Instant::now();
         let mut state =
             State::builder().with_database(cached_reads.as_db_mut(db)).with_bundle_update().build();
 
-        let mut info = execute_pre_steps(&mut state, &ctx)?;
+        let mut info = execute_pre_steps(&mut state, &ctx, &state_hook)?;
         let sequencer_tx_time = sequencer_tx_start_time.elapsed();
         BuilderMetrics::sequencer_tx_duration().record(sequencer_tx_time);
         BuilderMetrics::sequencer_tx_gauge().set(sequencer_tx_time);
@@ -266,12 +288,20 @@ where
 
         let skip_flashblocks_building = ctx.attributes().no_tx_pool || flashblocks_per_block == 0;
 
-        let (payload, fb_payload) = build_block(
-            &mut state,
-            &ctx,
-            &mut info,
-            skip_flashblocks_building, // need to calculate state root for CL sync or if not building flashblocks
-        )?;
+        // Final block when skipping flashblocks — compute state root now.
+        let fallback_state_root = if skip_flashblocks_building {
+            let (root, updates, hs) = finalize_state_root(
+                &state_hook,
+                state_root_handle.take(),
+                &mut state,
+                ctx.block_number(),
+            )?;
+            Some((root, updates, hs))
+        } else {
+            None
+        };
+
+        let (payload, fb_payload) = build_block(&mut state, &ctx, &mut info, fallback_state_root)?;
 
         self.payload_tx.send(payload.clone()).await.map_err(PayloadBuilderError::other)?;
         best_payload.set(payload.clone());
@@ -444,7 +474,14 @@ where
                     &span,
                     "Payload building complete, target flashblock count reached",
                 );
-                self.finalize_payload(&mut state, &ctx, &mut info, &finalized_cell)?;
+                self.finalize_payload(
+                    &mut state,
+                    &ctx,
+                    &mut info,
+                    &finalized_cell,
+                    &state_hook,
+                    state_root_handle.take(),
+                )?;
                 return Ok(());
             }
 
@@ -460,6 +497,7 @@ where
                     &publish_guard,
                     &fb_span,
                     &mut executed_sender_nonces,
+                    &state_hook,
                 )
                 .await
             {
@@ -472,7 +510,14 @@ where
                         &span,
                         "Payload building complete, job cancelled or target flashblock count reached",
                     );
-                    self.finalize_payload(&mut state, &ctx, &mut info, &finalized_cell)?;
+                    self.finalize_payload(
+                        &mut state,
+                        &ctx,
+                        &mut info,
+                        &finalized_cell,
+                        &state_hook,
+                        state_root_handle.take(),
+                    )?;
                     return Ok(());
                 }
                 Err(err) => {
@@ -499,7 +544,14 @@ where
                         &span,
                         "Payload building complete, channel closed or job cancelled",
                     );
-                    self.finalize_payload(&mut state, &ctx, &mut info, &finalized_cell)?;
+                    self.finalize_payload(
+                        &mut state,
+                        &ctx,
+                        &mut info,
+                        &finalized_cell,
+                        &state_hook,
+                        state_root_handle.take(),
+                    )?;
                     return Ok(());
                 }
             }
@@ -521,6 +573,7 @@ where
         publish_guard: &parking_lot::Mutex<()>,
         span: &tracing::Span,
         executed_sender_nonces: &mut HashMap<Address, u64>,
+        state_hook: &BuilderStateHook,
     ) -> eyre::Result<Option<FlashblocksExtraCtx>> {
         let flashblock_index = ctx.flashblock_index();
         let target_gas_for_batch = ctx.extra.target_gas_for_batch;
@@ -590,7 +643,7 @@ where
             block_uncompressed_size_limit: ctx.builder_config.max_uncompressed_block_size,
         };
         let diag = ctx
-            .execute_best_transactions(info, state, best_txs, &limits)
+            .execute_best_transactions(info, state, best_txs, &limits, state_hook)
             .wrap_err("failed to execute best transactions")?;
 
         // Evict permanently rejected transactions from the iterator and pool.
@@ -652,7 +705,7 @@ where
             .set(payload_transaction_simulation_time);
 
         let total_block_built_duration = Instant::now();
-        let build_result = build_block(state, ctx, info, ctx.attributes().no_tx_pool);
+        let build_result = build_block(state, ctx, info, None);
         let total_block_built_duration = total_block_built_duration.elapsed();
         BuilderMetrics::total_block_built_duration().record(total_block_built_duration);
         BuilderMetrics::total_block_built_gauge().set(total_block_built_duration);
@@ -816,22 +869,26 @@ where
         span.record("flashblock_count", ctx.flashblock_index());
     }
 
-    /// Finalize the payload by computing the state root and setting the finalized cell.
+    /// Computes the final state root and sets the finalized cell.
     fn finalize_payload<DB, P>(
         &self,
         state: &mut State<DB>,
         ctx: &BasePayloadBuilderCtx,
         info: &mut ExecutionInfo,
         finalized_cell: &BlockCell<BaseBuiltPayload>,
+        state_hook: &BuilderStateHook,
+        state_root_handle: Option<StateRootHandle>,
     ) -> Result<(), PayloadBuilderError>
     where
-        DB: Database<Error = ProviderError> + AsRef<P>,
+        DB: Database<Error = ProviderError> + AsRef<P> + revm::Database,
         P: StateRootProvider + HashedPostStateProvider + StorageRootProvider,
     {
         let start_time = Instant::now();
 
-        // Build the final block WITH state root computed
-        let (final_payload, _) = build_block(state, ctx, info, true)?;
+        let (state_root, trie_output, hashed_state) =
+            finalize_state_root(state_hook, state_root_handle, state, ctx.block_number())?;
+        let (final_payload, _) =
+            build_block(state, ctx, info, Some((state_root, trie_output, hashed_state)))?;
 
         let elapsed = start_time.elapsed();
         info!(
@@ -924,27 +981,36 @@ struct FlashblocksMetadata {
 pub(crate) fn execute_pre_steps<DB>(
     state: &mut State<DB>,
     ctx: &BasePayloadBuilderCtx,
+    state_hook: &BuilderStateHook,
 ) -> Result<ExecutionInfo, PayloadBuilderError>
 where
     DB: Database<Error = ProviderError> + std::fmt::Debug + revm::Database,
 {
-    // 1. apply pre-execution changes
-    ctx.evm_config
-        .builder_for_next_block(state, ctx.parent(), ctx.block_env_attributes.clone())
-        .map_err(PayloadBuilderError::other)?
-        .apply_pre_execution_changes()?;
+    // 1. apply pre-execution changes with the state hook installed so that
+    //    system-call diffs (EIP-4788 beacon root, EIP-2935 blockhashes) are
+    //    sent to the sparse trie task.
+    {
+        let mut builder = ctx
+            .evm_config
+            .builder_for_next_block(state, ctx.parent(), ctx.block_env_attributes.clone())
+            .map_err(PayloadBuilderError::other)?;
+        builder.executor_mut().set_state_hook(Some(state_hook.as_on_state_hook()));
+        builder.apply_pre_execution_changes()?;
+    }
 
     // 2. execute sequencer transactions
-    let info = ctx.execute_sequencer_transactions(state)?;
+    let info = ctx.execute_sequencer_transactions(state, state_hook)?;
 
     Ok(info)
 }
 
+/// Build a block. Pass `Some` with precomputed state root data, or `None`
+/// to skip state root (intermediate flashblocks).
 pub(crate) fn build_block<DB, P>(
     state: &mut State<DB>,
     ctx: &BasePayloadBuilderCtx,
     info: &mut ExecutionInfo,
-    calculate_state_root: bool,
+    state_root_data: Option<(B256, TrieUpdates, HashedPostState)>,
 ) -> Result<(BaseBuiltPayload, FlashblocksPayloadV1), PayloadBuilderError>
 where
     DB: Database<Error = ProviderError> + AsRef<P> + revm::Database,
@@ -978,28 +1044,9 @@ where
     );
     let logs_bloom: Bloom = logs_bloom(info.receipts.iter().flat_map(|r| r.logs()));
 
-    // TODO: maybe recreate state with bundle in here
-    // calculate the state root
-    let state_root_start_time = Instant::now();
-    let mut state_root = B256::ZERO;
-    let mut trie_output = TrieUpdates::default();
-    let mut hashed_state = HashedPostState::default();
-
-    if calculate_state_root {
-        let state_provider = state.database.as_ref();
-        hashed_state = state_provider.hashed_post_state(&state.bundle_state);
-        (state_root, trie_output) =
-            state_provider.state_root_with_updates(hashed_state.clone()).inspect_err(|err| {
-                warn!(target: "payload_builder",
-                    parent_header=%ctx.parent().hash(),
-                    %err,
-                    "failed to calculate state root for payload"
-                );
-            })?;
-        let state_root_calculation_time = state_root_start_time.elapsed();
-        BuilderMetrics::state_root_calculation_duration().record(state_root_calculation_time);
-        BuilderMetrics::state_root_calculation_gauge().set(state_root_calculation_time);
-    }
+    // Use precomputed state root data, or default to zeros (for intermediate flashblocks).
+    let (state_root, trie_output, hashed_state) = state_root_data
+        .unwrap_or_else(|| (B256::ZERO, TrieUpdates::default(), HashedPostState::default()));
 
     let mut requests_hash = None;
     let withdrawals_root =
@@ -1191,6 +1238,7 @@ mod tests {
     use reth_primitives_traits::SealedHeader;
     use reth_provider::noop::NoopProvider;
     use reth_revm::{State, database::StateProviderDatabase};
+    use reth_trie::{HashedPostState, updates::TrieUpdates};
 
     use super::{FlashblocksMetadata, build_block};
     use crate::{ExecutionInfo, flashblocks::context::BasePayloadBuilderCtx};
@@ -1238,7 +1286,7 @@ mod tests {
         let mut info = ExecutionInfo::default();
 
         let (payload, fb_payload) =
-            build_block::<_, NoopProvider>(&mut state, &ctx, &mut info, false)
+            build_block::<_, NoopProvider>(&mut state, &ctx, &mut info, None)
                 .expect("build_block should succeed for an empty block");
 
         // Block number must be parent + 1.
@@ -1269,9 +1317,13 @@ mod tests {
         let mut state = State::builder().with_database(db).with_bundle_update().build();
         let mut info = ExecutionInfo::default();
 
-        let (payload, _fb_payload) =
-            build_block::<_, NoopProvider>(&mut state, &ctx, &mut info, true)
-                .expect("build_block with state root should succeed");
+        let (payload, _fb_payload) = build_block::<_, NoopProvider>(
+            &mut state,
+            &ctx,
+            &mut info,
+            Some((B256::ZERO, TrieUpdates::default(), HashedPostState::default())),
+        )
+        .expect("build_block with state root should succeed");
 
         // NoopProvider returns B256::default() for all state root queries,
         // which equals B256::ZERO.
@@ -1305,7 +1357,7 @@ mod tests {
         let mut state = State::builder().with_database(db).with_bundle_update().build();
         let mut info = ExecutionInfo::default();
 
-        let err = build_block::<_, NoopProvider>(&mut state, &ctx, &mut info, false)
+        let err = build_block::<_, NoopProvider>(&mut state, &ctx, &mut info, None)
             .expect_err("build_block should fail on block number mismatch");
 
         let msg = err.to_string();
@@ -1334,7 +1386,7 @@ mod tests {
         let mut state = State::builder().with_database(db).with_bundle_update().build();
         let mut info = ExecutionInfo::default();
 
-        let err = build_block::<_, NoopProvider>(&mut state, &ctx, &mut info, false)
+        let err = build_block::<_, NoopProvider>(&mut state, &ctx, &mut info, None)
             .expect_err("build_block should fail without beacon block root");
 
         let msg = err.to_string();

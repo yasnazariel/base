@@ -7,7 +7,11 @@ use base_execution_txpool::{BasePooledTx, BundleTransaction, TimestampedTransact
 use base_node_core::BaseEngineTypes;
 use reth_node_api::{FullNodeTypes, NodeTypes};
 use reth_payload_util::PayloadTransactions;
-use reth_provider::{BlockReaderIdExt, ChainSpecProvider, StateProviderFactory};
+use reth_provider::{
+    BlockNumReader, BlockReader, BlockReaderIdExt, ChainSpecProvider, ChangeSetReader,
+    DatabaseProviderFactory, PruneCheckpointReader, StageCheckpointReader, StateProviderFactory,
+    StateReader, StorageChangeSetReader, StorageSettingsCache,
+};
 use reth_transaction_pool::{TransactionPool, TransactionPoolExt};
 
 /// Composite trait bound for a full node type compatible with the Base builder.
@@ -67,7 +71,17 @@ pub trait ClientBounds:
     StateProviderFactory
     + ChainSpecProvider<ChainSpec = BaseChainSpec>
     + BlockReaderIdExt<Header = Header>
+    + DatabaseProviderFactory<
+        Provider: BlockReader
+                      + StageCheckpointReader
+                      + PruneCheckpointReader
+                      + ChangeSetReader
+                      + StorageChangeSetReader
+                      + BlockNumReader
+                      + StorageSettingsCache,
+    > + StateReader
     + Clone
+    + 'static
 {
 }
 
@@ -75,7 +89,17 @@ impl<T> ClientBounds for T where
     T: StateProviderFactory
         + ChainSpecProvider<ChainSpec = BaseChainSpec>
         + BlockReaderIdExt<Header = Header>
+        + DatabaseProviderFactory<
+            Provider: BlockReader
+                          + StageCheckpointReader
+                          + PruneCheckpointReader
+                          + ChangeSetReader
+                          + StorageChangeSetReader
+                          + BlockNumReader
+                          + StorageSettingsCache,
+        > + StateReader
         + Clone
+        + 'static
 {
 }
 

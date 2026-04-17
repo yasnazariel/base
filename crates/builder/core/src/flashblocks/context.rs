@@ -7,7 +7,9 @@ use std::{
 use alloy_consensus::{Eip658Value, Transaction};
 use alloy_eips::{Encodable2718, Typed2718};
 use alloy_evm::Database;
-use alloy_primitives::{B256, BlockHash, Bytes, TxHash, U256};
+#[cfg(any(test, feature = "test-utils"))]
+use alloy_primitives::B256;
+use alloy_primitives::{BlockHash, Bytes, TxHash, U256};
 use alloy_rpc_types_eth::Withdrawals;
 use base_access_lists::FBALBuilderDb;
 use base_common_chains::Upgrades;
@@ -40,6 +42,7 @@ use tracing::{debug, error, trace, warn};
 use crate::{
     BuilderConfig, BuilderMetrics, ExecutionInfo, ExecutionMeteringLimitExceeded, PayloadTxsBounds,
     ResourceLimits, TxResources, TxnExecutionError, TxnOutcome,
+    flashblocks::state_root_task::BuilderStateHook,
 };
 
 /// Records the priority fee of a rejected transaction with the given reason as a label.
@@ -486,6 +489,7 @@ impl BasePayloadBuilderCtx {
     pub(super) fn execute_sequencer_transactions(
         &self,
         db: &mut State<impl Database>,
+        state_hook: &BuilderStateHook,
     ) -> Result<ExecutionInfo, PayloadBuilderError> {
         let mut info = ExecutionInfo::with_capacity(self.attributes().transactions.len());
 
@@ -562,6 +566,9 @@ impl BasePayloadBuilderCtx {
 
             info.receipts.push(self.build_receipt(ctx, depositor_nonce));
 
+            // Send state to state root task before commit
+            state_hook.send_state_update(&state);
+
             // commit changes
             evm.db_mut().commit(state);
 
@@ -601,6 +608,7 @@ impl BasePayloadBuilderCtx {
         db: &mut State<impl Database>,
         best_txs: &mut impl PayloadTxsBounds,
         limits: &ResourceLimits,
+        state_hook: &BuilderStateHook,
     ) -> Result<FlashblockDiagnostics, PayloadBuilderError> {
         let execute_txs_start_time = Instant::now();
         let mut num_txs_considered = 0;
@@ -937,6 +945,9 @@ impl BasePayloadBuilderCtx {
                 cumulative_gas_used: info.cumulative_gas_used,
             };
             info.receipts.push(self.build_receipt(ctx, None));
+
+            // Send state to state root task before commit
+            state_hook.send_state_update(&state);
 
             // commit changes
             evm.db_mut().commit(state);
