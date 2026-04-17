@@ -224,14 +224,16 @@ where
                     sync_task = Some(tokio::spawn(async move {
                         SyncFromSourceTask::new(
                             engine_client,
-                            engine_actor_request_tx,
-                            cancellation_token,
-                            local_l2_provider,
+                            SyncFromSourceTaskConfig {
+                                engine_actor_request_tx,
+                                cancellation_token,
+                                local_l2_provider,
+                                safe_head_listener,
+                                genesis,
+                            },
                             sent_head,
                             target_block,
                             l2_source,
-                            safe_head_listener,
-                            genesis,
                         )
                         .sync_from_source()
                         .await
@@ -322,6 +324,14 @@ where
     }
 }
 
+pub(super) struct SyncFromSourceTaskConfig {
+    engine_actor_request_tx: mpsc::Sender<EngineActorRequest>,
+    cancellation_token: CancellationToken,
+    local_l2_provider: RootProvider<Base>,
+    safe_head_listener: Arc<dyn SafeHeadListener>,
+    genesis: Option<ChainGenesis>,
+}
+
 pub(super) struct SyncFromSourceTask<DerivationEngineClient_, L2Source> {
     engine_client: Arc<DerivationEngineClient_>,
     engine_actor_request_tx: mpsc::Sender<EngineActorRequest>,
@@ -341,25 +351,21 @@ where
 {
     pub(super) fn new(
         engine_client: Arc<DerivationEngineClient_>,
-        engine_actor_request_tx: mpsc::Sender<EngineActorRequest>,
-        cancellation_token: CancellationToken,
-        local_l2_provider: RootProvider<Base>,
+        config: SyncFromSourceTaskConfig,
         sent_head: u64,
         target_block: u64,
         l2_source: Arc<L2Source>,
-        safe_head_listener: Arc<dyn SafeHeadListener>,
-        genesis: Option<ChainGenesis>,
     ) -> Self {
         Self {
             engine_client,
-            engine_actor_request_tx,
-            cancellation_token,
-            local_l2_provider,
+            engine_actor_request_tx: config.engine_actor_request_tx,
+            cancellation_token: config.cancellation_token,
+            local_l2_provider: config.local_l2_provider,
             sent_head,
             target_block,
             l2_source,
-            safe_head_listener,
-            genesis,
+            safe_head_listener: config.safe_head_listener,
+            genesis: config.genesis,
         }
     }
 
@@ -449,33 +455,31 @@ where
         // posted). The inclusion block is >= l1_origin, so query results may lag by up to one
         // sequencing window compared to a full derivation node. This mirrors the fallback used
         // by the full DerivationActor for EL-sync safe heads.
-        if chains_agree {
-            if let Some(genesis) = self.genesis {
-                match L2BlockInfo::from_payload_and_genesis(
-                    safe_payload.execution_payload,
-                    safe_payload.parent_beacon_block_root,
-                    &genesis,
-                ) {
-                    Ok(l2_info) => {
-                        let l1_block = base_protocol::BlockInfo {
-                            number: l2_info.l1_origin.number,
-                            hash: l2_info.l1_origin.hash,
-                            ..Default::default()
-                        };
-                        if let Err(e) =
-                            self.safe_head_listener.safe_head_updated(l2_info, l1_block).await
-                        {
-                            error!(target: "derivation", error = %e, "failed to record safe head update");
-                        }
+        if chains_agree && let Some(genesis) = self.genesis {
+            match L2BlockInfo::from_payload_and_genesis(
+                safe_payload.execution_payload,
+                safe_payload.parent_beacon_block_root,
+                &genesis,
+            ) {
+                Ok(l2_info) => {
+                    let l1_block = base_protocol::BlockInfo {
+                        number: l2_info.l1_origin.number,
+                        hash: l2_info.l1_origin.hash,
+                        ..Default::default()
+                    };
+                    if let Err(e) =
+                        self.safe_head_listener.safe_head_updated(l2_info, l1_block).await
+                    {
+                        error!(target: "derivation", error = %e, "failed to record safe head update");
                     }
-                    Err(e) => {
-                        warn!(
-                            target: "derivation",
-                            error = %e,
-                            block = clamped_safe,
-                            "failed to extract L2BlockInfo from safe payload; safe head db not updated"
-                        );
-                    }
+                }
+                Err(e) => {
+                    warn!(
+                        target: "derivation",
+                        error = %e,
+                        block = clamped_safe,
+                        "failed to extract L2BlockInfo from safe payload; safe head db not updated"
+                    );
                 }
             }
         }
@@ -605,14 +609,16 @@ mod tests {
 
         let task = SyncFromSourceTask::new(
             Arc::new(engine_client),
-            engine_tx,
-            cancel.clone(),
-            local_l2_provider,
+            SyncFromSourceTaskConfig {
+                engine_actor_request_tx: engine_tx,
+                cancellation_token: cancel.clone(),
+                local_l2_provider,
+                safe_head_listener: Arc::new(DisabledSafeDB),
+                genesis: None,
+            },
             sent_head,
             target_block,
             Arc::new(l2_source),
-            Arc::new(DisabledSafeDB),
-            None,
         );
 
         (task, engine_rx, cancel)
