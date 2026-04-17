@@ -2910,6 +2910,52 @@ dependencies = [
 ]
 
 [[package]]
+name = "base-canary"
+version = "0.0.0"
+dependencies = [
+ "alloy-eips",
+ "alloy-network",
+ "alloy-primitives",
+ "alloy-provider",
+ "alloy-rpc-types",
+ "alloy-signer-local",
+ "async-trait",
+ "base-cli-utils",
+ "base-consensus-gossip",
+ "base-consensus-rpc",
+ "base-health",
+ "base-load-tests",
+ "base-metrics",
+ "base-protocol",
+ "clap",
+ "eyre",
+ "humantime",
+ "jsonrpsee",
+ "libp2p",
+ "libp2p-identity",
+ "metrics",
+ "rand 0.9.4",
+ "rstest",
+ "serde",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "url",
+]
+
+[[package]]
+name = "base-canary-bin"
+version = "0.0.0"
+dependencies = [
+ "base-canary",
+ "base-cli-utils",
+ "clap",
+ "eyre",
+ "tokio",
+]
+
+[[package]]
 name = "base-challenger"
 version = "0.0.0"
 dependencies = [
@@ -5293,9 +5339,11 @@ dependencies = [
  "alloy-primitives",
  "alloy-provider",
  "alloy-rpc-types-eth",
+ "alloy-signer-local",
  "alloy-sol-types",
  "anyhow",
  "arboard",
+ "base-canary",
  "base-common-chains",
  "base-common-consensus",
  "base-common-flashblocks",
@@ -5317,6 +5365,7 @@ dependencies = [
  "serde_yaml",
  "tokio",
  "tokio-tungstenite 0.28.0",
+ "tokio-util",
  "tracing",
  "url",
 ]

@@ -1,5 +1,8 @@
 //! TUI view components for basectl panels and dashboards.
 
+mod canary;
+pub use canary::CanaryView;
+
 mod command_center;
 pub use command_center::CommandCenterView;
 

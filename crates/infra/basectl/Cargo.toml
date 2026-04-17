@@ -16,8 +16,11 @@ arboard = { workspace = true }
 futures = { workspace = true }
 crossterm = { workspace = true }
 serde_yaml = { workspace = true }
+tokio-util = { workspace = true }
+base-canary = { workspace = true }
 alloy-contract = { workspace = true }
 base-load-tests = { workspace = true }
+alloy-signer-local = { workspace = true }
 base-common-chains = { workspace = true }
 base-common-network = { workspace = true }
 base-consensus-gossip = { workspace = true }

@@ -3,12 +3,14 @@ use std::{
     sync::{Arc, atomic::AtomicBool},
 };
 
+use base_canary::ActionOutcome;
 use base_common_flashblocks::Flashblock;
 use base_consensus_genesis::SystemConfig;
 use tokio::{
     sync::{mpsc, watch},
     task::JoinHandle,
 };
+use tokio_util::sync::CancellationToken;
 
 use crate::{
     commands::{DaTracker, FlashblockEntry, LoadingState},
@@ -151,6 +153,121 @@ pub struct LoadTestTask {
     pub handle: JoinHandle<()>,
 }
 
+/// An event emitted by the background canary task.
+#[derive(Debug)]
+pub enum CanaryEvent {
+    /// An action has started executing.
+    ActionStarted {
+        /// Name of the action.
+        name: &'static str,
+    },
+    /// An action has finished.
+    ActionCompleted {
+        /// Name of the action.
+        name: &'static str,
+        /// Outcome of the action execution.
+        outcome: ActionOutcome,
+    },
+    /// Waiting for the next scheduled run; `delay_secs` counts down each second.
+    WaitingForNextRun {
+        /// Seconds remaining until the next run.
+        delay_secs: u64,
+    },
+}
+
+/// A completed canary action outcome shown in the results list.
+#[derive(Debug)]
+pub struct CanaryOutcome {
+    /// Action that produced this outcome.
+    pub name: &'static str,
+    /// Result of the action execution.
+    pub outcome: ActionOutcome,
+}
+
+/// Persistent canary runner state — lives in [`Resources`] so the task
+/// keeps executing across view switches.
+#[derive(Debug, Default)]
+pub struct CanaryState {
+    /// Completed action outcomes, newest at the back.
+    pub outcomes: VecDeque<CanaryOutcome>,
+    /// Name of the action currently executing, if any.
+    pub current_action: Option<&'static str>,
+    /// Seconds until the next scheduled run, while waiting between cycles.
+    pub next_run_secs: Option<u64>,
+    cancel: Option<CancellationToken>,
+    event_rx: Option<mpsc::Receiver<CanaryEvent>>,
+    handle: Option<JoinHandle<()>>,
+}
+
+impl CanaryState {
+    /// Returns `true` if the canary task is currently running.
+    pub fn is_running(&self) -> bool {
+        self.handle.as_ref().is_some_and(|h| !h.is_finished())
+    }
+
+    /// Registers a newly spawned canary task, replacing any previous one.
+    pub fn set_task(
+        &mut self,
+        cancel: CancellationToken,
+        event_rx: mpsc::Receiver<CanaryEvent>,
+        handle: JoinHandle<()>,
+    ) {
+        self.stop();
+        self.outcomes.clear();
+        self.current_action = None;
+        self.next_run_secs = None;
+        self.cancel = Some(cancel);
+        self.event_rx = Some(event_rx);
+        self.handle = Some(handle);
+    }
+
+    /// Cancels and drops the running task.
+    pub fn stop(&mut self) {
+        if let Some(c) = self.cancel.take() {
+            c.cancel();
+        }
+        if let Some(h) = self.handle.take() {
+            h.abort();
+        }
+        self.event_rx = None;
+        self.current_action = None;
+        self.next_run_secs = None;
+    }
+
+    /// Drains pending events from the channel and updates state.
+    ///
+    /// Call once per tick from [`super::views::CanaryView`].
+    pub fn drain_events(&mut self) {
+        let Some(ref mut rx) = self.event_rx else { return };
+        while let Ok(event) = rx.try_recv() {
+            match event {
+                CanaryEvent::ActionStarted { name } => {
+                    self.current_action = Some(name);
+                    self.next_run_secs = None;
+                }
+                CanaryEvent::ActionCompleted { name, outcome } => {
+                    self.current_action = None;
+                    self.outcomes.push_back(CanaryOutcome { name, outcome });
+                    if self.outcomes.len() > 200 {
+                        self.outcomes.pop_front();
+                    }
+                }
+                CanaryEvent::WaitingForNextRun { delay_secs } => {
+                    self.next_run_secs = Some(delay_secs);
+                }
+            }
+        }
+        // Detect natural task exit.
+        if self.handle.as_ref().is_some_and(|h| h.is_finished()) {
+            self.handle = None;
+            self.cancel = None;
+            self.event_rx = None;
+            self.current_action = None;
+            self.next_run_secs = None;
+        }
+    }
+}
+
 /// Shared resources available to all TUI views.
 #[derive(Debug)]
 pub struct Resources {
@@ -168,6 +285,8 @@ pub struct Resources {
     pub validators: ValidatorState,
     /// Proof system monitoring state.
     pub proofs: ProofsState,
+    /// Canary runner state, persists across view switches.
+    pub canary: CanaryState,
     /// L1 system config fetched from the contract.
     pub system_config: Option<SystemConfig>,
     sys_config_rx: Option<mpsc::Receiver<SystemConfig>>,
@@ -230,6 +349,7 @@ impl Resources {
             conductor: ConductorState::default(),
             validators: ValidatorState::default(),
             proofs: ProofsState::default(),
+            canary: CanaryState::default(),
             system_config: None,
             sys_config_rx: None,
             load_test_task: None,

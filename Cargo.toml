@@ -56,6 +56,7 @@ default-members = [
   "bin/node",
   "bin/basectl",
   "bin/builder",
+  "bin/canary",
   "bin/challenger",
   "bin/consensus",
   "bin/ingress-rpc",
@@ -218,6 +219,7 @@ base-execution-payload-builder = { path = "crates/execution/payload" }
 
 # Infra
 based = { path = "crates/infra/based" }
+base-canary = { path = "crates/infra/canary" }
 basectl-cli = { path = "crates/infra/basectl" }
 base-load-tests = { path = "crates/infra/load-tests" }
 audit-archiver-lib = { path = "crates/infra/audit" }

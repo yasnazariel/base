@@ -8,7 +8,8 @@ pub use core::App;
 
 mod resources;
 pub use resources::{
-    ConductorState, DaState, FlashState, LoadTestTask, ProofsState, Resources, ValidatorState,
+    CanaryEvent, CanaryOutcome, CanaryState, ConductorState, DaState, FlashState, LoadTestTask,
+    ProofsState, Resources, ValidatorState,
 };
 
 mod router;
@@ -23,6 +24,6 @@ pub use view::View;
 /// TUI view implementations.
 mod views;
 pub use views::{
-    CommandCenterView, ConductorView, ConfigView, DaMonitorView, FlashblocksView, HomeView,
-    LoadTestView, ProofsView, TransactionPane, UpgradesView, create_view,
+    CanaryView, CommandCenterView, ConductorView, ConfigView, DaMonitorView, FlashblocksView,
+    HomeView, LoadTestView, ProofsView, TransactionPane, UpgradesView, create_view,
 };

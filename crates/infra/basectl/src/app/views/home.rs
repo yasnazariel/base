@@ -70,6 +70,12 @@ const MENU_ITEMS: &[MenuItem] = &[
         view_id: Some(ViewId::LoadTest),
     },
     MenuItem {
+        key: 'y',
+        label: "Canary",
+        description: "Run the canary health monitor (devnet only)",
+        view_id: Some(ViewId::Canary),
+    },
+    MenuItem {
         key: 'u',
         label: "Upgrades",
         description: "Network upgrade activation countdown and history",
@@ -85,6 +91,7 @@ const KEYBINDINGS: &[Keybinding] = &[
     Keybinding { key: "f", description: "Flashblocks" },
     Keybinding { key: "h", description: "HA Conductor" },
     Keybinding { key: "l", description: "Load Test" },
+    Keybinding { key: "y", description: "Canary" },
     Keybinding { key: "p", description: "Proofs" },
     Keybinding { key: "u", description: "Upgrades" },
     Keybinding { key: "j/k", description: "Navigate" },
@@ -118,6 +125,7 @@ impl View for HomeView {
             KeyCode::Char('f') => Action::SwitchView(ViewId::Flashblocks),
             KeyCode::Char('h') => Action::SwitchView(ViewId::Conductor),
             KeyCode::Char('l') => Action::SwitchView(ViewId::LoadTest),
+            KeyCode::Char('y') => Action::SwitchView(ViewId::Canary),
             KeyCode::Char('p') => Action::SwitchView(ViewId::Proofs),
             KeyCode::Char('u') => Action::SwitchView(ViewId::Upgrades),
             KeyCode::Up | KeyCode::Char('k') => {

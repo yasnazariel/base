@@ -19,6 +19,8 @@ pub enum ViewId {
     LoadTest,
     /// Network upgrade activation countdown and history.
     Upgrades,
+    /// Canary service runner and log stream (devnet only).
+    Canary,
 }
 
 /// Manages view navigation history and the current active view.
