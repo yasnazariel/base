@@ -118,3 +118,10 @@ runs:
         LLVM_BIN=$(command -v llvm-config || ls /usr/bin/llvm-config-* 2>/dev/null | sort -V | tail -1)
         LLVM_VERSION=$($LLVM_BIN --version | cut -d. -f1)
         echo "LIBCLANG_PATH=/usr/lib/llvm-${LLVM_VERSION}/lib" >> $GITHUB_ENV
+
+    - name: Set PROTOC path
+      if: inputs.native-deps == 'true'
+      shell: bash
+      run: |
+        command -v protoc || sudo apt-get install -y protobuf-compiler
+        echo "PROTOC=$(command -v protoc)" >> "$GITHUB_ENV"
