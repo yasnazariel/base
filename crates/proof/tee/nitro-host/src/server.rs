@@ -108,7 +108,12 @@ impl NitroProverServer {
             .into_rpc(),
         )?;
 
-        module.merge(NitroSignerRpc { transport: Arc::clone(&self.transport) }.into_rpc())?;
+        module.merge(
+            NitroSignerRpc {
+                transports: vec![Arc::clone(&self.transport)],
+            }
+            .into_rpc(),
+        )?;
 
         Ok(server.start(module))
     }
@@ -155,16 +160,20 @@ impl ProverApiServer for NitroProverRpc {
 
 /// Inner RPC handler for `enclave_*` methods.
 struct NitroSignerRpc {
-    transport: Arc<NitroTransport>,
+    transports: Vec<Arc<NitroTransport>>,
 }
 
 #[async_trait]
 impl EnclaveApiServer for NitroSignerRpc {
     async fn signer_public_key(&self) -> RpcResult<Vec<Vec<u8>>> {
-        let key = self.transport.signer_public_key().await.map_err(|e| {
-            jsonrpsee::types::ErrorObjectOwned::owned(-32001, e.to_string(), None::<()>)
-        })?;
-        Ok(vec![key])
+        let mut keys = Vec::with_capacity(self.transports.len());
+        for transport in &self.transports {
+            let key = transport.signer_public_key().await.map_err(|e| {
+                jsonrpsee::types::ErrorObjectOwned::owned(-32001, e.to_string(), None::<()>)
+            })?;
+            keys.push(key);
+        }
+        Ok(keys)
     }
 
     async fn signer_attestation(
@@ -190,11 +199,17 @@ impl EnclaveApiServer for NitroSignerRpc {
             ));
         }
 
-        let attestation =
-            self.transport.signer_attestation(user_data, nonce).await.map_err(|e| {
-                jsonrpsee::types::ErrorObjectOwned::owned(-32001, e.to_string(), None::<()>)
-            })?;
-        Ok(vec![attestation])
+        let mut attestations = Vec::with_capacity(self.transports.len());
+        for transport in &self.transports {
+            let attestation = transport
+                .signer_attestation(user_data.clone(), nonce.clone())
+                .await
+                .map_err(|e| {
+                    jsonrpsee::types::ErrorObjectOwned::owned(-32001, e.to_string(), None::<()>)
+                })?;
+            attestations.push(attestation);
+        }
+        Ok(attestations)
     }
 }
 
@@ -211,7 +226,9 @@ mod tests {
         let transport = Arc::new(NitroTransport::local(Arc::clone(&server)));
         let expected = server.signer_public_key();
 
-        let rpc = NitroSignerRpc { transport };
+        let rpc = NitroSignerRpc {
+            transports: vec![transport],
+        };
         let result = EnclaveApiServer::signer_public_key(&rpc).await.unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0], expected);
@@ -231,7 +248,9 @@ mod tests {
         let server = Arc::new(EnclaveServer::new_local().unwrap());
         let transport = Arc::new(NitroTransport::local(Arc::clone(&server)));
 
-        let rpc = NitroSignerRpc { transport };
+        let rpc = NitroSignerRpc {
+            transports: vec![transport],
+        };
         // NSM is unavailable outside a real Nitro enclave, so attestation fails.
         // Assert the error is propagated (not swallowed) through the RPC layer.
         let result = EnclaveApiServer::signer_attestation(&rpc, None, None).await;
@@ -242,7 +261,9 @@ mod tests {
     async fn signer_attestation_rejects_oversized_user_data() {
         let server = Arc::new(EnclaveServer::new_local().unwrap());
         let transport = Arc::new(NitroTransport::local(Arc::clone(&server)));
-        let rpc = NitroSignerRpc { transport };
+        let rpc = NitroSignerRpc {
+            transports: vec![transport],
+        };
 
         let oversized = vec![0u8; MAX_USER_DATA_BYTES + 1];
         let result = EnclaveApiServer::signer_attestation(&rpc, Some(oversized), None).await;
@@ -255,7 +276,9 @@ mod tests {
     async fn signer_attestation_rejects_oversized_nonce() {
         let server = Arc::new(EnclaveServer::new_local().unwrap());
         let transport = Arc::new(NitroTransport::local(Arc::clone(&server)));
-        let rpc = NitroSignerRpc { transport };
+        let rpc = NitroSignerRpc {
+            transports: vec![transport],
+        };
 
         let oversized = vec![0u8; MAX_NONCE_BYTES + 1];
         let result = EnclaveApiServer::signer_attestation(&rpc, None, Some(oversized)).await;
