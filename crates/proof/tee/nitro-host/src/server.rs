@@ -157,6 +157,11 @@ impl ProverApiServer for NitroProverRpc {
 }
 
 /// Inner RPC handler for `enclave_*` methods.
+///
+/// All-or-nothing: both `signer_public_key` and `signer_attestation` fail if
+/// **any** transport is unreachable.  Callers need the complete set of keys /
+/// attestations (one per enclave) to register all signers on-chain, so a
+/// partial response would be unusable.
 struct NitroSignerRpc {
     transports: Vec<Arc<NitroTransport>>,
 }
