@@ -108,12 +108,8 @@ impl NitroProverServer {
             .into_rpc(),
         )?;
 
-        module.merge(
-            NitroSignerRpc {
-                transports: vec![Arc::clone(&self.transport)],
-            }
-            .into_rpc(),
-        )?;
+        module
+            .merge(NitroSignerRpc { transports: vec![Arc::clone(&self.transport)] }.into_rpc())?;
 
         Ok(server.start(module))
     }
@@ -226,9 +222,7 @@ mod tests {
         let transport = Arc::new(NitroTransport::local(Arc::clone(&server)));
         let expected = server.signer_public_key();
 
-        let rpc = NitroSignerRpc {
-            transports: vec![transport],
-        };
+        let rpc = NitroSignerRpc { transports: vec![transport] };
         let result = EnclaveApiServer::signer_public_key(&rpc).await.unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0], expected);
@@ -248,9 +242,7 @@ mod tests {
         let server = Arc::new(EnclaveServer::new_local().unwrap());
         let transport = Arc::new(NitroTransport::local(Arc::clone(&server)));
 
-        let rpc = NitroSignerRpc {
-            transports: vec![transport],
-        };
+        let rpc = NitroSignerRpc { transports: vec![transport] };
         // NSM is unavailable outside a real Nitro enclave, so attestation fails.
         // Assert the error is propagated (not swallowed) through the RPC layer.
         let result = EnclaveApiServer::signer_attestation(&rpc, None, None).await;
@@ -261,9 +253,7 @@ mod tests {
     async fn signer_attestation_rejects_oversized_user_data() {
         let server = Arc::new(EnclaveServer::new_local().unwrap());
         let transport = Arc::new(NitroTransport::local(Arc::clone(&server)));
-        let rpc = NitroSignerRpc {
-            transports: vec![transport],
-        };
+        let rpc = NitroSignerRpc { transports: vec![transport] };
 
         let oversized = vec![0u8; MAX_USER_DATA_BYTES + 1];
         let result = EnclaveApiServer::signer_attestation(&rpc, Some(oversized), None).await;
@@ -276,9 +266,7 @@ mod tests {
     async fn signer_attestation_rejects_oversized_nonce() {
         let server = Arc::new(EnclaveServer::new_local().unwrap());
         let transport = Arc::new(NitroTransport::local(Arc::clone(&server)));
-        let rpc = NitroSignerRpc {
-            transports: vec![transport],
-        };
+        let rpc = NitroSignerRpc { transports: vec![transport] };
 
         let oversized = vec![0u8; MAX_NONCE_BYTES + 1];
         let result = EnclaveApiServer::signer_attestation(&rpc, None, Some(oversized)).await;

@@ -52,9 +52,7 @@ pub enum RegistrationError {
         signer: Address,
     },
     #[error("no valid signer found among: {signers:?}")]
-    NoValidSigner {
-        signers: Vec<Address>,
-    },
+    NoValidSigner { signers: Vec<Address> },
 }
 
 #[derive(Debug)]
@@ -91,9 +89,7 @@ impl RegistrationChecker {
         Self { transports, registry: Box::new(registry), healthy: OnceCell::new() }
     }
 
-    async fn signer_address(
-        transport: &NitroTransport,
-    ) -> Result<Address, RegistrationError> {
+    async fn signer_address(transport: &NitroTransport) -> Result<Address, RegistrationError> {
         let public_key = transport
             .signer_public_key()
             .await
@@ -216,8 +212,7 @@ impl RegistrationChecker {
         }
 
         if valid_signers.len() > 1 {
-            let signers: Vec<Address> =
-                valid_signers.iter().map(|valid| valid.signer).collect();
+            let signers: Vec<Address> = valid_signers.iter().map(|valid| valid.signer).collect();
             warn!(signers = ?signers, "multiple valid signers found; using first");
         }
 
