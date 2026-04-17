@@ -88,11 +88,16 @@ impl std::fmt::Debug for RegistrationChecker {
 }
 
 impl RegistrationChecker {
-    /// Creates a new checker for the given transport and registry client.
+    /// Creates a new checker for the given transports and registry client.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `transports` is empty.
     pub fn new(
         transports: Vec<Arc<NitroTransport>>,
         registry: impl TEEProverRegistryClient + 'static,
     ) -> Self {
+        assert!(!transports.is_empty(), "at least one transport is required");
         Self { transports, registry: Box::new(registry), healthy: OnceCell::new() }
     }
 
