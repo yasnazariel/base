@@ -123,12 +123,11 @@ impl RegistrationChecker {
     }
 
     async fn fetch_validity(&self) -> Result<bool, RegistrationError> {
-        let mut any_valid = false;
-        let mut rpc_error = None;
+        let mut first_rpc_error = None;
 
         for (index, transport) in self.transports.iter().enumerate() {
             let signer = match Self::signer_address(transport).await {
-                Ok(signer) => signer,
+                Ok(s) => s,
                 Err(e) => {
                     warn!(error = %e, index, "skipping transport: key fetch failed");
                     continue;
@@ -136,30 +135,18 @@ impl RegistrationChecker {
             };
 
             match self.is_valid_signer(signer).await {
-                Ok(valid) => {
-                    if valid {
-                        any_valid = true;
-                    } else {
-                        warn!(signer = %signer, index, "signer is not a valid signer in TEEProverRegistry");
-                    }
+                Ok(true) => return Ok(true),
+                Ok(false) => {
+                    warn!(signer = %signer, index, "signer not valid in TEEProverRegistry");
                 }
-                Err(e) => {
-                    if rpc_error.is_none() {
-                        rpc_error = Some(e);
-                    }
-                }
-            }
+                Err(e) => drop(first_rpc_error.get_or_insert(e)),
+            };
         }
 
-        if any_valid {
-            return Ok(true);
+        match first_rpc_error {
+            Some(e) => Err(e),
+            None => Ok(false),
         }
-
-        if let Some(error) = rpc_error {
-            return Err(error);
-        }
-
-        Ok(false)
     }
 
     /// Latching health check: returns `true` once the signer has ever been
