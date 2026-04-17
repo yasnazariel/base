@@ -86,7 +86,7 @@ impl NitroProverServer {
                 let registry =
                     TEEProverRegistryContractClient::new(config.registry_address, l1_url);
                 let checker =
-                    Arc::new(RegistrationChecker::new(Arc::clone(&self.transport), registry));
+                    Arc::new(RegistrationChecker::new(vec![Arc::clone(&self.transport)], registry));
                 module.merge(
                     RegistrationHealthzRpc::new(env!("CARGO_PKG_VERSION"), Arc::clone(&checker))
                         .into_rpc(),
