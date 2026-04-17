@@ -51,6 +51,16 @@ pub enum RegistrationError {
         /// The signer address that failed validation.
         signer: Address,
     },
+    #[error("no valid signer found among: {signers:?}")]
+    NoValidSigner {
+        signers: Vec<Address>,
+    },
+}
+
+#[derive(Debug)]
+pub struct ValidSigner {
+    pub index: usize,
+    pub signer: Address,
 }
 
 /// Checks whether the enclave signer is a **valid** signer in the on-chain
@@ -61,7 +71,7 @@ pub enum RegistrationError {
 /// unnecessary.  A separate latching flag tracks whether the signer has *ever*
 /// been valid — once set, [`check_health`](Self::check_health) always succeeds.
 pub struct RegistrationChecker {
-    transport: Arc<NitroTransport>,
+    transports: Vec<Arc<NitroTransport>>,
     registry: Box<dyn TEEProverRegistryClient>,
     healthy: OnceCell<()>,
 }
@@ -75,15 +85,16 @@ impl std::fmt::Debug for RegistrationChecker {
 impl RegistrationChecker {
     /// Creates a new checker for the given transport and registry client.
     pub fn new(
-        transport: Arc<NitroTransport>,
+        transports: Vec<Arc<NitroTransport>>,
         registry: impl TEEProverRegistryClient + 'static,
     ) -> Self {
-        Self { transport, registry: Box::new(registry), healthy: OnceCell::new() }
+        Self { transports, registry: Box::new(registry), healthy: OnceCell::new() }
     }
 
-    async fn signer_address(&self) -> Result<Address, RegistrationError> {
-        let public_key = self
-            .transport
+    async fn signer_address(
+        transport: &NitroTransport,
+    ) -> Result<Address, RegistrationError> {
+        let public_key = transport
             .signer_public_key()
             .await
             .map_err(|e| RegistrationError::Setup(format!("signer public key: {e}")))?;
@@ -92,22 +103,55 @@ impl RegistrationChecker {
         Ok(public_key_to_address(&verifying_key))
     }
 
-    async fn fetch_validity(&self) -> Result<(bool, Address), RegistrationError> {
-        let signer = self.signer_address().await?;
-
+    async fn is_valid_signer(&self, signer: Address) -> Result<bool, RegistrationError> {
         let result =
             tokio::time::timeout(CHECK_TIMEOUT, self.registry.is_valid_signer(signer)).await;
 
         match result {
-            Ok(Ok(valid)) => {
-                if !valid {
-                    warn!(signer = %signer, "signer is not a valid signer in TEEProverRegistry");
-                }
-                Ok((valid, signer))
-            }
+            Ok(Ok(valid)) => Ok(valid),
             Ok(Err(e)) => Err(RegistrationError::Rpc { signer, reason: e.to_string() }),
             Err(_) => Err(RegistrationError::Rpc { signer, reason: "request timed out".into() }),
         }
+    }
+
+    async fn fetch_validity(&self) -> Result<bool, RegistrationError> {
+        let mut any_valid = false;
+        let mut rpc_error = None;
+
+        for (index, transport) in self.transports.iter().enumerate() {
+            let signer = match Self::signer_address(transport).await {
+                Ok(signer) => signer,
+                Err(e) => {
+                    warn!(error = %e, index, "skipping transport: key fetch failed");
+                    continue;
+                }
+            };
+
+            match self.is_valid_signer(signer).await {
+                Ok(valid) => {
+                    if valid {
+                        any_valid = true;
+                    } else {
+                        warn!(signer = %signer, index, "signer is not a valid signer in TEEProverRegistry");
+                    }
+                }
+                Err(e) => {
+                    if rpc_error.is_none() {
+                        rpc_error = Some(e);
+                    }
+                }
+            }
+        }
+
+        if any_valid {
+            return Ok(true);
+        }
+
+        if let Some(error) = rpc_error {
+            return Err(error);
+        }
+
+        Ok(false)
     }
 
     /// Latching health check: returns `true` once the signer has ever been
@@ -118,7 +162,7 @@ impl RegistrationChecker {
         if self.healthy.get().is_some() {
             return Ok(true);
         }
-        let (valid, _) = self.fetch_validity().await?;
+        let valid = self.fetch_validity().await?;
         if valid {
             let _ = self.healthy.set(());
         }
@@ -130,11 +174,54 @@ impl RegistrationChecker {
     /// Fail-closed: if L1 is unreachable or the signer is not valid, the
     /// proof request is rejected.
     pub async fn require_valid_signer(&self) -> Result<(), RegistrationError> {
-        match self.fetch_validity().await {
-            Ok((true, _)) => Ok(()),
-            Ok((false, signer)) => Err(RegistrationError::NotValid { signer }),
+        let transport = self
+            .transports
+            .first()
+            .ok_or_else(|| RegistrationError::NoValidSigner { signers: Vec::new() })?;
+        let signer = Self::signer_address(transport).await?;
+
+        match self.is_valid_signer(signer).await {
+            Ok(true) => Ok(()),
+            Ok(false) => Err(RegistrationError::NotValid { signer }),
             Err(e) => Err(e),
         }
+    }
+
+    pub async fn select_valid_enclave(&self) -> Result<ValidSigner, RegistrationError> {
+        let mut discovered = Vec::new();
+        let mut valid_signers = Vec::new();
+
+        for (index, transport) in self.transports.iter().enumerate() {
+            let signer = match Self::signer_address(transport).await {
+                Ok(signer) => signer,
+                Err(e) => {
+                    warn!(error = %e, index, "skipping transport: key fetch failed");
+                    continue;
+                }
+            };
+
+            discovered.push(signer);
+
+            match self.is_valid_signer(signer).await {
+                Ok(true) => valid_signers.push(ValidSigner { index, signer }),
+                Ok(false) => {
+                    warn!(signer = %signer, index, "signer is not a valid signer in TEEProverRegistry");
+                }
+                Err(e) => return Err(e),
+            }
+        }
+
+        if valid_signers.is_empty() {
+            return Err(RegistrationError::NoValidSigner { signers: discovered });
+        }
+
+        if valid_signers.len() > 1 {
+            let signers: Vec<Address> =
+                valid_signers.iter().map(|valid| valid.signer).collect();
+            warn!(signers = ?signers, "multiple valid signers found; using first");
+        }
+
+        Ok(valid_signers.remove(0))
     }
 }
 
@@ -152,7 +239,7 @@ mod tests {
     ) -> RegistrationChecker {
         let server = Arc::new(base_proof_tee_nitro_enclave::Server::new_local().unwrap());
         let transport = Arc::new(NitroTransport::local(server));
-        RegistrationChecker::new(transport, registry)
+        RegistrationChecker::new(vec![transport], registry)
     }
 
     fn test_checker() -> RegistrationChecker {
@@ -163,7 +250,7 @@ mod tests {
             alloy_primitives::Address::ZERO,
             dummy_url,
         );
-        RegistrationChecker::new(transport, registry)
+        RegistrationChecker::new(vec![transport], registry)
     }
 
     #[tokio::test]
