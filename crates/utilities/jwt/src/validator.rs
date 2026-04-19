@@ -1,10 +1,11 @@
 //! JWT validation utilities.
 
 use alloy_rpc_types_engine::JwtSecret;
-use tracing::debug;
 
 #[cfg(feature = "engine-validation")]
 use crate::JwtValidationError;
+#[cfg(feature = "engine-validation")]
+use tracing::debug;
 
 /// A JWT validator that can verify JWT secrets against an engine API.
 #[derive(Debug, Clone, Copy)]
@@ -65,7 +66,9 @@ impl JwtValidator {
     /// # Arguments
     /// * `engine_url` - The URL of the engine API endpoint. Supports HTTP(S), WS(S), and
     ///   `file://` URLs. WebSocket URLs are automatically converted to HTTP for validation,
-    ///   while `file://` URLs are used unchanged for IPC validation.
+    ///   while `file://` URLs are used unchanged for IPC validation. In the IPC case this checks
+    ///   engine reachability and capability exchange over the socket path; JWT authentication is
+    ///   not exercised because IPC access is gated by filesystem permissions instead.
     ///
     /// # Returns
     /// * `Ok(JwtSecret)` - The validated JWT secret
@@ -88,6 +91,9 @@ impl JwtValidator {
         let http_url = Self::normalize_engine_url(engine_url)?;
 
         let exchange = || async {
+            // Recreate the client on every retry because WS and IPC transports connect eagerly.
+            // This allows startup retries to cover the initial socket connect and handshake when
+            // the engine listener is not ready yet.
             let engine = BaseEngineClient::<RootProvider, RootProvider<Base>>::rpc_client::<Base>(
                 http_url.clone(),
                 self.secret,

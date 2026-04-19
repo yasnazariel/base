@@ -118,10 +118,13 @@ where
 {
     /// Creates a new RPC client for the given address and JWT secret.
     ///
-    /// Supports both `http://`/`https://` and `ws://`/`wss://` schemes. For WebSocket URLs a
-    /// [`JwtWsConnect`] is used, which mints a fresh JWT on every connect and reconnect attempt.
+    /// Supports `http://`/`https://`, `ws://`/`wss://`, and `file://` schemes. For WebSocket URLs
+    /// a [`JwtWsConnect`] is used, which mints a fresh JWT on every connect and reconnect attempt.
     /// This ensures the `iat` claim is always within the ±60-second window enforced by Reth and
     /// Geth, unlike a static token that would become stale after 60 seconds.
+    ///
+    /// For `file://` URLs, the client connects over IPC and the JWT secret is intentionally
+    /// unused because access control is provided by filesystem permissions on the socket path.
     ///
     /// Returns an error if the WebSocket handshake fails (e.g. the engine is not yet reachable).
     /// HTTP/HTTPS URLs are constructed lazily and never fail here.
