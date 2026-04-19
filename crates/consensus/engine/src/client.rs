@@ -429,8 +429,15 @@ async fn record_call_time<T, Err>(
 
 #[cfg(test)]
 mod tests {
+    use std::{fs, process};
+
     use alloy_rpc_types_engine::JwtSecret;
+    use rand::random;
+    use serde_json::{Value, json};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
+    #[cfg(unix)]
+    use tokio::net::UnixListener;
     use tokio_tungstenite::accept_async;
 
     use super::*;
@@ -447,6 +454,60 @@ mod tests {
         if let Ok((stream, _)) = listener.accept().await {
             let _ = accept_async(stream).await;
         }
+    }
+
+    /// Builds a unique IPC socket path for Unix-only transport tests, then binds a listener to
+    /// reserve it for the duration of the test.
+    #[cfg(unix)]
+    fn unique_ipc_listener() -> (UnixListener, std::path::PathBuf) {
+        let socket_path = std::path::PathBuf::from(format!(
+            "/tmp/base-consensus-engine-{}-{}.ipc",
+            process::id(),
+            random::<u64>()
+        ));
+        if socket_path.exists() {
+            fs::remove_file(&socket_path).unwrap();
+        }
+        let listener = UnixListener::bind(&socket_path).unwrap();
+        (listener, socket_path)
+    }
+
+    /// Reads a single JSON value from the IPC stream, buffering until a full JSON object arrives.
+    #[cfg(unix)]
+    async fn read_one_ipc_json(stream: &mut tokio::net::UnixStream) -> Value {
+        let mut buf = Vec::new();
+        let mut chunk = [0u8; 1024];
+
+        loop {
+            let read = stream.read(&mut chunk).await.unwrap();
+            assert!(read > 0, "IPC stream closed before a full JSON-RPC request was received");
+            buf.extend_from_slice(&chunk[..read]);
+
+            match serde_json::from_slice(&buf) {
+                Ok(value) => return value,
+                Err(err) if err.is_eof() => continue,
+                Err(err) => panic!("invalid IPC JSON-RPC request: {err}"),
+            }
+        }
+    }
+
+    /// Serves a single `eth_chainId` request over IPC and verifies the method name.
+    #[cfg(unix)]
+    async fn serve_one_ipc_chain_id(listener: UnixListener, chain_id: u64) {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let request = read_one_ipc_json(&mut stream).await;
+
+        assert_eq!(request["jsonrpc"], json!("2.0"));
+        assert_eq!(request["method"], json!("eth_chainId"));
+        assert!(request.get("params").is_none() || request["params"] == json!([]));
+
+        let response = json!({
+            "jsonrpc": "2.0",
+            "id": request["id"].clone(),
+            "result": format!("0x{chain_id:x}"),
+        });
+        let response = serde_json::to_vec(&response).unwrap();
+        stream.write_all(&response).await.unwrap();
     }
 
     /// `rpc_client` with an `http://` URL must build a provider without connecting
@@ -486,6 +547,29 @@ mod tests {
             BaseEngineClient::<RootProvider, RootProvider<Base>>::rpc_client::<Base>(addr, jwt)
                 .await
                 .unwrap();
+    }
+
+    /// `rpc_client` with a `file://` URL must return a provider that can make an RPC call over
+    /// the Unix socket, not just complete the initial eager connect.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn rpc_client_file_scheme_round_trips_rpc() {
+        let (listener, socket_path) = unique_ipc_listener();
+        let expected_chain_id = 8453_u64;
+        let server = tokio::spawn(serve_one_ipc_chain_id(listener, expected_chain_id));
+
+        let addr = Url::from_file_path(&socket_path).unwrap();
+        let jwt = JwtSecret::random();
+        let provider =
+            BaseEngineClient::<RootProvider, RootProvider<Base>>::rpc_client::<Base>(addr, jwt)
+                .await
+                .unwrap();
+
+        let chain_id = provider.get_chain_id().await.unwrap();
+        assert_eq!(chain_id, expected_chain_id);
+
+        server.await.unwrap();
+        fs::remove_file(&socket_path).unwrap();
     }
 
     /// `rpc_client` with a `wss://` URL uses the same WS branch as `ws://`; confirm the

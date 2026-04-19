@@ -146,6 +146,8 @@ impl RollupNodeBuilder {
     /// Assembles the [`RollupNode`] service.
     ///
     /// Returns an error if the internal L2 provider transport cannot be constructed.
+    /// WebSocket and IPC transports connect eagerly, so the execution client must already be
+    /// reachable when `build()` is called for those schemes.
     pub async fn build(self) -> TransportResult<RollupNode> {
         let mut l1_beacon = OnlineBeaconClient::new_http(self.l1_config_builder.beacon.to_string());
         if let Some(l1_slot_duration) = self.l1_config_builder.slot_duration_override {
