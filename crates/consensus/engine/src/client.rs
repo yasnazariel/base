@@ -126,8 +126,9 @@ where
     /// For `file://` URLs, the client connects over IPC and the JWT secret is intentionally
     /// unused because access control is provided by filesystem permissions on the socket path.
     ///
-    /// Returns an error if the WebSocket handshake fails (e.g. the engine is not yet reachable).
-    /// HTTP/HTTPS URLs are constructed lazily and never fail here.
+    /// Returns an error if the WebSocket handshake fails (e.g. the engine is not yet reachable),
+    /// or if the URL scheme is unsupported. HTTP/HTTPS URLs are constructed lazily and never fail
+    /// here.
     pub async fn rpc_client<N: Network>(
         addr: Url,
         jwt: JwtSecret,
@@ -147,7 +148,7 @@ where
                 let client = ClientBuilder::default().pubsub(JwtWsConnect::new(addr, jwt)).await?;
                 Ok(RootProvider::<N>::new(client))
             }
-            _ => {
+            "http" | "https" => {
                 let hyper_client =
                     Client::builder(TokioExecutor::new()).build_http::<Full<Bytes>>();
                 let auth_layer = AuthLayer::new(jwt);
@@ -157,6 +158,12 @@ where
                 let rpc_client = RpcClient::new(http_hyper, false);
                 Ok(RootProvider::<N>::new(rpc_client))
             }
+            scheme => Err(TransportErrorKind::custom(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "unsupported engine URL scheme '{scheme}'; expected http, https, ws, wss, or file"
+                ),
+            ))),
         }
     }
 }
@@ -434,10 +441,12 @@ mod tests {
     use alloy_rpc_types_engine::JwtSecret;
     use rand::random;
     use serde_json::{Value, json};
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use tokio::net::TcpListener;
     #[cfg(unix)]
     use tokio::net::UnixListener;
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::TcpListener,
+    };
     use tokio_tungstenite::accept_async;
 
     use super::*;
@@ -532,6 +541,21 @@ mod tests {
             BaseEngineClient::<RootProvider, RootProvider<Base>>::rpc_client::<Base>(addr, jwt)
                 .await
                 .unwrap();
+    }
+
+    /// `rpc_client` with an unsupported URL scheme must fail with a clear validation error.
+    #[tokio::test]
+    async fn rpc_client_invalid_scheme_rejected() {
+        let addr: Url = "htpp://127.0.0.1:8551".parse().unwrap();
+        let jwt = JwtSecret::random();
+        let error =
+            BaseEngineClient::<RootProvider, RootProvider<Base>>::rpc_client::<Base>(addr, jwt)
+                .await
+                .unwrap_err();
+
+        assert!(error.to_string().contains(
+            "unsupported engine URL scheme 'htpp'; expected http, https, ws, wss, or file"
+        ));
     }
 
     /// `rpc_client` with a `ws://` URL must complete the WebSocket handshake at build time.
