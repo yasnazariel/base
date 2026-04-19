@@ -61,6 +61,7 @@ services:
       - http://l1-cl:${L1_CL_HTTP_PORT}
       - --l2-engine-rpc
       - ws://base-builder:${L2_BUILDER_AUTH_PORT}
+      # - file:///engine/auth.ipc
       - --l2-engine-jwt-secret
       - /genesis/jwt.hex
       - --l2-config-file
@@ -136,6 +137,7 @@ services:
       - "${L2_SEQ1_METRICS_PORT}:${L2_SEQ1_METRICS_PORT}"               # Metrics
     volumes:
       - ../../.devnet/l2/sequencer-1:/data
+      - ../../.devnet/l2/sequencer-1-engine:/engine
       - ../../.devnet/l1/configs:/genesis:ro
       - ../../.devnet/l2/configs:/genesis/l2:ro
     environment:
@@ -160,6 +162,8 @@ services:
       - --authrpc.port=${L2_SEQ1_AUTH_PORT}
       - --authrpc.addr=0.0.0.0
       - --authrpc.jwtsecret=/genesis/jwt.hex
+      # - --auth-ipc
+      # - --auth-ipc.path=/engine/auth.ipc
       - --port=${L2_SEQ1_P2P_PORT}
       - --discovery.port=${L2_SEQ1_P2P_PORT}
       - --p2p-secret-key-hex=${SEQ1_P2P_KEY}
@@ -194,6 +198,7 @@ services:
       - "${L2_SEQ1_CL_METRICS_PORT}:${L2_SEQ1_CL_METRICS_PORT}"       # Metrics
     volumes:
       - ../../.devnet/l2/sequencer-1-cl:/data
+      - ../../.devnet/l2/sequencer-1-engine:/engine
       - ../../.devnet/l1/configs:/genesis:ro
       - ../../.devnet/l2/configs:/genesis/l2:ro
     command:
@@ -206,6 +211,7 @@ services:
       - http://l1-cl:${L1_CL_HTTP_PORT}
       - --l2-engine-rpc
       - ws://base-sequencer-1:${L2_SEQ1_AUTH_PORT}
+      # - file:///engine/auth.ipc
       - --l2-engine-jwt-secret
       - /genesis/jwt.hex
       - --l2-config-file
@@ -260,6 +266,7 @@ services:
       - "${L2_SEQ2_METRICS_PORT}:${L2_SEQ2_METRICS_PORT}"               # Metrics
     volumes:
       - ../../.devnet/l2/sequencer-2:/data
+      - ../../.devnet/l2/sequencer-2-engine:/engine
       - ../../.devnet/l1/configs:/genesis:ro
       - ../../.devnet/l2/configs:/genesis/l2:ro
     environment:
@@ -284,6 +291,8 @@ services:
       - --authrpc.port=${L2_SEQ2_AUTH_PORT}
       - --authrpc.addr=0.0.0.0
       - --authrpc.jwtsecret=/genesis/jwt.hex
+      # - --auth-ipc
+      # - --auth-ipc.path=/engine/auth.ipc
       - --port=${L2_SEQ2_P2P_PORT}
       - --discovery.port=${L2_SEQ2_P2P_PORT}
       - --p2p-secret-key-hex=${SEQ2_P2P_KEY}
@@ -318,6 +327,7 @@ services:
       - "${L2_SEQ2_CL_METRICS_PORT}:${L2_SEQ2_CL_METRICS_PORT}"       # Metrics
     volumes:
       - ../../.devnet/l2/sequencer-2-cl:/data
+      - ../../.devnet/l2/sequencer-2-engine:/engine
       - ../../.devnet/l1/configs:/genesis:ro
       - ../../.devnet/l2/configs:/genesis/l2:ro
     command:
@@ -330,6 +340,7 @@ services:
       - http://l1-cl:${L1_CL_HTTP_PORT}
       - --l2-engine-rpc
       - ws://base-sequencer-2:${L2_SEQ2_AUTH_PORT}
+      # - file:///engine/auth.ipc
       - --l2-engine-jwt-secret
       - /genesis/jwt.hex
       - --l2-config-file

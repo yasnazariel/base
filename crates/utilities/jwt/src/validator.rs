@@ -63,8 +63,9 @@ impl JwtValidator {
     /// on authentication errors (invalid JWT signature).
     ///
     /// # Arguments
-    /// * `engine_url` - The URL of the engine API endpoint. Supports both HTTP(S) and WS(S)
-    ///   URLs. WebSocket URLs are automatically converted to HTTP for validation.
+    /// * `engine_url` - The URL of the engine API endpoint. Supports HTTP(S), WS(S), and
+    ///   `file://` URLs. WebSocket URLs are automatically converted to HTTP for validation,
+    ///   while `file://` URLs are used unchanged for IPC validation.
     ///
     /// # Returns
     /// * `Ok(JwtSecret)` - The validated JWT secret
@@ -82,19 +83,18 @@ impl JwtValidator {
         use base_consensus_engine::{BaseEngineClient, HyperAuthClient};
         use tracing::{debug, error};
 
-        // Convert WebSocket URLs to HTTP for validation.
-        // The underlying engine client only supports HTTP transport, so we convert
-        // ws:// -> http:// and wss:// -> https:// for the capability exchange.
+        // Convert WebSocket URLs to HTTP for validation while leaving absolute file:// IPC
+        // endpoints unchanged so the capability exchange can use the same local socket.
         let http_url = Self::normalize_engine_url(engine_url)?;
 
-        let engine = BaseEngineClient::<RootProvider, RootProvider<Base>>::rpc_client::<Base>(
-            http_url,
-            self.secret,
-        )
-        .await
-        .map_err(|e| JwtValidationError::CapabilityExchange(e.to_string()))?;
-
         let exchange = || async {
+            let engine = BaseEngineClient::<RootProvider, RootProvider<Base>>::rpc_client::<Base>(
+                http_url.clone(),
+                self.secret,
+            )
+            .await
+            .map_err(|e| eyre::eyre!(JwtValidationError::CapabilityExchange(e.to_string())))?;
+
             match <RootProvider<Base> as BaseEngineApi<
                 Base,
                 Http<HyperAuthClient>,
@@ -141,13 +141,13 @@ impl JwtValidator {
     ///
     /// - `ws://` becomes `http://`
     /// - `wss://` becomes `https://`
-    /// - `http://` and `https://` are returned unchanged
+    /// - `http://`, `https://`, and `file://` are returned unchanged
     ///
     /// # Errors
     /// Returns an error if the URL scheme is unsupported.
     fn normalize_engine_url(mut url: url::Url) -> Result<url::Url, JwtValidationError> {
         match url.scheme() {
-            "http" | "https" => Ok(url),
+            "http" | "https" | "file" => Ok(url),
             "ws" => {
                 debug!("Converting WebSocket URL to HTTP for engine validation");
                 url.set_scheme("http").map_err(|()| {
@@ -167,7 +167,7 @@ impl JwtValidator {
                 Ok(url)
             }
             scheme => Err(JwtValidationError::CapabilityExchange(format!(
-                "Unsupported URL scheme '{scheme}'. Expected http, https, ws, or wss"
+                "Unsupported URL scheme '{scheme}'. Expected http, https, ws, wss, or file"
             ))),
         }
     }
@@ -212,6 +212,14 @@ mod tests {
         assert_eq!(result.host_str(), Some("localhost"));
         assert_eq!(result.port(), Some(8551));
         assert_eq!(result.path(), "/path");
+    }
+
+    #[test]
+    fn normalize_file_url_unchanged() {
+        let url = Url::parse("file:///engine/auth.ipc").unwrap();
+        let result = JwtValidator::normalize_engine_url(url).unwrap();
+        assert_eq!(result.scheme(), "file");
+        assert_eq!(result.path(), "/engine/auth.ipc");
     }
 
     #[test]

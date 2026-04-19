@@ -1,11 +1,13 @@
 //! An Engine API Client.
 
-use std::{future::Future, sync::Arc};
+use std::{future::Future, io, sync::Arc};
 
 use alloy_eips::{BlockId, eip1898::BlockNumberOrTag};
 use alloy_network::{Ethereum, Network};
 use alloy_primitives::{Address, B256, BlockHash, Bytes, StorageKey};
-use alloy_provider::{EthGetBlock, Provider, RootProvider, RpcWithBlock, ext::EngineApi};
+use alloy_provider::{
+    EthGetBlock, IpcConnect, Provider, RootProvider, RpcWithBlock, ext::EngineApi,
+};
 use alloy_rpc_client::{ClientBuilder, RpcClient};
 use alloy_rpc_types_engine::{
     ClientVersionV1, ExecutionPayloadBodiesV1, ExecutionPayloadEnvelopeV2, ExecutionPayloadInputV2,
@@ -128,6 +130,16 @@ where
         jwt: JwtSecret,
     ) -> TransportResult<RootProvider<N>> {
         match addr.scheme() {
+            "file" => {
+                let path = addr.to_file_path().map_err(|_| {
+                    TransportErrorKind::custom(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "file:// engine URLs must contain an absolute filesystem path",
+                    ))
+                })?;
+                let client = ClientBuilder::default().ipc(IpcConnect::new(path)).await?;
+                Ok(RootProvider::<N>::new(client))
+            }
             "ws" | "wss" => {
                 let client = ClientBuilder::default().pubsub(JwtWsConnect::new(addr, jwt)).await?;
                 Ok(RootProvider::<N>::new(client))

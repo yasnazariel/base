@@ -405,7 +405,7 @@ impl Node {
         if let Some(path) = self.safedb_path.clone() {
             builder = builder.with_safedb_path(path);
         }
-        builder.build().start().await.map_err(|e| {
+        builder.build().await.map_err(|e| eyre::eyre!("{e}"))?.start().await.map_err(|e| {
             error!(target: "rollup_node", error = %e, "Failed to start rollup node service");
             eyre::eyre!("{e}")
         })?;

@@ -3,19 +3,13 @@
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use alloy_genesis::ChainConfig;
-use alloy_primitives::Bytes;
 use alloy_provider::RootProvider;
-use alloy_rpc_client::RpcClient;
-use alloy_transport_http::{
-    AuthLayer, Http, HyperClient,
-    hyper_util::{client::legacy::Client, rt::TokioExecutor},
-};
+use alloy_transport::TransportResult;
 use base_common_network::Base;
+use base_consensus_engine::BaseEngineClient;
 use base_consensus_genesis::RollupConfig;
 use base_consensus_providers::OnlineBeaconClient;
 use base_consensus_rpc::RpcBuilder;
-use http_body_util::Full;
-use tower::ServiceBuilder;
 use url::Url;
 
 use crate::{
@@ -151,17 +145,8 @@ impl RollupNodeBuilder {
 
     /// Assembles the [`RollupNode`] service.
     ///
-    /// ## Panics
-    ///
-    /// Panics if:
-    /// - The L1 provider RPC URL is not set.
-    /// - The L1 beacon API URL is not set.
-    /// - The L2 provider RPC URL is not set.
-    /// - The L2 engine URL is not set.
-    /// - The jwt secret is not set.
-    /// - The P2P config is not set.
-    /// - The rollup boost args are not set.
-    pub fn build(self) -> RollupNode {
+    /// Returns an error if the internal L2 provider transport cannot be constructed.
+    pub async fn build(self) -> TransportResult<RollupNode> {
         let mut l1_beacon = OnlineBeaconClient::new_http(self.l1_config_builder.beacon.to_string());
         if let Some(l1_slot_duration) = self.l1_config_builder.slot_duration_override {
             l1_beacon = l1_beacon.with_l1_slot_duration_override(l1_slot_duration);
@@ -180,35 +165,11 @@ impl RollupNodeBuilder {
             verifier_l1_confs: self.l1_config_builder.verifier_l1_confs,
         };
 
-        let jwt_secret = self.engine_config.l2_jwt_secret;
-        let hyper_client = Client::builder(TokioExecutor::new()).build_http::<Full<Bytes>>();
-
-        let auth_layer = AuthLayer::new(jwt_secret);
-        let service = ServiceBuilder::new().layer(auth_layer).service(hyper_client);
-
-        // Normalize ws:// -> http:// and wss:// -> https:// so the Hyper HTTP client
-        // can connect regardless of whether the engine URL uses a WebSocket scheme.
-        //
-        // This provider is used exclusively for request/response eth_* calls by the
-        // derivation pipeline (block fetching, receipt fetching, system config). It does
-        // not use subscriptions, so HTTP is sufficient and avoids an async WS handshake
-        // here. `build()` is sync; the engine client (built async in `node.rs`) is the
-        // one that uses the WS transport end-to-end.
-        let mut l2_http_url = self.engine_config.l2_url.clone();
-        match l2_http_url.scheme() {
-            "ws" => {
-                let _ = l2_http_url.set_scheme("http");
-            }
-            "wss" => {
-                let _ = l2_http_url.set_scheme("https");
-            }
-            _ => {}
-        }
-
-        let layer_transport = HyperClient::with_service(service);
-        let http_hyper = Http::with_client(layer_transport, l2_http_url);
-        let rpc_client = RpcClient::new(http_hyper, false);
-        let l2_provider = RootProvider::<Base>::new(rpc_client);
+        let l2_provider = BaseEngineClient::<RootProvider, RootProvider<Base>>::rpc_client::<Base>(
+            self.engine_config.l2_url.clone(),
+            self.engine_config.l2_jwt_secret,
+        )
+        .await?;
 
         let rollup_config = Arc::new(self.config);
 
@@ -221,7 +182,7 @@ impl RollupNodeBuilder {
             )
         });
 
-        RollupNode {
+        Ok(RollupNode {
             config: rollup_config,
             l1_config,
             l2_provider,
@@ -232,6 +193,6 @@ impl RollupNodeBuilder {
             sequencer_config,
             derivation_delegate_provider,
             safedb_path: self.safedb_path,
-        }
+        })
     }
 }
