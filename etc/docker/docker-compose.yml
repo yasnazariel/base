@@ -182,7 +182,6 @@ services:
       - "${L2_BUILDER_METRICS_PORT}:${L2_BUILDER_METRICS_PORT}"     # Metrics
     volumes:
       - ../../.devnet/l2/builder:/data
-      - ../../.devnet/l2/builder-engine:/engine
       - ../../.devnet/l1/configs:/genesis:ro
       - ../../.devnet/l2/configs:/genesis/l2:ro
     environment:
@@ -208,8 +207,6 @@ services:
       - --authrpc.port=${L2_BUILDER_AUTH_PORT}
       - --authrpc.addr=0.0.0.0
       - --authrpc.jwtsecret=/genesis/jwt.hex
-      # - --auth-ipc
-      # - --auth-ipc.path=/engine/auth.ipc
       - --port=${L2_BUILDER_P2P_PORT}
       - --discovery.port=${L2_BUILDER_P2P_PORT}
       - --p2p-secret-key-hex=${BUILDER_P2P_KEY}
@@ -249,7 +246,6 @@ services:
       - "${L2_BUILDER_CL_METRICS_PORT}:${L2_BUILDER_CL_METRICS_PORT}"  # Metrics
     volumes:
       - ../../.devnet/l2/builder-cl:/data
-      - ../../.devnet/l2/builder-engine:/engine
       - ../../.devnet/l1/configs:/genesis:ro
       - ../../.devnet/l2/configs:/genesis/l2:ro
     entrypoint: /app/base-consensus
@@ -263,7 +259,6 @@ services:
       - http://l1-cl:${L1_CL_HTTP_PORT}
       - --l2-engine-rpc
       - ws://base-builder:${L2_BUILDER_AUTH_PORT}
-      # - file:///engine/auth.ipc
       - --l2-engine-jwt-secret
       - /genesis/jwt.hex
       - --l2-config-file
@@ -357,7 +352,6 @@ services:
       - "${L2_CLIENT_METRICS_PORT}:${L2_CLIENT_METRICS_PORT}"  # Metrics
     volumes:
       - ../../.devnet/l2/client:/data
-      - ../../.devnet/l2/client-engine:/engine
       - ../../.devnet/l1/configs:/genesis:ro
       - ../../.devnet/l2/configs:/genesis/l2:ro
     environment:
@@ -384,8 +378,6 @@ services:
       - --authrpc.port=${L2_CLIENT_AUTH_PORT}
       - --authrpc.addr=0.0.0.0
       - --authrpc.jwtsecret=/genesis/jwt.hex
-      # - --auth-ipc
-      # - --auth-ipc.path=/engine/auth.ipc
       - --port=${L2_CLIENT_P2P_PORT}
       - --discovery.port=${L2_CLIENT_P2P_PORT}
       - --metrics=0.0.0.0:${L2_CLIENT_METRICS_PORT}
@@ -430,7 +422,6 @@ services:
       - "${L2_CLIENT_CL_METRICS_PORT}:${L2_CLIENT_CL_METRICS_PORT}"  # Metrics
     volumes:
       - ../../.devnet/l2/client-cl:/data
-      - ../../.devnet/l2/client-engine:/engine
       - ../../.devnet/l1/configs:/genesis:ro
       - ../../.devnet/l2/configs:/genesis/l2:ro
     entrypoint: /app/base-consensus
@@ -444,7 +435,6 @@ services:
       - http://l1-cl:${L1_CL_HTTP_PORT}
       - --l2-engine-rpc
       - ws://base-client:${L2_CLIENT_AUTH_PORT}
-      # - file:///engine/auth.ipc
       - --l2-engine-jwt-secret
       - /genesis/jwt.hex
       - --l2-config-file
