@@ -1,13 +1,10 @@
 use std::sync::Arc;
 
 use alloy_eips::BlockNumberOrTag;
-use alloy_provider::{Provider, RootProvider};
 use async_trait::async_trait;
-use base_common_network::Base;
 use base_consensus_engine::DelegatedForkchoiceUpdate;
 use base_protocol::L2BlockInfo;
 use futures::future::OptionFuture;
-use serde::Deserialize;
 use tokio::{select, sync::mpsc, task::JoinHandle, time};
 use tokio_util::sync::{CancellationToken, WaitForCancellationFuture};
 use tracing::{debug, error, info, warn};
@@ -15,15 +12,10 @@ use tracing::{debug, error, info, warn};
 use crate::{
     CancellableContext, DerivationActorRequest, DerivationEngineClient, EngineActorRequest,
     NodeActor,
-    actors::derivation::{DerivationError, delegate_l2::L2SourceClient},
+    actors::derivation::{DerivationError, delegate_l2::{L2SourceClient, LocalL2Provider}},
 };
 
 const DEFAULT_PROOFS_MAX_BLOCKS_AHEAD: u64 = 512;
-
-#[derive(Debug, Deserialize)]
-struct ProofsSyncStatus {
-    latest: Option<u64>,
-}
 
 /// The [`NodeActor`] for the L2 delegate derivation sub-routine.
 ///
@@ -42,7 +34,7 @@ where
     inbound_request_rx: mpsc::Receiver<DerivationActorRequest>,
     engine_client: Arc<DerivationEngineClient_>,
     engine_actor_request_tx: mpsc::Sender<EngineActorRequest>,
-    local_l2_provider: RootProvider<Base>,
+    local_l2_provider: Arc<dyn LocalL2Provider>,
     l2_source: Arc<L2Source>,
     sent_head: u64,
     proofs_enabled: bool,
@@ -71,7 +63,7 @@ where
         engine_actor_request_tx: mpsc::Sender<EngineActorRequest>,
         cancellation_token: CancellationToken,
         inbound_request_rx: mpsc::Receiver<DerivationActorRequest>,
-        local_l2_provider: RootProvider<Base>,
+        local_l2_provider: Arc<dyn LocalL2Provider>,
         l2_source: L2Source,
     ) -> Self {
         Self {
@@ -129,7 +121,7 @@ where
         if self.sent_head == 0 {
             let head = self
                 .local_l2_provider
-                .get_block_number()
+                .block_number()
                 .await
                 .map_err(|e| DerivationError::Sender(Box::new(e)))?;
             self.sent_head = head;
@@ -227,14 +219,10 @@ where
             .map_err(|e| DerivationError::Sender(Box::new(e)))?;
 
         let sync_limit = if self.proofs_enabled {
-            match self
-                .local_l2_provider
-                .raw_request::<_, ProofsSyncStatus>("debug_proofsSyncStatus".into(), ())
-                .await
-            {
-                Ok(status) => {
+            match self.local_l2_provider.proofs_latest_block().await {
+                Ok(latest_opt) => {
                     // default to 0 if proofs not available since user intends to avoid syncing past proofs head which is unknown
-                    let latest = status.latest.unwrap_or(0);
+                    let latest = latest_opt.unwrap_or(0);
                     let cap = latest + self.proofs_max_blocks_ahead;
                     debug!(
                         target: "derivation",
@@ -304,7 +292,7 @@ pub(super) struct SyncFromSourceTask<DerivationEngineClient_, L2Source> {
     engine_client: Arc<DerivationEngineClient_>,
     engine_actor_request_tx: mpsc::Sender<EngineActorRequest>,
     cancellation_token: CancellationToken,
-    local_l2_provider: RootProvider<Base>,
+    local_l2_provider: Arc<dyn LocalL2Provider>,
     sent_head: u64,
     target_block: u64,
     l2_source: Arc<L2Source>,
@@ -319,7 +307,7 @@ where
         engine_client: Arc<DerivationEngineClient_>,
         engine_actor_request_tx: mpsc::Sender<EngineActorRequest>,
         cancellation_token: CancellationToken,
-        local_l2_provider: RootProvider<Base>,
+        local_l2_provider: Arc<dyn LocalL2Provider>,
         sent_head: u64,
         target_block: u64,
         l2_source: Arc<L2Source>,
@@ -396,17 +384,16 @@ where
         let source_hash = safe_payload.execution_payload.block_hash();
 
         // Detect hash mismatch between source and local EL for the delegated safe block.
-        if let Ok(Some(local_block)) =
-            self.local_l2_provider.get_block_by_number(clamped_safe.into()).await
-            && local_block.header.hash != source_hash
-        {
-            warn!(
-                target: "derivation",
-                block_number = clamped_safe,
-                local_hash = %local_block.header.hash,
-                source_hash = %source_hash,
-                "Delegated safe block hash mismatch between source and local EL"
-            );
+        if let Some(local_hash) = self.local_l2_provider.block_hash_at(clamped_safe).await {
+            if local_hash != source_hash {
+                warn!(
+                    target: "derivation",
+                    block_number = clamped_safe,
+                    local_hash = %local_hash,
+                    source_hash = %source_hash,
+                    "Delegated safe block hash mismatch between source and local EL"
+                );
+            }
         }
 
         let safe_l2 = L2BlockInfo {
@@ -440,7 +427,9 @@ where
 mod tests {
     use alloy_eips::BlockNumberOrTag;
     use alloy_primitives::B256;
+    use alloy_provider::RootProvider;
     use alloy_rpc_types_engine::ExecutionPayloadV1;
+    use base_common_network::Base;
     use base_common_rpc_types_engine::{BaseExecutionPayload, BaseExecutionPayloadEnvelope};
     use base_protocol::{BlockInfo, L2BlockInfo};
     use mockall::{Sequence, predicate::*};
@@ -500,8 +489,8 @@ mod tests {
         let (deriv_tx, deriv_rx) = mpsc::channel(16);
         let (engine_tx, engine_rx) = mpsc::channel(16);
 
-        let local_l2_provider =
-            RootProvider::<Base>::new_http("http://localhost:1234".parse().unwrap());
+        let local_l2_provider: Arc<dyn LocalL2Provider> =
+            Arc::new(RootProvider::<Base>::new_http("http://localhost:1234".parse().unwrap()));
 
         let actor = DelegateL2DerivationActor::new(
             engine_client,
@@ -528,8 +517,8 @@ mod tests {
         let cancel = CancellationToken::new();
         let (engine_tx, engine_rx) = mpsc::channel(16);
 
-        let local_l2_provider =
-            RootProvider::<Base>::new_http("http://localhost:1234".parse().unwrap());
+        let local_l2_provider: Arc<dyn LocalL2Provider> =
+            Arc::new(RootProvider::<Base>::new_http("http://localhost:1234".parse().unwrap()));
 
         let task = SyncFromSourceTask::new(
             Arc::new(engine_client),

@@ -214,7 +214,7 @@ impl Follow {
         FollowNode::new(
             rollup_config,
             engine_config,
-            local_l2_provider,
+            Arc::new(local_l2_provider),
             l2_source,
             rpc_builder,
             l1_config,

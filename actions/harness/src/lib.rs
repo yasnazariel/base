@@ -52,4 +52,16 @@ pub use node::{
 };
 
 mod follow_node;
-pub use follow_node::{ActionL2SourceBridge, TestFollowNode};
+pub use follow_node::{ActionL2LocalProvider, ActionL2SourceBridge, TestFollowNode};
+
+mod engine_server;
+pub use engine_server::HarnessEngineServer;
+
+mod l1_server;
+pub use l1_server::HarnessL1Server;
+
+mod actor_follow_node;
+pub use actor_follow_node::TestActorFollowNode;
+
+mod actor_derivation_node;
+pub use actor_derivation_node::TestActorDerivationNode;

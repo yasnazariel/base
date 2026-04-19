@@ -3,19 +3,22 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use alloy_eips::BlockNumHash;
+use alloy_eips::{BlockNumHash, BlockNumberOrTag};
 use alloy_primitives::B256;
 use alloy_rpc_types_engine::ForkchoiceState;
+use async_trait::async_trait;
 use base_common_consensus::BaseBlock;
 use base_common_provider::BaseEngineApi;
+use base_common_rpc_types_engine::{BaseExecutionPayload, BaseExecutionPayloadEnvelope};
 use base_consensus_engine::EngineForkchoiceVersion;
 use base_consensus_genesis::RollupConfig;
+use base_consensus_node::{DelegateL2ClientError, L2SourceClient, LocalL2Provider};
 use base_consensus_safedb::{
     SafeDB, SafeDBError, SafeDBReader, SafeHeadListener, SafeHeadResponse,
 };
 use base_protocol::{BlockInfo, L2BlockInfo};
 
-use crate::ActionEngineClient;
+use crate::{ActionEngineClient, SharedBlockHashRegistry};
 
 /// Shared in-memory L2 block store used as the source node for a [`TestFollowNode`].
 ///
@@ -91,6 +94,90 @@ impl ActionL2SourceBridge {
     }
 }
 
+#[async_trait]
+impl L2SourceClient for ActionL2SourceBridge {
+    async fn get_block_number(&self, tag: BlockNumberOrTag) -> Result<u64, DelegateL2ClientError> {
+        let inner = self.inner.lock().expect("source bridge lock poisoned");
+        let n = match tag {
+            BlockNumberOrTag::Safe => inner.safe_number,
+            BlockNumberOrTag::Finalized => inner.finalized_number,
+            BlockNumberOrTag::Number(n) => n,
+            BlockNumberOrTag::Latest | BlockNumberOrTag::Pending => {
+                inner.blocks.keys().max().copied().unwrap_or(0)
+            }
+            BlockNumberOrTag::Earliest => 0,
+        };
+        Ok(n)
+    }
+
+    async fn get_payload_by_number(
+        &self,
+        number: u64,
+    ) -> Result<BaseExecutionPayloadEnvelope, DelegateL2ClientError> {
+        let block = self
+            .get_block(number)
+            .ok_or_else(|| DelegateL2ClientError::BlockNotFound(format!("{number}")))?;
+
+        // BaseBlock = alloy_consensus::Block<BaseTxEnvelope>, so we can pass it directly
+        // to from_block_unchecked without any intermediate conversion.
+        let block_hash = block.header.hash_slow();
+        let parent_beacon_block_root = block.header.parent_beacon_block_root;
+        let (execution_payload, _sidecar) =
+            BaseExecutionPayload::from_block_unchecked(block_hash, &block);
+
+        Ok(BaseExecutionPayloadEnvelope { parent_beacon_block_root, execution_payload })
+    }
+}
+
+/// In-process implementation of [`LocalL2Provider`] for action tests.
+///
+/// Backed by the sequencer's [`SharedBlockHashRegistry`] so the `block_hash_at`
+/// check mirrors what the production follow node does via RPC — both obtain the
+/// local EL's executed hash for a given block number and compare it against the
+/// source's hash to detect fork divergence.
+#[derive(Debug, Clone)]
+pub struct ActionL2LocalProvider {
+    registry: SharedBlockHashRegistry,
+    proofs_head: Option<u64>,
+}
+
+impl ActionL2LocalProvider {
+    /// Create a new provider backed by the given block-hash registry.
+    pub fn new(registry: SharedBlockHashRegistry) -> Self {
+        Self { registry, proofs_head: None }
+    }
+
+    /// Sets the latest block number the proofs ExEx has processed.
+    ///
+    /// When set, `DelegateL2DerivationActor` will gate sync at
+    /// `proofs_head + DEFAULT_PROOFS_MAX_BLOCKS_AHEAD` when proofs are enabled.
+    pub fn with_proofs_head(mut self, n: u64) -> Self {
+        self.proofs_head = Some(n);
+        self
+    }
+}
+
+#[async_trait]
+impl LocalL2Provider for ActionL2LocalProvider {
+    /// Returns the highest block number executed by the local engine — mirrors
+    /// what `Provider::get_block_number()` returns on a live node. Returns 0
+    /// when no blocks have been executed yet.
+    async fn block_number(&self) -> Result<u64, alloy_transport::TransportError> {
+        Ok(self.registry.latest_number())
+    }
+
+    async fn block_hash_at(&self, n: u64) -> Option<B256> {
+        self.registry.get(n)
+    }
+
+    /// Returns the configured proofs head set via `with_proofs_head`, or `None`
+    /// if proofs gating is disabled for this test. Set a value to test the
+    /// actor's proofs-gating logic.
+    async fn proofs_latest_block(&self) -> Result<Option<u64>, alloy_transport::TransportError> {
+        Ok(self.proofs_head)
+    }
+}
+
 /// A deterministic in-process follow node for action tests.
 ///
 /// `TestFollowNode` replicates the behavior of the production [`FollowNode`]
@@ -158,6 +245,14 @@ impl TestFollowNode {
     /// Return a shared reference to the source bridge.
     pub fn source(&self) -> &ActionL2SourceBridge {
         &self.source
+    }
+
+    /// Return the engine's block-hash registry.
+    ///
+    /// Useful in fork-divergence tests that need to inspect or manipulate the
+    /// set of hashes the follow node has executed locally.
+    pub fn block_hash_registry(&self) -> SharedBlockHashRegistry {
+        self.engine.block_hash_registry()
     }
 
     /// Return the current L2 unsafe head.
@@ -283,8 +378,11 @@ impl TestFollowNode {
     /// Read the source's safe and finalized head numbers, write the safe head
     /// entry to [`SafeDB`], and issue a consolidated `fork_choice_updated`.
     ///
-    /// Mirrors the `update_safe_and_finalized` logic in
-    /// `SyncFromSourceTask` from the production follow node.
+    /// Mirrors the `update_safe_and_finalized` logic in `SyncFromSourceTask`
+    /// from the production follow node, including the `chains_agree` guard:
+    /// if the locally executed hash for the safe block does not match the
+    /// source's hash, the SafeDB write is skipped to avoid recording a
+    /// fork-diverged entry.
     pub async fn update_safe_and_finalized(&mut self) {
         let local_tip = self.unsafe_head.block_info.number;
         let clamped_safe = self.source.safe_number().min(local_tip);
@@ -298,6 +396,16 @@ impl TestFollowNode {
         };
 
         let safe_hash = safe_block.header.hash_slow();
+
+        // Mirror production's chains_agree guard: only write to SafeDB when the local EL's
+        // executed hash for the safe block number matches the source's hash. A mismatch means
+        // we are fork-diverged; recording either side would be misleading.
+        let local_hash = self.engine.block_hash_registry().get(clamped_safe);
+        let chains_agree = local_hash.map_or(true, |h| h == safe_hash);
+
+        if !chains_agree {
+            return;
+        }
 
         // Decode L2BlockInfo to extract the l1_origin for the SafeDB key.
         match L2BlockInfo::from_block_and_genesis(&safe_block, &self.rollup_config.genesis) {

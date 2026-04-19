@@ -75,8 +75,13 @@ impl TestGossipTransport {
 }
 
 /// Infallible error type for [`TestGossipTransport`].
-#[derive(Debug)]
-pub enum TestGossipTransportError {}
+///
+/// Type alias for [`std::convert::Infallible`] so that
+/// `NetworkActor<_, TestGossipTransport>` satisfies the
+/// `T::Error: Into<NetworkActorError>` bound required by [`NodeActor`].
+///
+/// [`NodeActor`]: base_consensus_node::NodeActor
+pub type TestGossipTransportError = std::convert::Infallible;
 
 #[async_trait]
 impl GossipTransport for TestGossipTransport {

@@ -11,6 +11,7 @@ pub use delegated::{
 mod delegate_l2;
 pub use delegate_l2::{
     DelegateL2Client, DelegateL2ClientError, DelegateL2DerivationActor, L2SourceClient,
+    LocalL2Provider,
 };
 
 mod engine_client;

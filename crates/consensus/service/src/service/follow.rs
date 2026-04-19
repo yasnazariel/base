@@ -4,8 +4,6 @@ use std::{
 };
 
 use alloy_eips::BlockNumberOrTag;
-use alloy_provider::RootProvider;
-use base_common_network::Base;
 use base_consensus_engine::{Engine, EngineClient, EngineState};
 use base_consensus_genesis::RollupConfig;
 use base_consensus_rpc::RpcBuilder;
@@ -16,9 +14,10 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     AlloyL1BlockFetcher, BlockStream, DelegateL2Client, DelegateL2DerivationActor, EngineActor,
     EngineActorRequest, EngineConfig, EngineProcessor, EngineRpcProcessor, L1Config,
-    L1WatcherActor, L1WatcherQueryProcessor, NodeActor, QueuedDerivationEngineClient,
-    QueuedEngineDerivationClient, QueuedEngineRpcClient, QueuedL1WatcherDerivationClient, RpcActor,
-    RpcContext, service::node::HEAD_STREAM_POLL_INTERVAL,
+    L1WatcherActor, L1WatcherQueryProcessor, L2SourceClient, LocalL2Provider, NodeActor,
+    QueuedDerivationEngineClient, QueuedEngineDerivationClient, QueuedEngineRpcClient,
+    QueuedL1WatcherDerivationClient, RpcActor, RpcContext,
+    service::node::HEAD_STREAM_POLL_INTERVAL,
 };
 
 /// A lightweight node that follows another L2 node by polling its execution
@@ -26,25 +25,36 @@ use crate::{
 ///
 /// Runs only the [`EngineActor`] and [`DelegateL2DerivationActor`] — no derivation
 /// pipeline, P2P, or sequencer.
+///
+/// Generic over `L2Source` to allow injection of in-process test transports
+/// (e.g. [`base_action_harness::ActionL2SourceBridge`]) without requiring a live
+/// HTTP server for the source L2 node. The default is [`DelegateL2Client`], which
+/// polls a remote node over HTTP.
 #[derive(Debug)]
-pub struct FollowNode {
+pub struct FollowNode<L2Source = DelegateL2Client>
+where
+    L2Source: L2SourceClient + Clone + std::fmt::Debug + Send + Sync + 'static,
+{
     config: Arc<RollupConfig>,
     engine_config: EngineConfig,
-    local_l2_provider: RootProvider<Base>,
-    l2_source: DelegateL2Client,
+    local_l2_provider: Arc<dyn LocalL2Provider>,
+    l2_source: L2Source,
     proofs_enabled: bool,
     proofs_max_blocks_ahead: u64,
     l1_config: L1Config,
     rpc_builder: Option<RpcBuilder>,
 }
 
-impl FollowNode {
+impl<L2Source> FollowNode<L2Source>
+where
+    L2Source: L2SourceClient + Clone + std::fmt::Debug + Send + Sync + 'static,
+{
     /// Creates a new [`FollowNode`].
-    pub const fn new(
+    pub fn new(
         config: Arc<RollupConfig>,
         engine_config: EngineConfig,
-        local_l2_provider: RootProvider<Base>,
-        l2_source: DelegateL2Client,
+        local_l2_provider: Arc<dyn LocalL2Provider>,
+        l2_source: L2Source,
         rpc_builder: Option<RpcBuilder>,
         l1_config: L1Config,
     ) -> Self {
@@ -61,14 +71,14 @@ impl FollowNode {
     }
 
     /// Enables proofs sync gating via `debug_proofsSyncStatus`.
-    pub const fn with_proofs(mut self, enabled: bool) -> Self {
+    pub fn with_proofs(mut self, enabled: bool) -> Self {
         self.proofs_enabled = enabled;
         self
     }
 
     /// Sets the maximum number of blocks the node may advance beyond the
     /// proofs `ExEx` head.
-    pub const fn with_proofs_max_blocks_ahead(mut self, max_blocks_ahead: u64) -> Self {
+    pub fn with_proofs_max_blocks_ahead(mut self, max_blocks_ahead: u64) -> Self {
         self.proofs_max_blocks_ahead = max_blocks_ahead;
         self
     }
@@ -151,7 +161,7 @@ impl FollowNode {
             engine_actor_request_tx.clone(),
             cancellation.clone(),
             derivation_actor_request_rx,
-            self.local_l2_provider.clone(),
+            Arc::clone(&self.local_l2_provider),
             self.l2_source.clone(),
         )
         .with_proofs(self.proofs_enabled)
@@ -214,7 +224,12 @@ impl FollowNode {
                         cancellation: cancellation.clone(),
                         p2p_network: None,
                         network_admin: None,
-                        l1_watcher_queries: l1_query_tx,
+                        // Clone so l1_query_tx is not consumed by the closure: when
+                        // rpc = None the closure is never called but `l1_query_tx`
+                        // would otherwise be captured-and-dropped by the Option::map,
+                        // closing the channel and causing L1WatcherQueryProcessor to
+                        // exit with StreamEnded before being cancelled.
+                        l1_watcher_queries: l1_query_tx.clone(),
                     }
                 )),
                 Some((derivation, ())),

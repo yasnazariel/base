@@ -1,9 +1,24 @@
 //! Action tests that exercise [`TestFollowNode`] end-to-end.
 //!
-//! These tests validate that the follow node correctly syncs from a source
-//! L2 node, tracks safe heads in its [`SafeDB`], and can serve all five
-//! `optimism_*` RPC-equivalent methods with correct data while syncing.
+//! These tests validate the **execution kernel and SafeDB storage layer** of
+//! the follow node: that blocks from a source are correctly re-executed through
+//! the production [`OpPayloadBuilder`], that safe-head mappings are recorded in
+//! the real redb-backed [`SafeDB`], and that head pointers (unsafe/safe/finalized)
+//! advance correctly.
 //!
+//! # What these tests do NOT cover
+//!
+//! - The production actor coordination layer ([`DelegateL2DerivationActor`],
+//!   [`EngineActor`], channel message ordering, poll-interval timing).
+//! - The RPC surface (`optimism_syncStatus`, `optimism_safeHeadAtL1Block`, etc.)
+//!   — [`TestFollowNode`] has no HTTP server; SafeDB is queried at the library
+//!   level, not through [`RollupRpc`].
+//! - Reorg / fork-divergence scenarios.
+//!
+//! [`OpPayloadBuilder`]: base_execution_payload_builder::OpPayloadBuilder
+//! [`DelegateL2DerivationActor`]: base_consensus_service::DelegateL2DerivationActor
+//! [`EngineActor`]: base_consensus_service::EngineActor
+//! [`RollupRpc`]: base_consensus_rpc::RollupRpc
 //! [`TestFollowNode`]: base_action_harness::TestFollowNode
 //! [`SafeDB`]: base_consensus_safedb::SafeDB
 
@@ -176,14 +191,13 @@ async fn test_follow_node_safe_lags_unsafe() {
     assert_eq!(follow_node.l2_safe_number(), SAFE_COUNT, "safe head must stop at {SAFE_COUNT}");
 }
 
-/// Follow node SafeDB is queryable before the safe block's L1 origin.
+/// SafeDB range-scan returns the latest safe head for queries above any recorded L1 origin.
 ///
-/// Querying an L1 block number *lower* than the safe head's L1 origin should
-/// return the most recent safe head at or before that L1 number, not an error,
-/// provided at least one safe head has been recorded. This exercises the
-/// SafeDB's range-scan behavior.
+/// Querying an L1 block number *higher* than the safe head's recorded L1 origin should
+/// return the most recent safe head recorded, not an error. This exercises the
+/// SafeDB's "at-or-before" range-scan behavior using `u64::MAX` as an extreme upper bound.
 #[tokio::test]
-async fn test_follow_node_safedb_query_at_genesis_l1() {
+async fn test_follow_node_safedb_range_query_above_latest() {
     const BLOCK_COUNT: u64 = 2;
 
     let batcher_cfg = base_action_harness::BatcherConfig::default();
@@ -211,5 +225,76 @@ async fn test_follow_node_safedb_query_at_genesis_l1() {
     assert_eq!(
         response.safe_head.number, BLOCK_COUNT,
         "query at u64::MAX must return the most recent safe head"
+    );
+}
+
+/// Follow node advances its finalized head when the source sets a finalized number.
+///
+/// 1. Build 5 blocks; mark 5 as safe and 3 as finalized.
+/// 2. After `sync_up_to(5)`, `l2_finalized_number()` must equal 3.
+/// 3. `l2_safe_number()` must still equal 5 (finalized ≤ safe).
+#[tokio::test]
+async fn test_follow_node_finalized_head_advances() {
+    const BLOCK_COUNT: u64 = 5;
+    const FINALIZED_COUNT: u64 = 3;
+
+    let batcher_cfg = base_action_harness::BatcherConfig::default();
+    let rollup_cfg = TestRollupConfigBuilder::base_mainnet(&batcher_cfg).build();
+    let h = ActionTestHarness::new(L1MinerConfig::default(), rollup_cfg);
+
+    let chain = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
+    let sequencer = h.create_l2_sequencer(chain.clone());
+    let (mut follow_node, source) = h.create_test_follow_node(&sequencer, chain);
+
+    let mut seq = sequencer;
+    for _ in 0..BLOCK_COUNT {
+        let block = seq.build_next_block_with_single_transaction().await;
+        source.push(block);
+    }
+    source.set_safe_number(BLOCK_COUNT);
+    source.set_finalized_number(FINALIZED_COUNT);
+
+    follow_node.sync_up_to(BLOCK_COUNT).await;
+
+    assert_eq!(follow_node.l2_unsafe_number(), BLOCK_COUNT, "unsafe head must reach {BLOCK_COUNT}");
+    assert_eq!(follow_node.l2_safe_number(), BLOCK_COUNT, "safe head must reach {BLOCK_COUNT}");
+    assert_eq!(
+        follow_node.l2_finalized_number(),
+        FINALIZED_COUNT,
+        "finalized head must advance to {FINALIZED_COUNT}"
+    );
+}
+
+/// `sync_up_to` stops gracefully when the target exceeds available blocks.
+///
+/// If the source has only 3 blocks but `sync_up_to(10)` is called, the follow
+/// node must stop at 3 without panicking and without advancing beyond what is
+/// available.
+#[tokio::test]
+async fn test_follow_node_sync_stops_at_available() {
+    const AVAILABLE: u64 = 3;
+    const TARGET: u64 = 10;
+
+    let batcher_cfg = base_action_harness::BatcherConfig::default();
+    let rollup_cfg = TestRollupConfigBuilder::base_mainnet(&batcher_cfg).build();
+    let h = ActionTestHarness::new(L1MinerConfig::default(), rollup_cfg);
+
+    let chain = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
+    let sequencer = h.create_l2_sequencer(chain.clone());
+    let (mut follow_node, source) = h.create_test_follow_node(&sequencer, chain);
+
+    let mut seq = sequencer;
+    for _ in 0..AVAILABLE {
+        let block = seq.build_next_block_with_single_transaction().await;
+        source.push(block);
+    }
+    source.set_safe_number(AVAILABLE);
+
+    follow_node.sync_up_to(TARGET).await;
+
+    assert_eq!(
+        follow_node.l2_unsafe_number(),
+        AVAILABLE,
+        "follow node must stop at the last available block ({AVAILABLE}), not panic at {TARGET}"
     );
 }

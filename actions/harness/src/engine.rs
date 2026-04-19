@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use alloy_consensus::{BlockHeader, Header, Sealed};
+use alloy_consensus::{BlockHeader, Header, Sealed, transaction::Recovered};
 use alloy_eips::{BlockId, eip1898::BlockNumberOrTag, eip2718::Encodable2718};
 use alloy_genesis::{Genesis, GenesisAccount};
 use alloy_network::{Ethereum, Network};
@@ -21,7 +21,7 @@ use alloy_rpc_types_eth::{
 };
 use alloy_transport::{TransportError, TransportErrorKind, TransportResult};
 use async_trait::async_trait;
-use base_common_consensus::{BaseBlock, BasePrimitives};
+use base_common_consensus::{BaseBlock, BasePrimitives, BaseTxEnvelope};
 use base_common_network::Base;
 use base_common_provider::BaseEngineApi;
 use base_common_rpc_types::Transaction as BaseTransaction;
@@ -92,6 +92,19 @@ pub struct ActionEngineClientInner {
     chain_spec: Arc<BaseChainSpec>,
     canonical_head: L2BlockInfo,
     executed_headers: HashMap<u64, Header>,
+    /// Decoded transactions for each executed block, keyed by block number.
+    ///
+    /// Stored alongside headers so that `get_l2_block` can return full blocks with
+    /// transaction bodies. `find_starting_forkchoice` calls `L2BlockInfo::from_block_and_genesis`
+    /// on the unsafe head, which requires the L1 info deposit tx (first transaction) to be
+    /// present; header-only blocks cause `MissingL1InfoDeposit` errors.
+    executed_transactions: HashMap<u64, Vec<BaseTxEnvelope>>,
+    /// Current safe head, updated by `fork_choice_updated_vX` when `safe_block_hash` is
+    /// non-zero. Mirrors what the production engine tracks for the safe label.
+    safe_head: L2BlockInfo,
+    /// Current finalized head, updated by `fork_choice_updated_vX` when
+    /// `finalized_block_hash` is non-zero.
+    finalized_head: L2BlockInfo,
     /// Payloads built via FCU-with-attrs (sequencer mode), keyed by `PayloadId`.
     pending_payloads: HashMap<PayloadId, PendingPayload>,
     payload_counter: u64,
@@ -133,9 +146,18 @@ impl ActionEngineClient {
     /// Starts from [`build_test_genesis`] (pre-funded test accounts, all forks through
     /// Jovian at timestamp 0) and overrides each fork timestamp and the chain ID from the
     /// rollup config so the resulting [`BaseChainSpec`] matches the test's expectations.
+    ///
+    /// The genesis block timestamp is set to `rollup_config.genesis.l2_time` so that
+    /// `L2BlockInfo::from_block_and_genesis` on the Reth genesis block returns a timestamp
+    /// matching the rollup config. Without this, `confirmed_safe_head.timestamp` would be
+    /// taken from the Reth genesis block's timestamp (which defaults to 1 in
+    /// [`build_test_genesis`]), causing batch timestamp checks to use `next_timestamp =
+    /// genesis_ts + block_time` that is higher than the first sequenced batch's timestamp,
+    /// dropping it as `PastTimestampPreHolocene`.
     fn build_genesis_for_rollup(rollup_config: &RollupConfig) -> Genesis {
         let mut genesis = build_test_genesis();
         genesis.config.chain_id = rollup_config.l2_chain_id.id();
+        genesis.timestamp = rollup_config.genesis.l2_time;
 
         // Fund the harness test account. `build_test_genesis` only funds the Anvil accounts
         // (Alice/Bob/Charlie/Deployer); `TEST_ACCOUNT_ADDRESS` is separate and must be seeded
@@ -221,17 +243,57 @@ impl ActionEngineClient {
             .expect("failed to create blockchain provider");
         let evm_config = BaseEvmConfig::base(Arc::clone(&chain_spec));
 
+        // Pre-populate the genesis block header so `get_l2_block(genesis_hash)` lookups
+        // during `find_starting_forkchoice` resolve to the real genesis instead of `None`.
+        // Without this, the engine reset triggered after the first unsafe block is inserted
+        // (`el_sync_finished` transitions from false to true) fails with `BlockNotFound`.
+        let genesis_header = chain_spec.genesis_header().clone();
+        let genesis_block_number = genesis_header.number;
+        let mut initial_executed_headers = HashMap::new();
+        initial_executed_headers.insert(genesis_block_number, genesis_header);
+        // Genesis has no transactions; the `from_block_and_genesis` genesis fast path does not
+        // require any, so an empty vec is correct here.
+        let mut initial_executed_transactions: HashMap<u64, Vec<BaseTxEnvelope>> = HashMap::new();
+        initial_executed_transactions.insert(genesis_block_number, vec![]);
+
         let inner = Arc::new(Mutex::new(ActionEngineClientInner {
             provider_factory,
             blockchain_provider,
             evm_config,
             chain_spec,
             canonical_head,
-            executed_headers: HashMap::new(),
+            safe_head: canonical_head,
+            finalized_head: canonical_head,
+            executed_headers: initial_executed_headers,
+            executed_transactions: initial_executed_transactions,
             pending_payloads: HashMap::new(),
             payload_counter: 0,
         }));
         Self { inner, rollup_config, block_registry, l1_chain }
+    }
+
+    /// Return the current canonical (unsafe) head tracked by this engine client.
+    ///
+    /// Reads the inner mutex synchronously — safe to call outside an async context
+    /// and without awaiting, making it suitable for tight assertion loops in tests.
+    pub fn unsafe_head(&self) -> L2BlockInfo {
+        self.inner.lock().expect("action engine inner lock poisoned").canonical_head
+    }
+
+    /// Return the current safe head tracked by this engine client.
+    ///
+    /// Updated each time `fork_choice_updated_vX` is called with a non-zero
+    /// `safe_block_hash`. Initial value equals the genesis head.
+    pub fn safe_head(&self) -> L2BlockInfo {
+        self.inner.lock().expect("action engine inner lock poisoned").safe_head
+    }
+
+    /// Return the current finalized head tracked by this engine client.
+    ///
+    /// Updated each time `fork_choice_updated_vX` is called with a non-zero
+    /// `finalized_block_hash`. Initial value equals the genesis head.
+    pub fn finalized_head(&self) -> L2BlockInfo {
+        self.inner.lock().expect("action engine inner lock poisoned").finalized_head
     }
 
     /// Return a clone of the shared block-hash registry.
@@ -240,6 +302,10 @@ impl ActionEngineClient {
     }
 
     /// Return a clone of the shared L1 chain.
+    ///
+    /// Used by [`HarnessL1Server`](crate::HarnessL1Server) to serve
+    /// `eth_getBlockByHash` / `eth_getBlockByNumber` to the production
+    /// [`base_consensus_engine::BaseEngineClient`].
     pub fn l1_chain(&self) -> SharedL1Chain {
         self.l1_chain.clone()
     }
@@ -401,10 +467,18 @@ impl ActionEngineClient {
     ///
     /// If this block was already executed during a `build_payload_inner` call (sequencer mode),
     /// execution is skipped and the pre-computed hash is returned directly.
+    ///
+    /// `parent_beacon_block_root` must be supplied for V3+ payloads (Ecotone and later)
+    /// so that the reconstructed block header includes it and its `hash_slow()` matches
+    /// what [`InsertTask`] computes from the same payload envelope.  Pass `None` for V1/V2
+    /// payloads (pre-Ecotone).
+    ///
+    /// [`InsertTask`]: base_consensus_node::EngineActor
     fn execute_v1_inner(
         inner: &mut ActionEngineClientInner,
         registry: &SharedBlockHashRegistry,
         payload: &ExecutionPayloadV1,
+        parent_beacon_block_root: Option<B256>,
     ) -> TransportResult<B256> {
         // Skip re-execution if this block was already built.
         //
@@ -429,7 +503,7 @@ impl ActionEngineClient {
                 prev_randao: payload.prev_randao,
                 suggested_fee_recipient: payload.fee_recipient,
                 withdrawals: Some(vec![]),
-                parent_beacon_block_root: None,
+                parent_beacon_block_root,
             },
             transactions: Some(payload.transactions.clone()),
             no_tx_pool: Some(true),
@@ -460,6 +534,11 @@ impl ActionEngineClient {
         registry.insert(payload.block_number, block_hash, Some(state_root));
 
         inner.executed_headers.insert(payload.block_number, hdr.clone());
+        // Store the decoded transactions so `get_l2_block` can return full blocks.
+        // `find_starting_forkchoice` calls `L2BlockInfo::from_block_and_genesis` on the unsafe
+        // head, which reads the L1 info deposit from the first transaction.
+        let txs: Vec<BaseTxEnvelope> = built.block().body().transactions.clone();
+        inner.executed_transactions.insert(payload.block_number, txs);
         Ok(block_hash)
     }
 
@@ -502,6 +581,8 @@ impl ActionEngineClient {
 
         self.block_registry.insert(block_number, block_hash, Some(state_root));
         guard.executed_headers.insert(block_number, hdr.clone());
+        let txs: Vec<BaseTxEnvelope> = built.block().body().transactions.clone();
+        guard.executed_transactions.insert(block_number, txs);
         Ok(block_hash)
     }
 
@@ -572,6 +653,8 @@ impl ActionEngineClient {
 
         self.block_registry.insert(block_number, block_hash, Some(state_root));
         guard.executed_headers.insert(block_number, hdr.clone());
+        let txs: Vec<BaseTxEnvelope> = built_block.body().transactions.clone();
+        guard.executed_transactions.insert(block_number, txs);
         Ok(block_hash)
     }
 
@@ -600,6 +683,8 @@ impl ActionEngineClient {
         // entry returns the actual block hash. Storing only a subset of fields would produce a
         // different hash and break the skip-check in `execute_v1_inner`.
         inner.executed_headers.insert(block_number, hdr.clone());
+        let txs: Vec<BaseTxEnvelope> = block.body().transactions.clone();
+        inner.executed_transactions.insert(block_number, txs);
 
         let id = PayloadId::new(inner.payload_counter.to_le_bytes());
         inner.payload_counter += 1;
@@ -626,15 +711,103 @@ impl ActionEngineClient {
         }
     }
 
-    fn header_to_l2_rpc_block(header: &Header, block_hash: B256) -> Block<BaseTransaction> {
+    fn header_to_l2_rpc_block(
+        header: &Header,
+        block_hash: B256,
+        txs: Option<&Vec<BaseTxEnvelope>>,
+    ) -> Block<BaseTransaction> {
         let sealed = Sealed::new_unchecked(header.clone(), block_hash);
         let rpc_header = alloy_rpc_types_eth::Header::from_sealed(sealed);
-        Block {
-            header: rpc_header,
-            uncles: vec![],
-            transactions: BlockTransactions::Hashes(vec![]),
-            withdrawals: None,
+        let transactions = if let Some(txs) = txs {
+            // Wrap each consensus transaction in the RPC envelope required by
+            // `L2BlockInfo::from_block_and_genesis` / `find_starting_forkchoice`.
+            let full: Vec<BaseTransaction> = txs
+                .iter()
+                .enumerate()
+                .map(|(idx, tx)| {
+                    let rpc_tx = EthTransaction {
+                        inner: Recovered::new_unchecked(tx.clone(), Default::default()),
+                        block_hash: Some(block_hash),
+                        block_number: Some(header.number),
+                        effective_gas_price: None,
+                        transaction_index: Some(idx as u64),
+                    };
+                    BaseTransaction {
+                        inner: rpc_tx,
+                        deposit_nonce: None,
+                        deposit_receipt_version: None,
+                    }
+                })
+                .collect();
+            BlockTransactions::Full(full)
+        } else {
+            BlockTransactions::Hashes(vec![])
+        };
+        Block { header: rpc_header, uncles: vec![], transactions, withdrawals: None }
+    }
+
+    /// Look up an executed L2 block by number-or-tag from the in-process state.
+    ///
+    /// Used by [`HarnessEngineServer`](crate::HarnessEngineServer) to serve
+    /// `eth_getBlockByNumber` requests over HTTP so the production
+    /// [`base_consensus_engine::BaseEngineClient`] can bootstrap via
+    /// `find_starting_forkchoice`.
+    pub fn get_l2_block_by_numtag(
+        &self,
+        numtag: BlockNumberOrTag,
+    ) -> Option<Block<BaseTransaction>> {
+        let guard = self.inner.lock().expect("action engine inner lock poisoned");
+        match numtag {
+            BlockNumberOrTag::Number(n) => guard.executed_headers.get(&n).map(|h| {
+                let bh = h.hash_slow();
+                let txs = guard.executed_transactions.get(&n);
+                Self::header_to_l2_rpc_block(h, bh, txs)
+            }),
+            BlockNumberOrTag::Latest | BlockNumberOrTag::Pending => {
+                let number = guard.canonical_head.block_info.number;
+                guard.executed_headers.get(&number).map(|h| {
+                    let bh = h.hash_slow();
+                    let txs = guard.executed_transactions.get(&number);
+                    Self::header_to_l2_rpc_block(h, bh, txs)
+                })
+            }
+            BlockNumberOrTag::Safe => {
+                let number = guard.safe_head.block_info.number;
+                guard.executed_headers.get(&number).map(|h| {
+                    let bh = h.hash_slow();
+                    let txs = guard.executed_transactions.get(&number);
+                    Self::header_to_l2_rpc_block(h, bh, txs)
+                })
+            }
+            BlockNumberOrTag::Finalized => {
+                let number = guard.finalized_head.block_info.number;
+                guard.executed_headers.get(&number).map(|h| {
+                    let bh = h.hash_slow();
+                    let txs = guard.executed_transactions.get(&number);
+                    Self::header_to_l2_rpc_block(h, bh, txs)
+                })
+            }
+            BlockNumberOrTag::Earliest => {
+                let txs = guard.executed_transactions.get(&0);
+                guard
+                    .executed_headers
+                    .get(&0)
+                    .map(|h| Self::header_to_l2_rpc_block(h, h.hash_slow(), txs))
+            }
         }
+    }
+
+    /// Look up an executed L2 block by hash from the in-process state.
+    ///
+    /// Used by [`HarnessEngineServer`](crate::HarnessEngineServer) to serve
+    /// `eth_getBlockByHash` requests over HTTP.
+    pub fn get_l2_block_by_hash(&self, hash: B256) -> Option<Block<BaseTransaction>> {
+        let guard = self.inner.lock().expect("action engine inner lock poisoned");
+        guard.executed_headers.values().find(|h| h.hash_slow() == hash).map(|h| {
+            let bh = h.hash_slow();
+            let txs = guard.executed_transactions.get(&h.number);
+            Self::header_to_l2_rpc_block(h, bh, txs)
+        })
     }
 
     /// Remove a pending payload by ID, returning a transport error if not found.
@@ -695,20 +868,35 @@ impl EngineClient for ActionEngineClient {
                     let guard = inner.lock().expect("action engine inner lock poisoned");
                     let rpc_block = match block_id {
                         BlockId::Number(num_or_tag) => {
-                            let number = match num_or_tag {
-                                BlockNumberOrTag::Number(n) => n,
-                                _ => return Ok(None),
+                            let opt_number: Option<u64> = match num_or_tag {
+                                BlockNumberOrTag::Number(n) => Some(n),
+                                // Return the canonical (unsafe) head for Latest/Pending.
+                                BlockNumberOrTag::Latest | BlockNumberOrTag::Pending => {
+                                    Some(guard.canonical_head.block_info.number)
+                                }
+                                // Safe and Finalized are not separately tracked: return None so
+                                // `L2ForkchoiceState::current` falls back to genesis, which works
+                                // without transactions via the `from_block_and_genesis` fast path.
+                                BlockNumberOrTag::Safe | BlockNumberOrTag::Finalized => None,
+                                BlockNumberOrTag::Earliest => Some(0),
                             };
-                            guard
-                                .executed_headers
-                                .get(&number)
-                                .map(|h| Self::header_to_l2_rpc_block(h, h.hash_slow()))
+                            opt_number.and_then(|number| {
+                                guard.executed_headers.get(&number).map(|h| {
+                                    let block_hash = h.hash_slow();
+                                    let txs = guard.executed_transactions.get(&number);
+                                    Self::header_to_l2_rpc_block(h, block_hash, txs)
+                                })
+                            })
                         }
                         BlockId::Hash(block_hash) => guard
                             .executed_headers
                             .values()
                             .find(|h| h.hash_slow() == block_hash.block_hash)
-                            .map(|h| Self::header_to_l2_rpc_block(h, h.hash_slow())),
+                            .map(|h| {
+                                let bh = h.hash_slow();
+                                let txs = guard.executed_transactions.get(&h.number);
+                                Self::header_to_l2_rpc_block(h, bh, txs)
+                            }),
                     };
                     Ok(rpc_block)
                 }))
@@ -742,25 +930,34 @@ impl EngineClient for ActionEngineClient {
     ) -> Result<Option<Block<BaseTransaction>>, EngineClientError> {
         let guard = self.inner.lock().expect("action engine inner lock poisoned");
         let block = match numtag {
-            BlockNumberOrTag::Number(n) => guard
-                .executed_headers
-                .get(&n)
-                .map(|h| Self::header_to_l2_rpc_block(h, h.hash_slow())),
-            BlockNumberOrTag::Latest
-            | BlockNumberOrTag::Safe
-            | BlockNumberOrTag::Finalized
-            | BlockNumberOrTag::Pending => {
+            BlockNumberOrTag::Number(n) => guard.executed_headers.get(&n).map(|h| {
+                let bh = h.hash_slow();
+                let txs = guard.executed_transactions.get(&n);
+                Self::header_to_l2_rpc_block(h, bh, txs)
+            }),
+            BlockNumberOrTag::Latest | BlockNumberOrTag::Pending => {
                 let number = guard.canonical_head.block_info.number;
-                guard
-                    .executed_headers
-                    .get(&number)
-                    .map(|h| Self::header_to_l2_rpc_block(h, h.hash_slow()))
+                guard.executed_headers.get(&number).map(|h| {
+                    let bh = h.hash_slow();
+                    let txs = guard.executed_transactions.get(&number);
+                    Self::header_to_l2_rpc_block(h, bh, txs)
+                })
             }
-            BlockNumberOrTag::Earliest => guard
-                .executed_headers
-                .values()
-                .min_by_key(|h| h.number)
-                .map(|h| Self::header_to_l2_rpc_block(h, h.hash_slow())),
+            BlockNumberOrTag::Safe | BlockNumberOrTag::Finalized => {
+                let number = guard.canonical_head.block_info.number;
+                guard.executed_headers.get(&number).map(|h| {
+                    let bh = h.hash_slow();
+                    let txs = guard.executed_transactions.get(&number);
+                    Self::header_to_l2_rpc_block(h, bh, txs)
+                })
+            }
+            BlockNumberOrTag::Earliest => {
+                guard.executed_headers.values().min_by_key(|h| h.number).map(|h| {
+                    let bh = h.hash_slow();
+                    let txs = guard.executed_transactions.get(&h.number);
+                    Self::header_to_l2_rpc_block(h, bh, txs)
+                })
+            }
         };
         Ok(block)
     }
@@ -807,21 +1004,26 @@ impl BaseEngineApi for ActionEngineClient {
         payload: ExecutionPayloadInputV2,
     ) -> TransportResult<PayloadStatus> {
         let mut guard = self.inner.lock().expect("action engine inner lock poisoned");
-        let block_hash =
-            Self::execute_v1_inner(&mut guard, &self.block_registry, &payload.execution_payload)?;
+        let block_hash = Self::execute_v1_inner(
+            &mut guard,
+            &self.block_registry,
+            &payload.execution_payload,
+            None,
+        )?;
         Ok(Self::make_valid(block_hash))
     }
 
     async fn new_payload_v3(
         &self,
         payload: ExecutionPayloadV3,
-        _parent_beacon_block_root: B256,
+        parent_beacon_block_root: B256,
     ) -> TransportResult<PayloadStatus> {
         let mut guard = self.inner.lock().expect("action engine inner lock poisoned");
         let block_hash = Self::execute_v1_inner(
             &mut guard,
             &self.block_registry,
             &payload.payload_inner.payload_inner,
+            Some(parent_beacon_block_root),
         )?;
         Ok(Self::make_valid(block_hash))
     }
@@ -829,13 +1031,14 @@ impl BaseEngineApi for ActionEngineClient {
     async fn new_payload_v4(
         &self,
         payload: BaseExecutionPayloadV4,
-        _parent_beacon_block_root: B256,
+        parent_beacon_block_root: B256,
     ) -> TransportResult<PayloadStatus> {
         let mut guard = self.inner.lock().expect("action engine inner lock poisoned");
         let block_hash = Self::execute_v1_inner(
             &mut guard,
             &self.block_registry,
             &payload.payload_inner.payload_inner.payload_inner,
+            Some(parent_beacon_block_root),
         )?;
         Ok(Self::make_valid(block_hash))
     }
@@ -861,6 +1064,44 @@ impl BaseEngineApi for ActionEngineClient {
                 l1_origin: Default::default(),
                 seq_num: 0,
             };
+        }
+
+        // Update safe head when the FCU carries a non-zero safe hash.
+        let safe = fork_choice_state.safe_block_hash;
+        if safe != B256::ZERO {
+            if let Some(h) =
+                guard.executed_headers.values().find(|h| h.hash_slow() == safe).cloned()
+            {
+                guard.safe_head = L2BlockInfo {
+                    block_info: BlockInfo {
+                        hash: safe,
+                        number: h.number,
+                        parent_hash: h.parent_hash,
+                        timestamp: h.timestamp,
+                    },
+                    l1_origin: Default::default(),
+                    seq_num: 0,
+                };
+            }
+        }
+
+        // Update finalized head when the FCU carries a non-zero finalized hash.
+        let fin = fork_choice_state.finalized_block_hash;
+        if fin != B256::ZERO {
+            if let Some(h) =
+                guard.executed_headers.values().find(|h| h.hash_slow() == fin).cloned()
+            {
+                guard.finalized_head = L2BlockInfo {
+                    block_info: BlockInfo {
+                        hash: fin,
+                        number: h.number,
+                        parent_hash: h.parent_hash,
+                        timestamp: h.timestamp,
+                    },
+                    l1_origin: Default::default(),
+                    seq_num: 0,
+                };
+            }
         }
 
         // Sequencer mode: build a block from the provided attributes.
@@ -1000,12 +1241,13 @@ impl SequencerEngineClient for ActionEngineClient {
         &self,
         payload: BaseExecutionPayloadEnvelope,
     ) -> Result<(), NodeEngineClientError> {
-        // Extract the V1 payload for execution.
+        // Extract the V1 payload and parent_beacon_block_root for execution.
+        let pbbr = payload.parent_beacon_block_root;
         let v1 = payload.execution_payload.as_v1();
         let head_hash = v1.block_hash;
 
         let mut guard = self.inner.lock().expect("action engine inner lock poisoned");
-        Self::execute_v1_inner(&mut guard, &self.block_registry, v1)
+        Self::execute_v1_inner(&mut guard, &self.block_registry, v1, pbbr)
             .map_err(|e| NodeEngineClientError::RequestError(e.to_string()))?;
 
         // Update canonical head.

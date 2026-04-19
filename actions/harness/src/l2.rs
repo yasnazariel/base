@@ -231,6 +231,11 @@ impl SharedBlockHashRegistry {
         self.0.lock().expect("block hash registry lock poisoned").get(&number).map(|(h, _)| *h)
     }
 
+    /// Returns the highest block number in the registry, or `0` if empty.
+    pub fn latest_number(&self) -> u64 {
+        self.0.lock().expect("block hash registry lock poisoned").keys().max().copied().unwrap_or(0)
+    }
+
     /// Return the registered state root for an L2 block number, if any.
     ///
     /// Returns `None` when the block was not registered or was registered

@@ -144,7 +144,7 @@ where
                         .await
                 });
             match step_result {
-                StepResult::PreparedAttributes => { /* continue; attributes will be sent off. */ }
+                StepResult::PreparedAttributes => {}
                 StepResult::AdvancedOrigin => {
                     let origin =
                         self.pipeline.origin().ok_or(PipelineError::MissingOrigin.crit())?.number;
@@ -316,9 +316,7 @@ where
                 self.derivation_state_machine.update(&DerivationStateUpdate::MoreDataNeeded)?;
                 return Ok(());
             }
-            Err(e) => {
-                return Err(e);
-            }
+            Err(e) => return Err(e),
         };
         trace!(target: "derivation", ?payload_attributes, "Produced payload attributes.");
 

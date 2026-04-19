@@ -188,8 +188,6 @@ impl ActionDataSource {
         self.chain.with(|blocks| {
             if let Some(block) = blocks.get(block_ref.number as usize) {
                 let block_hash = block.hash();
-                // Guard against stale block_refs after a reorg: if the block at
-                // this height was replaced, its hash will differ.
                 if block_hash != block_ref.hash {
                     return;
                 }

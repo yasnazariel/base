@@ -2514,17 +2514,20 @@ dependencies = [
  "base-consensus-genesis",
  "base-consensus-gossip",
  "base-consensus-node",
+ "base-consensus-providers",
  "base-consensus-registry",
  "base-consensus-safedb",
  "base-execution-chainspec",
  "base-execution-evm",
  "base-execution-payload-builder",
+ "base-execution-rpc",
  "base-execution-txpool",
  "base-node-core",
  "base-protocol",
  "base-runtime",
  "base-test-utils",
  "base-tx-manager",
+ "jsonrpsee",
  "reth-basic-payload-builder",
  "reth-db",
  "reth-db-common",
@@ -2541,6 +2544,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-subscriber 0.3.23",
+ "url",
 ]
 
 [[package]]

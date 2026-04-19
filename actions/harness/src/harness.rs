@@ -3,7 +3,10 @@ use std::{fmt::Debug, sync::Arc};
 use alloy_eips::BlockNumHash;
 use alloy_genesis::ChainConfig;
 use base_common_consensus::{BaseBlock, BaseTxEnvelope};
-use base_consensus_derive::{DataAvailabilityProvider, PipelineBuilder, StatefulAttributesBuilder};
+use base_consensus_derive::{
+    DataAvailabilityProvider, PipelineBuilder, ResetSignal, SignalReceiver,
+    StatefulAttributesBuilder,
+};
 use base_consensus_genesis::RollupConfig;
 use base_consensus_node::L1OriginSelector;
 use base_protocol::{BlockInfo, L1BlockInfoTx, L2BlockInfo};
@@ -11,8 +14,9 @@ use base_protocol::{BlockInfo, L1BlockInfoTx, L2BlockInfo};
 use crate::{
     ActionBlobDataSource, ActionDataSource, ActionEngineClient, ActionL1ChainProvider,
     ActionL2ChainProvider, ActionL2Source, ActionL2SourceBridge, ActionPipeline,
-    BlobVerifierPipeline, L1Miner, L1MinerConfig, L2Sequencer, SharedL1Chain, TestFollowNode,
-    TestGossipTransport, TestRollupNode, VerifierPipeline, block_info_from,
+    BlobVerifierPipeline, L1Miner, L1MinerConfig, L2Sequencer, SharedL1Chain,
+    TestActorDerivationNode, TestFollowNode, TestGossipTransport, TestRollupNode, VerifierPipeline,
+    block_info_from,
 };
 
 /// Top-level test harness that owns all actors for a single action test.
@@ -51,9 +55,24 @@ impl ActionTestHarness {
     /// the pipeline's `l2_safe_head.hash` matches the `parent_hash` encoded in batches.
     /// Without this, `check_batch` drops every first batch with `ParentHashMismatch`
     /// because `build_and_commit` substitutes `B256::ZERO` with the real genesis hash.
+    ///
+    /// Also sets `rollup_config.genesis.l1.hash` to the actual test L1 genesis block
+    /// hash. `TestRollupConfigBuilder::base_mainnet` zeroes `genesis.l1`, so without this
+    /// fix `L2BlockInfo::from_block_and_genesis` on the genesis L2 block (which has no L1
+    /// info deposit) returns `l1_origin.hash = B256::ZERO`. `PollingTraversal::reset`
+    /// fetches genesis by number and returns the real hash, causing a hash mismatch in
+    /// `BatchQueue::derive_next_batch` that triggers an integer overflow at `epoch.number - 1`.
     pub fn new(l1_config: L1MinerConfig, mut rollup_config: RollupConfig) -> Self {
+        let l1 = L1Miner::new(l1_config);
         rollup_config.genesis.l2.hash = ActionEngineClient::compute_l2_genesis_hash(&rollup_config);
-        Self { l1: L1Miner::new(l1_config), rollup_config }
+        let genesis_l1_number = rollup_config.genesis.l1.number;
+        let genesis_l1 = l1
+            .block_by_number(genesis_l1_number)
+            .map(block_info_from)
+            .unwrap_or_else(|| block_info_from(l1.chain().first().expect("L1 genesis always present")));
+        rollup_config.genesis.l1.number = genesis_l1.number;
+        rollup_config.genesis.l1.hash = genesis_l1.hash;
+        Self { l1, rollup_config }
     }
 
     /// Mine `n` L1 blocks and return the latest block number after mining.
@@ -324,6 +343,90 @@ impl ActionTestHarness {
         );
         let node = TestFollowNode::new(engine, source.clone(), genesis_head, rollup_config);
         (node, source)
+    }
+
+    /// Create a [`TestActorDerivationNode`] wired to a sequencer's block-hash
+    /// registry, running the production [`DerivationActor`] + [`EngineActor`]
+    /// stack over a real 8-stage derivation pipeline.
+    ///
+    /// Builds the full calldata pipeline from the given `l1_chain` snapshot,
+    /// applies the genesis [`ActivationSignal`] directly to the pipeline (matching
+    /// [`TestRollupNode::initialize`]), creates an independent
+    /// [`ActionEngineClient`], and returns the actor node ready for
+    /// [`initialize`].
+    ///
+    /// The `l1_chain` must already contain all L1 blocks the pipeline should
+    /// process; push new blocks with [`SharedL1Chain::push`] before calling
+    /// [`act_l1_head_signal`].
+    ///
+    /// [`initialize`]: TestActorDerivationNode::initialize
+    /// [`act_l1_head_signal`]: TestActorDerivationNode::act_l1_head_signal
+    /// [`DerivationActor`]: base_consensus_node::DerivationActor
+    /// [`EngineActor`]: base_consensus_node::EngineActor
+    /// [`ActivationSignal`]: base_consensus_derive::ActivationSignal
+    /// [`TestRollupNode::initialize`]: crate::TestRollupNode::initialize
+    pub async fn create_actor_derivation_node(
+        &self,
+        l1_chain: SharedL1Chain,
+    ) -> TestActorDerivationNode {
+        // Compute the real L2 genesis block hash from the Reth ChainSpec.
+        //
+        // `TestRollupConfigBuilder::base_mainnet` sets `genesis.l2 = Default::default()`, leaving
+        // `genesis.l2.hash = B256::ZERO`.  The Reth engine, however, computes a real (non-zero)
+        // hash for the genesis header.  Downstream code in `find_starting_forkchoice` calls
+        // `L2BlockInfo::from_block_and_genesis` which asserts `block_info.hash == genesis.l2.hash`;
+        // if the hashes disagree the engine reset silently fails, `ProcessEngineSyncCompletion` is
+        // never sent, and `DerivationActor` stays in `AwaitingELSyncCompletion` forever.
+        // Setting the correct hash here propagates to the pipeline's `ResetSignal` and to the
+        // `check_batch` `ParentHashMismatch` guard, which compares the batch's encoded parent hash
+        // against `l2_safe_head.block_info.hash`.
+        let real_genesis_hash = ActionEngineClient::compute_l2_genesis_hash(&self.rollup_config);
+        let mut config = self.rollup_config.clone();
+        config.genesis.l2.hash = real_genesis_hash;
+        let rollup_config = Arc::new(config);
+        let l1_chain_config = Arc::new(ChainConfig::default());
+
+        let genesis_l1 = block_info_from(self.l1.chain().first().expect("genesis always present"));
+        let mut genesis_safe_head = self.l2_genesis();
+        genesis_safe_head.block_info.hash = real_genesis_hash;
+
+        let l1_provider = ActionL1ChainProvider::new(l1_chain.clone());
+        let l2_provider = ActionL2ChainProvider::from_genesis(&rollup_config);
+
+        let dap_source =
+            crate::ActionDataSource::new(l1_chain.clone(), rollup_config.batch_inbox_address);
+        let attrs_builder = StatefulAttributesBuilder::new(
+            Arc::clone(&rollup_config),
+            Arc::clone(&l1_chain_config),
+            l2_provider.clone(),
+            l1_provider.clone(),
+        );
+        let mut pipeline = PipelineBuilder::new()
+            .rollup_config(Arc::clone(&rollup_config))
+            .origin(genesis_l1)
+            .chain_provider(l1_provider)
+            .dap_source(dap_source)
+            .l2_chain_provider(l2_provider)
+            .builder(attrs_builder)
+            .build_polled();
+
+        // Signal the pipeline with a reset signal before spawning the actor.
+        // ResetSignal properly initializes BatchQueue.l1_blocks with the genesis L1
+        // block so that batches encoding epoch_num=0 pass check_batch validation.
+        // ActivationSignal leaves l1_blocks empty, causing epoch_too_old drops.
+        pipeline
+            .signal(ResetSignal { l2_safe_head: genesis_safe_head }.signal())
+            .await
+            .expect("TestActorDerivationNode: reset signal failed");
+
+        let engine = ActionEngineClient::new(
+            Arc::clone(&rollup_config),
+            genesis_safe_head,
+            crate::SharedBlockHashRegistry::new(),
+            l1_chain,
+        );
+
+        TestActorDerivationNode::new(rollup_config, engine, pipeline, genesis_safe_head).await
     }
 
     /// Decode the [`L1BlockInfoTx`] from the first deposit transaction of an

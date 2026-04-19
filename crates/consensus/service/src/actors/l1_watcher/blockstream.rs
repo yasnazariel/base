@@ -36,7 +36,10 @@ impl<L1P: Provider> BlockStream<L1P> {
         l1_provider: L1P,
         tag: BlockNumberOrTag,
         poll_interval: Duration,
-    ) -> Result<impl Stream<Item = BlockInfo> + Unpin + Send, String> {
+    ) -> Result<impl Stream<Item = BlockInfo> + Unpin + Send, String>
+    where
+        L1P: Send + 'static,
+    {
         if matches!(tag, BlockNumberOrTag::Number(_)) {
             error!("Invalid BlockNumberOrTag variant - Must be a tag");
         }
@@ -48,9 +51,19 @@ impl<L1P: Provider> BlockStream<L1P> {
     /// Null responses (e.g. `eth_getBlockByNumber("finalized")` before the CL has communicated
     /// a finalized checkpoint, or `"latest"` before the L1 node has synced any blocks) are
     /// silently skipped rather than causing a deserialization error.
-    pub fn into_stream(self) -> impl Stream<Item = BlockInfo> + Unpin + Send {
+    ///
+    /// The provider is captured by the returned stream to guarantee the underlying
+    /// [`WeakClient`] inside [`PollerBuilder`] can always be upgraded while the
+    /// stream is alive.
+    pub fn into_stream(self) -> impl Stream<Item = BlockInfo> + Unpin + Send
+    where
+        L1P: Send + 'static,
+    {
+        let weak = self.l1_provider.weak_client();
+        let provider = self.l1_provider;
+
         let mut poll_stream = PollerBuilder::<(BlockNumberOrTag, bool), Option<Block>>::new(
-            self.l1_provider.weak_client(),
+            weak,
             "eth_getBlockByNumber",
             (self.tag, false),
         )
@@ -58,6 +71,7 @@ impl<L1P: Provider> BlockStream<L1P> {
         .into_stream();
 
         Box::pin(stream! {
+            let _keep = provider;
             let mut last_block = None;
             while let Some(next) = poll_stream.next().await {
                 let Some(block) = next else { continue };

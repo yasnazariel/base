@@ -2,11 +2,13 @@ use std::fmt::Debug;
 
 use alloy_consensus::Block;
 use alloy_eips::BlockNumberOrTag;
+use alloy_primitives::B256;
 use alloy_provider::{Provider, RootProvider};
 use async_trait::async_trait;
 use base_common_consensus::BaseTxEnvelope;
 use base_common_network::Base;
 use base_common_rpc_types_engine::{BaseExecutionPayload, BaseExecutionPayloadEnvelope};
+use serde::Deserialize;
 use thiserror::Error;
 use url::Url;
 
@@ -25,6 +27,57 @@ pub enum DelegateL2ClientError {
     /// Block not found at the requested tag.
     #[error("block not found at {0}")]
     BlockNotFound(String),
+}
+
+// Private deserialization helper for the `debug_proofsSyncStatus` RPC response.
+#[derive(Debug, Deserialize)]
+struct ProofsSyncStatus {
+    latest: Option<u64>,
+}
+
+/// Trait for querying the local L2 execution layer node.
+///
+/// Abstracts over the real [`RootProvider`] in production and an in-memory
+/// implementation in action tests, allowing [`DelegateL2DerivationActor`] to be
+/// driven without a live RPC connection.
+///
+/// [`DelegateL2DerivationActor`]: crate::DelegateL2DerivationActor
+#[async_trait]
+pub trait LocalL2Provider: Debug + Send + Sync {
+    /// Returns the current block number of the local L2 execution layer.
+    async fn block_number(&self) -> Result<u64, alloy_transport::TransportError>;
+
+    /// Returns the block hash at the given block number, or `None` if the block
+    /// is unknown or the RPC call fails.
+    ///
+    /// **`None` is treated as agreement** by callers: the safe-head
+    /// fork-divergence check in `SyncFromSourceTask::update_safe_and_finalized`
+    /// only skips a SafeDB write when a *known* hash mismatch is detected. If
+    /// the local engine has not yet executed the block at `n`, this should
+    /// return `None` so the caller does not incorrectly classify the chains as
+    /// diverged.
+    async fn block_hash_at(&self, n: u64) -> Option<B256>;
+
+    /// Returns the latest block number known to the proofs ExEx, or `None` if
+    /// proofs are not yet available. Returns an error if the RPC call fails.
+    async fn proofs_latest_block(&self) -> Result<Option<u64>, alloy_transport::TransportError>;
+}
+
+#[async_trait]
+impl LocalL2Provider for RootProvider<Base> {
+    async fn block_number(&self) -> Result<u64, alloy_transport::TransportError> {
+        Provider::get_block_number(self).await
+    }
+
+    async fn block_hash_at(&self, n: u64) -> Option<B256> {
+        self.get_block_by_number(n.into()).await.ok()?.map(|b| b.header.hash)
+    }
+
+    async fn proofs_latest_block(&self) -> Result<Option<u64>, alloy_transport::TransportError> {
+        let status: ProofsSyncStatus =
+            self.raw_request("debug_proofsSyncStatus".into(), ()).await?;
+        Ok(status.latest)
+    }
 }
 
 /// Trait for fetching L2 block data from a source node.

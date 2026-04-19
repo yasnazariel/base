@@ -19,7 +19,7 @@ mod actors;
 pub use actors::{
     AlloyL1BlockFetcher, BlockStream, BootstrapRole, BuildRequest, CancellableContext, Conductor,
     ConductorClient, ConductorError, DelayedL1OriginSelectorProvider, DelegateDerivationActor,
-    DelegateL2Client, DelegateL2ClientError, DelegateL2DerivationActor, DerivationActor,
+    DelegateL2Client, DelegateL2ClientError, DelegateL2DerivationActor, LocalL2Provider, DerivationActor,
     DerivationActorRequest, DerivationClientError, DerivationClientResult,
     DerivationDelegateClient, DerivationDelegateClientError, DerivationEngineClient,
     DerivationError, DerivationState, DerivationStateMachine, DerivationStateTransitionError,
