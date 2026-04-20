@@ -121,14 +121,32 @@ impl<P: EngineProtocol> EngineApi<P> {
         P::client(self.jwt_secret, self.address.clone()).await
     }
 
-    /// Get a payload by ID from the Engine API
-    pub async fn get_payload(
+    /// Get a Prague/Isthmus payload by ID from the Engine API.
+    pub async fn get_payload_v4(
         &self,
         payload_id: PayloadId,
     ) -> eyre::Result<<OpEngineTypes as EngineTypes>::ExecutionPayloadEnvelopeV4> {
         debug!(payload_id = %payload_id, timestamp = %chrono::Utc::now(), "Fetching payload");
         Ok(BaseEngineApiClient::<OpEngineTypes>::get_payload_v4(&self.client().await, payload_id)
             .await?)
+    }
+
+    /// Get an Osaka/Azul payload by ID from the Engine API.
+    pub async fn get_payload_v5(
+        &self,
+        payload_id: PayloadId,
+    ) -> eyre::Result<<OpEngineTypes as EngineTypes>::ExecutionPayloadEnvelopeV5> {
+        debug!(payload_id = %payload_id, timestamp = %chrono::Utc::now(), "Fetching payload");
+        Ok(BaseEngineApiClient::<OpEngineTypes>::get_payload_v5(&self.client().await, payload_id)
+            .await?)
+    }
+
+    /// Get a payload by ID from the Engine API.
+    pub async fn get_payload(
+        &self,
+        payload_id: PayloadId,
+    ) -> eyre::Result<<OpEngineTypes as EngineTypes>::ExecutionPayloadEnvelopeV4> {
+        self.get_payload_v4(payload_id).await
     }
 
     /// Submit a new payload to the Engine API
@@ -158,10 +176,10 @@ impl<P: EngineProtocol> EngineApi<P> {
         payload_attributes: Option<<OpEngineTypes as PayloadTypes>::PayloadAttributes>,
     ) -> eyre::Result<ForkchoiceUpdated> {
         debug!(
-            "Updating forkchoice at {} (current: {}, new: {})",
-            chrono::Utc::now(),
-            current_head,
-            new_head
+            timestamp = %chrono::Utc::now(),
+            current_head = %current_head,
+            new_head = %new_head,
+            "Updating forkchoice"
         );
         let result = BaseEngineApiClient::<OpEngineTypes>::fork_choice_updated_v3(
             &self.client().await,
