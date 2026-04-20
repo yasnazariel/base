@@ -9,6 +9,7 @@ use base_cli_utils::{CliStyles, LogConfig, RuntimeManager};
 use base_client_cli::{
     L1ClientArgs, L1ConfigFile, L2ClientArgs, L2ConfigFile, P2PArgs, RpcArgs, SequencerArgs,
 };
+use base_consensus_leadership::LeadershipConfig;
 use base_consensus_node::{
     DelegateL2Client, EngineConfig, FollowNode, L1Config, L1ConfigBuilder, NodeMode,
     RollupNodeBuilder,
@@ -293,6 +294,60 @@ pub struct Node {
     /// Path to the `SafeDB` directory. If not set, safe head tracking is disabled.
     #[arg(long = "safedb.path", env = "BASE_NODE_SAFEDB_PATH")]
     pub safedb_path: Option<PathBuf>,
+
+    /// Embedded leadership CLI arguments. When both fields are set the legacy
+    /// `op-conductor` HTTP path is bypassed and the `LeadershipActor` runs in-process.
+    #[command(flatten)]
+    pub leadership: LeadershipCliArgs,
+}
+
+/// CLI arguments for the embedded leadership protocol.
+///
+/// Both fields must be set together; if either is `None` the embedded path is disabled
+/// and the legacy `op-conductor` HTTP path runs unchanged.
+#[derive(Args, Clone, Debug, Default)]
+pub struct LeadershipCliArgs {
+    /// Path to a JSON-serialized [`LeadershipConfig`] (validators, transport, health
+    /// thresholds, Raft timeouts).
+    #[arg(long = "leadership.config-path", env = "BASE_NODE_LEADERSHIP_CONFIG_PATH")]
+    pub config_path: Option<PathBuf>,
+
+    /// Storage directory for the embedded leadership Raft log + state machine. Persisted
+    /// across restarts; required when `--leadership.config-path` is set.
+    #[arg(long = "leadership.storage-dir", env = "BASE_NODE_LEADERSHIP_STORAGE_DIR")]
+    pub storage_dir: Option<PathBuf>,
+}
+
+impl LeadershipCliArgs {
+    /// Returns the parsed `(LeadershipConfig, storage_dir)` pair when both CLI args
+    /// are set, `None` when neither is set, or an error naming the missing flag if only
+    /// one of the two is set.
+    pub fn load(&self) -> eyre::Result<Option<(LeadershipConfig, PathBuf)>> {
+        match (&self.config_path, &self.storage_dir) {
+            (None, None) => Ok(None),
+            (Some(cfg_path), Some(dir)) => {
+                let cfg_bytes = std::fs::read(cfg_path)
+                    .map_err(|e| eyre::eyre!("read leadership config {cfg_path:?}: {e}"))?;
+                let cfg: LeadershipConfig = serde_json::from_slice(&cfg_bytes)
+                    .map_err(|e| eyre::eyre!("parse leadership config: {e}"))?;
+                Ok(Some((cfg, dir.clone())))
+            }
+            (cfg, dir) => {
+                let mut missing = Vec::new();
+                if cfg.is_none() {
+                    missing.push("--leadership.config-path");
+                }
+                if dir.is_none() {
+                    missing.push("--leadership.storage-dir");
+                }
+                Err(eyre::eyre!(
+                    "embedded leadership is enabled (one or more --leadership.* flags set) but \
+                     missing: {}",
+                    missing.join(", "),
+                ))
+            }
+        }
+    }
 }
 
 impl Node {
@@ -406,6 +461,12 @@ impl Node {
         if let Some(path) = self.safedb_path.clone() {
             builder = builder.with_safedb_path(path);
         }
+        if let Some((leadership_cfg, storage_dir)) = self.leadership.load()? {
+            info!(target: "rollup_node", "embedded leadership: configuring OpenraftDriver");
+            builder = builder
+                .with_leadership_config(leadership_cfg)
+                .with_leadership_storage_dir(storage_dir);
+        }
         builder.build().await.wrap_err("Failed to build rollup node")?.start().await.map_err(
             |e| {
                 error!(target: "rollup_node", error = %e, "Failed to start rollup node service");
@@ -444,6 +505,7 @@ mod tests {
             rpc_flags: RpcArgs::default(),
             sequencer_flags: SequencerArgs::default(),
             safedb_path: None,
+            leadership: LeadershipCliArgs::default(),
         }
     }
 

@@ -27,14 +27,19 @@ pub use health::{HealthzResponse, HealthzRpc};
 
 mod jsonrpsee;
 #[cfg(feature = "client")]
-pub use jsonrpsee::{AdminApiClient, BaseP2PApiClient, ConductorApiClient, RollupNodeApiClient};
+pub use jsonrpsee::{
+    AdminApiClient, BaseP2PApiClient, ConductorApiClient, LeadershipApiClient, RollupNodeApiClient,
+};
 pub use jsonrpsee::{
     AdminApiServer, BaseP2PApiServer, ConductorApiServer, DevEngineApiServer, HealthzApiServer,
-    RollupNodeApiServer, WsServer,
+    LeadershipApiServer, RollupNodeApiServer, WsServer,
 };
 
 mod l1_watcher;
 pub use l1_watcher::{L1State, L1WatcherQueries, L1WatcherQuerySender};
+
+mod leadership;
+pub use leadership::{LeadershipErrorCode, LeadershipRpc};
 
 mod net;
 pub use net::P2pRpc;

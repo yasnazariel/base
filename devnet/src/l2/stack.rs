@@ -6,10 +6,13 @@
 //! - Batcher (in-process, submits L2 transaction batches to L1)
 //! - Client execution layer (in-process, follows the L2 and builds pending state using Flashblocks)
 
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+
 use alloy_genesis::ChainConfig;
 use alloy_primitives::B256;
 use alloy_rpc_types_engine::JwtSecret;
 use base_consensus_genesis::RollupConfig;
+use base_consensus_leadership::{LeadershipConfig, ValidatorId};
 use base_consensus_node::NodeMode;
 use base_tx_forwarding::TxForwardingConfig;
 use eyre::{Result, WrapErr};
@@ -51,6 +54,10 @@ pub struct L2StackConfig {
     /// Number of L1 blocks to keep distance from the L1 head for the client (validator)
     /// consensus node's derivation pipeline.
     pub verifier_l1_confs: u64,
+    /// When `true`, the builder consensus runs with a single-voter embedded leadership
+    /// config — useful for smoke-testing the wiring end-to-end, but degenerate (the lone
+    /// voter is always its own leader, so no failover is possible).
+    pub embedded_leadership: bool,
 }
 
 /// A complete L2 network stack composed of Builder + Consensus + Batcher.
@@ -122,6 +129,17 @@ impl L2Stack {
         //    The sequencer starts in stopped mode so that blocks are not produced until the
         //    validator is connected via P2P — otherwise the first blocks would be lost via gossip
         //    and the validator's EL would be unable to validate later blocks (missing parent).
+        // Leak the tempdir so it outlives the in-process consensus actor; the devnet
+        // process exits soon after teardown so the leak is bounded by process lifetime.
+        let (builder_leadership, builder_leadership_dir) = if config.embedded_leadership {
+            let listen_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0);
+            let cfg =
+                LeadershipConfig::single_node(ValidatorId::new("builder-consensus"), listen_addr);
+            let dir = tempfile::tempdir().wrap_err("Failed to create leadership tempdir")?.keep();
+            (Some(cfg), Some(dir))
+        } else {
+            (None, None)
+        };
         let builder_consensus_config = InProcessConsensusConfig {
             rollup_config: rollup_config.clone(),
             l1_chain_config: l1_chain_config.clone(),
@@ -139,6 +157,8 @@ impl L2Stack {
             l1_slot_duration_override: Some(4),
             sequencer_stopped: true,
             verifier_l1_confs: 0,
+            leadership_config: builder_leadership,
+            leadership_storage_dir: builder_leadership_dir,
         };
         let builder_consensus = InProcessConsensus::start(builder_consensus_config)
             .await
@@ -202,6 +222,8 @@ impl L2Stack {
             l1_slot_duration_override: Some(4),
             sequencer_stopped: false,
             verifier_l1_confs: config.verifier_l1_confs,
+            leadership_config: None,
+            leadership_storage_dir: None,
         };
         let client_consensus = InProcessConsensus::start(client_consensus_config)
             .await

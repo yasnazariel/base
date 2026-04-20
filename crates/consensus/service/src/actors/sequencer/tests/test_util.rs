@@ -47,5 +47,6 @@ pub(super) fn test_actor() -> SequencerActor<
         sealer: None,
         pending_stop: None,
         next_build_parent: None,
+        leader_status: None,
     }
 }

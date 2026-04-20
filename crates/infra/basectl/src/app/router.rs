@@ -13,6 +13,8 @@ pub enum ViewId {
     Config,
     /// HA conductor cluster status monitor.
     Conductor,
+    /// Embedded leadership cluster status monitor.
+    EmbeddedLeadership,
     /// Proof system monitor (dispute games, anchor state).
     Proofs,
     /// Load test runner and metrics viewer.

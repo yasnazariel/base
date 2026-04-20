@@ -188,6 +188,7 @@ base-consensus-genesis = { path = "crates/consensus/genesis", default-features =
 base-consensus-registry = { path = "crates/consensus/registry", default-features = false }
 base-consensus-upgrades = { path = "crates/consensus/upgrades", default-features = false }
 base-consensus-providers = { path = "crates/consensus/providers", default-features = false }
+base-consensus-leadership = { path = "crates/consensus/leadership", default-features = false }
 
 # Execution
 base-node-core = { path = "crates/execution/node" }
@@ -553,6 +554,10 @@ sqlx = { version = "0.8", default-features = false }
 # rate limiting
 governor = "0.7"
 nonzero_ext = "0.3"
+
+# embedded leadership consensus engine (openraft + sled persistence)
+sled = "0.34"
+openraft = "0.9"
 
 # transitive deps
 syn = "2.0"

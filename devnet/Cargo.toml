@@ -33,6 +33,7 @@ base-consensus-peers.workspace = true
 base-consensus-gossip.workspace = true
 base-consensus-sources.workspace = true
 base-consensus-genesis.workspace = true
+base-consensus-leadership.workspace = true
 
 # reth
 reth-db.workspace = true

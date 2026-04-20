@@ -78,6 +78,25 @@ pub struct ConductorNodeConfig {
     pub flashblocks_ws: Option<Url>,
 }
 
+/// Configuration for a single node running an embedded leadership actor.
+///
+/// Mirrors `ConductorNodeConfig` but talks to the `leadership_*` namespace
+/// exposed by `base-consensus-leadership`. The leadership RPC and the CL RPC
+/// may be the same endpoint when the actor is hosted inside the consensus node.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmbeddedLeadershipNodeConfig {
+    /// Human-readable name for this node.
+    pub name: String,
+    /// JSON-RPC endpoint serving the `leadership_*` namespace.
+    pub leadership_rpc: Url,
+    /// Optional CL JSON-RPC endpoint for sync info.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cl_rpc: Option<Url>,
+    /// Optional EL JSON-RPC endpoint for `eth_blockNumber` / `net_peerCount`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub el_rpc: Option<Url>,
+}
+
 /// Monitoring configuration for a chain watched by basectl.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChainConfig {
@@ -107,6 +126,10 @@ pub struct ChainConfig {
     /// HA conductor cluster nodes, if this chain runs an op-conductor setup.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub conductors: Option<Vec<ConductorNodeConfig>>,
+    /// Embedded leadership cluster nodes, if this chain runs sequencers with
+    /// the in-process `base-consensus-leadership` actor.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub embedded_leaderships: Option<Vec<EmbeddedLeadershipNodeConfig>>,
     /// Validator (non-sequencing) nodes to monitor alongside the conductor cluster.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub validators: Option<Vec<ValidatorNodeConfig>>,
@@ -152,6 +175,7 @@ struct ChainConfigOverride {
     batcher_address: Option<Address>,
     l1_blob_target: Option<u64>,
     conductors: Option<Vec<ConductorNodeConfig>>,
+    embedded_leaderships: Option<Vec<EmbeddedLeadershipNodeConfig>>,
     validators: Option<Vec<ValidatorNodeConfig>>,
     proofs: Option<ProofsConfig>,
 }
@@ -195,6 +219,7 @@ impl ChainConfig {
             batcher_address: Some("0x5050F69a9786F081509234F1a7F4684b5E5b76C9".parse().unwrap()),
             l1_blob_target: 14,
             conductors: None,
+            embedded_leaderships: None,
             validators: None,
             proofs: None,
         }
@@ -214,6 +239,7 @@ impl ChainConfig {
             batcher_address: Some("0xfc56E7272EEBBBA5bC6c544e159483C4a38f8bA3".parse().unwrap()),
             l1_blob_target: 14,
             conductors: None,
+            embedded_leaderships: None,
             validators: None,
             proofs: None,
         }
@@ -274,6 +300,26 @@ impl ChainConfig {
                     docker_el: Some("base-sequencer-2".to_string()),
                     docker_cl: Some("base-sequencer-2-cl".to_string()),
                     flashblocks_ws: Some(Url::parse("ws://localhost:11111").unwrap()),
+                },
+            ]),
+            embedded_leaderships: Some(vec![
+                EmbeddedLeadershipNodeConfig {
+                    name: "sequencer-0".to_string(),
+                    leadership_rpc: Url::parse("http://localhost:7549").unwrap(),
+                    cl_rpc: Some(Url::parse("http://localhost:7549").unwrap()),
+                    el_rpc: Some(Url::parse("http://localhost:7545").unwrap()),
+                },
+                EmbeddedLeadershipNodeConfig {
+                    name: "sequencer-1".to_string(),
+                    leadership_rpc: Url::parse("http://localhost:10549").unwrap(),
+                    cl_rpc: Some(Url::parse("http://localhost:10549").unwrap()),
+                    el_rpc: Some(Url::parse("http://localhost:10545").unwrap()),
+                },
+                EmbeddedLeadershipNodeConfig {
+                    name: "sequencer-2".to_string(),
+                    leadership_rpc: Url::parse("http://localhost:11549").unwrap(),
+                    cl_rpc: Some(Url::parse("http://localhost:11549").unwrap()),
+                    el_rpc: Some(Url::parse("http://localhost:11545").unwrap()),
                 },
             ]),
             validators: Some(vec![ValidatorNodeConfig {
@@ -396,6 +442,7 @@ impl ChainConfig {
             batcher_address: overrides.batcher_address.or(base.batcher_address),
             l1_blob_target: overrides.l1_blob_target.unwrap_or(base.l1_blob_target),
             conductors: overrides.conductors.or(base.conductors),
+            embedded_leaderships: overrides.embedded_leaderships.or(base.embedded_leaderships),
             validators: overrides.validators.or(base.validators),
             proofs: overrides.proofs.or(base.proofs),
         })

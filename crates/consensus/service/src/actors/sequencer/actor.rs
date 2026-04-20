@@ -9,6 +9,7 @@ use alloy_primitives::B256;
 use async_trait::async_trait;
 use base_consensus_derive::AttributesBuilder;
 use base_consensus_genesis::RollupConfig;
+use base_consensus_leadership::LeaderStatusReceiver;
 use base_consensus_rpc::SequencerAdminAPIError;
 use base_protocol::L2BlockInfo;
 use tokio::{
@@ -85,6 +86,10 @@ pub struct SequencerActor<
     /// Stashed response sender for a pending `stop_sequencer` call that is waiting
     /// for the in-flight seal pipeline to complete before responding.
     pub pending_stop: Option<PendingStopSender>,
+    /// Optional embedded-leadership status feed. When `Some`, block production is gated on
+    /// the local node being the elected leader. When `None`, the gate is bypassed and the
+    /// legacy `op-conductor`-driven path applies.
+    pub leader_status: Option<LeaderStatusReceiver>,
 }
 
 impl<
@@ -280,6 +285,16 @@ where
         // Admin API queries are serviced during this phase (see schedule_initial_reset).
         self.schedule_initial_reset(&mut next_payload_to_seal).await?;
         let mut last_seal_duration = Duration::from_secs(0);
+
+        // Separate `leader_status` receiver used as a wake-only signal in the loop
+        // below. Without it, an embedded-leadership sequencer entering the loop with
+        // `LeaderStatus::Unknown` would wedge: the `build_ticker` arm's guard reads
+        // `leader_status.borrow().is_leader()` but no other arm fires (no admin RPCs
+        // in embedded mode, sealer is `None`, cancellation is silent). `None` in the
+        // op-conductor path leaves the arm permanently `Pending`, preserving the
+        // legacy `admin_startSequencer`-driven wakeup path.
+        let mut leader_status_waker = self.leader_status.clone();
+
         loop {
             select! {
                 biased;
@@ -293,6 +308,28 @@ where
                     self.handle_admin_query(&mut next_payload_to_seal, query).await;
 
                     if !active_before && self.is_active {
+                        build_ticker.reset_immediately();
+                    }
+                }
+                // Wake-only arm: a `leader_status` transition (e.g. Unknown → Leader)
+                // re-iterates `select!` so the `build_ticker` guard is re-checked.
+                // No state mutation here — gate logic lives on the build_ticker arm.
+                Ok(()) = async {
+                    match leader_status_waker.as_mut() {
+                        Some(rx) => rx.changed().await,
+                        None => std::future::pending().await,
+                    }
+                } => {
+                    // On the Unknown → Leader transition, fire the build immediately
+                    // instead of waiting up to one full block_time for the next
+                    // scheduled tick.
+                    if self.is_active
+                        && self.sealer.is_none()
+                        && self
+                            .leader_status
+                            .as_ref()
+                            .is_none_or(|rx| rx.borrow().is_leader())
+                    {
                         build_ticker.reset_immediately();
                     }
                 }
@@ -325,7 +362,16 @@ where
                             // next_build_parent was computed from the sealed envelope in the ticker
                             // arm; using it here ensures InsertTask is enqueued before BuildTask so
                             // the EL builds on the just-inserted block instead of its grandparent.
-                            if self.is_active {
+                            //
+                            // The leader-status gate mirrors the ticker arm: if the local node
+                            // lost leadership during this seal, we drain the in-flight work but
+                            // refuse to enqueue a follow-on build, otherwise we would emit one
+                            // trailing block past the leadership-loss point.
+                            let still_leader = self
+                                .leader_status
+                                .as_ref()
+                                .is_none_or(|rx| rx.borrow().is_leader());
+                            if self.is_active && still_leader {
                                 next_payload_to_seal =
                                     if let Some(parent) = self.next_build_parent.take() {
                                         let result = self.builder.build_on(parent).await?;
@@ -358,7 +404,10 @@ where
                 // is Poll::Pending. Disabling the ticker while a seal is in-flight lets the
                 // sealer arm complete all three steps (commit → gossip → insert) before the
                 // next block starts, so the canonical head actually advances.
-                _ = build_ticker.tick(), if self.is_active && self.sealer.is_none() => {
+                _ = build_ticker.tick(), if self.is_active
+                    && self.sealer.is_none()
+                    && self.leader_status.as_ref().is_none_or(|rx| rx.borrow().is_leader())
+                => {
                     if let Some(handle) = next_payload_to_seal.take() {
                         // Extract data needed after try_seal_handle consumes the handle.
                         let parent_beacon_root = handle

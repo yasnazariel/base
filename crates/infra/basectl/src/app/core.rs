@@ -114,6 +114,7 @@ impl App {
             self.resources.flash.poll();
             self.resources.toasts.poll();
             self.resources.conductor.poll();
+            self.resources.embedded_leadership.poll();
             self.resources.validators.poll();
             self.resources.proofs.poll();
             // When a conductor cluster is configured, bridge the Raft leader's

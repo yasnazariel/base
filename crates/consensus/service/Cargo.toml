@@ -24,6 +24,7 @@ base-consensus-safedb.workspace = true
 base-consensus-sources.workspace = true
 base-consensus-genesis.workspace = true
 base-consensus-providers.workspace = true
+base-consensus-leadership.workspace = true
 base-consensus-rpc = { workspace = true, features = ["client"] }
 
 # alloy

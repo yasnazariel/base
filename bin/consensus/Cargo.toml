@@ -29,6 +29,7 @@ base-common-network.workspace = true
 # consensus
 base-consensus-genesis.workspace = true
 base-consensus-registry.workspace = true
+base-consensus-leadership.workspace = true
 base-consensus-node = { workspace = true, features = ["metrics"] }
 base-consensus-providers = { workspace = true, features = ["metrics"] }
 

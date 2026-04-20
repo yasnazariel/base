@@ -1,6 +1,11 @@
 allow-dbg-in-tests = true
 allow-print-in-tests = true
 too-large-for-stack = 256
+# Raise the `result_large_err` threshold above openraft's `StorageError` (224 B). The
+# error type is fixed by openraft's trait signatures, so the lint cannot be addressed
+# at the call site; configuring the threshold is the workspace-wide alternative to
+# scattering `#[allow(clippy::result_large_err)]` annotations.
+large-error-threshold = 256
 allowed-wildcard-imports = ["rayon::prelude", "ratatui::prelude", "httpmock::prelude", "super::*"]
 doc-valid-idents = [
     "L1",

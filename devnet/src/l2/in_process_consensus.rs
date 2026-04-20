@@ -7,6 +7,7 @@
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     num::NonZeroUsize,
+    path::PathBuf,
     sync::Arc,
     time::Duration,
 };
@@ -18,6 +19,7 @@ use alloy_signer_local::PrivateKeySigner;
 use base_builder_core::test_utils::get_available_port;
 use base_consensus_disc::LocalNode;
 use base_consensus_genesis::RollupConfig;
+use base_consensus_leadership::LeadershipConfig;
 use base_consensus_node::{
     EngineConfig, L1ConfigBuilder, NetworkConfig, NodeMode, RollupNodeBuilder, SequencerConfig,
 };
@@ -65,6 +67,13 @@ pub struct InProcessConsensusConfig {
     pub sequencer_stopped: bool,
     /// Number of L1 blocks to keep distance from the L1 head for the verifier.
     pub verifier_l1_confs: u64,
+    /// Optional embedded-leadership configuration. When set, the consensus node spawns a
+    /// [`LeadershipActor`](base_consensus_leadership::LeadershipActor) that gates sequencer
+    /// block production.
+    pub leadership_config: Option<LeadershipConfig>,
+    /// Storage directory for the embedded-leadership consensus journal. Required when
+    /// `leadership_config` is `Some`.
+    pub leadership_storage_dir: Option<PathBuf>,
 }
 
 /// A running in-process consensus node.
@@ -183,6 +192,13 @@ impl InProcessConsensus {
                 conductor_rpc_url: None,
                 l1_conf_delay: 0,
             });
+        }
+
+        if let Some(leadership_config) = config.leadership_config {
+            builder = builder.with_leadership_config(leadership_config);
+            if let Some(dir) = config.leadership_storage_dir {
+                builder = builder.with_leadership_storage_dir(dir);
+            }
         }
 
         let node = builder.build().await.wrap_err("Failed to build consensus node")?;

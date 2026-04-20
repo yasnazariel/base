@@ -7,6 +7,7 @@ use alloy_primitives::B256;
 use base_common_rpc_types_engine::BaseExecutionPayloadEnvelope;
 use base_consensus_genesis::RollupConfig;
 use base_consensus_gossip::{PeerCount, PeerDump, PeerInfo, PeerStats};
+use base_consensus_leadership::{ClusterMembership, LeaderStatus, ValidatorEntry, ValidatorId};
 use base_consensus_safedb::SafeHeadResponse;
 use base_protocol::SyncStatus;
 #[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), allow(unused_imports))]
@@ -252,6 +253,72 @@ pub trait ConductorApi {
     ) -> RpcResult<()>;
 }
 
+/// The leadership namespace for the consensus node.
+///
+/// Wraps the [`LeadershipCommand`](base_consensus_leadership::LeadershipCommand) enum so
+/// operators can drive the [`LeadershipActor`](base_consensus_leadership::LeadershipActor)
+/// synchronously over JSON-RPC.
+#[cfg_attr(not(feature = "client"), rpc(server, namespace = "leadership"))]
+#[cfg_attr(feature = "client", rpc(server, client, namespace = "leadership"))]
+#[async_trait]
+pub trait LeadershipApi {
+    /// Returns the current [`LeaderStatus`].
+    #[method(name = "status")]
+    async fn leadership_status(&self) -> RpcResult<LeaderStatus>;
+
+    /// Returns a snapshot of the current [`ClusterMembership`].
+    #[method(name = "membership")]
+    async fn leadership_membership(&self) -> RpcResult<ClusterMembership>;
+
+    /// Returns the local node's [`ValidatorId`]. Lets external tooling map
+    /// operator-friendly names to the consensus-level identifier without requiring
+    /// duplicate configuration on the client side.
+    #[method(name = "validatorId")]
+    async fn leadership_validator_id(&self) -> RpcResult<ValidatorId>;
+
+    /// Initiates a leadership transfer.
+    ///
+    /// If `to` is `Some`, the consensus driver attempts to transfer leadership to the named
+    /// validator. If `to` is `None`, the driver picks the next leader according to its
+    /// elector.
+    #[method(name = "transferLeadership")]
+    async fn leadership_transfer_leadership(&self, to: Option<ValidatorId>) -> RpcResult<()>;
+
+    /// Adds a new voting validator to the cluster.
+    ///
+    /// `version` is the cluster-membership version observed by the caller; the command is
+    /// rejected if it does not match the actor's current version.
+    #[method(name = "addVoter")]
+    async fn leadership_add_voter(
+        &self,
+        entry: ValidatorEntry,
+        version: u64,
+    ) -> RpcResult<ClusterMembership>;
+
+    /// Removes a voting validator from the cluster.
+    ///
+    /// `version` is the cluster-membership version observed by the caller.
+    #[method(name = "removeVoter")]
+    async fn leadership_remove_voter(
+        &self,
+        id: ValidatorId,
+        version: u64,
+    ) -> RpcResult<ClusterMembership>;
+
+    /// Forces or clears the manual leader override for disaster recovery.
+    #[method(name = "overrideLeader")]
+    async fn leadership_override_leader(&self, enabled: bool) -> RpcResult<()>;
+
+    /// Pauses participation in consensus without leaving the cluster.
+    #[method(name = "pause")]
+    async fn leadership_pause(&self) -> RpcResult<()>;
+
+    /// Resumes participation in consensus after a
+    /// [`leadership_pause`](Self::leadership_pause).
+    #[method(name = "resume")]
+    async fn leadership_resume(&self) -> RpcResult<()>;
+}
+
 #[cfg(test)]
 mod tests {
     use core::net::IpAddr;
@@ -262,6 +329,7 @@ mod tests {
     use base_common_rpc_types_engine::BaseExecutionPayloadEnvelope;
     use base_consensus_genesis::RollupConfig;
     use base_consensus_gossip::{PeerCount, PeerDump, PeerInfo, PeerStats};
+    use base_consensus_leadership::{ClusterMembership, LeaderStatus, ValidatorEntry, ValidatorId};
     use base_consensus_safedb::SafeHeadResponse;
     use base_protocol::SyncStatus;
     use ipnet::IpNet;
@@ -273,7 +341,7 @@ mod tests {
 
     use super::{
         AdminApiServer, BaseP2PApiServer, ConductorApiServer, DevEngineApiServer, HealthzApiServer,
-        RollupNodeApiServer, WsServer,
+        LeadershipApiServer, RollupNodeApiServer, WsServer,
     };
     use crate::{OutputResponse, health::HealthzResponse};
 
@@ -596,6 +664,71 @@ mod tests {
     #[case("conductor_transferLeaderToServer")]
     fn conductor_api_wire_names(#[case] expected: &str) {
         let module = StubConductorApi.into_rpc();
+        let names: Vec<&str> = module.method_names().collect();
+        assert!(names.contains(&expected), "missing method {expected}, got: {names:?}");
+    }
+
+    struct StubLeadershipApi;
+
+    #[async_trait]
+    impl LeadershipApiServer for StubLeadershipApi {
+        async fn leadership_status(&self) -> RpcResult<LeaderStatus> {
+            unimplemented!()
+        }
+
+        async fn leadership_membership(&self) -> RpcResult<ClusterMembership> {
+            unimplemented!()
+        }
+
+        async fn leadership_validator_id(&self) -> RpcResult<ValidatorId> {
+            unimplemented!()
+        }
+
+        async fn leadership_transfer_leadership(&self, _: Option<ValidatorId>) -> RpcResult<()> {
+            unimplemented!()
+        }
+
+        async fn leadership_add_voter(
+            &self,
+            _: ValidatorEntry,
+            _: u64,
+        ) -> RpcResult<ClusterMembership> {
+            unimplemented!()
+        }
+
+        async fn leadership_remove_voter(
+            &self,
+            _: ValidatorId,
+            _: u64,
+        ) -> RpcResult<ClusterMembership> {
+            unimplemented!()
+        }
+
+        async fn leadership_override_leader(&self, _: bool) -> RpcResult<()> {
+            unimplemented!()
+        }
+
+        async fn leadership_pause(&self) -> RpcResult<()> {
+            unimplemented!()
+        }
+
+        async fn leadership_resume(&self) -> RpcResult<()> {
+            unimplemented!()
+        }
+    }
+
+    #[rstest]
+    #[case("leadership_status")]
+    #[case("leadership_membership")]
+    #[case("leadership_validatorId")]
+    #[case("leadership_transferLeadership")]
+    #[case("leadership_addVoter")]
+    #[case("leadership_removeVoter")]
+    #[case("leadership_overrideLeader")]
+    #[case("leadership_pause")]
+    #[case("leadership_resume")]
+    fn leadership_api_wire_names(#[case] expected: &str) {
+        let module = StubLeadershipApi.into_rpc();
         let names: Vec<&str> = module.method_names().collect();
         assert!(names.contains(&expected), "missing method {expected}, got: {names:?}");
     }

@@ -52,6 +52,12 @@ const MENU_ITEMS: &[MenuItem] = &[
         view_id: Some(ViewId::Flashblocks),
     },
     MenuItem {
+        key: 'e',
+        label: "Embedded Leadership",
+        description: "Monitor embedded leadership cluster",
+        view_id: Some(ViewId::EmbeddedLeadership),
+    },
+    MenuItem {
         key: 'h',
         label: "HA Conductor",
         description: "Monitor HA conductor cluster",
@@ -82,6 +88,7 @@ const KEYBINDINGS: &[Keybinding] = &[
     Keybinding { key: "a", description: "Command Center" },
     Keybinding { key: "c", description: "Config" },
     Keybinding { key: "d", description: "DA Monitor" },
+    Keybinding { key: "e", description: "Embedded Leadership" },
     Keybinding { key: "f", description: "Flashblocks" },
     Keybinding { key: "h", description: "HA Conductor" },
     Keybinding { key: "l", description: "Load Test" },
@@ -115,6 +122,7 @@ impl View for HomeView {
             KeyCode::Char('a') => Action::SwitchView(ViewId::CommandCenter),
             KeyCode::Char('c') => Action::SwitchView(ViewId::Config),
             KeyCode::Char('d') => Action::SwitchView(ViewId::DaMonitor),
+            KeyCode::Char('e') => Action::SwitchView(ViewId::EmbeddedLeadership),
             KeyCode::Char('f') => Action::SwitchView(ViewId::Flashblocks),
             KeyCode::Char('h') => Action::SwitchView(ViewId::Conductor),
             KeyCode::Char('l') => Action::SwitchView(ViewId::LoadTest),

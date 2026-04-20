@@ -3,6 +3,7 @@ set working-directory := '../..'
 
 _ha := "-f etc/docker/docker-compose.yml -f etc/docker/docker-compose.ha.yml"
 _base := "-f etc/docker/docker-compose.yml"
+_embedded := "-f etc/docker/docker-compose.yml -f etc/docker/docker-compose.embedded.yml"
 _env := "--env-file etc/docker/devnet-env"
 
 # Show devnet commands
@@ -16,6 +17,10 @@ up: down _build-setup-image (_build-rust-images "devnet" "dev")
 # Stops devnet, deletes data, and starts fresh with a single sequencer (no conductor)
 up-single: down _build-setup-image (_build-rust-images "devnet" "dev")
     docker compose {{ _env }} {{ _base }} up -d --no-build --scale contender=0
+
+# Stops devnet, deletes data, and starts fresh with embedded leadership (3-node openraft, no conductor)
+up-embedded: down _build-setup-image (_build-rust-images "devnet" "dev")
+    docker compose {{ _env }} {{ _embedded }} up -d --no-build --scale contender=0
 
 # Stops devnet, deletes data, and starts fresh with profiling (Pyroscope + optimized builds)
 profiling: down _build-setup-image (_build-rust-images "devnet" "profiling")

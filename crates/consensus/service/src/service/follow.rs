@@ -167,6 +167,7 @@ impl FollowNode {
                 QueuedEngineRpcClient::new(engine_actor_request_tx.clone()),
                 None::<crate::QueuedSequencerAdminAPIClient>,
                 Arc::new(DisabledSafeDB) as Arc<dyn SafeDBReader>,
+                None,
             )
         });
 

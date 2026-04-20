@@ -180,6 +180,14 @@ skip = [
     "tracing-subscriber",
     "wasm-streams",
     "winnow",
+
+    # openraft 0.9 + sled 0.34 transitive dependency mismatches: sled pulls
+    # parking_lot 0.11.x while the rest of the workspace runs 0.12.x; openraft pulls
+    # derive_more 1.0.x while the rest of the workspace runs 2.x.
+    "derive_more",
+    "derive_more-impl",
+    "parking_lot",
+    "parking_lot_core",
 ]
 
 [sources]

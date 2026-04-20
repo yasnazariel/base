@@ -1,0 +1,24 @@
+{
+  "local_id": "sequencer-2-consensus",
+  "validators": [
+    { "id": "builder-consensus", "addr": "base-builder-cl:9050" },
+    { "id": "sequencer-1-consensus", "addr": "base-sequencer-1-cl:9051" },
+    { "id": "sequencer-2-consensus", "addr": "base-sequencer-2-cl:9052" }
+  ],
+  "transport": {
+    "listen_addr": "0.0.0.0:9052"
+  },
+  "health": {
+    "unsafe_head_max_age": { "secs": 30, "nanos": 0 },
+    "l1_head_max_age":     { "secs": 60, "nanos": 0 },
+    "min_peer_count": 0,
+    "poll_interval":       { "secs": 5,  "nanos": 0 }
+  },
+  "timeouts": {
+    "election_timeout_min":     { "secs": 0, "nanos": 300000000 },
+    "election_timeout_max":     { "secs": 0, "nanos": 600000000 },
+    "heartbeat_interval":       { "secs": 0, "nanos": 100000000 },
+    "install_snapshot_timeout": { "secs": 1, "nanos": 0 },
+    "max_payload_entries": 300
+  }
+}

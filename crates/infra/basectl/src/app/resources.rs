@@ -14,8 +14,8 @@ use crate::{
     commands::{DaTracker, FlashblockEntry, LoadingState},
     config::{ChainConfig, ConductorNodeConfig},
     rpc::{
-        BacklogFetchResult, BlockDaInfo, ConductorNodeStatus, L1BlockInfo, L1ConnectionMode,
-        ProofsSnapshot, TimestampedFlashblock, ValidatorNodeStatus,
+        BacklogFetchResult, BlockDaInfo, ConductorNodeStatus, EmbeddedLeadershipNodeStatus,
+        L1BlockInfo, L1ConnectionMode, ProofsSnapshot, TimestampedFlashblock, ValidatorNodeStatus,
     },
     tui::ToastState,
 };
@@ -95,6 +95,29 @@ impl ConductorState {
     }
 }
 
+/// State for embedded leadership cluster monitoring.
+#[derive(Debug, Default)]
+pub struct EmbeddedLeadershipState {
+    /// Most recent status snapshot for each embedded leadership node.
+    pub nodes: Vec<EmbeddedLeadershipNodeStatus>,
+    rx: Option<mpsc::Receiver<Vec<EmbeddedLeadershipNodeStatus>>>,
+}
+
+impl EmbeddedLeadershipState {
+    /// Sets the channel for receiving embedded leadership status updates.
+    pub fn set_channel(&mut self, rx: mpsc::Receiver<Vec<EmbeddedLeadershipNodeStatus>>) {
+        self.rx = Some(rx);
+    }
+
+    /// Drains the latest status snapshot from the background poller.
+    pub fn poll(&mut self) {
+        let Some(ref mut rx) = self.rx else { return };
+        while let Ok(statuses) = rx.try_recv() {
+            self.nodes = statuses;
+        }
+    }
+}
+
 /// State for validator node monitoring.
 #[derive(Debug, Default)]
 pub struct ValidatorState {
@@ -164,6 +187,8 @@ pub struct Resources {
     pub toasts: ToastState,
     /// HA conductor cluster monitoring state.
     pub conductor: ConductorState,
+    /// Embedded leadership cluster monitoring state.
+    pub embedded_leadership: EmbeddedLeadershipState,
     /// Validator node monitoring state.
     pub validators: ValidatorState,
     /// Proof system monitoring state.
@@ -228,6 +253,7 @@ impl Resources {
             flash: FlashState::new(),
             toasts: ToastState::new(),
             conductor: ConductorState::default(),
+            embedded_leadership: EmbeddedLeadershipState::default(),
             validators: ValidatorState::default(),
             proofs: ProofsState::default(),
             system_config: None,

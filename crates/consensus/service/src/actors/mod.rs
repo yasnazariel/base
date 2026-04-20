@@ -5,6 +5,9 @@
 mod traits;
 pub use traits::{CancellableContext, NodeActor};
 
+mod leadership_adapter;
+pub use leadership_adapter::LeadershipNodeActor;
+
 mod engine;
 #[cfg(test)]
 pub use engine::MockEngineDerivationClient;

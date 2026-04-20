@@ -8,6 +8,7 @@ use alloy_transport::TransportResult;
 use base_common_network::Base;
 use base_consensus_engine::BaseEngineClient;
 use base_consensus_genesis::RollupConfig;
+use base_consensus_leadership::LeadershipConfig;
 use base_consensus_providers::OnlineBeaconClient;
 use base_consensus_rpc::RpcBuilder;
 use url::Url;
@@ -79,6 +80,16 @@ pub struct RollupNodeBuilder {
     /// When set, enables persistent safe head tracking via redb and serves
     /// `optimism_safeHeadAtL1Block` RPC requests from the database.
     pub safedb_path: Option<PathBuf>,
+    /// Optional embedded-leadership configuration. When set, the
+    /// [`LeadershipActor`](base_consensus_leadership::LeadershipActor) is spawned and gates
+    /// sequencer block production.
+    pub leadership_config: Option<LeadershipConfig>,
+    /// Storage directory for the embedded leadership consensus journal.
+    ///
+    /// Required when `leadership_config` is `Some`; the
+    /// [`OpenraftDriver`](base_consensus_leadership::OpenraftDriver) persists its
+    /// sled-backed Raft log + state machine under this directory across restarts.
+    pub leadership_storage_dir: Option<PathBuf>,
 }
 
 impl RollupNodeBuilder {
@@ -116,6 +127,8 @@ impl RollupNodeBuilder {
             derivation_delegate_config: None,
             finalized_poll_interval: None,
             safedb_path: None,
+            leadership_config: None,
+            leadership_storage_dir: None,
         }
     }
 
@@ -155,6 +168,20 @@ impl RollupNodeBuilder {
     /// Enables persistent safe head tracking by setting the path to the redb database file.
     pub fn with_safedb_path(self, path: PathBuf) -> Self {
         Self { safedb_path: Some(path), ..self }
+    }
+
+    /// Enables embedded leadership by setting the [`LeadershipConfig`].
+    pub fn with_leadership_config(self, leadership_config: LeadershipConfig) -> Self {
+        Self { leadership_config: Some(leadership_config), ..self }
+    }
+
+    /// Sets the storage directory for the embedded leadership consensus journal.
+    ///
+    /// Required whenever `leadership_config` is set; the
+    /// [`OpenraftDriver`](base_consensus_leadership::OpenraftDriver) persists its
+    /// sled-backed Raft log + state machine under this directory across restarts.
+    pub fn with_leadership_storage_dir(self, path: PathBuf) -> Self {
+        Self { leadership_storage_dir: Some(path), ..self }
     }
 
     /// Assembles the [`RollupNode`] service.
@@ -211,6 +238,8 @@ impl RollupNodeBuilder {
             sequencer_config,
             derivation_delegate_provider,
             safedb_path: self.safedb_path,
+            leadership_config: self.leadership_config,
+            leadership_storage_dir: self.leadership_storage_dir,
         })
     }
 }

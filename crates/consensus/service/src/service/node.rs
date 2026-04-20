@@ -14,6 +14,10 @@ use base_common_network::Base;
 use base_consensus_derive::{Pipeline, SignalReceiver, StatefulAttributesBuilder};
 use base_consensus_engine::{Engine, EngineClient, EngineState};
 use base_consensus_genesis::RollupConfig;
+use base_consensus_gossip::P2pRpcRequest;
+use base_consensus_leadership::{
+    ConsensusDriver, HealthSignalUpdate, LeadershipActor, LeadershipConfig, OpenraftDriver,
+};
 use base_consensus_providers::{
     AlloyChainProvider, AlloyL2ChainProvider, OnlineBeaconClient, OnlineBlobProvider,
     OnlinePipeline,
@@ -28,17 +32,26 @@ use crate::{
     AlloyL1BlockFetcher, Conductor, ConductorClient, DelayedL1OriginSelectorProvider,
     DelegateDerivationActor, DerivationActor, DerivationDelegateClient, DerivationError,
     EngineActor, EngineActorRequest, EngineConfig, EngineProcessor, EngineRpcProcessor,
-    L1OriginSelector, L1WatcherActor, L1WatcherQueryProcessor, NetworkActor, NetworkBuilder,
-    NetworkConfig, NodeActor, NodeMode, PayloadBuilder, QueuedDerivationEngineClient,
-    QueuedEngineDerivationClient, QueuedEngineRpcClient, QueuedL1WatcherDerivationClient,
-    QueuedNetworkEngineClient, QueuedSequencerAdminAPIClient, QueuedSequencerEngineClient,
-    RecoveryModeGuard, RpcActor, RpcContext, SequencerActor, SequencerConfig,
+    L1OriginSelector, L1WatcherActor, L1WatcherQueryProcessor, LeadershipNodeActor, NetworkActor,
+    NetworkBuilder, NetworkConfig, NodeActor, NodeMode, PayloadBuilder,
+    QueuedDerivationEngineClient, QueuedEngineDerivationClient, QueuedEngineRpcClient,
+    QueuedL1WatcherDerivationClient, QueuedNetworkEngineClient, QueuedSequencerAdminAPIClient,
+    QueuedSequencerEngineClient, RecoveryModeGuard, RpcActor, RpcContext, SequencerActor,
+    SequencerConfig,
     actors::{BlockStream, NetworkInboundData, QueuedUnsafePayloadGossipClient},
 };
 
 const DERIVATION_PROVIDER_CACHE_SIZE: usize = 1024;
 /// Poll interval in seconds for the head block stream.
 pub const HEAD_STREAM_POLL_INTERVAL: u64 = 4;
+
+/// Return type of [`RollupNode::create_engine_actor`]: the engine actor itself plus a
+/// watch receiver on the engine's state, used by the leadership health observer to fold
+/// EL sync state into [`HealthSignalUpdate`].
+type CreatedEngineActor<E> = (
+    EngineActor<EngineProcessor<E, QueuedEngineDerivationClient>, EngineRpcProcessor<E>>,
+    watch::Receiver<EngineState>,
+);
 
 /// The configuration for the L1 chain.
 #[derive(Debug, Clone)]
@@ -112,6 +125,17 @@ pub struct RollupNode {
     /// If the path is set but the database cannot be opened (e.g., bad permissions, disk
     /// error, or corrupted file), the node **fails to start** with an error.
     pub safedb_path: Option<PathBuf>,
+    /// Optional embedded-leadership configuration.
+    ///
+    /// When set, the [`LeadershipActor`] is spawned and gates the sequencer's
+    /// block-production ticker. When `None`, the legacy `op-conductor` HTTP path runs
+    /// unchanged.
+    pub leadership_config: Option<LeadershipConfig>,
+    /// Storage directory for the embedded leadership consensus journal.
+    ///
+    /// Required when `leadership_config` is `Some`; the [`OpenraftDriver`] persists its
+    /// sled-backed Raft log + state machine under this directory across restarts.
+    pub leadership_storage_dir: Option<PathBuf>,
 }
 
 /// A RollupNode-level derivation actor wrapper.
@@ -155,6 +179,24 @@ impl RollupNode {
     /// The mode of operation for the node.
     const fn mode(&self) -> NodeMode {
         self.engine_config.mode
+    }
+
+    /// Constructs the production embedded-leadership [`ConsensusDriver`].
+    ///
+    /// `leadership_storage_dir` is required when embedded leadership is enabled: it is
+    /// where the Raft log + state machine are persisted across restarts.
+    fn build_leadership_driver(
+        storage_dir: Option<PathBuf>,
+    ) -> Result<Box<dyn ConsensusDriver>, String> {
+        let dir = storage_dir.ok_or_else(|| {
+            "leadership_storage_dir is required when leadership_config is set".to_string()
+        })?;
+        info!(
+            target: "rollup_node",
+            storage_dir = %dir.display(),
+            "embedded leadership: using OpenraftDriver (Raft CFT)",
+        );
+        Ok(Box::new(OpenraftDriver::new(dir)))
     }
 
     /// Creates a network builder for the node.
@@ -232,9 +274,10 @@ impl RollupNode {
         derivation_client: QueuedEngineDerivationClient,
         unsafe_head_tx: watch::Sender<L2BlockInfo>,
         conductor: Option<Arc<dyn Conductor>>,
-    ) -> EngineActor<EngineProcessor<E, QueuedEngineDerivationClient>, EngineRpcProcessor<E>> {
+    ) -> CreatedEngineActor<E> {
         let engine_state = EngineState::default();
         let (engine_state_tx, engine_state_rx) = watch::channel(engine_state);
+        let engine_state_health_rx = engine_state_tx.subscribe();
         let (engine_queue_length_tx, engine_queue_length_rx) = watch::channel(0);
         let engine = Engine::new(engine_state, engine_state_tx, engine_queue_length_tx);
 
@@ -255,11 +298,14 @@ impl RollupNode {
             engine_queue_length_rx,
         );
 
-        EngineActor::new(
-            cancellation_token,
-            engine_request_rx,
-            engine_processor,
-            engine_rpc_processor,
+        (
+            EngineActor::new(
+                cancellation_token,
+                engine_request_rx,
+                engine_processor,
+                engine_rpc_processor,
+            ),
+            engine_state_health_rx,
         )
     }
 
@@ -386,7 +432,7 @@ impl RollupNode {
         let engine_conductor: Option<Arc<dyn Conductor>> =
             conductor.clone().map(|c| Arc::new(c) as Arc<dyn Conductor>);
 
-        let engine_actor = self.create_engine_actor(
+        let (engine_actor, engine_state_health_rx) = self.create_engine_actor(
             engine_client,
             cancellation.clone(),
             engine_actor_request_rx,
@@ -490,10 +536,10 @@ impl RollupNode {
         );
 
         // Create the sequencer if needed
-        let (sequencer_actor, sequencer_admin_client) = if self.mode().is_sequencer() {
+        let (mut sequencer_actor, sequencer_admin_client) = if self.mode().is_sequencer() {
             let sequencer_engine_client = QueuedSequencerEngineClient {
                 engine_actor_request_tx: engine_actor_request_tx.clone(),
-                unsafe_head_rx,
+                unsafe_head_rx: unsafe_head_rx.clone(),
             };
 
             // Create the admin API channel
@@ -524,9 +570,153 @@ impl RollupNode {
                     sealer: None,
                     pending_stop: None,
                     next_build_parent: None,
+                    leader_status: None,
                 }),
                 Some(QueuedSequencerAdminAPIClient::new(sequencer_admin_api_tx)),
             )
+        } else {
+            (None, None)
+        };
+
+        // Build the leadership actor when embedded leadership is configured, and bind its
+        // status feed to the sequencer gate. Hold the admin command sender so the RPC
+        // module can register the leadership namespace below.
+        let (leadership_actor_opt, leadership_commands_tx) = if let Some(cfg) =
+            self.leadership_config.clone()
+        {
+            let driver = Self::build_leadership_driver(self.leadership_storage_dir.clone())?;
+            let (actor, handles) = LeadershipActor::build(cfg, cancellation.clone())
+                .map_err(|e| format!("Failed to build leadership actor: {e}"))?;
+            if let Some(seq) = sequencer_actor.as_mut() {
+                seq.leader_status = Some(handles.leader_status_rx);
+            } else {
+                warn!(
+                    target: "rollup_node",
+                    "leadership configured on a non-sequencer node; status feed has no consumer",
+                );
+            }
+            // Wire all four health signals into the leadership health aggregator.
+
+            // Unsafe head. The send is wrapped in the same select so a cancellation
+            // that lands while the channel is full does not block teardown — the send
+            // future is dropped instead of waited on. Same pattern in the L1 and EL
+            // observers below.
+            let unsafe_head_signals_tx = handles.health_signals_tx.clone();
+            let mut unsafe_head_obs = unsafe_head_rx.clone();
+            let observer_cancel = cancellation.clone();
+            tokio::spawn(async move {
+                loop {
+                    tokio::select! {
+                        _ = observer_cancel.cancelled() => return,
+                        changed = unsafe_head_obs.changed() => {
+                            if changed.is_err() {
+                                return;
+                            }
+                            let send = unsafe_head_signals_tx
+                                .send(HealthSignalUpdate::UnsafeHeadObserved(
+                                    std::time::Instant::now(),
+                                ));
+                            tokio::select! {
+                                _ = observer_cancel.cancelled() => return,
+                                _ = send => {}
+                            }
+                        }
+                    }
+                }
+            });
+
+            // L1 head
+            let l1_signals_tx = handles.health_signals_tx.clone();
+            let mut l1_head_obs = l1_head_updates_tx.subscribe();
+            let observer_cancel = cancellation.clone();
+            tokio::spawn(async move {
+                loop {
+                    tokio::select! {
+                        _ = observer_cancel.cancelled() => return,
+                        changed = l1_head_obs.changed() => {
+                            if changed.is_err() {
+                                return;
+                            }
+                            let send = l1_signals_tx
+                                .send(HealthSignalUpdate::L1HeadObserved(
+                                    std::time::Instant::now(),
+                                ));
+                            tokio::select! {
+                                _ = observer_cancel.cancelled() => return,
+                                _ = send => {}
+                            }
+                        }
+                    }
+                }
+            });
+
+            // EL sync state
+            let el_sync_signals_tx = handles.health_signals_tx.clone();
+            let mut engine_state_obs = engine_state_health_rx;
+            let observer_cancel = cancellation.clone();
+            tokio::spawn(async move {
+                loop {
+                    tokio::select! {
+                        _ = observer_cancel.cancelled() => return,
+                        changed = engine_state_obs.changed() => {
+                            if changed.is_err() {
+                                return;
+                            }
+                            let el_sync_finished = engine_state_obs.borrow().el_sync_finished;
+                            let send = el_sync_signals_tx
+                                .send(HealthSignalUpdate::ElSyncState(el_sync_finished));
+                            tokio::select! {
+                                _ = observer_cancel.cancelled() => return,
+                                _ = send => {}
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Peer count — poll the gossip layer on a fixed cadence and forward the
+            // current connected-gossip-peer count to the health aggregator. We poll
+            // rather than subscribe because the network actor does not expose a watch
+            // channel for peer count today; the cadence matches the health aggregator's
+            // poll interval so the aggregator never evaluates against a count that's
+            // more than one tick stale.
+            let peer_signals_tx = handles.health_signals_tx.clone();
+            let peer_p2p_rpc = network_rpc.clone();
+            let peer_poll_interval = self
+                .leadership_config
+                .as_ref()
+                .map(|c| c.health.poll_interval)
+                .unwrap_or_else(|| std::time::Duration::from_secs(5));
+            let observer_cancel = cancellation.clone();
+            tokio::spawn(async move {
+                let mut ticker = tokio::time::interval(peer_poll_interval);
+                ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                loop {
+                    tokio::select! {
+                        _ = observer_cancel.cancelled() => return,
+                        _ = ticker.tick() => {
+                            let (tx, rx) = tokio::sync::oneshot::channel();
+                            // Send the request; if the network actor is gone the channel
+                            // is closed and we exit cleanly.
+                            if peer_p2p_rpc.send(P2pRpcRequest::PeerCount(tx)).await.is_err() {
+                                return;
+                            }
+                            let count = match rx.await {
+                                Ok((_discovery, gossip)) => gossip,
+                                Err(_) => continue,
+                            };
+                            let send = peer_signals_tx
+                                .send(HealthSignalUpdate::PeerCount(count));
+                            tokio::select! {
+                                _ = observer_cancel.cancelled() => return,
+                                _ = send => {}
+                            }
+                        }
+                    }
+                }
+            });
+            info!(target: "rollup_node", "embedded leadership enabled");
+            (Some(LeadershipNodeActor { actor, driver }), Some(handles.commands_tx))
         } else {
             (None, None)
         };
@@ -538,6 +728,7 @@ impl RollupNode {
                 QueuedEngineRpcClient::new(engine_actor_request_tx.clone()),
                 sequencer_admin_client,
                 safe_db_reader,
+                leadership_commands_tx.clone(),
             )
         });
 
@@ -554,6 +745,7 @@ impl RollupNode {
                     }
                 )),
                 sequencer_actor.map(|s| (s, ())),
+                leadership_actor_opt.map(|a| (a, ())),
                 Some((network, ())),
                 Some((l1_watcher, ())),
                 Some((l1_query_processor, ())),

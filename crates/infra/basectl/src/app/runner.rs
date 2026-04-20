@@ -10,11 +10,11 @@ use crate::{
     config::ChainConfig,
     l1_client::fetch_full_system_config,
     rpc::{
-        BacklogFetchResult, BlockDaInfo, ConductorNodeStatus, L1BlockInfo, L1ConnectionMode,
-        ProofsSnapshot, TimestampedFlashblock, ValidatorNodeStatus,
+        BacklogFetchResult, BlockDaInfo, ConductorNodeStatus, EmbeddedLeadershipNodeStatus,
+        L1BlockInfo, L1ConnectionMode, ProofsSnapshot, TimestampedFlashblock, ValidatorNodeStatus,
         fetch_initial_backlog_with_progress, run_block_fetcher, run_conductor_poller,
-        run_flashblock_ws, run_flashblock_ws_timestamped, run_l1_blob_watcher, run_proofs_poller,
-        run_safe_head_poller, run_validator_poller,
+        run_embedded_leadership_poller, run_flashblock_ws, run_flashblock_ws_timestamped,
+        run_l1_blob_watcher, run_proofs_poller, run_safe_head_poller, run_validator_poller,
     },
     tui::Toast,
 };
@@ -117,6 +117,12 @@ pub fn start_background_services(config: &ChainConfig, resources: &mut Resources
         if conductor_nodes.iter().any(|n| n.flashblocks_ws.is_some()) {
             resources.conductor.set_url_sender(conductor_nodes, fb_url_tx);
         }
+    }
+
+    if let Some(embedded_nodes) = config.embedded_leaderships.clone() {
+        let (embedded_tx, embedded_rx) = mpsc::channel::<Vec<EmbeddedLeadershipNodeStatus>>(4);
+        resources.embedded_leadership.set_channel(embedded_rx);
+        tokio::spawn(run_embedded_leadership_poller(embedded_nodes, embedded_tx));
     }
 
     if let Some(validator_nodes) = config.validators.clone() {

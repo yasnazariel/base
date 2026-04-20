@@ -10,7 +10,10 @@ use anyhow::Result;
 use base_common_consensus::BaseTxEnvelope;
 use base_common_flashblocks::Flashblock;
 use base_common_network::Base;
-use base_consensus_rpc::{BaseP2PApiClient, ConductorApiClient, RollupNodeApiClient};
+use base_consensus_leadership::LeaderStatus;
+use base_consensus_rpc::{
+    BaseP2PApiClient, ConductorApiClient, LeadershipApiClient, RollupNodeApiClient,
+};
 use futures::{StreamExt, stream};
 use jsonrpsee::{core::client::ClientT, http_client::HttpClientBuilder, rpc_params};
 use tokio::sync::{mpsc, watch};
@@ -19,13 +22,22 @@ use tracing::warn;
 use url::Url;
 
 use crate::{
-    config::{ConductorNodeConfig, ProofsConfig, ValidatorNodeConfig},
+    config::{
+        ConductorNodeConfig, EmbeddedLeadershipNodeConfig, ProofsConfig, ValidatorNodeConfig,
+    },
     tui::Toast,
 };
 
 const CONCURRENT_BLOCK_FETCHES: usize = 16;
 const WS_RECONNECT_INITIAL_DELAY: Duration = Duration::from_secs(1);
 const WS_RECONNECT_MAX_DELAY: Duration = Duration::from_secs(30);
+
+/// Maximum number of L2 blocks to fetch for the initial DA backlog.
+///
+/// On testnets the safe head can lag the unsafe head by thousands of blocks,
+/// making an unbounded fetch take many minutes. This cap matches `MAX_HISTORY`
+/// (the most blocks we can display), so fetching more would be wasted work.
+const MAX_INITIAL_BACKLOG_BLOCKS: u64 = 1000;
 
 /// Fetches the safe and latest L2 block numbers.
 pub async fn fetch_safe_and_latest(l2_rpc: &str) -> Result<(u64, u64)> {
@@ -276,7 +288,21 @@ pub async fn fetch_initial_backlog_with_progress(
             return Ok(InitialBacklog { safe_block, da_bytes: 0 });
         }
 
-        let total_blocks = unsafe_block - safe_block;
+        // Cap the fetch to the most recent MAX_INITIAL_BACKLOG_BLOCKS blocks.
+        // On testnets (e.g. Sepolia) the safe head can lag thousands of blocks
+        // behind unsafe, making an unbounded fetch take many minutes. Since
+        // block_contributions holds at most MAX_HISTORY entries anyway, fetching
+        // more is wasted work. We treat the effective safe block as our starting
+        // point so that the tracker's safe_l2_block reflects what we actually
+        // loaded, keeping burn accounting and attribution correct.
+        let effective_safe = if unsafe_block.saturating_sub(safe_block) > MAX_INITIAL_BACKLOG_BLOCKS
+        {
+            unsafe_block - MAX_INITIAL_BACKLOG_BLOCKS
+        } else {
+            safe_block
+        };
+
+        let total_blocks = unsafe_block - effective_safe;
         let provider = Arc::new(
             ProviderBuilder::new()
                 .disable_recommended_fillers()
@@ -285,7 +311,7 @@ pub async fn fetch_initial_backlog_with_progress(
                 .await?,
         );
 
-        let block_numbers: Vec<u64> = ((safe_block + 1)..=unsafe_block).collect();
+        let block_numbers: Vec<u64> = ((effective_safe + 1)..=unsafe_block).collect();
 
         let mut total_da_bytes: u64 = 0;
         let mut blocks_fetched: u64 = 0;
@@ -325,7 +351,10 @@ pub async fn fetch_initial_backlog_with_progress(
             let _ = progress_tx.send(BacklogFetchResult::Block(block)).await;
         }
 
-        Ok::<_, anyhow::Error>(InitialBacklog { safe_block, da_bytes: total_da_bytes })
+        Ok::<_, anyhow::Error>(InitialBacklog {
+            safe_block: effective_safe,
+            da_bytes: total_da_bytes,
+        })
     }
     .await;
 
@@ -1081,6 +1110,359 @@ pub async fn run_conductor_poller(
                     current_l1_block: sync.as_ref().map(|s| s.current_l1.number),
                     head_l1_block: sync.as_ref().map(|s| s.head_l1.number),
                     cl_peer_count: cl_peer_stats.ok().map(|s| s.connected),
+                    el_block: el_block_r,
+                    el_syncing: el_syncing_r,
+                    el_peer_count: el_peers_r,
+                }
+            },
+        ))
+        .await;
+
+        if tx.send(statuses).await.is_err() {
+            break;
+        }
+    }
+}
+
+// =============================================================================
+// Embedded leadership cluster (base-consensus-leadership actor)
+// =============================================================================
+
+/// Live status snapshot for a single node running an embedded leadership actor.
+#[derive(Debug, Clone)]
+pub struct EmbeddedLeadershipNodeStatus {
+    /// Human-readable name for this node.
+    pub name: String,
+
+    // ── Leadership ───────────────────────────────────────────────────────
+    /// Whether this node is the elected leader. `None` means the node is unreachable.
+    pub is_leader: Option<bool>,
+    /// Consensus view (epoch + round) reported by the actor.
+    pub view: Option<u64>,
+    /// Identifier of the validator currently serving as leader.
+    pub leader_id: Option<String>,
+    /// Number of voting validators in the current cluster snapshot.
+    pub cluster_size: Option<usize>,
+    /// Monotonic version of the cluster membership snapshot.
+    pub cluster_version: Option<u64>,
+    /// Whether the node is leading because of a manual `OverrideLeader` admin command
+    /// rather than a real consensus decision. `None` for unreachable nodes; `Some(false)`
+    /// for normal leaders/followers; `Some(true)` for nodes operating under override.
+    pub overridden: Option<bool>,
+    /// Monotonically increasing override generation reported on the wire. Operators can
+    /// compare across nodes during a partition to detect concurrent or stale overrides.
+    pub override_generation: Option<u64>,
+
+    // ── CL (consensus layer) ─────────────────────────────────────────────
+    /// Unsafe L2 block number from `optimism_syncStatus`.
+    pub unsafe_l2_block: Option<u64>,
+    /// Unsafe L2 block hash from `optimism_syncStatus`.
+    pub unsafe_l2_hash: Option<alloy_primitives::B256>,
+    /// Safe L2 block number from `optimism_syncStatus`.
+    pub safe_l2_block: Option<u64>,
+    /// Safe L2 block hash from `optimism_syncStatus`.
+    pub safe_l2_hash: Option<alloy_primitives::B256>,
+    /// Finalized L2 block number from `optimism_syncStatus`.
+    pub finalized_l2_block: Option<u64>,
+    /// L1 derivation cursor block number (`current_l1`).
+    pub current_l1_block: Option<u64>,
+    /// L1 chain head block number (`head_l1`).
+    pub head_l1_block: Option<u64>,
+    /// Number of connected CL libp2p peers from `opp2p_peerStats`.
+    pub cl_peer_count: Option<u32>,
+
+    // ── EL (execution layer) ─────────────────────────────────────────────
+    /// Latest block number from `eth_blockNumber`. `None` if `el_rpc` not configured.
+    pub el_block: Option<u64>,
+    /// Whether the EL is snap-syncing. `None` if not configured.
+    pub el_syncing: Option<bool>,
+    /// Number of connected EL devp2p peers from `net_peerCount`. `None` if not configured.
+    pub el_peer_count: Option<u32>,
+}
+
+/// Finds the current leader and transfers leadership to `target_name` (or any peer).
+///
+/// If `target_name` is `None`, the consensus driver picks the next leader. Otherwise
+/// leadership is transferred to the named validator. The operator-friendly `target_name`
+/// is resolved to its consensus-level [`ValidatorId`] by querying the matching node's
+/// `leadership_validatorId` endpoint, so basectl config does not need to duplicate the
+/// validator id alongside the human-readable name.
+pub async fn transfer_embedded_leadership(
+    nodes: Vec<EmbeddedLeadershipNodeConfig>,
+    target_name: Option<String>,
+    result_tx: mpsc::Sender<Result<String, String>>,
+) {
+    const TIMEOUT: Duration = Duration::from_millis(500);
+
+    let outcome: anyhow::Result<String> = async {
+        let mut leader_client = None;
+        let mut leader_name = String::new();
+
+        for node in &nodes {
+            let client = HttpClientBuilder::default()
+                .request_timeout(TIMEOUT)
+                .build(node.leadership_rpc.as_str())
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
+            if matches!(
+                LeadershipApiClient::leadership_status(&client).await,
+                Ok(LeaderStatus::Leader { .. })
+            ) {
+                leader_client = Some(client);
+                leader_name = node.name.clone();
+                break;
+            }
+        }
+
+        let leader = leader_client.ok_or_else(|| anyhow::anyhow!("no leader found in cluster"))?;
+
+        // Resolve the operator-facing target name to a real ValidatorId by asking the
+        // target node directly. The basectl `name` is a UI label; the consensus voter
+        // set is keyed by ValidatorId, which the node configures itself in its
+        // leadership config and reports via `leadership_validatorId`.
+        let to = if let Some(name) = target_name.as_ref() {
+            let target_node = nodes.iter().find(|n| &n.name == name).ok_or_else(|| {
+                anyhow::anyhow!("transfer target {name} is not in the embedded leadership config")
+            })?;
+            let target_client = HttpClientBuilder::default()
+                .request_timeout(TIMEOUT)
+                .build(target_node.leadership_rpc.as_str())
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
+            let validator_id =
+                LeadershipApiClient::leadership_validator_id(&target_client)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("resolve target {name} validator id: {e}"))?;
+            Some(validator_id)
+        } else {
+            None
+        };
+
+        LeadershipApiClient::leadership_transfer_leadership(&leader, to)
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        Ok(target_name.map_or_else(
+            || format!("leadership transferred from {leader_name}"),
+            |target| format!("leadership transferred to {target}"),
+        ))
+    }
+    .await;
+
+    let _ = result_tx.send(outcome.map_err(|e| e.to_string())).await;
+}
+
+/// Pauses participation in consensus on the given node via `leadership_pause`.
+pub async fn pause_embedded_leadership(
+    node: EmbeddedLeadershipNodeConfig,
+    result_tx: mpsc::Sender<Result<String, String>>,
+) {
+    const TIMEOUT: Duration = Duration::from_secs(5);
+
+    let outcome: anyhow::Result<String> = async {
+        let client = HttpClientBuilder::default()
+            .request_timeout(TIMEOUT)
+            .build(node.leadership_rpc.as_str())
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        LeadershipApiClient::leadership_pause(&client).await.map_err(|e| anyhow::anyhow!("{e}"))?;
+        Ok(format!("paused {}", node.name))
+    }
+    .await;
+
+    let _ = result_tx.send(outcome.map_err(|e| e.to_string())).await;
+}
+
+/// Resumes participation in consensus on the given node via `leadership_resume`.
+pub async fn resume_embedded_leadership(
+    node: EmbeddedLeadershipNodeConfig,
+    result_tx: mpsc::Sender<Result<String, String>>,
+) {
+    const TIMEOUT: Duration = Duration::from_secs(5);
+
+    let outcome: anyhow::Result<String> = async {
+        let client = HttpClientBuilder::default()
+            .request_timeout(TIMEOUT)
+            .build(node.leadership_rpc.as_str())
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        LeadershipApiClient::leadership_resume(&client)
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        Ok(format!("resumed {}", node.name))
+    }
+    .await;
+
+    let _ = result_tx.send(outcome.map_err(|e| e.to_string())).await;
+}
+
+/// Forces or clears the manual leader override on the given node.
+pub async fn override_embedded_leader(
+    node: EmbeddedLeadershipNodeConfig,
+    enabled: bool,
+    result_tx: mpsc::Sender<Result<String, String>>,
+) {
+    const TIMEOUT: Duration = Duration::from_secs(5);
+
+    let outcome: anyhow::Result<String> = async {
+        let client = HttpClientBuilder::default()
+            .request_timeout(TIMEOUT)
+            .build(node.leadership_rpc.as_str())
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        LeadershipApiClient::leadership_override_leader(&client, enabled)
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        Ok(if enabled {
+            format!("override enabled on {}", node.name)
+        } else {
+            format!("override disabled on {}", node.name)
+        })
+    }
+    .await;
+
+    let _ = result_tx.send(outcome.map_err(|e| e.to_string())).await;
+}
+
+/// Polls all embedded leadership nodes every 200 ms and forwards status snapshots.
+///
+/// Builds one set of HTTP clients per node (leadership RPC + optional CL/EL) before
+/// entering the loop so connection setup cost is paid only once. Each poll fires
+/// all per-node requests concurrently — any individual RPC that times out or errors
+/// yields `None` for that field.
+pub async fn run_embedded_leadership_poller(
+    nodes: Vec<EmbeddedLeadershipNodeConfig>,
+    tx: mpsc::Sender<Vec<EmbeddedLeadershipNodeStatus>>,
+) {
+    const POLL_INTERVAL: Duration = Duration::from_millis(200);
+    const RPC_TIMEOUT: Duration = Duration::from_millis(500);
+
+    let clients: Vec<(String, _, _, _)> = nodes
+        .into_iter()
+        .filter_map(|node| {
+            let leadership_client = HttpClientBuilder::default()
+                .request_timeout(RPC_TIMEOUT)
+                .build(node.leadership_rpc.as_str())
+                .inspect_err(|e| {
+                    warn!(error = %e, node = %node.name, "failed to build leadership HTTP client");
+                })
+                .ok()?;
+            let cl_client = node.cl_rpc.as_ref().and_then(|url| {
+                HttpClientBuilder::default()
+                    .request_timeout(RPC_TIMEOUT)
+                    .build(url.as_str())
+                    .inspect_err(|e| {
+                        warn!(error = %e, node = %node.name, "failed to build CL HTTP client");
+                    })
+                    .ok()
+            });
+            let el_client = node.el_rpc.as_ref().and_then(|url| {
+                HttpClientBuilder::default()
+                    .request_timeout(RPC_TIMEOUT)
+                    .build(url.as_str())
+                    .inspect_err(|e| {
+                        warn!(error = %e, node = %node.name, "failed to build EL HTTP client");
+                    })
+                    .ok()
+            });
+            Some((node.name, leadership_client, cl_client, el_client))
+        })
+        .collect();
+
+    let mut interval = tokio::time::interval(POLL_INTERVAL);
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+    loop {
+        interval.tick().await;
+
+        let statuses = futures::future::join_all(clients.iter().map(
+            |(name, leadership_client, cl_client, el_client)| async move {
+                let (
+                    status_r,
+                    membership_r,
+                    sync_r,
+                    cl_peer_stats_r,
+                    el_block_r,
+                    el_syncing_r,
+                    el_peers_r,
+                ) = tokio::join!(
+                    LeadershipApiClient::leadership_status(leadership_client),
+                    LeadershipApiClient::leadership_membership(leadership_client),
+                    async {
+                        if let Some(cl) = cl_client {
+                            RollupNodeApiClient::sync_status(cl).await.ok()
+                        } else {
+                            None
+                        }
+                    },
+                    async {
+                        if let Some(cl) = cl_client {
+                            BaseP2PApiClient::opp2p_peer_stats(cl).await.ok()
+                        } else {
+                            None
+                        }
+                    },
+                    async {
+                        if let Some(el) = el_client {
+                            let r: Result<alloy_primitives::U64, _> =
+                                ClientT::request(el, "eth_blockNumber", rpc_params![]).await;
+                            r.ok().map(|v| v.to::<u64>())
+                        } else {
+                            None
+                        }
+                    },
+                    async {
+                        if let Some(el) = el_client {
+                            let r: Result<serde_json::Value, _> =
+                                ClientT::request(el, "eth_syncing", rpc_params![]).await;
+                            r.ok().map(|v| !matches!(v, serde_json::Value::Bool(false)))
+                        } else {
+                            None
+                        }
+                    },
+                    async {
+                        if let Some(el) = el_client {
+                            let r: Result<alloy_primitives::U64, _> =
+                                ClientT::request(el, "net_peerCount", rpc_params![]).await;
+                            r.ok().map(|v| v.to::<u32>())
+                        } else {
+                            None
+                        }
+                    },
+                );
+
+                let (is_leader, view, leader_id, overridden, override_generation) = match status_r {
+                    Ok(LeaderStatus::Leader { view, overridden, override_generation }) => (
+                        Some(true),
+                        Some(view),
+                        Some(name.clone()),
+                        Some(overridden),
+                        Some(override_generation),
+                    ),
+                    Ok(LeaderStatus::Follower { leader, view }) => {
+                        (Some(false), Some(view), Some(leader.to_string()), Some(false), None)
+                    }
+                    Ok(LeaderStatus::Unknown) => (Some(false), None, None, Some(false), None),
+                    Err(_) => (None, None, None, None, None),
+                };
+
+                let (cluster_size, cluster_version) = membership_r
+                    .ok()
+                    .map(|m| (Some(m.voters.len()), Some(m.version)))
+                    .unwrap_or((None, None));
+
+                EmbeddedLeadershipNodeStatus {
+                    name: name.clone(),
+                    is_leader,
+                    view,
+                    leader_id,
+                    cluster_size,
+                    cluster_version,
+                    overridden,
+                    override_generation,
+                    unsafe_l2_block: sync_r.as_ref().map(|s| s.unsafe_l2.block_info.number),
+                    unsafe_l2_hash: sync_r.as_ref().map(|s| s.unsafe_l2.block_info.hash),
+                    safe_l2_block: sync_r.as_ref().map(|s| s.safe_l2.block_info.number),
+                    safe_l2_hash: sync_r.as_ref().map(|s| s.safe_l2.block_info.hash),
+                    finalized_l2_block: sync_r.as_ref().map(|s| s.finalized_l2.block_info.number),
+                    current_l1_block: sync_r.as_ref().map(|s| s.current_l1.number),
+                    head_l1_block: sync_r.as_ref().map(|s| s.head_l1.number),
+                    cl_peer_count: cl_peer_stats_r.map(|s| s.connected),
                     el_block: el_block_r,
                     el_syncing: el_syncing_r,
                     el_peer_count: el_peers_r,

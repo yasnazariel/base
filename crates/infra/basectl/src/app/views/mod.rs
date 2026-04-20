@@ -12,6 +12,9 @@ pub use config::ConfigView;
 mod da_monitor;
 pub use da_monitor::DaMonitorView;
 
+mod embedded_leadership;
+pub use embedded_leadership::{EmbeddedLeadershipView, KEYBINDINGS, OpState, PendingOp};
+
 mod factory;
 pub use factory::create_view;
 

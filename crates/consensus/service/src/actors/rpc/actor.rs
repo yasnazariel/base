@@ -4,10 +4,12 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use base_consensus_gossip::P2pRpcRequest;
+use base_consensus_leadership::LeadershipCommandSender;
 use base_consensus_rpc::{
     AdminApiServer, AdminRpc, BaseP2PApiServer, DevEngineApiServer, DevEngineRpc, EngineRpcClient,
-    HealthzApiServer, HealthzRpc, L1WatcherQueries, NetworkAdminQuery, P2pRpc, RollupNodeApiServer,
-    RollupRpc, RpcBuilder, SequencerAdminAPIClient, WsRPC, WsServer,
+    HealthzApiServer, HealthzRpc, L1WatcherQueries, LeadershipApiServer, LeadershipRpc,
+    NetworkAdminQuery, P2pRpc, RollupNodeApiServer, RollupRpc, RpcBuilder, SequencerAdminAPIClient,
+    WsRPC, WsServer,
 };
 use base_consensus_safedb::SafeDBReader;
 use base_health::EthHealthCheckLayer;
@@ -36,6 +38,10 @@ where
     engine_rpc_client: EngineRpcClient_,
     sequencer_admin_rpc_client: Option<SequencerAdminApiClient_>,
     safe_db_reader: Arc<dyn SafeDBReader>,
+    /// Producer side of the embedded-leadership admin command channel. `None` when
+    /// embedded leadership is not enabled; in that mode the `leadership_*` namespace
+    /// returns "leadership not enabled" for every method.
+    leadership_commands_tx: Option<LeadershipCommandSender>,
 }
 
 /// The communication context used by the RPC actor.
@@ -129,6 +135,10 @@ where
             Arc::clone(&self.safe_db_reader),
         );
         modules.merge(rollup_rpc.into_rpc())?;
+
+        // Mount the embedded-leadership namespace; with `None` it surfaces a
+        // "leadership not enabled" error for every method.
+        modules.merge(LeadershipRpc::new(self.leadership_commands_tx.clone()).into_rpc())?;
 
         // Add development RPC module for engine state introspection if enabled
         if self.config.dev_enabled() {

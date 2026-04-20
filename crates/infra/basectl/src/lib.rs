@@ -3,9 +3,10 @@
 mod app;
 pub use app::{
     Action, App, CommandCenterView, ConductorState, ConductorView, ConfigView, DaMonitorView,
-    DaState, FlashState, FlashblocksView, HomeView, LoadTestTask, LoadTestView, ProofsState,
-    ProofsView, Resources, Router, TransactionPane, UpgradesView, ValidatorState, View, ViewId,
-    create_view, run_app, run_flashblocks_json, start_background_services,
+    DaState, EmbeddedLeadershipState, EmbeddedLeadershipView, FlashState, FlashblocksView,
+    HomeView, KEYBINDINGS, LoadTestTask, LoadTestView, OpState, PendingOp, ProofsState, ProofsView,
+    Resources, Router, TransactionPane, UpgradesView, ValidatorState, View, ViewId, create_view,
+    run_app, run_flashblocks_json, start_background_services,
 };
 
 mod commands;
@@ -21,7 +22,10 @@ pub use commands::{
 };
 
 mod config;
-pub use config::{ChainConfig, ConductorNodeConfig, ProofsConfig, ValidatorNodeConfig};
+pub use config::{
+    ChainConfig, ConductorNodeConfig, EmbeddedLeadershipNodeConfig, ProofsConfig,
+    ValidatorNodeConfig,
+};
 
 mod l1_client;
 pub use l1_client::fetch_full_system_config;
@@ -29,12 +33,15 @@ pub use l1_client::fetch_full_system_config;
 mod rpc;
 pub use rpc::{
     BacklogBlock, BacklogFetchResult, BacklogProgress, BlockDaInfo, ConductorNodeStatus,
-    InitialBacklog, L1BlockInfo, L1ConnectionMode, LatestProposal, PausedPeers, ProofsSnapshot,
-    TimestampedFlashblock, TxSummary, ValidatorNodeStatus, decode_flashblock_transactions,
-    fetch_block_transactions, fetch_initial_backlog_with_progress, fetch_safe_and_latest,
-    pause_sequencer_node, restart_conductor_node, run_block_fetcher, run_conductor_poller,
-    run_flashblock_ws, run_flashblock_ws_timestamped, run_l1_blob_watcher, run_proofs_poller,
-    run_safe_head_poller, run_validator_poller, transfer_conductor_leader, unpause_sequencer_node,
+    EmbeddedLeadershipNodeStatus, InitialBacklog, L1BlockInfo, L1ConnectionMode, LatestProposal,
+    PausedPeers, ProofsSnapshot, TimestampedFlashblock, TxSummary, ValidatorNodeStatus,
+    decode_flashblock_transactions, fetch_block_transactions, fetch_initial_backlog_with_progress,
+    fetch_safe_and_latest, override_embedded_leader, pause_embedded_leadership,
+    pause_sequencer_node, restart_conductor_node, resume_embedded_leadership, run_block_fetcher,
+    run_conductor_poller, run_embedded_leadership_poller, run_flashblock_ws,
+    run_flashblock_ws_timestamped, run_l1_blob_watcher, run_proofs_poller, run_safe_head_poller,
+    run_validator_poller, transfer_conductor_leader, transfer_embedded_leadership,
+    unpause_sequencer_node,
 };
 
 mod tui;
