@@ -96,9 +96,7 @@ impl RegistrationChecker {
         Self { transports, registry: Box::new(registry), healthy: OnceCell::new() }
     }
 
-    async fn signer_address(
-        transport: &NitroTransport,
-    ) -> Result<Address, RegistrationError> {
+    async fn signer_address(transport: &NitroTransport) -> Result<Address, RegistrationError> {
         let public_key = transport
             .signer_public_key()
             .await
@@ -225,8 +223,7 @@ impl RegistrationChecker {
         }
 
         if valid_signers.len() > 1 {
-            let signers: Vec<Address> =
-                valid_signers.iter().map(|valid| valid.signer).collect();
+            let signers: Vec<Address> = valid_signers.iter().map(|valid| valid.signer).collect();
             warn!(signers = ?signers, "multiple valid signers found; using first");
         }
 
@@ -378,10 +375,8 @@ mod tests {
         let (signer_one, signer_two) = two_transport_signers(&checker).await;
 
         {
-            let mut validity_map = registry
-                .validity_map
-                .lock()
-                .expect("validity map lock should succeed");
+            let mut validity_map =
+                registry.validity_map.lock().expect("validity map lock should succeed");
             validity_map.insert(signer_one, true);
             validity_map.insert(signer_two, false);
         }
@@ -398,10 +393,8 @@ mod tests {
         let (signer_one, signer_two) = two_transport_signers(&checker).await;
 
         {
-            let mut validity_map = registry
-                .validity_map
-                .lock()
-                .expect("validity map lock should succeed");
+            let mut validity_map =
+                registry.validity_map.lock().expect("validity map lock should succeed");
             validity_map.insert(signer_one, false);
             validity_map.insert(signer_two, true);
         }
@@ -418,10 +411,8 @@ mod tests {
         let (signer_one, signer_two) = two_transport_signers(&checker).await;
 
         {
-            let mut validity_map = registry
-                .validity_map
-                .lock()
-                .expect("validity map lock should succeed");
+            let mut validity_map =
+                registry.validity_map.lock().expect("validity map lock should succeed");
             validity_map.insert(signer_one, true);
             validity_map.insert(signer_two, true);
         }
@@ -437,10 +428,7 @@ mod tests {
         let checker = two_transport_checker(registry);
         let (signer_one, signer_two) = two_transport_signers(&checker).await;
 
-        let err = checker
-            .select_valid_enclave()
-            .await
-            .expect_err("expected no valid signer error");
+        let err = checker.select_valid_enclave().await.expect_err("expected no valid signer error");
 
         match err {
             RegistrationError::NoValidSigner { signers } => {
@@ -462,10 +450,8 @@ mod tests {
         let (signer_one, signer_two) = two_transport_signers(&checker).await;
 
         {
-            let mut validity_map = registry
-                .validity_map
-                .lock()
-                .expect("validity map lock should succeed");
+            let mut validity_map =
+                registry.validity_map.lock().expect("validity map lock should succeed");
             validity_map.insert(signer_one, true);
             validity_map.insert(signer_two, false);
         }
@@ -473,10 +459,8 @@ mod tests {
         assert!(checker.check_health().await.expect("health should be ok"));
 
         {
-            let mut validity_map = registry
-                .validity_map
-                .lock()
-                .expect("validity map lock should succeed");
+            let mut validity_map =
+                registry.validity_map.lock().expect("validity map lock should succeed");
             validity_map.insert(signer_one, false);
             validity_map.insert(signer_two, false);
         }

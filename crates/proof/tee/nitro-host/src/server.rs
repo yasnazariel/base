@@ -66,17 +66,10 @@ impl NitroProverServer {
             .into_iter()
             .map(|transport| {
                 let backend = NitroBackend::new(Arc::clone(&transport));
-                EnclaveService {
-                    transport,
-                    service: ProverService::new(config.clone(), backend),
-                }
+                EnclaveService { transport, service: ProverService::new(config.clone(), backend) }
             })
             .collect();
-        Self {
-            enclaves,
-            proof_request_timeout,
-            registration_health: None,
-        }
+        Self { enclaves, proof_request_timeout, registration_health: None }
     }
 
     /// Enables registration-gated health checks. When set, `/healthz` verifies
@@ -95,11 +88,8 @@ impl NitroProverServer {
         info!(addr = %addr, "nitro rpc server started");
 
         let mut module = RpcModule::new(());
-        let transports: Vec<Arc<NitroTransport>> = self
-            .enclaves
-            .iter()
-            .map(|enclave| Arc::clone(&enclave.transport))
-            .collect();
+        let transports: Vec<Arc<NitroTransport>> =
+            self.enclaves.iter().map(|enclave| Arc::clone(&enclave.transport)).collect();
 
         let checker = match self.registration_health {
             Some(config) => {
@@ -133,12 +123,7 @@ impl NitroProverServer {
             .into_rpc(),
         )?;
 
-        module.merge(
-            NitroSignerRpc {
-                transports,
-            }
-            .into_rpc(),
-        )?;
+        module.merge(NitroSignerRpc { transports }.into_rpc())?;
 
         Ok(server.start(module))
     }
@@ -254,9 +239,7 @@ mod tests {
         let transport = Arc::new(NitroTransport::local(Arc::clone(&server)));
         let expected = server.signer_public_key();
 
-        let rpc = NitroSignerRpc {
-            transports: vec![transport],
-        };
+        let rpc = NitroSignerRpc { transports: vec![transport] };
         let result = EnclaveApiServer::signer_public_key(&rpc).await.unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0], expected);
@@ -276,9 +259,7 @@ mod tests {
         let server = Arc::new(EnclaveServer::new_local().unwrap());
         let transport = Arc::new(NitroTransport::local(Arc::clone(&server)));
 
-        let rpc = NitroSignerRpc {
-            transports: vec![transport],
-        };
+        let rpc = NitroSignerRpc { transports: vec![transport] };
         // NSM is unavailable outside a real Nitro enclave, so attestation fails.
         // Assert the error is propagated (not swallowed) through the RPC layer.
         let result = EnclaveApiServer::signer_attestation(&rpc, None, None).await;
@@ -289,9 +270,7 @@ mod tests {
     async fn signer_attestation_rejects_oversized_user_data() {
         let server = Arc::new(EnclaveServer::new_local().unwrap());
         let transport = Arc::new(NitroTransport::local(Arc::clone(&server)));
-        let rpc = NitroSignerRpc {
-            transports: vec![transport],
-        };
+        let rpc = NitroSignerRpc { transports: vec![transport] };
 
         let oversized = vec![0u8; MAX_USER_DATA_BYTES + 1];
         let result = EnclaveApiServer::signer_attestation(&rpc, Some(oversized), None).await;
@@ -304,9 +283,7 @@ mod tests {
     async fn signer_attestation_rejects_oversized_nonce() {
         let server = Arc::new(EnclaveServer::new_local().unwrap());
         let transport = Arc::new(NitroTransport::local(Arc::clone(&server)));
-        let rpc = NitroSignerRpc {
-            transports: vec![transport],
-        };
+        let rpc = NitroSignerRpc { transports: vec![transport] };
 
         let oversized = vec![0u8; MAX_NONCE_BYTES + 1];
         let result = EnclaveApiServer::signer_attestation(&rpc, None, Some(oversized)).await;

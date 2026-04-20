@@ -3,8 +3,7 @@
 use std::{
     collections::HashMap,
     sync::{
-        Arc,
-        Mutex,
+        Arc, Mutex,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
 };
@@ -89,14 +88,10 @@ impl TEEProverRegistryClient for AddressBasedMockRegistry {
     ) -> Result<bool, base_proof_contracts::ContractError> {
         self.call_count.fetch_add(1, Ordering::Relaxed);
         if self.should_fail.load(Ordering::Relaxed) {
-            return Err(base_proof_contracts::ContractError::Validation(
-                "mock RPC failure".into(),
-            ));
+            return Err(base_proof_contracts::ContractError::Validation("mock RPC failure".into()));
         }
-        let validity_map = self
-            .validity_map
-            .lock()
-            .expect("AddressBasedMockRegistry validity map mutex poisoned");
+        let validity_map =
+            self.validity_map.lock().expect("AddressBasedMockRegistry validity map mutex poisoned");
         Ok(validity_map.get(&signer).copied().unwrap_or(false))
     }
 
