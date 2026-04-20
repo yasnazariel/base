@@ -4,9 +4,9 @@
 //! [`BaseTxEnvelope`] and [`TxDeposit`].
 
 use alloy_consensus::Typed2718;
+use alloy_evm::revm::context::TxEnv;
 use alloy_evm::{FromRecoveredTx, FromTxWithEncoded};
 use alloy_primitives::{Address, Bytes};
-use revm::context::TxEnv;
 
 use crate::{BaseTxEnvelope, TxDeposit};
 

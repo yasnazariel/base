@@ -55,6 +55,7 @@ impl<T: BaseTransaction + TransactionTrait> Transaction<T> {
                 inner: tx,
                 block_hash: tx_info.inner.block_hash,
                 block_number: tx_info.inner.block_number,
+                block_timestamp: tx_info.inner.block_timestamp,
                 transaction_index: tx_info.inner.index,
                 effective_gas_price: Some(effective_gas_price),
             },
@@ -253,6 +254,12 @@ mod tx_serde {
             skip_serializing_if = "Option::is_none",
             with = "alloy_serde::quantity::opt"
         )]
+        block_timestamp: Option<u64>,
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "alloy_serde::quantity::opt"
+        )]
         deposit_receipt_version: Option<u64>,
 
         #[serde(flatten)]
@@ -267,6 +274,7 @@ mod tx_serde {
                         inner,
                         block_hash,
                         block_number,
+                        block_timestamp,
                         transaction_index,
                         effective_gas_price,
                     },
@@ -285,6 +293,7 @@ mod tx_serde {
                 block_hash,
                 block_number,
                 transaction_index,
+                block_timestamp,
                 deposit_receipt_version,
                 other: OptionalFields { from, effective_gas_price, deposit_nonce },
             }
@@ -300,6 +309,7 @@ mod tx_serde {
                 block_hash,
                 block_number,
                 transaction_index,
+                block_timestamp,
                 deposit_receipt_version,
                 other,
             } = value;
@@ -325,6 +335,7 @@ mod tx_serde {
                     inner: Recovered::new_unchecked(inner, from),
                     block_hash,
                     block_number,
+                    block_timestamp,
                     transaction_index,
                     effective_gas_price,
                 },

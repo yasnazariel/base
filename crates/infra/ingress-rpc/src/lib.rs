@@ -24,7 +24,7 @@ use std::{
 };
 
 use alloy_primitives::TxHash;
-use alloy_provider::{Provider, ProviderBuilder, RootProvider};
+use alloy_provider::{Provider, RootProvider};
 use base_bundles::MeterBundleResponse;
 use base_common_network::Base;
 use clap::Args;
@@ -154,10 +154,7 @@ impl BuilderConnector {
     /// Spawns a background task that forwards metering data to the builder RPC.
     pub fn connect(metering_rx: broadcast::Receiver<MeterBundleResponse>, builder_rpc: Url) {
         let rpc_url = builder_rpc.clone();
-        let builder: RootProvider<Base> = ProviderBuilder::new()
-            .disable_recommended_fillers()
-            .network::<Base>()
-            .connect_http(builder_rpc);
+        let builder: RootProvider<Base> = RootProvider::new_http(builder_rpc);
 
         tokio::spawn(async move {
             let mut event_rx = metering_rx;

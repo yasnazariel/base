@@ -1,6 +1,6 @@
 //! Ingress RPC binary entry point.
 
-use alloy_provider::ProviderBuilder;
+use alloy_provider::RootProvider;
 use audit_archiver_lib::{
     AuditConnector, BundleEvent, KafkaBundleEventPublisher, load_kafka_config_from_file,
 };
@@ -62,17 +62,12 @@ async fn main() -> anyhow::Result<()> {
     );
 
     let providers = Providers {
-        mempool: ProviderBuilder::new()
-            .disable_recommended_fillers()
-            .network::<Base>()
-            .connect_http(config.mempool_url),
-        simulation: ProviderBuilder::new()
-            .disable_recommended_fillers()
-            .network::<Base>()
-            .connect_http(config.simulation_rpc),
-        raw_tx_forward: config.raw_tx_forward_rpc.clone().map(|url| {
-            ProviderBuilder::new().disable_recommended_fillers().network::<Base>().connect_http(url)
-        }),
+        mempool: RootProvider::<Base>::new_http(config.mempool_url),
+        simulation: RootProvider::<Base>::new_http(config.simulation_rpc),
+        raw_tx_forward: config
+            .raw_tx_forward_rpc
+            .clone()
+            .map(|url| RootProvider::<Base>::new_http(url)),
     };
 
     let ingress_client_config =

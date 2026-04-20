@@ -21,8 +21,8 @@ use reth_codecs::{
 };
 
 use crate::{
-    BaseBlock, BasePooledTransaction, BaseReceipt, BaseTxEnvelope, BaseTypedTransaction,
-    DEPOSIT_TX_TYPE_ID, DepositReceipt, OpTxType, TxDeposit,
+    BaseBlock, BaseReceipt, BaseTxEnvelope, BaseTypedTransaction, DEPOSIT_TX_TYPE_ID,
+    DepositReceipt, OpTxType, TxDeposit,
 };
 
 // ---------------------------------------------------------------------------

@@ -4,7 +4,7 @@ use alloy_evm::{Database, Evm, EvmEnv};
 use alloy_primitives::{Address, Bytes};
 use revm::{
     ExecuteEvm, InspectEvm, Inspector, SystemCallEvm,
-    context::{BlockEnv, TxEnv},
+    context::{BlockEnv, CfgEnv, TxEnv},
     context_interface::result::{EVMError, ResultAndState},
     handler::{PrecompileProvider, instructions::EthInstructions},
     interpreter::{InterpreterResult, interpreter::EthInterpreter},
@@ -88,6 +88,10 @@ where
 
     fn chain_id(&self) -> u64 {
         self.cfg.chain_id
+    }
+
+    fn cfg_env(&self) -> &CfgEnv<Self::Spec> {
+        &self.cfg
     }
 
     fn transact_raw(
