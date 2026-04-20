@@ -6,6 +6,7 @@ use base_action_harness::{
     SharedL1Chain, TestRollupConfigBuilder,
 };
 use base_batcher_encoder::{DaType, EncoderConfig};
+use base_common_consensus::BaseTxEnvelope;
 use base_protocol::L1BlockInfoTx;
 
 // ---------------------------------------------------------------------------
@@ -348,7 +349,7 @@ async fn l1_info_format_transitions_at_jovian_boundary() {
 ///   block 3 → ts=6  first Isthmus, user txs ✓ (no empty-block requirement)
 ///   block 4 → ts=8  post-Isthmus, user txs ✓
 /// ```
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn isthmus_derivation_crosses_operator_fee_boundary() {
     const OPERATOR_FEE_SCALAR: u32 = 1_200;
     const OPERATOR_FEE_CONSTANT: u64 = 400;
@@ -372,42 +373,19 @@ async fn isthmus_derivation_crosses_operator_fee_boundary() {
     let l1_chain = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
     let mut builder = h.create_l2_sequencer(l1_chain);
 
-    let mut isthmus_block_hash = Default::default();
-    let mut block4_hash = Default::default();
     let mut batcher = Batcher::new(ActionL2Source::new(), &h.rollup_config, batcher_cfg.clone());
-    for i in 1..=4u64 {
-        // All blocks carry user transactions — Isthmus allows user txs at transition.
-        let block = builder.build_next_block_with_single_transaction().await;
-        if i == 3 {
-            isthmus_block_hash = block.header.hash_slow();
-        }
-        if i == 4 {
-            block4_hash = block.header.hash_slow();
-        }
-        batcher.push_block(block);
+    for _ in 1..=4u64 {
+        batcher.push_block(builder.build_next_block_with_single_transaction().await);
         batcher.advance(&mut h.l1).await;
     }
 
-    let (mut node, _chain) = h.create_test_rollup_node_from_sequencer(
-        &mut builder,
-        SharedL1Chain::from_blocks(h.l1.chain().to_vec()),
-    );
-    // The Isthmus activation block (block 3) has upgrade deposit transactions
-    // injected by the derivation pipeline that the sequencer did not execute.
-    // These contract deployments change the EVM state root, so we clear the
-    // sequencer's registered state root for blocks 3 and 4 to skip state-root
-    // validation for those blocks. Block 4's root also differs because it is
-    // derived starting from the pipeline's block 3 state (which includes the
-    // Isthmus upgrade contracts), while the sequencer computed it from its own
-    // block 3 state (without those contracts).
-    node.register_block_hash(3, isthmus_block_hash);
-    node.register_block_hash(4, block4_hash);
+    let node =
+        h.create_actor_derivation_node(SharedL1Chain::from_blocks(h.l1.chain().to_vec())).await;
     node.initialize().await;
+    node.sync_until_safe(4).await;
 
-    let total_derived = node.run_until_idle().await;
-    assert_eq!(total_derived, 4, "all 4 L2 blocks must be derived");
     assert_eq!(
-        node.l2_safe_number(),
+        node.engine.safe_head().block_info.number,
         4,
         "safe head must reach block 4 after crossing the Isthmus operator fee boundary"
     );
@@ -435,12 +413,10 @@ async fn isthmus_derivation_crosses_operator_fee_boundary() {
 ///               as deposit-only
 /// ```
 ///
-/// The [`derived_user_tx_counts`] accessor on the verifier confirms that the
-/// pipeline generated a deposit-only block for slot 3 (count = 0) while
-/// preserving the user transactions in the earlier blocks.
-///
-/// [`derived_user_tx_counts`]: base_action_harness::TestRollupNode::derived_user_tx_counts
-#[tokio::test]
+/// The user-tx count for each derived block is verified via
+/// [`ActionEngineClient::block_transactions`], which exposes the raw
+/// [`BaseTxEnvelope`] list committed by the engine for each L2 block.
+#[tokio::test(start_paused = true)]
 async fn jovian_non_empty_transition_batch_generates_deposit_only_block() {
     let batcher_cfg = BatcherConfig::default();
     let jovian_time = 6u64;
@@ -464,37 +440,27 @@ async fn jovian_non_empty_transition_batch_generates_deposit_only_block() {
     // Build three L2 blocks — each with 1 user transaction (the sequencer default).
     // Block 3 (ts=6) is the first Jovian block. The batch validator will drop the
     // non-empty batch for that slot with NonEmptyTransitionBlock.
-    let mut jovian_block_hash = Default::default();
     let mut batcher = Batcher::new(ActionL2Source::new(), &h.rollup_config, batcher_cfg.clone());
-    for i in 1u64..=3 {
-        let block = builder.build_next_block_with_single_transaction().await;
-        if i == 3 {
-            jovian_block_hash = block.header.hash_slow();
-        }
-        batcher.push_block(block);
+    for _ in 1u64..=3 {
+        batcher.push_block(builder.build_next_block_with_single_transaction().await);
         batcher.advance(&mut h.l1).await;
     }
 
     // Create the node with only L1 blocks 0–3 visible. Block 4 (which closes
     // the epoch-0 seq window) is pushed to the shared chain after verifying the
-    // intermediate state, so the first run_until_idle cannot see it yet.
-    let (mut node, chain) = h.create_test_rollup_node_from_sequencer(
-        &mut builder,
-        SharedL1Chain::from_blocks(h.l1.chain().to_vec()),
-    );
-    // The first Jovian block (block 3) is force-included as a deposit-only block by
-    // the pipeline (the non-empty batch is dropped). The derived block has different
-    // transactions than the sequencer's version, producing a different state root.
-    // Clear the sequencer's registered state root for block 3 to skip validation.
-    node.register_block_hash(3, jovian_block_hash);
+    // intermediate state.
+    let chain = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
+    let node = h.create_actor_derivation_node(chain.clone()).await;
     node.initialize().await;
 
-    // Signal L1 blocks 1–3. Blocks 1–2 are derived from their valid batches.
-    // Block 3's batch is dropped (NonEmptyTransitionBlock) and the pipeline
-    // stalls waiting for more L1 data (the seq window has not yet closed).
-    node.run_until_idle().await;
+    // Tick until the pipeline stalls — blocks 1–2 are derived, block 3's batch is
+    // dropped (NonEmptyTransitionBlock) and the pipeline waits for the seq window
+    // to close.
+    for _ in 0..20 {
+        node.tick().await;
+    }
     assert_eq!(
-        node.l2_safe_number(),
+        node.engine.safe_head().block_info.number,
         2,
         "only blocks 1–2 derived from valid batches; block 3 pending (batch dropped)"
     );
@@ -504,23 +470,25 @@ async fn jovian_non_empty_transition_batch_generates_deposit_only_block() {
     h.l1.mine_block();
     chain.push(h.l1.tip().clone());
 
-    // Signal L1 block 4. The epoch-0 window is now closed, so the pipeline
-    // force-includes L2 slot 3 as a deposit-only block.
-    node.run_until_idle().await;
+    // The epoch-0 window is now closed; the pipeline force-includes L2 slot 3.
+    node.sync_until_safe(3).await;
 
     assert!(
-        node.l2_safe_number() >= 3,
+        node.engine.safe_head().block_info.number >= 3,
         "safe head must advance past block 3 after force-inclusion"
     );
 
-    // Verify per-block user tx counts via the node's tracking field.
-    let counts = node.derived_user_tx_counts();
-    let find = |n: u64| counts.iter().find(|(bn, _)| *bn == n).map(|(_, c)| *c);
+    // Verify per-block user tx counts via engine.block_transactions().
+    let count_user_txs = |n: u64| -> Option<usize> {
+        node.engine
+            .block_transactions(n)
+            .map(|txs| txs.iter().filter(|tx| !matches!(tx, BaseTxEnvelope::Deposit(_))).count())
+    };
 
-    assert_eq!(find(1), Some(1), "block 1: batch accepted, 1 user tx");
-    assert_eq!(find(2), Some(1), "block 2: batch accepted, 1 user tx");
+    assert_eq!(count_user_txs(1), Some(1), "block 1: batch accepted, 1 user tx");
+    assert_eq!(count_user_txs(2), Some(1), "block 2: batch accepted, 1 user tx");
     assert_eq!(
-        find(3),
+        count_user_txs(3),
         Some(0),
         "block 3: batch dropped (NonEmptyTransitionBlock) → deposit-only, 0 user txs"
     );
@@ -575,7 +543,7 @@ async fn jovian_non_empty_transition_batch_generates_deposit_only_block() {
 /// Configuration: all forks through Isthmus are active at genesis so the
 /// Isthmus-format L1 info deposit (which includes operator fee fields) is
 /// used from the first block. Jovian is intentionally absent.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn operator_fee_config_update_propagates_to_l1_info() {
     const OLD_SCALAR: u32 = 1_000;
     const OLD_CONSTANT: u64 = 500;
@@ -640,24 +608,24 @@ async fn operator_fee_config_update_propagates_to_l1_info() {
     }
 
     // Node snapshot includes all L1 blocks 0–3.
-    let (mut node, _chain) = h.create_test_rollup_node_from_sequencer(
-        &mut sequencer,
-        SharedL1Chain::from_blocks(h.l1.chain().to_vec()),
-    );
+    let node =
+        h.create_actor_derivation_node(SharedL1Chain::from_blocks(h.l1.chain().to_vec())).await;
     node.initialize().await;
+    node.sync_until_safe(6).await;
 
-    for _ in 1u64..=3 {
-        node.run_until_idle().await;
-    }
+    assert_eq!(node.engine.safe_head().block_info.number, 6, "all 6 L2 blocks must be derived");
 
-    assert_eq!(node.l2_safe_number(), 6, "all 6 L2 blocks must be derived");
-
-    let infos = node.derived_l1_info_txs();
-    let find = |n: u64| infos.iter().find(|(bn, _)| *bn == n).map(|(_, tx)| tx);
+    // Decode the L1 info deposit from the first transaction of each derived block.
+    let find_info = |n: u64| -> Option<L1BlockInfoTx> {
+        let txs = node.engine.block_transactions(n)?;
+        let BaseTxEnvelope::Deposit(deposit) = txs.first()? else { return None };
+        L1BlockInfoTx::decode_calldata(deposit.inner().input.as_ref()).ok()
+    };
 
     // Blocks 1–5 (epoch 0, no receipt update) carry OLD fee params.
     for n in 1u64..=5 {
-        let info = find(n).unwrap_or_else(|| panic!("L1 info tx for block {n} must be recorded"));
+        let info =
+            find_info(n).unwrap_or_else(|| panic!("L1 info tx for block {n} must be recorded"));
         assert_eq!(
             info.operator_fee_scalar(),
             OLD_SCALAR,
@@ -673,7 +641,7 @@ async fn operator_fee_config_update_propagates_to_l1_info() {
     // Block 6 (epoch 1 — first epoch change) carries NEW fee params. This is the
     // "seventh" block total counting from genesis (block 0), confirming that
     // StatefulAttributesBuilder reads L1 block 1's receipts on the epoch change.
-    let info6 = find(6).expect("L1 info tx for block 6 must be recorded");
+    let info6 = find_info(6).expect("L1 info tx for block 6 must be recorded");
     assert_eq!(
         info6.operator_fee_scalar(),
         NEW_SCALAR,

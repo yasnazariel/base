@@ -37,8 +37,7 @@ type ProdEngineClient = BaseEngineClient<RootProvider, RootProvider<base_common_
 /// [`EngineActor`], and [`L1WatcherActor`] with an HTTP-backed
 /// [`BaseEngineClient`] and a real derivation pipeline.
 ///
-/// Unlike [`crate::TestRollupNode`], which steps the pipeline manually via
-/// `step()` / `run_until_idle()`, `TestActorDerivationNode` runs the exact
+/// Unlike a manual pipeline-stepping harness, `TestActorDerivationNode` runs the exact
 /// production actor stack end-to-end: L1 head delivery via the real
 /// [`L1WatcherActor`] polling [`HarnessL1Server`], derivation-state-machine
 /// gating, reorg detection, safe-head `SafeDB` writes, finalization tracking,

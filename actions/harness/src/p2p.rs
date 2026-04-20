@@ -65,10 +65,7 @@ impl TestGossipTransport {
 
     /// Try to receive the next unsafe block without blocking.
     ///
-    /// Returns `None` immediately if no block is currently available. Use this
-    /// to drain the channel in a non-blocking loop inside [`TestRollupNode::step`].
-    ///
-    /// [`TestRollupNode::step`]: crate::TestRollupNode::step
+    /// Returns `None` immediately if no block is currently available.
     pub fn try_next_unsafe_block(&mut self) -> Option<NetworkPayloadEnvelope> {
         self.rx.try_recv().ok()
     }

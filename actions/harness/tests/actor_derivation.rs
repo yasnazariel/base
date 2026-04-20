@@ -6,7 +6,7 @@
 //! full 8-stage derivation pipeline processes real batcher transactions, and
 //! that safe / finalized head labels propagate through the correct code paths.
 //!
-//! Unlike the [`TestRollupNode`] tests which step the pipeline manually, these
+//! Unlike manual pipeline-stepping tests, these
 //! tests use the real actor inbox: L1 head updates are delivered by the
 //! production [`L1WatcherActor`] polling an in-process [`HarnessL1Server`],
 //! engine confirmations flow back as
@@ -23,7 +23,6 @@
 //! [`EngineActor`]: base_consensus_node::EngineActor
 //! [`L1WatcherActor`]: base_consensus_node::L1WatcherActor
 //! [`HarnessL1Server`]: base_action_harness::HarnessL1Server
-//! [`TestRollupNode`]: base_action_harness::TestRollupNode
 
 use base_action_harness::{
     ActionL2Source, ActionTestHarness, Batcher, BatcherConfig, L1MinerConfig, SharedL1Chain,

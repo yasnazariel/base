@@ -45,12 +45,6 @@ pub use engine::{
     TestNodeTypes, TestPool, TestProviderFactory,
 };
 
-mod node;
-pub use node::{
-    ActionPipeline, BlobVerifierPipeline, DerivedBlock, NodeStepResult, TestRollupNode,
-    VerifierError, VerifierPipeline,
-};
-
 mod follow_node;
 pub use follow_node::{ActionL2LocalProvider, ActionL2SourceBridge, TestFollowNode};
 

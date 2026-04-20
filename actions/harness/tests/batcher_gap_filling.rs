@@ -60,7 +60,7 @@ fn dummy_l2_info(number: u64) -> L2BlockInfo {
 /// - Duplicate batches (8-10 posted in both Phase 2 and Phase 3) are harmless
 ///
 /// [`signal_reorg`]: Batcher::signal_reorg
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn batcher_gap_fill_single_instance_reorg_signal() {
     let batcher_cfg = BatcherConfig {
         encoder: EncoderConfig { da_type: DaType::Calldata, ..EncoderConfig::default() },
@@ -80,10 +80,8 @@ async fn batcher_gap_fill_single_instance_reorg_signal() {
 
     // Create the verifier node before any mining so `chain.push` makes
     // subsequent L1 blocks visible to the derivation pipeline.
-    let (mut node, chain) = h.create_test_rollup_node_from_sequencer(
-        &mut sequencer,
-        SharedL1Chain::from_blocks(h.l1.chain().to_vec()),
-    );
+    let chain = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
+    let node = h.create_actor_derivation_node(chain.clone()).await;
 
     // Create a single batcher that persists across all phases.
     let mut batcher = Batcher::new(ActionL2Source::new(), &h.rollup_config, batcher_cfg.clone());
@@ -96,9 +94,8 @@ async fn batcher_gap_fill_single_instance_reorg_signal() {
     chain.push(h.l1.tip().clone());
 
     node.initialize().await;
-    let derived = node.run_until_idle().await;
-    assert_eq!(derived, 5, "Phase 1: expected 5 L2 blocks derived");
-    assert_eq!(node.l2_safe_number(), 5, "Phase 1: safe head must be 5");
+    node.sync_until_safe(5).await;
+    assert_eq!(node.engine.safe_head().block_info.number, 5, "Phase 1: safe head must be 5");
 
     // ----- Phase 2: repoint to node B (safe head 7), post blocks 8-10 -----
     // signal_reorg clears the encoder, modelling the batcher detecting that
@@ -113,13 +110,14 @@ async fn batcher_gap_fill_single_instance_reorg_signal() {
 
     // The verifier should NOT advance past 5: batches for 8-10 have
     // parent_hash = hash(block 7) which doesn't match safe_head hash(block 5).
-    let derived = node.run_until_idle().await;
+    for _ in 0..20 {
+        node.tick().await;
+    }
     assert_eq!(
-        node.l2_safe_number(),
+        node.engine.safe_head().block_info.number,
         5,
         "Phase 2: safe head must remain at 5 — gap blocks 6-7 are missing"
     );
-    assert_eq!(derived, 0, "Phase 2: no new blocks should be derived");
 
     // ----- Phase 3: repoint back to node A (safe head 5), fill the gap -----
     // In production, the batcher queries safe_head = 5 and loads blocks
@@ -133,9 +131,12 @@ async fn batcher_gap_fill_single_instance_reorg_signal() {
     batcher.advance(&mut h.l1).await;
     chain.push(h.l1.tip().clone());
 
-    let derived = node.run_until_idle().await;
-    assert_eq!(derived, 5, "Phase 3: expected 5 L2 blocks derived (6-10)");
-    assert_eq!(node.l2_safe_number(), 10, "Phase 3: safe head must reach 10 after gap is filled");
+    node.sync_until_safe(10).await;
+    assert_eq!(
+        node.engine.safe_head().block_info.number,
+        10,
+        "Phase 3: safe head must reach 10 after gap is filled"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -153,7 +154,7 @@ async fn batcher_gap_fill_single_instance_reorg_signal() {
 /// [`safe_head_rx`]: Batcher::with_safe_head_rx
 /// [`prune_safe`]: base_batcher_encoder::BatchPipeline::prune_safe
 /// [`BatchDriver`]: base_batcher_core::BatchDriver
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn batcher_gap_fill_with_safe_head_tracking() {
     let batcher_cfg = BatcherConfig {
         encoder: EncoderConfig { da_type: DaType::Calldata, ..EncoderConfig::default() },
@@ -170,10 +171,8 @@ async fn batcher_gap_fill_with_safe_head_tracking() {
         blocks.push(sequencer.build_next_block_with_single_transaction().await);
     }
 
-    let (mut node, chain) = h.create_test_rollup_node_from_sequencer(
-        &mut sequencer,
-        SharedL1Chain::from_blocks(h.l1.chain().to_vec()),
-    );
+    let chain = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
+    let node = h.create_actor_derivation_node(chain.clone()).await;
 
     // Wire a safe-head watch channel into the batcher.
     let (safe_head_tx, safe_head_rx) = tokio::sync::watch::channel(0u64);
@@ -192,9 +191,8 @@ async fn batcher_gap_fill_with_safe_head_tracking() {
     chain.push(h.l1.tip().clone());
 
     node.initialize().await;
-    let derived = node.run_until_idle().await;
-    assert_eq!(derived, 5, "Phase 1: expected 5 L2 blocks derived");
-    assert_eq!(node.l2_safe_number(), 5, "Phase 1: safe head must be 5");
+    node.sync_until_safe(5).await;
+    assert_eq!(node.engine.safe_head().block_info.number, 5, "Phase 1: safe head must be 5");
 
     // Update the batcher's safe head to match the verifier.
     safe_head_tx.send(5).expect("watch channel open");
@@ -210,9 +208,10 @@ async fn batcher_gap_fill_with_safe_head_tracking() {
     batcher.advance(&mut h.l1).await;
     chain.push(h.l1.tip().clone());
 
-    let derived = node.run_until_idle().await;
-    assert_eq!(node.l2_safe_number(), 5, "Phase 2: safe head must stay at 5");
-    assert_eq!(derived, 0, "Phase 2: no blocks derived (gap)");
+    for _ in 0..20 {
+        node.tick().await;
+    }
+    assert_eq!(node.engine.safe_head().block_info.number, 5, "Phase 2: safe head must stay at 5");
 
     // ----- Phase 3: repoint back, fill the gap from safe_head + 1 = 6 -----
     // The batcher's safe_head_rx still reads 5, so the driver's
@@ -225,9 +224,8 @@ async fn batcher_gap_fill_with_safe_head_tracking() {
     batcher.advance(&mut h.l1).await;
     chain.push(h.l1.tip().clone());
 
-    let derived = node.run_until_idle().await;
-    assert_eq!(derived, 5, "Phase 3: expected 5 L2 blocks derived (6-10)");
-    assert_eq!(node.l2_safe_number(), 10, "Phase 3: safe head must reach 10");
+    node.sync_until_safe(10).await;
+    assert_eq!(node.engine.safe_head().block_info.number, 10, "Phase 3: safe head must reach 10");
 }
 
 // ---------------------------------------------------------------------------
@@ -243,7 +241,7 @@ async fn batcher_gap_fill_with_safe_head_tracking() {
 /// is the state that results from the op-batcher's `startAfresh` path.
 ///
 /// [`BatchEncoder`]: base_batcher_encoder::BatchEncoder
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn batcher_gap_fill_separate_instances() {
     let batcher_cfg = BatcherConfig {
         encoder: EncoderConfig { da_type: DaType::Calldata, ..EncoderConfig::default() },
@@ -260,10 +258,8 @@ async fn batcher_gap_fill_separate_instances() {
         blocks.push(sequencer.build_next_block_with_single_transaction().await);
     }
 
-    let (mut node, chain) = h.create_test_rollup_node_from_sequencer(
-        &mut sequencer,
-        SharedL1Chain::from_blocks(h.l1.chain().to_vec()),
-    );
+    let chain = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
+    let node = h.create_actor_derivation_node(chain.clone()).await;
 
     // ----- Phase 1: batcher at node A posts blocks 1-5 -----
     {
@@ -276,9 +272,8 @@ async fn batcher_gap_fill_separate_instances() {
     }
 
     node.initialize().await;
-    let derived = node.run_until_idle().await;
-    assert_eq!(derived, 5, "Phase 1: expected 5 L2 blocks derived");
-    assert_eq!(node.l2_safe_number(), 5, "Phase 1: safe head must be 5");
+    node.sync_until_safe(5).await;
+    assert_eq!(node.engine.safe_head().block_info.number, 5, "Phase 1: safe head must be 5");
 
     // ----- Phase 2: batcher at node B posts blocks 8-10 (gap) -----
     {
@@ -290,13 +285,14 @@ async fn batcher_gap_fill_separate_instances() {
         chain.push(h.l1.tip().clone());
     }
 
-    let derived = node.run_until_idle().await;
+    for _ in 0..20 {
+        node.tick().await;
+    }
     assert_eq!(
-        node.l2_safe_number(),
+        node.engine.safe_head().block_info.number,
         5,
         "Phase 2: safe head must remain at 5 — gap blocks 6-7 are missing"
     );
-    assert_eq!(derived, 0, "Phase 2: no blocks derived (gap)");
 
     // ----- Phase 3: batcher back at node A posts blocks 6-10 -----
     {
@@ -308,7 +304,10 @@ async fn batcher_gap_fill_separate_instances() {
         chain.push(h.l1.tip().clone());
     }
 
-    let derived = node.run_until_idle().await;
-    assert_eq!(derived, 5, "Phase 3: expected 5 L2 blocks derived (6-10)");
-    assert_eq!(node.l2_safe_number(), 10, "Phase 3: safe head must reach 10 after gap is filled");
+    node.sync_until_safe(10).await;
+    assert_eq!(
+        node.engine.safe_head().block_info.number,
+        10,
+        "Phase 3: safe head must reach 10 after gap is filled"
+    );
 }

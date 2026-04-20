@@ -389,6 +389,20 @@ impl ActionEngineClient {
         self.l1_chain.clone()
     }
 
+    /// Return the transactions committed for a given L2 block number.
+    ///
+    /// Returns `None` if the block has not been executed yet. The first
+    /// transaction is always the L1 info deposit; subsequent transactions are
+    /// user or upgrade-deposit transactions.
+    pub fn block_transactions(&self, block_num: u64) -> Option<Vec<BaseTxEnvelope>> {
+        self.inner
+            .lock()
+            .expect("action engine inner lock poisoned")
+            .executed_transactions
+            .get(&block_num)
+            .cloned()
+    }
+
     /// Read a storage value from the latest committed state.
     ///
     /// Accepts the slot as a `U256` for convenience (converted to `B256` internally).

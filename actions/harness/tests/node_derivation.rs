@@ -1,7 +1,7 @@
 //! Action tests exercising end-to-end derivation via the production actor stack.
 //!
-//! These tests replace the former [`TestRollupNode`]-based derivation tests with
-//! [`TestActorDerivationNode`], which runs the real [`DerivationActor`],
+//! These tests exercise end-to-end derivation via [`TestActorDerivationNode`],
+//! which runs the real [`DerivationActor`],
 //! [`EngineActor`], and [`L1WatcherActor`] on an in-process HTTP engine.
 //!
 //! [`TestActorDerivationNode`]: base_action_harness::TestActorDerivationNode
