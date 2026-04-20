@@ -8,7 +8,7 @@ use base_batcher_encoder::{DaType, EncoderConfig};
 
 /// Derives 4 L2 blocks across the Base Azul activation boundary (ts=4, block 2)
 /// and asserts each block includes 1 user transaction.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn azul_derivation_crosses_activation_boundary() {
     let batcher_cfg = BatcherConfig {
         encoder: EncoderConfig { da_type: DaType::Calldata, ..EncoderConfig::default() },

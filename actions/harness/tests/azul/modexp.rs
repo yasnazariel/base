@@ -72,7 +72,7 @@ fn modexp_input(base: &[u8], exponent: &[u8], modulus: &[u8]) -> Vec<u8> {
 /// EIP-7823: MODEXP rejects inputs with any field length > 1024 bytes after Base Azul.
 ///
 /// Pre-fork the oversized call succeeds; post-fork it fails.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn azul_modexp_upper_bound() {
     let batcher_cfg = BatcherConfig {
         encoder: EncoderConfig { da_type: DaType::Calldata, ..EncoderConfig::default() },
@@ -177,7 +177,7 @@ async fn azul_modexp_upper_bound() {
 }
 
 /// EIP-7883: MODEXP gas cost increases after Base Azul (min 200→500, general cost tripled).
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn azul_modexp_gas_cost_increase() {
     let batcher_cfg = BatcherConfig {
         encoder: EncoderConfig { da_type: DaType::Calldata, ..EncoderConfig::default() },

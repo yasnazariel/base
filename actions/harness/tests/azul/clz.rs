@@ -40,7 +40,7 @@ const CLZ_GAS_DELTA_SLOT: U256 = U256::from_limbs([2, 0, 0, 0]);
 /// The measured window includes `SWAP1(3) + CLZ(5) + POP(2) + GAS(2) = 12`.
 const CLZ_EXPECTED_GAS_DELTA: u64 = 12;
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn azul_clz_op_code() {
     let batcher_cfg = BatcherConfig {
         encoder: EncoderConfig { da_type: DaType::Calldata, ..EncoderConfig::default() },

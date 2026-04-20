@@ -31,7 +31,7 @@ const P256_GAS_DELTA_SLOT: U256 = U256::from_limbs([1, 0, 0, 0]);
 const P256_SENTINEL_SLOT: U256 = U256::from_limbs([2, 0, 0, 0]);
 
 /// P256VERIFY gas cost doubles after Base Azul (3,450 → 6,900).
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn azul_p256_verify_gas_cost_increase() {
     let batcher_cfg = BatcherConfig {
         encoder: EncoderConfig { da_type: DaType::Calldata, ..EncoderConfig::default() },
