@@ -145,10 +145,7 @@ impl RegistrationChecker {
             };
         }
 
-        match first_rpc_error {
-            Some(e) => Err(e),
-            None => Ok(false),
-        }
+        first_rpc_error.map_or(Ok(false), Err)
     }
 
     /// Latching health check: returns `true` once the signer has ever been
@@ -184,9 +181,12 @@ impl RegistrationChecker {
 
     /// Selects the first enclave whose signer is currently valid on-chain.
     ///
-    /// Returns as soon as a valid signer is found (config order).
+    /// Returns as soon as a valid signer is found (config order).  RPC errors
+    /// are logged and skipped so that a transient L1 failure on one transport
+    /// does not prevent routing to a healthy one.
     pub async fn select_valid_enclave(&self) -> Result<ValidSigner, RegistrationError> {
         let mut discovered = Vec::new();
+        let mut first_rpc_error = None;
 
         for (index, transport) in self.transports.iter().enumerate() {
             let signer = match Self::signer_address(transport).await {
@@ -204,11 +204,14 @@ impl RegistrationChecker {
                 Ok(false) => {
                     warn!(signer = %signer, index, "signer not valid in TEEProverRegistry");
                 }
-                Err(e) => return Err(e),
+                Err(e) => {
+                    warn!(error = %e, signer = %signer, index, "RPC check failed, trying next");
+                    first_rpc_error.get_or_insert(e);
+                }
             }
         }
 
-        Err(RegistrationError::NoValidSigner { signers: discovered })
+        first_rpc_error.map_or(Err(RegistrationError::NoValidSigner { signers: discovered }), Err)
     }
 }
 
