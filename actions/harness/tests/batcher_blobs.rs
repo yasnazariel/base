@@ -14,7 +14,7 @@ use base_batcher_encoder::{BatchEncoder, BatchPipeline, DaType, EncoderConfig};
 
 /// Encode 3 L2 blocks as EIP-4844 blobs (one blob per L2 block, each in its
 /// own L1 block) and verify that the blob verifier pipeline derives all three.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn batcher_blob_da_end_to_end() {
     let batcher_cfg = BatcherConfig::default(); // DaType::Blob by default
     let rollup_cfg = TestRollupConfigBuilder::base_mainnet(&batcher_cfg).build();
@@ -30,15 +30,12 @@ async fn batcher_blob_da_end_to_end() {
         batcher.advance(&mut h.l1).await;
     }
 
-    let (mut node, _chain) = h.create_blob_test_rollup_node_from_sequencer(
-        &mut sequencer,
-        SharedL1Chain::from_blocks(h.l1.chain().to_vec()),
-    );
+    let chain = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
+    let node = h.create_actor_blob_derivation_node(chain).await;
     node.initialize().await;
+    node.sync_until_safe(3).await;
 
-    let total_derived = node.run_until_idle().await;
-    assert_eq!(total_derived, 3, "blob DA should derive 3 L2 blocks");
-    assert_eq!(node.l2_safe_number(), 3, "safe head should reach L2 block 3");
+    assert_eq!(node.engine.safe_head().block_info.number, 3, "blob DA should derive 3 L2 blocks");
 }
 
 // ---------------------------------------------------------------------------
@@ -48,7 +45,7 @@ async fn batcher_blob_da_end_to_end() {
 /// Force channel fragmentation via a tiny `max_frame_size`, then verify that
 /// all resulting frames are packed into a single blob sidecar in one L1 block
 /// and that the derivation pipeline can reconstruct the L2 block from it.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn batcher_multi_blob_packing() {
     let batcher_cfg = BatcherConfig {
         encoder: EncoderConfig { max_frame_size: 80, ..EncoderConfig::default() },
@@ -75,16 +72,16 @@ async fn batcher_multi_blob_packing() {
         h.l1.tip().blob_sidecars.len()
     );
 
-    let (mut node, _chain) = h.create_blob_test_rollup_node_from_sequencer(
-        &mut sequencer,
-        SharedL1Chain::from_blocks(h.l1.chain().to_vec()),
-    );
+    let chain = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
+    let node = h.create_actor_blob_derivation_node(chain).await;
     node.initialize().await;
+    node.sync_until_safe(1).await;
 
-    let derived = node.run_until_idle().await;
-
-    assert_eq!(derived, 1, "expected 1 L2 block derived from packed multi-frame blob");
-    assert_eq!(node.l2_safe_number(), 1, "safe head should reach L2 block 1");
+    assert_eq!(
+        node.engine.safe_head().block_info.number,
+        1,
+        "expected 1 L2 block derived from packed multi-frame blob"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -93,7 +90,7 @@ async fn batcher_multi_blob_packing() {
 
 /// Encode 3 L2 blocks as calldata frames and verify the calldata verifier
 /// pipeline derives all three.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn batcher_calldata_da() {
     let batcher_cfg = BatcherConfig {
         encoder: EncoderConfig { da_type: DaType::Calldata, ..EncoderConfig::default() },
@@ -112,15 +109,16 @@ async fn batcher_calldata_da() {
         batcher.advance(&mut h.l1).await;
     }
 
-    let (mut node, _chain) = h.create_test_rollup_node_from_sequencer(
-        &mut sequencer,
-        SharedL1Chain::from_blocks(h.l1.chain().to_vec()),
-    );
+    let chain = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
+    let node = h.create_actor_derivation_node(chain).await;
     node.initialize().await;
+    node.sync_until_safe(3).await;
 
-    let total_derived = node.run_until_idle().await;
-    assert_eq!(total_derived, 3, "calldata DA should derive 3 L2 blocks");
-    assert_eq!(node.l2_safe_number(), 3, "safe head should reach L2 block 3");
+    assert_eq!(
+        node.engine.safe_head().block_info.number,
+        3,
+        "calldata DA should derive 3 L2 blocks"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -129,7 +127,7 @@ async fn batcher_calldata_da() {
 
 /// Submit 3 L2 blocks as calldata and 3 more as blobs, each in separate L1
 /// blocks, then derive all 6 using the blob verifier pipeline.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn batcher_da_switching() {
     let rollup_cfg = TestRollupConfigBuilder::base_mainnet(&BatcherConfig::default()).build();
     let mut h = ActionTestHarness::new(L1MinerConfig::default(), rollup_cfg);
@@ -158,19 +156,16 @@ async fn batcher_da_switching() {
         blob_batcher.advance(&mut h.l1).await;
     }
 
-    let (mut node, _chain) = h.create_blob_test_rollup_node_from_sequencer(
-        &mut sequencer,
-        SharedL1Chain::from_blocks(h.l1.chain().to_vec()),
-    );
+    let chain = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
+    let node = h.create_actor_blob_derivation_node(chain).await;
     node.initialize().await;
+    node.sync_until_safe(6).await;
 
-    let mut total_derived = 0;
-    for _ in 1..=6u64 {
-        total_derived += node.run_until_idle().await;
-    }
-
-    assert_eq!(total_derived, 6, "expected 6 L2 blocks derived (3 calldata + 3 blob)");
-    assert_eq!(node.l2_safe_number(), 6, "safe head should reach L2 block 6");
+    assert_eq!(
+        node.engine.safe_head().block_info.number,
+        6,
+        "expected 6 L2 blocks derived (3 calldata + 3 blob)"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -195,7 +190,7 @@ async fn batcher_da_switching() {
 ///
 /// The safe head must remain at 0 through L1 block 5, then advance to 1 after
 /// the fresh blob channel is processed.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn blob_da_channel_timeout() {
     let batcher_cfg = BatcherConfig {
         encoder: EncoderConfig { max_frame_size: 80, ..EncoderConfig::default() },
@@ -225,35 +220,33 @@ async fn blob_da_channel_timeout() {
 
     // Submit ONLY frame 0 as a blob sidecar in L1 block 1.
     h.l1.submit_blob_frames(&frames[..1]);
-
-    let (mut node, chain) = h.create_blob_test_rollup_node_from_sequencer(
-        &mut sequencer,
-        SharedL1Chain::from_blocks(h.l1.chain().to_vec()),
-    );
-
     h.l1.mine_block();
-    chain.push(h.l1.tip().clone()); // L1 block 1: blob with frame 0 only
 
-    node.initialize().await;
-    node.run_until_idle().await;
-
-    assert_eq!(node.l2_safe_number(), 0, "incomplete blob channel should not advance safe head");
-
-    // Mine channel_timeout + 1 = 3 empty L1 blocks to expire the channel.
+    // Mine channel_timeout + 1 = 3 empty L1 blocks (blocks 2-4) to expire the channel.
     for _ in 0..3 {
-        h.mine_and_push(&chain);
-    }
-    for _ in 2..=4 {
-        node.run_until_idle().await;
+        h.l1.mine_block();
     }
 
-    // Submit remaining frames as blobs — channel already timed out; silently dropped.
+    // Submit remaining frames as blobs — these arrive after channel timeout.
     h.l1.submit_blob_frames(&frames[1..]);
-    h.l1.mine_block();
-    chain.push(h.l1.tip().clone()); // L1 block 5: late blob frames
+    h.l1.mine_block(); // L1 block 5: late blob frames
 
-    let derived = node.run_until_idle().await;
-    assert_eq!(derived, 0, "late blob frames after channel timeout must be silently dropped");
+    // All L1 data (blocks 1-5) is built before creating the node.
+    // Blocks 1-5 are all in the chain; the channel timed out in blocks 2-4.
+    let chain = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
+    let node = h.create_actor_blob_derivation_node(chain.clone()).await;
+    node.initialize().await;
+
+    // Process all 5 L1 blocks. Channel times out; late frames are ignored.
+    for _ in 0..15 {
+        node.tick().await;
+    }
+
+    assert_eq!(
+        node.engine.safe_head().block_info.number,
+        0,
+        "channel must have timed out; late blob frames should not advance safe head"
+    );
 
     // Recovery: resubmit all frames as blobs in a fresh channel (new channel ID).
     let mut encoder2 =
@@ -261,11 +254,14 @@ async fn blob_da_channel_timeout() {
     encoder2.add_block(block).expect("add_block should succeed");
     let fresh_frames = encoder2.encode_and_drain().expect("encode_and_drain should succeed");
     h.l1.submit_blob_frames(&fresh_frames);
-    h.l1.mine_block();
-    chain.push(h.l1.tip().clone()); // L1 block 6: fresh blob channel with all frames
+    h.l1.mine_block(); // L1 block 6: fresh blob channel with all frames
+    chain.push(h.l1.tip().clone());
 
-    let recovered = node.run_until_idle().await;
+    node.sync_until_safe(1).await;
 
-    assert_eq!(recovered, 1, "resubmitted blob channel should derive L2 block 1");
-    assert_eq!(node.l2_safe_number(), 1, "safe head should recover to 1");
+    assert_eq!(
+        node.engine.safe_head().block_info.number,
+        1,
+        "resubmitted blob channel should derive L2 block 1"
+    );
 }

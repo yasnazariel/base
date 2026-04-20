@@ -7,7 +7,7 @@ use alloy_provider::RootProvider;
 use base_consensus_engine::{BaseEngineClient, EngineClientBuilder};
 use base_consensus_genesis::RollupConfig;
 use base_consensus_node::{
-    EngineConfig, FollowNode, L1Config, NetworkActor, NetworkInboundData, NodeMode, NodeActor,
+    EngineConfig, FollowNode, L1Config, NetworkActor, NetworkInboundData, NodeActor, NodeMode,
     QueuedNetworkEngineClient,
 };
 use base_consensus_providers::OnlineBeaconClient;
@@ -56,10 +56,10 @@ pub struct TestActorFollowNode {
     pub rollup_config: Arc<RollupConfig>,
     /// Sender for injecting gossip blocks directly into the network actor.
     pub gossip_tx: SupervisedP2P,
-    /// Cancellation token to stop the NetworkActor on drop.
+    /// Cancellation token to stop the `NetworkActor` on drop.
     cancel: CancellationToken,
     /// Handle to the spawned [`FollowNode`] task — aborted on drop to stop all
-    /// internal actors (DelegateL2DerivationActor, EngineActor, L1WatcherActor).
+    /// internal actors (`DelegateL2DerivationActor`, `EngineActor`, `L1WatcherActor`).
     _follow_handle: JoinHandle<()>,
     /// Handle to the spawned network actor task.
     _network_handle: JoinHandle<()>,
@@ -119,7 +119,7 @@ impl TestActorFollowNode {
         let (engine_actor_request_tx, engine_actor_request_rx) = mpsc::channel(1024);
         let (gossip_tx, transport) = TestGossipTransport::channel();
         let (network_inbound, network_actor) = NetworkActor::with_transport(
-            QueuedNetworkEngineClient { engine_actor_request_tx: engine_actor_request_tx.clone() },
+            QueuedNetworkEngineClient { engine_actor_request_tx },
             cancel.clone(),
             transport,
         );
@@ -191,7 +191,7 @@ impl TestActorFollowNode {
     ///
     /// The yield count is intentionally generous: each yield gives one
     /// spawned task one scheduling turn, and the full chain (derivation actor →
-    /// sync sub-task → engine actor → engine processor → InsertTask) now
+    /// sync sub-task → engine actor → engine processor → `InsertTask`) now
     /// includes a localhost HTTP round-trip via the real [`BaseEngineClient`].
     pub async fn tick(&self) {
         tokio::time::advance(std::time::Duration::from_secs(2)).await;
@@ -221,7 +221,7 @@ impl TestActorFollowNode {
         self.engine.unsafe_head()
     }
 
-    /// Cancel the NetworkActor and abort the FollowNode task.
+    /// Cancel the `NetworkActor` and abort the `FollowNode` task.
     pub fn cancel(&self) {
         self.cancel.cancel();
         self._follow_handle.abort();

@@ -33,7 +33,7 @@ use base_batcher_encoder::{DaType, EncoderConfig};
 /// 1. Accepts L2 blocks 1-6 (timestamps 300-1800, within drift) as submitted
 /// 2. For L2 blocks 7-8 (timestamps 2100-2400, over drift), drops the
 ///    batcher's non-empty batch and generates deposit-only default blocks
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn sequencer_drift_produces_deposit_only_blocks() {
     let l1_cfg = L1MinerConfig { block_time: 4 };
     let batcher_cfg = BatcherConfig {
@@ -80,51 +80,38 @@ async fn sequencer_drift_produces_deposit_only_blocks() {
         source.push(sequencer.build_next_block_with_single_transaction().await);
     }
 
-    // Create the node from a separate sequencer that has an empty block-hash
-    // registry. Blocks 7-8 are dropped by the pipeline (over-drift) and
-    // replaced with deposit-only default blocks whose state roots differ from
-    // the sequencer's. Using a fresh sequencer avoids a false state-root
-    // mismatch for those slots.
-    let mut node_sequencer =
-        h.create_l2_sequencer(SharedL1Chain::from_blocks(h.l1.chain().to_vec()));
-    let (mut node, chain) = h.create_test_rollup_node_from_sequencer(
-        &mut node_sequencer,
-        SharedL1Chain::from_blocks(h.l1.chain().to_vec()),
-    );
     let mut batcher = Batcher::new(source, &h.rollup_config, batcher_cfg.clone());
-    batcher.advance(&mut h.l1).await;
-    chain.push(h.l1.tip().clone());
+    batcher.advance(&mut h.l1).await; // L1 block 2: batch for all 8 L2 blocks
 
     // Mine 2 extra empty L1 blocks (seq_window_size=2, batch epoch=0, batch
     // in L1 block 2 → window expires at L1 block 3). The pipeline needs to
     // see L1 blocks 3 and 4 to auto-generate deposit-only blocks for slots 7-8:
     // block 3 produces slot 7, block 4 produces slot 8.
-    h.mine_and_push(&chain);
-    h.mine_and_push(&chain);
+    let chain = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
+    h.mine_and_push(&chain); // L1 block 3
+    h.mine_and_push(&chain); // L1 block 4
 
+    // The actor derivation node starts with an empty block-hash registry,
+    // so state-root validation is skipped for all blocks including 7-8
+    // (which differ from the sequencer's version: deposit-only vs. user-tx).
+    let node = h.create_actor_derivation_node(chain).await;
     node.initialize().await;
-
-    // Drive derivation through all L1 blocks.
-    let mut total_derived = 0;
-    for _ in 1..=h.l1.latest_number() {
-        total_derived += node.run_until_idle().await;
-    }
+    node.sync_until_safe(8).await;
 
     // The pipeline should derive blocks for all L2 slots. Blocks 1-6 use the
     // batcher's submitted batches. Blocks 7-8 are generated as deposit-only
     // default blocks because the non-empty batches are dropped for exceeding
     // max_sequencer_drift.
     assert_eq!(
-        node.l2_safe_number(),
+        node.engine.safe_head().block_info.number,
         8,
         "all 8 L2 blocks must be derived (blocks 7-8 as deposit-only over-drift blocks)"
     );
-    assert_eq!(total_derived, 8, "all 8 blocks derived");
 
     // Verify deposit-only behaviour: blocks 1-6 carry 2 txs each (deposit +
     // user tx), blocks 7-8 must carry exactly 1 tx (L1 info deposit only).
-    let tx_counts = node.derived_tx_counts();
-    for &(number, count) in tx_counts {
+    for number in 1u64..=8 {
+        let count = node.engine.executed_tx_count(number);
         if number <= 6 {
             assert_eq!(count, 2, "block {number} should have deposit + user tx");
         } else {
@@ -139,14 +126,17 @@ async fn sequencer_drift_produces_deposit_only_blocks() {
 
 /// When `max_sequencer_drift` is exceeded, the sequencer should produce
 /// deposit-only (empty) blocks. This test verifies that the pipeline correctly
-/// handles the over-drift region by deriving blocks for all L2 slots, even
-/// when the submitted batches are dropped.
+/// handles the over-drift region by deriving blocks for all L2 slots that are
+/// within the drift boundary, even when the submitted batches for over-drift
+/// slots are dropped.
 ///
 /// This test uses `L2Sequencer::build_empty_block()` for the over-drift
 /// blocks (7-8). The pipeline drops those batches (they still reference the
-/// stale epoch 0, triggering `SequencerDriftNotAdoptedNextOrigin`), and then
-/// generates deposit-only default blocks for those slots.
-#[tokio::test]
+/// stale epoch 0, triggering `SequencerDriftNotAdoptedNextOrigin`). With the
+/// default `seq_window_size`, the window does not expire from the small number
+/// of L1 blocks mined here, so blocks 7-8 are never auto-generated. The safe
+/// head stops at 6.
+#[tokio::test(start_paused = true)]
 async fn sequencer_drift_forced_empty_blocks_accepted() {
     let l1_cfg = L1MinerConfig { block_time: 4 };
     let batcher_cfg = BatcherConfig {
@@ -165,11 +155,6 @@ async fn sequencer_drift_forced_empty_blocks_accepted() {
     let l1_genesis = h.l1.block_info_at(0);
     sequencer.pin_l1_origin(l1_genesis);
 
-    let (mut node, chain) = h.create_test_rollup_node_from_sequencer(
-        &mut sequencer,
-        SharedL1Chain::from_blocks(h.l1.chain().to_vec()),
-    );
-
     // Build 6 normal blocks (within drift, ts=300..1800) + 2 empty blocks
     // (over drift, ts=2100, 2400). block_time=300 s, max_drift=1800 s.
     let mut source = ActionL2Source::new();
@@ -178,28 +163,26 @@ async fn sequencer_drift_forced_empty_blocks_accepted() {
     }
     // Build empty blocks past the drift boundary. The empty block has only
     // the deposit tx — the batcher encodes it but the pipeline drops it
-    // (stale epoch) and produces a default block.
+    // (stale epoch) and the default seq_window_size is too large to expire,
+    // so no default block is generated for these slots.
     for _ in 7u64..=8 {
         source.push(sequencer.build_empty_block().await);
     }
 
     let mut batcher = Batcher::new(source, &h.rollup_config, batcher_cfg.clone());
-    batcher.advance(&mut h.l1).await;
-    chain.push(h.l1.tip().clone());
+    batcher.advance(&mut h.l1).await; // L1 block 2: all 8 batches
 
+    let chain = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
+    let node = h.create_actor_derivation_node(chain).await;
     node.initialize().await;
 
-    let mut total_derived = 0;
-    for _ in 1..=h.l1.latest_number() {
-        total_derived += node.run_until_idle().await;
-    }
+    // Derive blocks 1-6 (within drift). Blocks 7-8 are dropped and not
+    // replaced (seq_window doesn't expire) — safe head stops at 6.
+    node.sync_until_safe(6).await;
 
-    // All 8 blocks should be derived: 6 normal + 2 empty (pipeline-generated
-    // deposit-only blocks for the over-drift slots).
-    assert!(total_derived >= 6, "at least the 6 within-drift blocks should be derived");
     assert_eq!(
-        node.l2_safe_number(),
-        total_derived as u64,
-        "safe head should match number of derived blocks"
+        node.engine.safe_head().block_info.number,
+        6,
+        "blocks 1-6 must derive; over-drift blocks 7-8 are dropped and seq window does not expire"
     );
 }

@@ -1,24 +1,29 @@
 //! Action tests that exercise [`TestActorDerivationNode`] end-to-end.
 //!
 //! These tests validate the **production actor coordination layer** of the
-//! rollup node: that [`DerivationActor`] and [`EngineActor`] run together with
-//! real in-process channels, that the full 8-stage derivation pipeline
-//! processes real batcher transactions, and that safe / finalized head labels
-//! propagate through the correct code paths.
+//! rollup node: that [`DerivationActor`], [`EngineActor`], and
+//! [`L1WatcherActor`] run together with real in-process channels, that the
+//! full 8-stage derivation pipeline processes real batcher transactions, and
+//! that safe / finalized head labels propagate through the correct code paths.
 //!
 //! Unlike the [`TestRollupNode`] tests which step the pipeline manually, these
-//! tests use the real actor inbox: L1 head updates are delivered as
-//! [`DerivationActorRequest::ProcessL1HeadUpdateRequest`] messages, engine
-//! confirmations flow back as
+//! tests use the real actor inbox: L1 head updates are delivered by the
+//! production [`L1WatcherActor`] polling an in-process [`HarnessL1Server`],
+//! engine confirmations flow back as
 //! [`DerivationActorRequest::ProcessEngineSafeHeadUpdateRequest`] messages, and
 //! state-machine gating (one block at a time, `AwaitingSafeHeadConfirmation` →
 //! `Deriving`) is exercised on every derived block.
 //!
+//! All tests use `#[tokio::test(start_paused = true)]` because [`L1WatcherActor`]
+//! drives derivation via a timer-based poll loop. [`TestActorDerivationNode::tick`]
+//! advances the virtual clock and yields enough times for the full actor chain to
+//! process messages.
+//!
 //! [`DerivationActor`]: base_consensus_node::DerivationActor
 //! [`EngineActor`]: base_consensus_node::EngineActor
+//! [`L1WatcherActor`]: base_consensus_node::L1WatcherActor
+//! [`HarnessL1Server`]: base_action_harness::HarnessL1Server
 //! [`TestRollupNode`]: base_action_harness::TestRollupNode
-
-use std::sync::Arc;
 
 use base_action_harness::{
     ActionL2Source, ActionTestHarness, Batcher, BatcherConfig, L1MinerConfig, SharedL1Chain,
@@ -27,10 +32,8 @@ use base_action_harness::{
 use base_batcher_encoder::{DaType, EncoderConfig};
 
 /// Helper to build a harness and pre-submit `n` L2 blocks, one batch per L1
-/// block, returning `(harness, l1_chain, l1_tip_info)`.
-async fn setup_with_n_blocks(
-    n: u64,
-) -> (ActionTestHarness, SharedL1Chain) {
+/// block, returning `(harness, l1_chain)`.
+async fn setup_with_n_blocks(n: u64) -> (ActionTestHarness, SharedL1Chain) {
     let batcher_cfg = BatcherConfig {
         encoder: EncoderConfig { da_type: DaType::Calldata, ..EncoderConfig::default() },
         ..BatcherConfig::default()
@@ -56,16 +59,18 @@ async fn setup_with_n_blocks(
 ///
 /// 1. Build 3 L2 blocks, submit one batch per L1 block.
 /// 2. Create `TestActorDerivationNode`, initialize it.
-/// 3. Signal the L1 tip; let the actor stack derive all 3 blocks.
+/// 3. Tick — the [`L1WatcherActor`] delivers the L1 tip; the actor stack
+///    derives all 3 blocks.
 /// 4. Assert the engine's safe head advanced to block 3.
-#[tokio::test]
+///
+/// [`L1WatcherActor`]: base_consensus_node::L1WatcherActor
+#[tokio::test(start_paused = true)]
 async fn test_actor_derives_basic_l2_blocks() {
     let (h, chain) = setup_with_n_blocks(3).await;
 
-    let l1_tip = base_action_harness::block_info_from(h.l1.tip());
     let node = h.create_actor_derivation_node(chain).await;
     node.initialize().await;
-    node.sync_until_safe(3, l1_tip).await;
+    node.sync_until_safe(3).await;
 
     assert_eq!(
         node.engine.safe_head().block_info.number,
@@ -79,15 +84,14 @@ async fn test_actor_derives_basic_l2_blocks() {
 /// Each derived block goes through `InsertTask` (sets canonical head) and
 /// `ConsolidateTask` (FCU with safe=head). Both `unsafe_head` and `safe_head`
 /// on the [`ActionEngineClient`] should agree after sync.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn test_actor_unsafe_equals_safe_after_derivation() {
     let (h, chain) = setup_with_n_blocks(5).await;
 
-    let l1_tip = base_action_harness::block_info_from(h.l1.tip());
     let node = h.create_actor_derivation_node(chain).await;
     node.initialize().await;
 
-    node.sync_until_safe(5, l1_tip).await;
+    node.sync_until_safe(5).await;
 
     let safe = node.engine.safe_head().block_info.number;
     let unsafe_ = node.engine.unsafe_head().block_info.number;
@@ -100,26 +104,20 @@ async fn test_actor_unsafe_equals_safe_after_derivation() {
 /// Each L2 block's safe head is recorded by the derivation actor's
 /// `ProcessEngineSafeHeadUpdateRequest` handler. Querying at `l1_block_num =
 /// u64::MAX` must return the most recently derived safe head.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn test_actor_safe_head_db_written() {
     let (h, chain) = setup_with_n_blocks(3).await;
 
-    let l1_tip = base_action_harness::block_info_from(h.l1.tip());
     let node = h.create_actor_derivation_node(chain).await;
     node.initialize().await;
 
-    node.sync_until_safe(3, l1_tip).await;
+    node.sync_until_safe(3).await;
 
     // SafeDB must have been written for L2 block 3. Query at u64::MAX to
     // get the latest entry regardless of the exact L1 inclusion block.
-    let response = node
-        .safe_head_at_l1(u64::MAX)
-        .await
-        .expect("SafeDB must have an entry after derivation");
-    assert_eq!(
-        response.safe_head.number, 3,
-        "SafeDB must record L2 block 3 as the safe head"
-    );
+    let response =
+        node.safe_head_at_l1(u64::MAX).await.expect("SafeDB must have an entry after derivation");
+    assert_eq!(response.safe_head.number, 3, "SafeDB must record L2 block 3 as the safe head");
 }
 
 /// Finalization propagates to the engine when the L1 finalizes a block whose
@@ -134,17 +132,18 @@ async fn test_actor_safe_head_db_written() {
 /// `ProcessFinalizedL2BlockNumberRequest` is sent to the engine actor, which
 /// happens when `try_finalize_next` in `DerivationActor` finds a matching
 /// entry in its finalization queue.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn test_actor_finalization_advances() {
     let (h, chain) = setup_with_n_blocks(3).await;
 
-    let l1_tip = base_action_harness::block_info_from(h.l1.tip());
-    let l1_block_1 = h.l1.block_by_number(1).map(base_action_harness::block_info_from)
-        .expect("L1 block 1 must exist");
+    let l1_block_1 =
+        h.l1.block_by_number(1)
+            .map(base_action_harness::block_info_from)
+            .expect("L1 block 1 must exist");
     let node = h.create_actor_derivation_node(chain).await;
     node.initialize().await;
 
-    node.sync_until_safe(3, l1_tip).await;
+    node.sync_until_safe(3).await;
 
     // Finalize L1 block 1. The `L2Finalizer` will check its pending queue for
     // L2 blocks whose L1 inclusion block is ≤ L1 block 1. L2 block 1 was
@@ -166,7 +165,7 @@ async fn test_actor_finalization_advances() {
 ///
 /// Submit 5 L2 blocks in a single `Batcher::advance` call (one L1 block) and
 /// verify the actor stack derives all 5 from that single L1 inclusion block.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn test_actor_multi_block_single_l1_inclusion() {
     let batcher_cfg = BatcherConfig {
         encoder: EncoderConfig { da_type: DaType::Calldata, ..EncoderConfig::default() },
@@ -186,12 +185,11 @@ async fn test_actor_multi_block_single_l1_inclusion() {
     Batcher::new(source, &h.rollup_config, batcher_cfg).advance(&mut h.l1).await;
 
     let chain = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
-    let l1_tip = base_action_harness::block_info_from(h.l1.tip());
 
     let node = h.create_actor_derivation_node(chain).await;
     node.initialize().await;
 
-    node.sync_until_safe(5, l1_tip).await;
+    node.sync_until_safe(5).await;
 
     assert_eq!(
         node.engine.safe_head().block_info.number,
@@ -200,13 +198,15 @@ async fn test_actor_multi_block_single_l1_inclusion() {
     );
 }
 
-/// Sending an L1 head signal when no batcher data is available leaves the safe
-/// head at genesis.
+/// Sending no batcher data leaves the safe head at genesis.
 ///
-/// The derivation actor transitions to `Deriving`, the pipeline immediately
-/// hits EOF (`NotEnoughData` / `Eof`), and the state machine goes to
+/// The [`L1WatcherActor`] delivers the L1 genesis block, the derivation actor
+/// transitions to `Deriving`, the pipeline immediately hits EOF
+/// (`NotEnoughData` / `Eof`), and the state machine goes to
 /// `AwaitingL1Data`. No L2 block is derived.
-#[tokio::test]
+///
+/// [`L1WatcherActor`]: base_consensus_node::L1WatcherActor
+#[tokio::test(start_paused = true)]
 async fn test_actor_no_data_eof_stays_at_genesis() {
     let batcher_cfg = BatcherConfig {
         encoder: EncoderConfig { da_type: DaType::Calldata, ..EncoderConfig::default() },
@@ -217,13 +217,12 @@ async fn test_actor_no_data_eof_stays_at_genesis() {
 
     // Chain with only genesis — no batches submitted.
     let chain = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
-    let l1_tip = base_action_harness::block_info_from(h.l1.tip());
 
     let node = h.create_actor_derivation_node(chain).await;
     node.initialize().await;
 
-    // Signal L1 head — pipeline should hit EOF immediately.
-    node.act_l1_head_signal(l1_tip).await;
+    // Tick: L1WatcherActor polls, delivers genesis head, derivation hits EOF.
+    node.tick().await;
     node.tick().await;
 
     assert_eq!(
@@ -237,8 +236,11 @@ async fn test_actor_no_data_eof_stays_at_genesis() {
 /// head further.
 ///
 /// Simulate the incremental batch submission pattern: first 2 blocks, then
-/// 3 more. Each round of L1 data arrives with a new L1 head signal.
-#[tokio::test]
+/// 3 more. Each round of L1 data arrives via the [`L1WatcherActor`] picking
+/// up new blocks pushed to the shared [`SharedL1Chain`].
+///
+/// [`L1WatcherActor`]: base_consensus_node::L1WatcherActor
+#[tokio::test(start_paused = true)]
 async fn test_actor_incremental_derivation() {
     let batcher_cfg = BatcherConfig {
         encoder: EncoderConfig { da_type: DaType::Calldata, ..EncoderConfig::default() },
@@ -251,40 +253,33 @@ async fn test_actor_incremental_derivation() {
     let mut sequencer = h.create_l2_sequencer(l1_chain_for_seq);
 
     // Round 1: submit 2 L2 blocks.
-    let mut batcher1 = Batcher::new(
-        ActionL2Source::new(),
-        &h.rollup_config,
-        batcher_cfg.clone(),
-    );
+    let mut batcher1 = Batcher::new(ActionL2Source::new(), &h.rollup_config, batcher_cfg.clone());
     for _ in 0..2 {
         batcher1.push_block(sequencer.build_next_block_with_single_transaction().await);
         batcher1.advance(&mut h.l1).await;
     }
 
     let chain = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
-    let l1_tip1 = Arc::new(base_action_harness::block_info_from(h.l1.tip()));
 
     let node = h.create_actor_derivation_node(chain.clone()).await;
     node.initialize().await;
 
     // First sync: derive 2 blocks.
-    node.sync_until_safe(2, *l1_tip1).await;
+    node.sync_until_safe(2).await;
     assert_eq!(node.engine.safe_head().block_info.number, 2, "first batch: safe head = 2");
 
     // Round 2: submit 3 more L2 blocks and push to the shared chain.
-    let mut batcher2 = Batcher::new(
-        ActionL2Source::new(),
-        &h.rollup_config,
-        batcher_cfg.clone(),
-    );
+    // The L1WatcherActor polls the HarnessL1Server, which is backed by the
+    // same SharedL1Chain, so it picks up the new blocks on the next tick.
+    let mut batcher2 = Batcher::new(ActionL2Source::new(), &h.rollup_config, batcher_cfg.clone());
     for _ in 0..3 {
         batcher2.push_block(sequencer.build_next_block_with_single_transaction().await);
         batcher2.advance(&mut h.l1).await;
         chain.push(h.l1.tip().clone());
     }
-    let l1_tip2 = base_action_harness::block_info_from(h.l1.tip());
 
-    // Second sync: derive blocks 3-5.
-    node.sync_until_safe(5, l1_tip2).await;
+    // Second sync: derive blocks 3-5. The L1WatcherActor sees the new chain
+    // tip and delivers the head update automatically on the next tick.
+    node.sync_until_safe(5).await;
     assert_eq!(node.engine.safe_head().block_info.number, 5, "second batch: safe head = 5");
 }

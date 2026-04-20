@@ -102,7 +102,7 @@ async fn ecotone_l1_info_format_transitions_at_activation() {
 ///
 /// `operator_fees.rs` mirrors this kind of test for the Isthmus→Jovian boundary
 /// where `NonEmptyTransitionBlock` *does* fire.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn ecotone_activation_block_user_txs_accepted_at_batch_layer() {
     let batcher_cfg = BatcherConfig {
         encoder: EncoderConfig { da_type: DaType::Calldata, ..EncoderConfig::default() },
@@ -150,22 +150,16 @@ async fn ecotone_activation_block_user_txs_accepted_at_batch_layer() {
     batcher.push_block(builder.build_next_block_with_single_transaction().await);
     batcher.advance(&mut h.l1).await;
 
-    let (mut node, _chain) = h.create_test_rollup_node_from_sequencer(
-        &mut builder,
-        SharedL1Chain::from_blocks(h.l1.chain().to_vec()),
-    );
+    let chain = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
+    let node = h.create_actor_derivation_node(chain).await;
     node.initialize().await;
-
-    // Drive derivation through all 4 L1 blocks.
-    for _ in 1..=4u64 {
-        node.run_until_idle().await;
-    }
+    node.sync_until_safe(4).await;
 
     // Ecotone has no NonEmptyTransitionBlock batch check, so block 3's batch
     // (with user txs) is accepted. All 4 blocks must derive: block 3 is NOT
     // deposit-only, unlike the Jovian transition block.
     assert_eq!(
-        node.l2_safe_number(),
+        node.engine.safe_head().block_info.number,
         4,
         "safe head must reach block 4; Ecotone has no batch-level empty-block enforcement"
     );
@@ -188,7 +182,7 @@ async fn ecotone_activation_block_user_txs_accepted_at_batch_layer() {
 /// - Block 4: post-Ecotone, user txs OK.
 ///
 /// All 4 L2 blocks must be derived.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn ecotone_derivation_crosses_activation_boundary() {
     let batcher_cfg = BatcherConfig {
         encoder: EncoderConfig { da_type: DaType::Calldata, ..EncoderConfig::default() },
@@ -227,16 +221,13 @@ async fn ecotone_derivation_crosses_activation_boundary() {
         batcher.advance(&mut h.l1).await;
     }
 
-    let (mut node, _chain) = h.create_test_rollup_node_from_sequencer(
-        &mut builder,
-        SharedL1Chain::from_blocks(h.l1.chain().to_vec()),
-    );
+    let chain = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
+    let node = h.create_actor_derivation_node(chain).await;
     node.initialize().await;
+    node.sync_until_safe(4).await;
 
-    let total_derived = node.run_until_idle().await;
-    assert_eq!(total_derived, 4, "all 4 L2 blocks must be derived");
     assert_eq!(
-        node.l2_safe_number(),
+        node.engine.safe_head().block_info.number,
         4,
         "derivation must succeed through the Ecotone activation boundary"
     );

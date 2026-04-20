@@ -1,14 +1,23 @@
 //! Production-actor derivation-node test harness.
 
-use std::sync::Arc;
+use std::{
+    sync::{Arc, atomic::AtomicU64},
+    time::Duration,
+};
 
+use alloy_eips::BlockNumberOrTag;
+use alloy_primitives::{B256, Signature, U256};
 use alloy_provider::RootProvider;
+use base_common_consensus::BaseBlock;
+use base_common_rpc_types_engine::{BaseExecutionPayload, NetworkPayloadEnvelope, PayloadHash};
+use base_consensus_derive::{Pipeline, SignalReceiver};
 use base_consensus_engine::{BaseEngineClient, Engine, EngineClientBuilder, EngineState};
 use base_consensus_genesis::RollupConfig;
 use base_consensus_node::{
-    DerivationActor, DerivationActorRequest, EngineActor, EngineProcessor, EngineRpcProcessor,
-    NetworkActor, NetworkInboundData, NodeActor, QueuedDerivationEngineClient,
-    QueuedEngineDerivationClient, QueuedNetworkEngineClient,
+    AlloyL1BlockFetcher, BlockStream, DerivationActor, DerivationActorRequest, EngineActor,
+    EngineActorRequest, EngineProcessor, EngineRpcProcessor, L1WatcherActor, NetworkActor,
+    NetworkInboundData, NodeActor, QueuedDerivationEngineClient, QueuedEngineDerivationClient,
+    QueuedL1WatcherDerivationClient, QueuedNetworkEngineClient, ResetRequest,
 };
 use base_consensus_safedb::{SafeDB, SafeDBError, SafeDBReader, SafeHeadResponse};
 use base_protocol::{BlockInfo, L2BlockInfo};
@@ -20,21 +29,21 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     ActionEngineClient, HarnessEngineServer, HarnessL1Server, SupervisedP2P, TestGossipTransport,
-    VerifierPipeline,
 };
 
 type ProdEngineClient = BaseEngineClient<RootProvider, RootProvider<base_common_network::Base>>;
 
-/// An action test harness that drives the production [`DerivationActor`] and
-/// [`EngineActor`] with an HTTP-backed [`BaseEngineClient`] and a real
-/// derivation pipeline.
+/// An action test harness that drives the production [`DerivationActor`],
+/// [`EngineActor`], and [`L1WatcherActor`] with an HTTP-backed
+/// [`BaseEngineClient`] and a real derivation pipeline.
 ///
 /// Unlike [`crate::TestRollupNode`], which steps the pipeline manually via
 /// `step()` / `run_until_idle()`, `TestActorDerivationNode` runs the exact
-/// production actor stack end-to-end: derivation-state-machine gating,
-/// reorg detection, safe-head SafeDB writes, finalization tracking, and the
-/// full `InsertTask` → `ConsolidateTask` engine flow all execute through the
-/// real code paths.
+/// production actor stack end-to-end: L1 head delivery via the real
+/// [`L1WatcherActor`] polling [`HarnessL1Server`], derivation-state-machine
+/// gating, reorg detection, safe-head `SafeDB` writes, finalization tracking,
+/// and the full `InsertTask` → `ConsolidateTask` engine flow all execute
+/// through the real code paths.
 ///
 /// The engine actors communicate with the execution layer over localhost HTTP
 /// via a real [`BaseEngineClient`], so the JWT-authenticated JSON-RPC transport
@@ -48,18 +57,18 @@ type ProdEngineClient = BaseEngineClient<RootProvider, RootProvider<base_common_
 ///    [`crate::SharedL1Chain`].
 /// 2. Call [`initialize`] once to send the genesis activation and EL-sync
 ///    completion signals.
-/// 3. Call [`act_l1_head_signal`] with the L1 tip to trigger derivation.
-/// 4. Call [`tick`] / [`sync_until_safe`] to advance until the safe head
-///    reaches the desired target.
+/// 3. Call [`tick`] / [`sync_until_safe`] to advance virtual time; the real
+///    [`L1WatcherActor`] polls [`HarnessL1Server`] and delivers L1 head
+///    updates to the derivation actor automatically.
 ///
 /// # Tests
 ///
-/// Tests using this harness should use a regular `#[tokio::test]` (no
-/// `start_paused`), as the `DerivationActor` is purely event-driven with no
-/// timer loops.
+/// Tests using this harness must use `#[tokio::test(start_paused = true)]`
+/// because [`L1WatcherActor`] drives derivation via a timer-based poll loop.
+/// [`tick`] advances virtual time by the poll interval and yields enough
+/// times for the full actor chain to process the resulting messages.
 ///
 /// [`initialize`]: TestActorDerivationNode::initialize
-/// [`act_l1_head_signal`]: TestActorDerivationNode::act_l1_head_signal
 /// [`tick`]: TestActorDerivationNode::tick
 /// [`sync_until_safe`]: TestActorDerivationNode::sync_until_safe
 #[derive(Debug)]
@@ -73,7 +82,20 @@ pub struct TestActorDerivationNode {
     /// Sender for injecting gossip blocks directly into the network actor.
     pub gossip_tx: SupervisedP2P,
     /// Sender side of the derivation actor's inbound request channel.
+    ///
+    /// Kept for [`act_l1_finalized_signal`] — L1 finality is not yet driven
+    /// automatically by the watcher in test mode.
+    ///
+    /// [`act_l1_finalized_signal`]: Self::act_l1_finalized_signal
     derivation_actor_tx: mpsc::Sender<DerivationActorRequest>,
+    /// Sender side of the engine actor's inbound request channel.
+    ///
+    /// Used by [`act_reset`] to send [`ResetRequest`] directly to the engine
+    /// actor, which fully resets the [`EngineProcessor`]'s internal state and
+    /// propagates the reset signal back to the derivation actor.
+    ///
+    /// [`act_reset`]: Self::act_reset
+    engine_actor_tx: mpsc::Sender<EngineActorRequest>,
     /// Cancellation token to stop the actors on drop.
     cancel: CancellationToken,
     /// Handle to the spawned network actor task.
@@ -82,13 +104,15 @@ pub struct TestActorDerivationNode {
     _derivation_handle: JoinHandle<()>,
     /// Handle to the spawned engine actor task.
     _engine_handle: JoinHandle<()>,
+    /// Handle to the spawned L1 watcher actor task.
+    _l1_watcher_handle: JoinHandle<()>,
     /// Keeps the network actor's inbound channels alive for the lifetime of the test.
     _network_inbound: NetworkInboundData,
     /// Keeps the in-process engine API HTTP server alive for the duration of the test.
     _engine_server: HarnessEngineServer,
     /// Keeps the in-process L1 JSON-RPC HTTP server alive for the duration of the test.
     _l1_server: HarnessL1Server,
-    /// Temporary directory that holds the SafeDB files — dropped last to
+    /// Temporary directory that holds the `SafeDB` files — dropped last to
     /// keep the DB alive for the duration of the test.
     _safedb_dir: tempfile::TempDir,
 }
@@ -98,22 +122,26 @@ impl TestActorDerivationNode {
     ///
     /// Spawns an in-process Engine API HTTP server and an L1 JSON-RPC HTTP
     /// server, builds a production [`BaseEngineClient`] that talks to them,
-    /// then wires a [`DerivationActor`] and an [`EngineActor`] using that
-    /// client.  This mirrors the wiring in [`base_consensus_node::RollupNode`]
-    /// while still allowing the test to observe engine state via the
-    /// [`ActionEngineClient`] held on the returned struct.
+    /// then wires a [`DerivationActor`], [`EngineActor`], and
+    /// [`L1WatcherActor`] using that client.  This mirrors the wiring in
+    /// [`base_consensus_node::RollupNode`] while still allowing the test to
+    /// observe engine state via the [`ActionEngineClient`] held on the
+    /// returned struct.
     ///
     /// Call [`initialize`] before any derivation calls.
     ///
     /// [`initialize`]: Self::initialize
-    pub async fn new(
+    pub async fn new<P>(
         config: Arc<RollupConfig>,
         engine: ActionEngineClient,
-        pipeline: VerifierPipeline,
+        pipeline: P,
         _genesis_safe_head: L2BlockInfo,
-    ) -> Self {
-        let safedb_dir = tempfile::TempDir::new()
-            .expect("TestActorDerivationNode: failed to create tempdir");
+    ) -> Self
+    where
+        P: Pipeline + SignalReceiver + std::fmt::Debug + Send + Sync + 'static,
+    {
+        let safedb_dir =
+            tempfile::TempDir::new().expect("TestActorDerivationNode: failed to create tempdir");
         let safe_db = Arc::new(
             SafeDB::open(safedb_dir.path().join("safedb"))
                 .expect("TestActorDerivationNode: failed to open SafeDB"),
@@ -166,8 +194,7 @@ impl TestActorDerivationNode {
         // one `ProcessEngineSyncCompletionRequest` to the derivation actor.
         let (unsafe_head_tx, _) = watch::channel(L2BlockInfo::default());
 
-        let engine_obj =
-            Engine::new(engine_state, engine_state_tx, engine_queue_length_tx);
+        let engine_obj = Engine::new(engine_state, engine_state_tx, engine_queue_length_tx);
         let engine_processor = EngineProcessor::new(
             Arc::clone(&http_client) as Arc<ProdEngineClient>,
             Arc::clone(&config),
@@ -198,11 +225,46 @@ impl TestActorDerivationNode {
             Arc::clone(&safe_db) as Arc<dyn base_consensus_safedb::SafeHeadListener>,
         );
 
+        // Wire L1WatcherActor so it polls HarnessL1Server and delivers real
+        // L1 head updates to the derivation actor. Use a 2-second poll interval
+        // to match the tick() step size.
+        let (l1_head_updates_tx, _l1_head_updates_rx) = watch::channel::<Option<BlockInfo>>(None);
+        let l1_provider = RootProvider::new_http(l1_server.url.clone());
+        let head_stream = BlockStream::new_as_stream(
+            l1_provider.clone(),
+            BlockNumberOrTag::Latest,
+            Duration::from_secs(2),
+        )
+        .expect("TestActorDerivationNode: failed to create head stream");
+        let finalized_stream = BlockStream::new_as_stream(
+            l1_provider.clone(),
+            BlockNumberOrTag::Finalized,
+            Duration::from_secs(2),
+        )
+        .expect("TestActorDerivationNode: failed to create finalized stream");
+        let l1_watcher = L1WatcherActor::new(
+            Arc::clone(&config),
+            AlloyL1BlockFetcher(l1_provider),
+            l1_head_updates_tx,
+            QueuedL1WatcherDerivationClient {
+                derivation_actor_request_tx: derivation_actor_tx.clone(),
+            },
+            None, // no unsafe block signer
+            cancel.clone(),
+            head_stream,
+            finalized_stream,
+            0, // no verifier_l1_confs
+            Arc::new(AtomicU64::new(0)),
+        );
+
         let engine_handle = tokio::spawn(async move {
             let _ = engine_actor.start(()).await;
         });
         let derivation_handle = tokio::spawn(async move {
             let _ = derivation_actor.start(()).await;
+        });
+        let l1_watcher_handle = tokio::spawn(async move {
+            let _ = l1_watcher.start(()).await;
         });
 
         Self {
@@ -211,10 +273,12 @@ impl TestActorDerivationNode {
             rollup_config: Arc::clone(&config),
             gossip_tx,
             derivation_actor_tx,
+            engine_actor_tx,
             cancel,
             _network_handle: network_handle,
             _derivation_handle: derivation_handle,
             _engine_handle: engine_handle,
+            _l1_watcher_handle: l1_watcher_handle,
             _network_inbound: network_inbound,
             _engine_server: engine_server,
             _l1_server: l1_server,
@@ -235,9 +299,9 @@ impl TestActorDerivationNode {
     /// directly to the pipeline) before this is called — that is handled by
     /// [`ActionTestHarness::create_actor_derivation_node`].
     ///
-    /// Must be called once before any [`act_l1_head_signal`] calls.
+    /// Must be called once before any [`tick`] / [`sync_until_safe`] calls.
     ///
-    /// [`act_l1_head_signal`]: Self::act_l1_head_signal
+    /// [`tick`]: Self::tick
     /// [`ProcessEngineSyncCompletionRequest`]: DerivationActorRequest::ProcessEngineSyncCompletionRequest
     /// [`ActivationSignal`]: base_consensus_derive::ActivationSignal
     pub async fn initialize(&self) {
@@ -246,18 +310,14 @@ impl TestActorDerivationNode {
         }
     }
 
-    /// Signal the derivation actor that a new L1 head block is available.
+    /// Register a block hash in the engine's shared registry.
     ///
-    /// Sends [`ProcessL1HeadUpdateRequest`] to the derivation actor's inbox.
-    /// The actor transitions from `AwaitingL1Data` to `Deriving` and calls
-    /// `attempt_derivation`, which steps the pipeline until EOF or an error.
-    ///
-    /// [`ProcessL1HeadUpdateRequest`]: DerivationActorRequest::ProcessL1HeadUpdateRequest
-    pub async fn act_l1_head_signal(&self, l1_block: BlockInfo) {
-        self.derivation_actor_tx
-            .send(DerivationActorRequest::ProcessL1HeadUpdateRequest(Box::new(l1_block)))
-            .await
-            .expect("TestActorDerivationNode: L1 head signal channel closed");
+    /// Passing `None` for the state root skips state-root validation for that
+    /// block, which is necessary for hardfork upgrade blocks where the pipeline
+    /// injects additional deposit transactions that change the EVM state root
+    /// relative to what the sequencer computed.
+    pub fn register_block_hash(&self, number: u64, hash: B256) {
+        self.engine.block_hash_registry().insert(number, hash, None);
     }
 
     /// Signal the derivation actor that an L1 block has been finalized.
@@ -274,21 +334,64 @@ impl TestActorDerivationNode {
             .send(DerivationActorRequest::ProcessFinalizedL1Block(Box::new(l1_block)))
             .await
             .expect("TestActorDerivationNode: finalized signal channel closed");
-    }
-
-    /// Yield many times to allow the actor stack to process pending messages.
-    ///
-    /// Unlike [`crate::TestActorFollowNode::tick`], this method does not
-    /// advance tokio's wall clock, because `DerivationActor` has no timer
-    /// loop — it is purely event-driven.
-    pub async fn tick(&self) {
         for _ in 0..500 {
             tokio::task::yield_now().await;
         }
     }
 
-    /// Send an L1 head signal and tick until the engine's safe head reaches
-    /// `target` block number.
+    /// Trigger a full pipeline reset to `l2_safe_head`.
+    ///
+    /// Resets [`ActionEngineClient`]'s tracked state to `l2_safe_head` FIRST so
+    /// that `find_starting_forkchoice` (called inside `Engine::reset()`) queries
+    /// the HTTP server and sees the target block rather than the stale pre-reset
+    /// heads. This causes the engine to FCU to `l2_safe_head` (genesis in the
+    /// typical reorg case) instead of the old finalized/safe block.
+    ///
+    /// After the forkchoice reset, the engine propagates [`Signal::Reset`]
+    /// one-way to the derivation actor. Yielding 500 times gives the derivation
+    /// actor a chance to process the reset before this call returns.
+    ///
+    /// [`reset_engine_state`]: ActionEngineClient::reset_engine_state
+    pub async fn act_reset(&self, l2_safe_head: base_protocol::L2BlockInfo) {
+        // Reset ActionEngineClient state BEFORE sending ResetRequest so that
+        // find_starting_forkchoice sees the target head, not the old finalized head.
+        self.engine.reset_engine_state(l2_safe_head);
+
+        let (result_tx, mut result_rx) = mpsc::channel(1);
+        self.engine_actor_tx
+            .send(EngineActorRequest::ResetRequest(Box::new(ResetRequest { result_tx })))
+            .await
+            .expect("TestActorDerivationNode: engine actor channel closed");
+        result_rx
+            .recv()
+            .await
+            .expect("TestActorDerivationNode: engine reset result channel closed")
+            .expect("TestActorDerivationNode: engine reset failed");
+        for _ in 0..500 {
+            tokio::task::yield_now().await;
+        }
+    }
+
+    /// Advance virtual time by the L1 watcher poll interval and yield many
+    /// times to let the full actor chain process the resulting messages.
+    ///
+    /// Must be called from a test with `#[tokio::test(start_paused = true)]`.
+    /// Each call advances the tokio clock by 2 seconds, which fires the
+    /// [`L1WatcherActor`]'s poll timer, causing it to fetch the latest L1 block
+    /// from [`HarnessL1Server`] and forward it to the [`DerivationActor`].
+    /// The 500 `yield_now()` calls give every spawned task (watcher → derivation
+    /// → engine → `InsertTask`) one scheduling turn before returning.
+    pub async fn tick(&self) {
+        tokio::time::advance(Duration::from_secs(2)).await;
+        for _ in 0..500 {
+            tokio::task::yield_now().await;
+        }
+    }
+
+    /// Tick until the engine's safe head reaches `target` block number.
+    ///
+    /// The real [`L1WatcherActor`] delivers L1 head updates on each tick;
+    /// no manual `act_l1_head_signal` call is required.
     ///
     /// After the target is reached, one additional [`tick`] is performed to
     /// allow the [`DerivationActor`] to process the final
@@ -302,8 +405,7 @@ impl TestActorDerivationNode {
     /// [`tick`]: Self::tick
     /// [`SafeDB`]: base_consensus_safedb::SafeDB
     /// [`ProcessEngineSafeHeadUpdateRequest`]: DerivationActorRequest::ProcessEngineSafeHeadUpdateRequest
-    pub async fn sync_until_safe(&self, target: u64, l1_tip: BlockInfo) {
-        self.act_l1_head_signal(l1_tip).await;
+    pub async fn sync_until_safe(&self, target: u64) {
         for _ in 0..200 {
             let safe = self.engine.safe_head().block_info.number;
             if safe >= target {
@@ -331,6 +433,47 @@ impl TestActorDerivationNode {
         l1_block_num: u64,
     ) -> Result<SafeHeadResponse, SafeDBError> {
         self.safe_db.safe_head_at_l1(l1_block_num).await
+    }
+
+    /// Inject an unsafe gossip block into the network actor.
+    ///
+    /// Applies the same sequential-number gap guard that the production P2P
+    /// stack enforces: if `block.number != unsafe_head + 1` the block is silently
+    /// dropped and no tick is performed.
+    ///
+    /// For sequential blocks, converts `block` into a [`NetworkPayloadEnvelope`]
+    /// and sends it via the gossip channel to the real [`NetworkActor`], which
+    /// forwards it to the [`EngineActor`] as a `ProcessUnsafeL2Block` request.
+    /// One [`tick`] is performed so the actor chain has time to process the payload.
+    ///
+    /// The gap guard is required because [`ActionEngineClient`] executes blocks
+    /// against its in-process EVM: inserting a block whose parent has not yet been
+    /// committed would cause a debug assert.  The real P2P layer applies an
+    /// equivalent check before forwarding blocks to the engine.
+    ///
+    /// [`tick`]: Self::tick
+    pub async fn act_l2_unsafe_gossip_receive(&self, block: &BaseBlock) {
+        let unsafe_head_num = self.engine.unsafe_head().block_info.number;
+        if block.header.number != unsafe_head_num + 1 {
+            return;
+        }
+        let block_hash = block.header.hash_slow();
+        let (execution_payload, _) = BaseExecutionPayload::from_block_unchecked(block_hash, block);
+        let network = NetworkPayloadEnvelope {
+            payload: execution_payload,
+            signature: Signature::new(U256::ZERO, U256::ZERO, false),
+            payload_hash: PayloadHash(B256::ZERO),
+            parent_beacon_block_root: block.header.parent_beacon_block_root,
+        };
+        self.gossip_tx.send(network);
+        // Yield without advancing virtual time so the L1WatcherActor timer does
+        // not fire. Advancing time here would trigger derivation, which may race
+        // with the gossip InsertTask and attempt to reconcile (build) the block
+        // before the gossip block is committed — causing the EngineProcessor to
+        // fail and drop subsequent gossip payloads.
+        for _ in 0..1000 {
+            tokio::task::yield_now().await;
+        }
     }
 
     /// Cancel the actors, allowing their tasks to terminate.

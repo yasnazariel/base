@@ -1,5 +1,6 @@
 //! Action tests for hardfork activation gating and cascade semantics.
 
+use alloy_primitives::B256;
 use base_action_harness::{
     ActionL2Source, ActionTestHarness, Batcher, BatcherConfig, L1MinerConfig, SharedL1Chain,
     TestRollupConfigBuilder,
@@ -261,7 +262,7 @@ fn base_azul_is_standalone_from_jovian() {
 ///    when Delta is not active at the batch L1 origin (`SpanBatchPreDelta`).
 ///
 /// The net result: zero L2 blocks derived, pipeline returns `Ok(0)`.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn span_batch_rejected_before_delta() {
     let batcher_cfg = BatcherConfig::default();
     let hardforks = HardForkConfig { canyon_time: Some(0), ..Default::default() };
@@ -285,15 +286,16 @@ async fn span_batch_rejected_before_delta() {
     let mut batcher = Batcher::new(source, &h.rollup_config, span_cfg);
     batcher.advance(&mut h.l1).await;
 
-    let (mut node, _chain) = h.create_test_rollup_node_from_sequencer(
-        &mut builder,
-        SharedL1Chain::from_blocks(h.l1.chain().to_vec()),
-    );
+    let chain = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
+    let node = h.create_actor_derivation_node(chain).await;
     node.initialize().await;
-    node.run_until_idle().await;
+    // Tick a few times; the span batch is rejected, safe head stays at 0.
+    node.tick().await;
+    node.tick().await;
+    node.tick().await;
 
     assert_eq!(
-        node.l2_safe_number(),
+        node.engine.safe_head().block_info.number,
         0,
         "no blocks should be derived: span batch rejected pre-Delta/Fjord"
     );
@@ -304,7 +306,7 @@ async fn span_batch_rejected_before_delta() {
 ///
 /// Fjord is required for two reasons: it activates Delta (via cascade), and
 /// the batcher's brotli compression is only accepted by the verifier at Fjord.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn span_batch_derives_after_delta() {
     let batcher_cfg = BatcherConfig::default();
     let hardforks = HardForkConfig { fjord_time: Some(0), ..Default::default() };
@@ -328,20 +330,21 @@ async fn span_batch_derives_after_delta() {
     let mut batcher = Batcher::new(source, &h.rollup_config, span_cfg);
     batcher.advance(&mut h.l1).await;
 
-    let (mut node, _chain) = h.create_test_rollup_node_from_sequencer(
-        &mut builder,
-        SharedL1Chain::from_blocks(h.l1.chain().to_vec()),
-    );
+    let chain = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
+    let node = h.create_actor_derivation_node(chain).await;
     node.initialize().await;
-    let derived = node.run_until_idle().await;
+    node.sync_until_safe(2).await;
 
-    assert_eq!(derived, 2, "expected 2 L2 blocks derived from span batch");
-    assert_eq!(node.l2_safe_number(), 2, "safe head should advance to block 2");
+    assert_eq!(
+        node.engine.safe_head().block_info.number,
+        2,
+        "expected 2 L2 blocks derived from span batch"
+    );
 }
 
 /// Control test: with Fjord active, `SingleBatch` (the default encoding) derives
 /// one L2 block per L1 block, regardless of span batch gating.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn single_batch_derives_with_fjord() {
     let batcher_cfg = BatcherConfig {
         encoder: EncoderConfig { da_type: DaType::Calldata, ..EncoderConfig::default() },
@@ -361,15 +364,12 @@ async fn single_batch_derives_with_fjord() {
         batcher.advance(&mut h.l1).await;
     }
 
-    let (mut node, _chain) = h.create_test_rollup_node_from_sequencer(
-        &mut builder,
-        SharedL1Chain::from_blocks(h.l1.chain().to_vec()),
-    );
+    let chain = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
+    let node = h.create_actor_derivation_node(chain).await;
     node.initialize().await;
+    node.sync_until_safe(2).await;
 
-    let total_derived = node.run_until_idle().await;
-    assert_eq!(total_derived, 2, "both L2 blocks must be derived");
-    assert_eq!(node.l2_safe_number(), 2, "safe head should advance to block 2");
+    assert_eq!(node.engine.safe_head().block_info.number, 2, "both L2 blocks must be derived");
 }
 
 /// Derivation must succeed across the Jovian activation boundary.
@@ -386,7 +386,7 @@ async fn single_batch_derives_with_fjord() {
 /// user transactions in the upgrade block is dropped, because the derivation
 /// pipeline prepends the Jovian upgrade deposit transactions to that block's
 /// attribute set.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn jovian_derivation_crosses_activation_boundary() {
     let batcher_cfg = BatcherConfig {
         encoder: EncoderConfig { da_type: DaType::Calldata, ..EncoderConfig::default() },
@@ -409,7 +409,7 @@ async fn jovian_derivation_crosses_activation_boundary() {
     let l1_chain = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
     let mut builder = h.create_l2_sequencer(l1_chain);
 
-    let mut block_hashes = [Default::default(); 5];
+    let mut block_hashes = [B256::default(); 5];
     let mut batcher = Batcher::new(ActionL2Source::new(), &h.rollup_config, batcher_cfg.clone());
     for i in 1..=4u64 {
         let block = if i == 3 {
@@ -423,24 +423,22 @@ async fn jovian_derivation_crosses_activation_boundary() {
         batcher.advance(&mut h.l1).await;
     }
 
-    let (mut node, _chain) = h.create_test_rollup_node_from_sequencer(
-        &mut builder,
-        SharedL1Chain::from_blocks(h.l1.chain().to_vec()),
-    );
+    let chain = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
+    let node = h.create_actor_derivation_node(chain).await;
+
     // The Jovian activation block (block 3) has upgrade deposit transactions
     // injected by the derivation pipeline that the sequencer did not execute.
     // These contract deployments change the EVM state root, causing a permanent
     // EVM state divergence from the sequencer for all subsequent blocks. Clear
-    // the sequencer-registered state roots for blocks 3 and 4 so the node
-    // skips state-root validation for them.
+    // the state root entries for blocks 3 and 4 so the engine skips state-root
+    // validation for them.
     node.register_block_hash(3, block_hashes[3]);
     node.register_block_hash(4, block_hashes[4]);
     node.initialize().await;
+    node.sync_until_safe(4).await;
 
-    let total_derived = node.run_until_idle().await;
-    assert_eq!(total_derived, 4, "all 4 L2 blocks must be derived");
     assert_eq!(
-        node.l2_safe_number(),
+        node.engine.safe_head().block_info.number,
         4,
         "safe head should advance past the Jovian activation boundary"
     );

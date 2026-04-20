@@ -60,11 +60,6 @@ async fn azul_clz_op_code() {
     let l1_chain = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
     let mut builder = h.create_l2_sequencer(l1_chain);
 
-    let (mut node, chain) = h.create_test_rollup_node_from_sequencer(
-        &mut builder,
-        SharedL1Chain::from_blocks(h.l1.chain().to_vec()),
-    );
-
     let account = builder.test_account();
     let contract_addr = TEST_ACCOUNT_ADDRESS.create(0);
 
@@ -157,20 +152,20 @@ async fn azul_clz_op_code() {
         );
     }
 
-    // ── Batch and derive all 4 blocks ────────────────────────────────
+    // ── Batch all 4 blocks then derive ───────────────────────────────
     let mut batcher = Batcher::new(ActionL2Source::new(), &h.rollup_config, batcher_cfg.clone());
-    node.initialize().await;
-
-    for (block, i) in [(block1, 1u64), (block2, 2), (block3, 3), (block4, 4)] {
+    for block in [block1, block2, block3, block4] {
         batcher.push_block(block);
         batcher.advance(&mut h.l1).await;
-        chain.push(h.l1.tip().clone());
-        let derived = node.run_until_idle().await;
-        assert_eq!(derived, 1, "L1 block {i} should derive exactly one L2 block");
     }
 
+    let chain = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
+    let node = h.create_actor_derivation_node(chain).await;
+    node.initialize().await;
+    node.sync_until_safe(4).await;
+
     assert_eq!(
-        node.l2_safe().block_info.number,
+        node.engine.safe_head().block_info.number,
         4,
         "all 4 L2 blocks must derive through the Base V1 boundary"
     );

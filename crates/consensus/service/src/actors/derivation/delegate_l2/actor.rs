@@ -12,7 +12,10 @@ use tracing::{debug, error, info, warn};
 use crate::{
     CancellableContext, DerivationActorRequest, DerivationEngineClient, EngineActorRequest,
     NodeActor,
-    actors::derivation::{DerivationError, delegate_l2::{L2SourceClient, LocalL2Provider}},
+    actors::derivation::{
+        DerivationError,
+        delegate_l2::{L2SourceClient, LocalL2Provider},
+    },
 };
 
 const DEFAULT_PROOFS_MAX_BLOCKS_AHEAD: u64 = 512;
@@ -190,7 +193,7 @@ where
                     let l2_source = Arc::clone(&self.l2_source);
                     let engine_client = Arc::clone(&self.engine_client);
                     let engine_actor_request_tx = self.engine_actor_request_tx.clone();
-                    let local_l2_provider = self.local_l2_provider.clone();
+                    let local_l2_provider = Arc::clone(&self.local_l2_provider);
                     let sent_head = self.sent_head;
 
                     sync_task = Some(tokio::spawn(async move {
@@ -384,16 +387,16 @@ where
         let source_hash = safe_payload.execution_payload.block_hash();
 
         // Detect hash mismatch between source and local EL for the delegated safe block.
-        if let Some(local_hash) = self.local_l2_provider.block_hash_at(clamped_safe).await {
-            if local_hash != source_hash {
-                warn!(
-                    target: "derivation",
-                    block_number = clamped_safe,
-                    local_hash = %local_hash,
-                    source_hash = %source_hash,
-                    "Delegated safe block hash mismatch between source and local EL"
-                );
-            }
+        if let Some(local_hash) = self.local_l2_provider.block_hash_at(clamped_safe).await
+            && local_hash != source_hash
+        {
+            warn!(
+                target: "derivation",
+                block_number = clamped_safe,
+                local_hash = %local_hash,
+                source_hash = %source_hash,
+                "Delegated safe block hash mismatch between source and local EL"
+            );
         }
 
         let safe_l2 = L2BlockInfo {

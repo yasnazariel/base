@@ -32,27 +32,30 @@ async fn azul_derivation_crosses_activation_boundary() {
     let l1_chain = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
     let mut builder = h.create_l2_sequencer(l1_chain);
 
-    let (mut node, chain) = h.create_test_rollup_node_from_sequencer(
-        &mut builder,
-        SharedL1Chain::from_blocks(h.l1.chain().to_vec()),
-    );
+    // Build and batch all 4 blocks.
     let mut batcher = Batcher::new(ActionL2Source::new(), &h.rollup_config, batcher_cfg.clone());
-    node.initialize().await;
-
-    for i in 1..=4u64 {
+    for _ in 1..=4u64 {
         batcher.push_block(builder.build_next_block_with_single_transaction().await);
         batcher.advance(&mut h.l1).await;
-        chain.push(h.l1.tip().clone());
-        let derived = node.run_until_idle().await;
-        assert_eq!(derived, 1, "L1 block {i} should derive exactly one L2 block");
-
-        let block = node.derived_block(i).expect("derived block must be recorded");
-        assert_eq!(block.user_tx_count, 1, "L2 block {i} should contain 1 user transaction");
     }
 
+    let chain = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
+    let node = h.create_actor_derivation_node(chain).await;
+    node.initialize().await;
+    node.sync_until_safe(4).await;
+
     assert_eq!(
-        node.l2_safe().block_info.number,
+        node.engine.safe_head().block_info.number,
         4,
         "safe head should advance past the Base Azul activation boundary"
     );
+
+    // Verify each block includes exactly 1 user transaction (2 total: 1 L1 info deposit + 1 user).
+    for i in 1u64..=4 {
+        assert_eq!(
+            node.engine.executed_tx_count(i),
+            2,
+            "L2 block {i} should contain 1 user transaction (total 2: deposit + user)"
+        );
+    }
 }

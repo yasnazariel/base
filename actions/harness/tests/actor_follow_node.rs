@@ -61,15 +61,9 @@ async fn setup_with_sequencer()
         chain,
     );
 
-    let follow_node = TestActorFollowNode::new(
-        rollup_config,
-        engine,
-        source.clone(),
-        local_provider,
-        false,
-        512,
-    )
-    .await;
+    let follow_node =
+        TestActorFollowNode::new(rollup_config, engine, source.clone(), local_provider, false, 512)
+            .await;
 
     (follow_node, source, sequencer)
 }

@@ -15,24 +15,21 @@ use alloy_rpc_types_engine::{
 };
 use alloy_rpc_types_eth::Block;
 use async_trait::async_trait;
-use base_common_network::Base;
 use base_common_provider::BaseEngineApi;
 use base_common_rpc_types::Transaction as BaseTransaction;
 use base_common_rpc_types_engine::{
     BaseExecutionPayloadEnvelopeV3, BaseExecutionPayloadEnvelopeV4, BaseExecutionPayloadEnvelopeV5,
     BaseExecutionPayloadV4, BasePayloadAttributes,
 };
-use base_consensus_engine::HyperAuthClient;
 use base_execution_payload_builder::BasePayloadTypes;
-use base_execution_rpc::engine::{BaseEngineApiServer, OP_ENGINE_CAPABILITIES};
-use base_node_core::OpEngineTypes;
+use base_execution_rpc::engine::{BaseEngineApiServer, ENGINE_CAPABILITIES};
+use base_node_core::BaseEngineTypes;
 use jsonrpsee::{
     core::RpcResult,
     proc_macros::rpc,
     server::{Server, ServerHandle},
     types::ErrorObject,
 };
-use alloy_transport_http::Http;
 use url::Url;
 
 use crate::ActionEngineClient;
@@ -48,14 +45,9 @@ fn rpc_err(e: impl std::fmt::Display) -> ErrorObject<'static> {
 }
 
 #[async_trait]
-impl BaseEngineApiServer<OpEngineTypes<BasePayloadTypes>> for HarnessEngineRpc {
+impl BaseEngineApiServer<BaseEngineTypes<BasePayloadTypes>> for HarnessEngineRpc {
     async fn new_payload_v2(&self, payload: ExecutionPayloadInputV2) -> RpcResult<PayloadStatus> {
-        <ActionEngineClient as BaseEngineApi<Base, Http<HyperAuthClient>>>::new_payload_v2(
-            &self.engine,
-            payload,
-        )
-        .await
-        .map_err(rpc_err)
+        self.engine.new_payload_v2(payload).await.map_err(rpc_err)
     }
 
     async fn new_payload_v3(
@@ -64,13 +56,7 @@ impl BaseEngineApiServer<OpEngineTypes<BasePayloadTypes>> for HarnessEngineRpc {
         _versioned_hashes: Vec<B256>,
         parent_beacon_block_root: B256,
     ) -> RpcResult<PayloadStatus> {
-        <ActionEngineClient as BaseEngineApi<Base, Http<HyperAuthClient>>>::new_payload_v3(
-            &self.engine,
-            payload,
-            parent_beacon_block_root,
-        )
-        .await
-        .map_err(rpc_err)
+        self.engine.new_payload_v3(payload, parent_beacon_block_root).await.map_err(rpc_err)
     }
 
     async fn new_payload_v4(
@@ -80,13 +66,7 @@ impl BaseEngineApiServer<OpEngineTypes<BasePayloadTypes>> for HarnessEngineRpc {
         parent_beacon_block_root: B256,
         _execution_requests: Requests,
     ) -> RpcResult<PayloadStatus> {
-        <ActionEngineClient as BaseEngineApi<Base, Http<HyperAuthClient>>>::new_payload_v4(
-            &self.engine,
-            payload,
-            parent_beacon_block_root,
-        )
-        .await
-        .map_err(rpc_err)
+        self.engine.new_payload_v4(payload, parent_beacon_block_root).await.map_err(rpc_err)
     }
 
     async fn fork_choice_updated_v1(
@@ -94,13 +74,10 @@ impl BaseEngineApiServer<OpEngineTypes<BasePayloadTypes>> for HarnessEngineRpc {
         fork_choice_state: ForkchoiceState,
         payload_attributes: Option<BasePayloadAttributes>,
     ) -> RpcResult<ForkchoiceUpdated> {
-        <ActionEngineClient as BaseEngineApi<Base, Http<HyperAuthClient>>>::fork_choice_updated_v2(
-            &self.engine,
-            fork_choice_state,
-            payload_attributes,
-        )
-        .await
-        .map_err(rpc_err)
+        self.engine
+            .fork_choice_updated_v2(fork_choice_state, payload_attributes)
+            .await
+            .map_err(rpc_err)
     }
 
     async fn fork_choice_updated_v2(
@@ -108,13 +85,10 @@ impl BaseEngineApiServer<OpEngineTypes<BasePayloadTypes>> for HarnessEngineRpc {
         fork_choice_state: ForkchoiceState,
         payload_attributes: Option<BasePayloadAttributes>,
     ) -> RpcResult<ForkchoiceUpdated> {
-        <ActionEngineClient as BaseEngineApi<Base, Http<HyperAuthClient>>>::fork_choice_updated_v2(
-            &self.engine,
-            fork_choice_state,
-            payload_attributes,
-        )
-        .await
-        .map_err(rpc_err)
+        self.engine
+            .fork_choice_updated_v2(fork_choice_state, payload_attributes)
+            .await
+            .map_err(rpc_err)
     }
 
     async fn fork_choice_updated_v3(
@@ -122,58 +96,35 @@ impl BaseEngineApiServer<OpEngineTypes<BasePayloadTypes>> for HarnessEngineRpc {
         fork_choice_state: ForkchoiceState,
         payload_attributes: Option<BasePayloadAttributes>,
     ) -> RpcResult<ForkchoiceUpdated> {
-        <ActionEngineClient as BaseEngineApi<Base, Http<HyperAuthClient>>>::fork_choice_updated_v3(
-            &self.engine,
-            fork_choice_state,
-            payload_attributes,
-        )
-        .await
-        .map_err(rpc_err)
+        self.engine
+            .fork_choice_updated_v3(fork_choice_state, payload_attributes)
+            .await
+            .map_err(rpc_err)
     }
 
     async fn get_payload_v2(&self, payload_id: PayloadId) -> RpcResult<ExecutionPayloadEnvelopeV2> {
-        <ActionEngineClient as BaseEngineApi<Base, Http<HyperAuthClient>>>::get_payload_v2(
-            &self.engine,
-            payload_id,
-        )
-        .await
-        .map_err(rpc_err)
+        self.engine.get_payload_v2(payload_id).await.map_err(rpc_err)
     }
 
     async fn get_payload_v3(
         &self,
         payload_id: PayloadId,
     ) -> RpcResult<BaseExecutionPayloadEnvelopeV3> {
-        <ActionEngineClient as BaseEngineApi<Base, Http<HyperAuthClient>>>::get_payload_v3(
-            &self.engine,
-            payload_id,
-        )
-        .await
-        .map_err(rpc_err)
+        self.engine.get_payload_v3(payload_id).await.map_err(rpc_err)
     }
 
     async fn get_payload_v4(
         &self,
         payload_id: PayloadId,
     ) -> RpcResult<BaseExecutionPayloadEnvelopeV4> {
-        <ActionEngineClient as BaseEngineApi<Base, Http<HyperAuthClient>>>::get_payload_v4(
-            &self.engine,
-            payload_id,
-        )
-        .await
-        .map_err(rpc_err)
+        self.engine.get_payload_v4(payload_id).await.map_err(rpc_err)
     }
 
     async fn get_payload_v5(
         &self,
         payload_id: PayloadId,
     ) -> RpcResult<BaseExecutionPayloadEnvelopeV5> {
-        <ActionEngineClient as BaseEngineApi<Base, Http<HyperAuthClient>>>::get_payload_v5(
-            &self.engine,
-            payload_id,
-        )
-        .await
-        .map_err(rpc_err)
+        self.engine.get_payload_v5(payload_id).await.map_err(rpc_err)
     }
 
     async fn get_payload_bodies_by_hash_v1(
@@ -199,7 +150,7 @@ impl BaseEngineApiServer<OpEngineTypes<BasePayloadTypes>> for HarnessEngineRpc {
     }
 
     async fn exchange_capabilities(&self, _capabilities: Vec<String>) -> RpcResult<Vec<String>> {
-        Ok(OP_ENGINE_CAPABILITIES.iter().map(|s| s.to_string()).collect())
+        Ok(ENGINE_CAPABILITIES.iter().map(|s: &&str| s.to_string()).collect())
     }
 }
 
@@ -281,7 +232,7 @@ impl HarnessEngineServer {
         let jwt = JwtSecret::random();
         let mut module = HarnessEngineRpc { engine: Arc::clone(&engine) }.into_rpc();
         let eth_module = HarnessEthL2Rpc { engine }.into_rpc();
-        module.merge(eth_module).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        module.merge(eth_module).map_err(std::io::Error::other)?;
 
         let server = Server::builder().build("127.0.0.1:0").await?;
         let addr: SocketAddr = server.local_addr()?;

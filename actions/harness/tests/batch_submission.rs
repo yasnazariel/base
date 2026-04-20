@@ -77,7 +77,7 @@ async fn batcher_errors_when_no_l2_blocks_async() {
 ///    the new fork. The verifier re-derives L2 block 1 from this block.
 ///
 /// [`BatchDriver`]: base_batcher_core::BatchDriver
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn batcher_reorg_during_submission() {
     let batcher_cfg = BatcherConfig {
         encoder: EncoderConfig { da_type: DaType::Calldata, ..EncoderConfig::default() },
@@ -91,11 +91,6 @@ async fn batcher_reorg_during_submission() {
     let mut sequencer = h.create_l2_sequencer(l1_chain);
     let block = sequencer.build_next_block_with_single_transaction().await;
 
-    let (mut node, chain) = h.create_test_rollup_node_from_sequencer(
-        &mut sequencer,
-        SharedL1Chain::from_blocks(h.l1.chain().to_vec()),
-    );
-
     // Encode and stage all frames; mine L1 block 1 (original).
     // Do NOT call confirm_staged — frames remain in `staged` so the reorg
     // below fires failure receipts for them.
@@ -105,7 +100,6 @@ async fn batcher_reorg_during_submission() {
     batcher.encode_only().await;
     batcher.stage_n_frames(&mut h.l1, usize::MAX);
     h.l1.mine_block(); // L1 block 1 (original, about to be reorged)
-    chain.push(h.l1.tip().clone());
 
     // --- L1 reorg back to genesis (frames still in staged) ---
     // reorg_to fires Err(TxManagerError::Rpc("reorg")) for every staged item
@@ -118,21 +112,20 @@ async fn batcher_reorg_during_submission() {
     // Mine an empty replacement block on the new fork, then resubmit the
     // requeued frames using the same Batcher (no drop/recreate required).
     h.l1.mine_block(); // block 1' (empty, on new fork)
-    chain.truncate_to(0);
-    chain.push(h.l1.tip().clone());
 
     batcher.stage_n_frames(&mut h.l1, usize::MAX);
     let recovery_num = h.l1.mine_block().number();
-    chain.push(h.l1.tip().clone());
     batcher.confirm_staged(recovery_num).await;
 
-    // Verify the node re-derives L2 block 1 from the new-fork submission.
+    // Create the actor node from the final chain state (genesis, block1', block2).
+    // The L1WatcherActor will see block 2 (with the recovery batch) when it polls.
+    let chain = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
+    let node = h.create_actor_derivation_node(chain).await;
     node.initialize().await;
+    node.sync_until_safe(1).await;
 
-    let derived = node.run_until_idle().await;
-    assert_eq!(derived, 1, "same-batcher resubmission must derive L2 block 1");
     assert_eq!(
-        node.l2_safe_number(),
+        node.engine.safe_head().block_info.number,
         1,
         "safe head must recover to 1 after same-batcher resubmission on new fork"
     );

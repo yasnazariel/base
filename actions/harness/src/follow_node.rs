@@ -143,15 +143,15 @@ pub struct ActionL2LocalProvider {
 
 impl ActionL2LocalProvider {
     /// Create a new provider backed by the given block-hash registry.
-    pub fn new(registry: SharedBlockHashRegistry) -> Self {
+    pub const fn new(registry: SharedBlockHashRegistry) -> Self {
         Self { registry, proofs_head: None }
     }
 
-    /// Sets the latest block number the proofs ExEx has processed.
+    /// Sets the latest block number the proofs `ExEx` has processed.
     ///
     /// When set, `DelegateL2DerivationActor` will gate sync at
     /// `proofs_head + DEFAULT_PROOFS_MAX_BLOCKS_AHEAD` when proofs are enabled.
-    pub fn with_proofs_head(mut self, n: u64) -> Self {
+    pub const fn with_proofs_head(mut self, n: u64) -> Self {
         self.proofs_head = Some(n);
         self
     }
@@ -243,7 +243,7 @@ impl TestFollowNode {
     }
 
     /// Return a shared reference to the source bridge.
-    pub fn source(&self) -> &ActionL2SourceBridge {
+    pub const fn source(&self) -> &ActionL2SourceBridge {
         &self.source
     }
 
@@ -381,7 +381,7 @@ impl TestFollowNode {
     /// Mirrors the `update_safe_and_finalized` logic in `SyncFromSourceTask`
     /// from the production follow node, including the `chains_agree` guard:
     /// if the locally executed hash for the safe block does not match the
-    /// source's hash, the SafeDB write is skipped to avoid recording a
+    /// source's hash, the `SafeDB` write is skipped to avoid recording a
     /// fork-diverged entry.
     pub async fn update_safe_and_finalized(&mut self) {
         let local_tip = self.unsafe_head.block_info.number;
@@ -401,7 +401,7 @@ impl TestFollowNode {
         // executed hash for the safe block number matches the source's hash. A mismatch means
         // we are fork-diverged; recording either side would be misleading.
         let local_hash = self.engine.block_hash_registry().get(clamped_safe);
-        let chains_agree = local_hash.map_or(true, |h| h == safe_hash);
+        let chains_agree = local_hash.is_none_or(|h| h == safe_hash);
 
         if !chains_agree {
             return;
@@ -437,23 +437,23 @@ impl TestFollowNode {
         }
 
         let clamped_finalized = self.source.finalized_number().min(local_tip);
-        if clamped_finalized > 0 {
-            if let Some(fin_block) = self.source.get_block(clamped_finalized) {
-                let fin_hash = fin_block.header.hash_slow();
-                if let Ok(fin_info) =
-                    L2BlockInfo::from_block_and_genesis(&fin_block, &self.rollup_config.genesis)
-                {
-                    self.finalized_head = L2BlockInfo {
-                        block_info: BlockInfo {
-                            hash: fin_hash,
-                            number: clamped_finalized,
-                            parent_hash: fin_block.header.parent_hash,
-                            timestamp: fin_block.header.timestamp,
-                        },
-                        l1_origin: fin_info.l1_origin,
-                        seq_num: fin_info.seq_num,
-                    };
-                }
+        if clamped_finalized > 0
+            && let Some(fin_block) = self.source.get_block(clamped_finalized)
+        {
+            let fin_hash = fin_block.header.hash_slow();
+            if let Ok(fin_info) =
+                L2BlockInfo::from_block_and_genesis(&fin_block, &self.rollup_config.genesis)
+            {
+                self.finalized_head = L2BlockInfo {
+                    block_info: BlockInfo {
+                        hash: fin_hash,
+                        number: clamped_finalized,
+                        parent_hash: fin_block.header.parent_hash,
+                        timestamp: fin_block.header.timestamp,
+                    },
+                    l1_origin: fin_info.l1_origin,
+                    seq_num: fin_info.seq_num,
+                };
             }
         }
 

@@ -1,16 +1,18 @@
 //! In-process L1 JSON-RPC server for action tests.
 //!
-//! Exposes `eth_getBlockByHash` and `eth_getBlockByNumber` backed by a
-//! [`SharedL1Chain`], giving the production
-//! [`base_consensus_engine::BaseEngineClient`] an HTTP endpoint to call when
-//! it needs L1 block data (e.g. during `find_starting_forkchoice`).
+//! Exposes `eth_getBlockByHash`, `eth_getBlockByNumber`, and `eth_getLogs`
+//! backed by a [`SharedL1Chain`], giving the production
+//! [`base_consensus_engine::BaseEngineClient`] and [`L1WatcherActor`] an HTTP
+//! endpoint to call when they need L1 block data or system-config logs.
+//!
+//! [`L1WatcherActor`]: base_consensus_node::L1WatcherActor
 
 use std::net::SocketAddr;
 
 use alloy_consensus::Sealed;
 use alloy_eips::BlockNumberOrTag;
 use alloy_primitives::B256;
-use alloy_rpc_types_eth::{Block, BlockTransactions, Transaction as EthTransaction};
+use alloy_rpc_types_eth::{Block, BlockTransactions, Filter, Log, Transaction as EthTransaction};
 use async_trait::async_trait;
 use jsonrpsee::{
     core::RpcResult,
@@ -36,6 +38,16 @@ pub trait HarnessEthApi {
         hash: B256,
         full: bool,
     ) -> RpcResult<Option<Block<EthTransaction>>>;
+
+    /// Returns an empty log set.
+    ///
+    /// Test chains never emit system-config updates, so `eth_getLogs` always
+    /// returns `[]`.  This prevents [`L1WatcherActor`]'s log-retrier from
+    /// exhausting its retry budget and killing the watcher task.
+    ///
+    /// [`L1WatcherActor`]: base_consensus_node::L1WatcherActor
+    #[method(name = "getLogs")]
+    async fn get_logs(&self, filter: Filter) -> RpcResult<Vec<Log>>;
 }
 
 struct HarnessL1Rpc {
@@ -62,14 +74,14 @@ impl HarnessEthApiServer for HarnessL1Rpc {
     ) -> RpcResult<Option<Block<EthTransaction>>> {
         let number = match block {
             BlockNumberOrTag::Number(n) => n,
-            BlockNumberOrTag::Latest | BlockNumberOrTag::Pending => {
-                match self.chain.tip() {
-                    Some(b) => b.number(),
-                    None => return Ok(None),
-                }
-            }
+            BlockNumberOrTag::Latest | BlockNumberOrTag::Pending => match self.chain.tip() {
+                Some(b) => b.number(),
+                None => return Ok(None),
+            },
             BlockNumberOrTag::Earliest => 0,
-            _ => return Ok(None),
+            // Tests have no external finality signal; return null so BlockStream
+            // silently skips the tick rather than surfacing a deserialization error.
+            BlockNumberOrTag::Finalized | BlockNumberOrTag::Safe => return Ok(None),
         };
         Ok(self.chain.get_block(number).as_ref().map(l1_block_to_rpc))
     }
@@ -80,6 +92,10 @@ impl HarnessEthApiServer for HarnessL1Rpc {
         _full: bool,
     ) -> RpcResult<Option<Block<EthTransaction>>> {
         Ok(self.chain.block_by_hash(hash).as_ref().map(l1_block_to_rpc))
+    }
+
+    async fn get_logs(&self, _filter: Filter) -> RpcResult<Vec<Log>> {
+        Ok(vec![])
     }
 }
 

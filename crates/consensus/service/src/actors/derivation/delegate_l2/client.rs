@@ -52,13 +52,13 @@ pub trait LocalL2Provider: Debug + Send + Sync {
     ///
     /// **`None` is treated as agreement** by callers: the safe-head
     /// fork-divergence check in `SyncFromSourceTask::update_safe_and_finalized`
-    /// only skips a SafeDB write when a *known* hash mismatch is detected. If
+    /// only skips a `SafeDB` write when a *known* hash mismatch is detected. If
     /// the local engine has not yet executed the block at `n`, this should
     /// return `None` so the caller does not incorrectly classify the chains as
     /// diverged.
     async fn block_hash_at(&self, n: u64) -> Option<B256>;
 
-    /// Returns the latest block number known to the proofs ExEx, or `None` if
+    /// Returns the latest block number known to the proofs `ExEx`, or `None` if
     /// proofs are not yet available. Returns an error if the RPC call fails.
     async fn proofs_latest_block(&self) -> Result<Option<u64>, alloy_transport::TransportError>;
 }

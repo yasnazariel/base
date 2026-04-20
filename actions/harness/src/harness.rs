@@ -66,10 +66,10 @@ impl ActionTestHarness {
         let l1 = L1Miner::new(l1_config);
         rollup_config.genesis.l2.hash = ActionEngineClient::compute_l2_genesis_hash(&rollup_config);
         let genesis_l1_number = rollup_config.genesis.l1.number;
-        let genesis_l1 = l1
-            .block_by_number(genesis_l1_number)
-            .map(block_info_from)
-            .unwrap_or_else(|| block_info_from(l1.chain().first().expect("L1 genesis always present")));
+        let genesis_l1 =
+            l1.block_by_number(genesis_l1_number).map(block_info_from).unwrap_or_else(|| {
+                block_info_from(l1.chain().first().expect("L1 genesis always present"))
+            });
         rollup_config.genesis.l1.number = genesis_l1.number;
         rollup_config.genesis.l1.hash = genesis_l1.hash;
         Self { l1, rollup_config }
@@ -355,12 +355,13 @@ impl ActionTestHarness {
     /// [`ActionEngineClient`], and returns the actor node ready for
     /// [`initialize`].
     ///
-    /// The `l1_chain` must already contain all L1 blocks the pipeline should
-    /// process; push new blocks with [`SharedL1Chain::push`] before calling
-    /// [`act_l1_head_signal`].
+    /// The `l1_chain` must already contain the initial L1 blocks the pipeline
+    /// should process. Push new blocks with [`SharedL1Chain::push`] at any
+    /// point; the real [`L1WatcherActor`] will detect them on the next
+    /// [`TestActorDerivationNode::tick`].
     ///
     /// [`initialize`]: TestActorDerivationNode::initialize
-    /// [`act_l1_head_signal`]: TestActorDerivationNode::act_l1_head_signal
+    /// [`L1WatcherActor`]: base_consensus_node::L1WatcherActor
     /// [`DerivationActor`]: base_consensus_node::DerivationActor
     /// [`EngineActor`]: base_consensus_node::EngineActor
     /// [`ActivationSignal`]: base_consensus_derive::ActivationSignal
@@ -418,6 +419,62 @@ impl ActionTestHarness {
             .signal(ResetSignal { l2_safe_head: genesis_safe_head }.signal())
             .await
             .expect("TestActorDerivationNode: reset signal failed");
+
+        let engine = ActionEngineClient::new(
+            Arc::clone(&rollup_config),
+            genesis_safe_head,
+            crate::SharedBlockHashRegistry::new(),
+            l1_chain,
+        );
+
+        TestActorDerivationNode::new(rollup_config, engine, pipeline, genesis_safe_head).await
+    }
+
+    /// Create a blob-DA [`TestActorDerivationNode`] wired to the production actor stack.
+    ///
+    /// Identical to [`create_actor_derivation_node`] but uses
+    /// [`ActionBlobDataSource`] so the pipeline reads blobs from the L1 chain
+    /// instead of calldata.
+    ///
+    /// [`create_actor_derivation_node`]: ActionTestHarness::create_actor_derivation_node
+    pub async fn create_actor_blob_derivation_node(
+        &self,
+        l1_chain: SharedL1Chain,
+    ) -> TestActorDerivationNode {
+        let real_genesis_hash = ActionEngineClient::compute_l2_genesis_hash(&self.rollup_config);
+        let mut config = self.rollup_config.clone();
+        config.genesis.l2.hash = real_genesis_hash;
+        let rollup_config = Arc::new(config);
+        let l1_chain_config = Arc::new(ChainConfig::default());
+
+        let genesis_l1 = block_info_from(self.l1.chain().first().expect("genesis always present"));
+        let mut genesis_safe_head = self.l2_genesis();
+        genesis_safe_head.block_info.hash = real_genesis_hash;
+
+        let l1_provider = ActionL1ChainProvider::new(l1_chain.clone());
+        let l2_provider = ActionL2ChainProvider::from_genesis(&rollup_config);
+
+        let dap_source =
+            ActionBlobDataSource::new(l1_chain.clone(), rollup_config.batch_inbox_address);
+        let attrs_builder = StatefulAttributesBuilder::new(
+            Arc::clone(&rollup_config),
+            Arc::clone(&l1_chain_config),
+            l2_provider.clone(),
+            l1_provider.clone(),
+        );
+        let mut pipeline = PipelineBuilder::new()
+            .rollup_config(Arc::clone(&rollup_config))
+            .origin(genesis_l1)
+            .chain_provider(l1_provider)
+            .dap_source(dap_source)
+            .l2_chain_provider(l2_provider)
+            .builder(attrs_builder)
+            .build_polled();
+
+        pipeline
+            .signal(ResetSignal { l2_safe_head: genesis_safe_head }.signal())
+            .await
+            .expect("TestActorDerivationNode (blob): reset signal failed");
 
         let engine = ActionEngineClient::new(
             Arc::clone(&rollup_config),

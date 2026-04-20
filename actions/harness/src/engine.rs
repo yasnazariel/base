@@ -21,7 +21,7 @@ use alloy_rpc_types_eth::{
 };
 use alloy_transport::{TransportError, TransportErrorKind, TransportResult};
 use async_trait::async_trait;
-use base_common_consensus::{BaseBlock, BasePrimitives, BaseTxEnvelope};
+use base_common_consensus::{BaseBlock, BaseBlockBody, BasePrimitives, BaseTxEnvelope};
 use base_common_network::Base;
 use base_common_provider::BaseEngineApi;
 use base_common_rpc_types::Transaction as BaseTransaction;
@@ -50,12 +50,14 @@ use reth_db_common::init::init_genesis;
 use reth_execution_types::ExecutionOutcome;
 use reth_node_api::NodeTypesWithDBAdapter;
 use reth_payload_primitives::{BuiltPayload, PayloadBuilderAttributes};
-use reth_primitives_traits::SealedHeader;
+use reth_primitives_traits::{SealedBlock, SealedHeader};
 use reth_provider::{
-    BlockWriter, HashedPostStateProvider, LatestStateProviderRef, ProviderFactory, StateProvider,
+    BlockExecutionWriter, BlockNumReader, BlockWriter, HashedPostStateProvider,
+    LatestStateProviderRef, ProviderFactory, StageCheckpointWriter, StateProvider,
     StateProviderFactory, providers::BlockchainProvider,
     test_utils::create_test_provider_factory_with_node_types,
 };
+use reth_stages_types::{StageCheckpoint, StageId};
 use reth_transaction_pool::noop::NoopTransactionPool;
 
 use crate::{SharedBlockHashRegistry, SharedL1Chain};
@@ -168,7 +170,31 @@ impl ActionEngineClient {
             GenesisAccount::default().with_balance(test_balance),
         );
 
+        // Compute effective (cascaded) fork timestamps. `RollupConfig::is_X_active` cascades
+        // upward: e.g. `is_ecotone_active` returns true if fjord is active, regardless of whether
+        // `ecotone_time` is set. The Reth chain spec has no cascade — each fork must be explicitly
+        // set. We mirror the cascade here so the EVM hardfork schedule matches the pipeline's view
+        // and `new_payload_vN` version selection (which calls `is_ecotone_active` etc.) is
+        // consistent with what the Reth EVM accepts. Use `min` semantics: if an upper fork
+        // activates earlier than the lower fork's explicit time, the upper fork determines the
+        // effective lower-fork activation (e.g. fjord_time=0 with ecotone_time=6 → eff_ecotone=0).
         let hf = &rollup_config.hardforks;
+        let eff = |explicit: Option<u64>, implied_by: Option<u64>| -> Option<u64> {
+            match (explicit, implied_by) {
+                (Some(e), Some(i)) => Some(e.min(i)),
+                (Some(e), None) => Some(e),
+                (None, i) => i,
+            }
+        };
+        let eff_jovian = hf.jovian_time;
+        let eff_isthmus = eff(hf.isthmus_time, eff_jovian);
+        let eff_holocene = eff(hf.holocene_time, eff_isthmus);
+        let eff_granite = eff(hf.granite_time, eff_holocene);
+        let eff_fjord = eff(hf.fjord_time, eff_granite);
+        let eff_ecotone = eff(hf.ecotone_time, eff_fjord);
+        let eff_canyon = eff(hf.canyon_time, eff_ecotone);
+        let eff_regolith = eff(hf.regolith_time, eff_canyon);
+
         // Helper: set or clear a JSON extra-field that BaseChainSpec::from_genesis reads.
         macro_rules! set_ts {
             ($key:expr, $val:expr) => {
@@ -182,14 +208,14 @@ impl ActionEngineClient {
                 }
             };
         }
-        set_ts!("regolithTime", hf.regolith_time);
-        set_ts!("canyonTime", hf.canyon_time);
-        set_ts!("ecotoneTime", hf.ecotone_time);
-        set_ts!("fjordTime", hf.fjord_time);
-        set_ts!("graniteTime", hf.granite_time);
-        set_ts!("holoceneTime", hf.holocene_time);
-        set_ts!("isthmusTime", hf.isthmus_time);
-        set_ts!("jovianTime", hf.jovian_time);
+        set_ts!("regolithTime", eff_regolith);
+        set_ts!("canyonTime", eff_canyon);
+        set_ts!("ecotoneTime", eff_ecotone);
+        set_ts!("fjordTime", eff_fjord);
+        set_ts!("graniteTime", eff_granite);
+        set_ts!("holoceneTime", eff_holocene);
+        set_ts!("isthmusTime", eff_isthmus);
+        set_ts!("jovianTime", eff_jovian);
 
         // V1 requires Osaka (the EL counterpart). Both must be set together.
         match hf.base.azul {
@@ -296,6 +322,59 @@ impl ActionEngineClient {
         self.inner.lock().expect("action engine inner lock poisoned").finalized_head
     }
 
+    /// Directly reset the tracked finalized head to `head`.
+    ///
+    /// Used by [`crate::TestActorDerivationNode::act_reset`] to mirror the
+    /// synchronous finalized-head reset that the old `TestRollupNode::act_reset`
+    /// applied directly.  In production the finalized head is only advanced via
+    /// `fork_choice_updated_vX`; resetting it is a test-only operation.
+    pub fn reset_finalized_head(&self, head: L2BlockInfo) {
+        self.inner.lock().expect("action engine inner lock poisoned").finalized_head = head;
+    }
+
+    /// Reset all tracked heads and clear any committed blocks above `safe_head`.
+    ///
+    /// Used by [`crate::TestActorDerivationNode::act_reset`] to mirror the full
+    /// engine-state reset that happens on a pipeline reset: all three head labels
+    /// are set to `safe_head`, and every block committed above `safe_head.number`
+    /// is purged from both the in-memory caches (`executed_headers`/
+    /// `executed_transactions`) and the Reth DB, so that `build_and_commit` can
+    /// recommit fresh blocks at the same heights after a reorg without hitting
+    /// duplicate-key errors on the `BlockBodyIndices` append cursor.
+    pub fn reset_engine_state(&self, safe_head: L2BlockInfo) {
+        let mut guard = self.inner.lock().expect("action engine inner lock poisoned");
+        guard.canonical_head = safe_head;
+        guard.safe_head = safe_head;
+        guard.finalized_head = safe_head;
+        let keep_up_to = safe_head.block_info.number;
+        guard.executed_headers.retain(|&n, _| n <= keep_up_to);
+        guard.executed_transactions.retain(|&n, _| n <= keep_up_to);
+
+        // Unwind the Reth DB to match the reset point.
+        //
+        // `build_and_commit` uses cursor.append which fails if the block already
+        // exists in the DB. `init_genesis` sets all stage checkpoints to block 0,
+        // but committed blocks don't update them, so `unwind_trie_state_from` would
+        // compute an empty range. We fix this by first syncing the Finish checkpoint
+        // to the actual DB tip before calling `remove_block_and_execution_above`.
+        let provider_rw = guard
+            .provider_factory
+            .provider_rw()
+            .expect("reset_engine_state: failed to get provider_rw");
+        let last_block = provider_rw.last_block_number().unwrap_or(0);
+        if last_block > keep_up_to {
+            provider_rw
+                .save_stage_checkpoint(StageId::Finish, StageCheckpoint::new(last_block))
+                .expect("reset_engine_state: failed to save Finish stage checkpoint");
+            provider_rw
+                .remove_block_and_execution_above(keep_up_to)
+                .expect("reset_engine_state: failed to remove blocks above reset point");
+            provider_rw.commit().expect("reset_engine_state: failed to commit DB reset");
+            guard.blockchain_provider = BlockchainProvider::new(guard.provider_factory.clone())
+                .expect("reset_engine_state: failed to rebuild blockchain provider");
+        }
+    }
+
     /// Return a clone of the shared block-hash registry.
     pub fn block_hash_registry(&self) -> SharedBlockHashRegistry {
         self.block_registry.clone()
@@ -328,6 +407,20 @@ impl ActionEngineClient {
             .expect("failed to read storage")
             .map(alloy_primitives::U256::from)
             .unwrap_or(alloy_primitives::U256::ZERO)
+    }
+
+    /// Return the number of transactions executed in the given block.
+    ///
+    /// Returns `0` if no block with that number has been committed. A count of `1`
+    /// means the block is deposit-only (L1 info deposit only, no user transactions).
+    pub fn executed_tx_count(&self, block_number: u64) -> usize {
+        self.inner
+            .lock()
+            .expect("engine client lock")
+            .executed_transactions
+            .get(&block_number)
+            .map(|txs| txs.len())
+            .unwrap_or(0)
     }
 
     /// Check whether an account has non-empty code deployed.
@@ -668,6 +761,47 @@ impl ActionEngineClient {
         parent_hash: B256,
         attrs: &BasePayloadAttributes,
     ) -> TransportResult<PayloadId> {
+        // Skip re-building if the block at this height was already committed (e.g. gossip arrived
+        // before derivation). Reconstruct a PendingPayload from the stored header and transactions
+        // so that the caller can proceed to get_payload_vX → new_payload_vX, where the
+        // execute_v1_inner skip-check will fire and return the existing hash without re-executing.
+        let parent_num = inner
+            .executed_headers
+            .values()
+            .find(|h| h.hash_slow() == parent_hash)
+            .map(|h| h.number)
+            .or_else(|| {
+                let genesis_hash = inner.chain_spec.genesis_header().hash_slow();
+                if parent_hash == B256::ZERO || parent_hash == genesis_hash {
+                    Some(inner.chain_spec.genesis_header().number)
+                } else {
+                    None
+                }
+            });
+        if let Some(parent_num) = parent_num {
+            let block_number = parent_num + 1;
+            if let Some(existing_hdr) = inner.executed_headers.get(&block_number).cloned() {
+                let existing_hash = existing_hdr.hash_slow();
+                let txs =
+                    inner.executed_transactions.get(&block_number).cloned().unwrap_or_default();
+                let body = BaseBlockBody { transactions: txs, ommers: vec![], withdrawals: None };
+                let sealed_block = SealedBlock::<BaseBlock>::from_parts_unchecked(
+                    existing_hdr,
+                    body,
+                    existing_hash,
+                );
+                let id = PayloadId::new(inner.payload_counter.to_le_bytes());
+                inner.payload_counter += 1;
+                inner.pending_payloads.insert(
+                    id,
+                    PendingPayload {
+                        built: BaseBuiltPayload::new(id, Arc::new(sealed_block), U256::ZERO, None),
+                    },
+                );
+                return Ok(id);
+            }
+        }
+
         let built = Self::build_and_commit(inner, parent_hash, attrs.clone())?;
 
         let block = built.block();
@@ -718,31 +852,32 @@ impl ActionEngineClient {
     ) -> Block<BaseTransaction> {
         let sealed = Sealed::new_unchecked(header.clone(), block_hash);
         let rpc_header = alloy_rpc_types_eth::Header::from_sealed(sealed);
-        let transactions = if let Some(txs) = txs {
-            // Wrap each consensus transaction in the RPC envelope required by
-            // `L2BlockInfo::from_block_and_genesis` / `find_starting_forkchoice`.
-            let full: Vec<BaseTransaction> = txs
-                .iter()
-                .enumerate()
-                .map(|(idx, tx)| {
-                    let rpc_tx = EthTransaction {
-                        inner: Recovered::new_unchecked(tx.clone(), Default::default()),
-                        block_hash: Some(block_hash),
-                        block_number: Some(header.number),
-                        effective_gas_price: None,
-                        transaction_index: Some(idx as u64),
-                    };
-                    BaseTransaction {
-                        inner: rpc_tx,
-                        deposit_nonce: None,
-                        deposit_receipt_version: None,
-                    }
-                })
-                .collect();
-            BlockTransactions::Full(full)
-        } else {
-            BlockTransactions::Hashes(vec![])
-        };
+        let transactions = txs.map_or_else(
+            || BlockTransactions::Hashes(vec![]),
+            |txs| {
+                // Wrap each consensus transaction in the RPC envelope required by
+                // `L2BlockInfo::from_block_and_genesis` / `find_starting_forkchoice`.
+                let full: Vec<BaseTransaction> = txs
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, tx)| {
+                        let rpc_tx = EthTransaction {
+                            inner: Recovered::new_unchecked(tx.clone(), Default::default()),
+                            block_hash: Some(block_hash),
+                            block_number: Some(header.number),
+                            effective_gas_price: None,
+                            transaction_index: Some(idx as u64),
+                        };
+                        BaseTransaction {
+                            inner: rpc_tx,
+                            deposit_nonce: None,
+                            deposit_receipt_version: None,
+                        }
+                    })
+                    .collect();
+                BlockTransactions::Full(full)
+            },
+        );
         Block { header: rpc_header, uncles: vec![], transactions, withdrawals: None }
     }
 
@@ -1068,40 +1203,37 @@ impl BaseEngineApi for ActionEngineClient {
 
         // Update safe head when the FCU carries a non-zero safe hash.
         let safe = fork_choice_state.safe_block_hash;
-        if safe != B256::ZERO {
-            if let Some(h) =
+        if safe != B256::ZERO
+            && let Some(h) =
                 guard.executed_headers.values().find(|h| h.hash_slow() == safe).cloned()
-            {
-                guard.safe_head = L2BlockInfo {
-                    block_info: BlockInfo {
-                        hash: safe,
-                        number: h.number,
-                        parent_hash: h.parent_hash,
-                        timestamp: h.timestamp,
-                    },
-                    l1_origin: Default::default(),
-                    seq_num: 0,
-                };
-            }
+        {
+            guard.safe_head = L2BlockInfo {
+                block_info: BlockInfo {
+                    hash: safe,
+                    number: h.number,
+                    parent_hash: h.parent_hash,
+                    timestamp: h.timestamp,
+                },
+                l1_origin: Default::default(),
+                seq_num: 0,
+            };
         }
 
         // Update finalized head when the FCU carries a non-zero finalized hash.
         let fin = fork_choice_state.finalized_block_hash;
-        if fin != B256::ZERO {
-            if let Some(h) =
-                guard.executed_headers.values().find(|h| h.hash_slow() == fin).cloned()
-            {
-                guard.finalized_head = L2BlockInfo {
-                    block_info: BlockInfo {
-                        hash: fin,
-                        number: h.number,
-                        parent_hash: h.parent_hash,
-                        timestamp: h.timestamp,
-                    },
-                    l1_origin: Default::default(),
-                    seq_num: 0,
-                };
-            }
+        if fin != B256::ZERO
+            && let Some(h) = guard.executed_headers.values().find(|h| h.hash_slow() == fin).cloned()
+        {
+            guard.finalized_head = L2BlockInfo {
+                block_info: BlockInfo {
+                    hash: fin,
+                    number: h.number,
+                    parent_hash: h.parent_hash,
+                    timestamp: h.timestamp,
+                },
+                l1_origin: Default::default(),
+                seq_num: 0,
+            };
         }
 
         // Sequencer mode: build a block from the provided attributes.

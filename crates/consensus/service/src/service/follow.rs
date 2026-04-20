@@ -71,14 +71,14 @@ where
     }
 
     /// Enables proofs sync gating via `debug_proofsSyncStatus`.
-    pub fn with_proofs(mut self, enabled: bool) -> Self {
+    pub const fn with_proofs(mut self, enabled: bool) -> Self {
         self.proofs_enabled = enabled;
         self
     }
 
     /// Sets the maximum number of blocks the node may advance beyond the
     /// proofs `ExEx` head.
-    pub fn with_proofs_max_blocks_ahead(mut self, max_blocks_ahead: u64) -> Self {
+    pub const fn with_proofs_max_blocks_ahead(mut self, max_blocks_ahead: u64) -> Self {
         self.proofs_max_blocks_ahead = max_blocks_ahead;
         self
     }
@@ -154,7 +154,7 @@ where
             QueuedEngineDerivationClient::new(derivation_actor_request_tx.clone()),
         );
 
-        let derivation = DelegateL2DerivationActor::<_>::new(
+        let derivation = DelegateL2DerivationActor::<_, L2Source>::new(
             QueuedDerivationEngineClient {
                 engine_actor_request_tx: engine_actor_request_tx.clone(),
             },

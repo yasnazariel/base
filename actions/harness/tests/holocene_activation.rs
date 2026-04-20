@@ -28,7 +28,7 @@ use base_consensus_genesis::HardForkConfig;
 ///
 /// [`ChannelBank`]: base_consensus_derive::stages::ChannelBank
 /// [`ChannelAssembler`]: base_consensus_derive::stages::ChannelAssembler
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn holocene_derivation_crosses_activation_boundary() {
     let batcher_cfg = BatcherConfig {
         encoder: EncoderConfig { da_type: DaType::Calldata, ..EncoderConfig::default() },
@@ -54,13 +54,9 @@ async fn holocene_derivation_crosses_activation_boundary() {
     let l1_chain = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
     let mut builder = h.create_l2_sequencer(l1_chain);
 
-    let (mut node, chain) = h.create_test_rollup_node_from_sequencer(
-        &mut builder,
-        SharedL1Chain::from_blocks(h.l1.chain().to_vec()),
-    );
-
     // Build and submit 4 L2 blocks; no upgrade-tx constraint at Holocene,
     // so user txs are valid in all blocks including block 3.
+    let chain = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
     let mut batcher = Batcher::new(ActionL2Source::new(), &h.rollup_config, batcher_cfg.clone());
     for _ in 1..=4u64 {
         batcher.push_block(builder.build_next_block_with_single_transaction().await);
@@ -68,12 +64,12 @@ async fn holocene_derivation_crosses_activation_boundary() {
         chain.push(h.l1.tip().clone());
     }
 
+    let node = h.create_actor_derivation_node(chain).await;
     node.initialize().await;
+    node.sync_until_safe(4).await;
 
-    let total_derived = node.run_until_idle().await;
-    assert_eq!(total_derived, 4, "all 4 L2 blocks must be derived");
     assert_eq!(
-        node.l2_safe_number(),
+        node.engine.safe_head().block_info.number,
         4,
         "all 4 L2 blocks must derive through the Holocene boundary"
     );
@@ -100,7 +96,7 @@ async fn holocene_derivation_crosses_activation_boundary() {
 ///
 /// [`FrameQueue::prune`]: base_consensus_derive::stages::FrameQueue::prune
 /// [`ChannelBank`]: base_consensus_derive::stages::ChannelBank
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn holocene_non_sequential_frame_pruned_channel_never_completes() {
     let batcher_cfg = BatcherConfig {
         encoder: EncoderConfig {
@@ -139,11 +135,6 @@ async fn holocene_non_sequential_frame_pruned_channel_never_completes() {
         "need ≥3 frames to skip frame 1; got {frame_count} (decrease max_frame_size)"
     );
 
-    let (mut node, chain) = h.create_test_rollup_node_from_sequencer(
-        &mut sequencer,
-        SharedL1Chain::from_blocks(h.l1.chain().to_vec()),
-    );
-
     // Submit frame 0 and frame 2 in the same L1 block — skipping frame 1.
     // Under Holocene, FrameQueue::prune removes frame 2 because
     // frame 0.number + 1 != frame 2.number (0 + 1 = 1 ≠ 2).
@@ -152,30 +143,24 @@ async fn holocene_non_sequential_frame_pruned_channel_never_completes() {
     batcher.stage_n_frames(&mut h.l1, 1); // frame 2 (non-sequential)
     let block_1_num = h.l1.mine_block().number();
     batcher.confirm_staged(block_1_num).await;
-    chain.push(h.l1.tip().clone()); // L1 block 1: frames 0 and 2
 
-    node.initialize().await;
-    node.run_until_idle().await;
-
-    // Frame 2 is pruned by FrameQueue — channel 0 only has frame 0.
-    // Channel is incomplete; safe head stays at genesis.
-    assert_eq!(
-        node.l2_safe_number(),
-        0,
-        "channel with missing frame 1 must never complete under Holocene"
-    );
+    let chain = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
 
     // Mine additional empty L1 blocks past the channel timeout to confirm
     // the channel is permanently abandoned (not just waiting for more frames).
     for _ in 0..12 {
         h.mine_and_push(&chain);
     }
-    for _ in 2..=h.l1.latest_number() {
-        node.run_until_idle().await;
+
+    let node = h.create_actor_derivation_node(chain).await;
+    node.initialize().await;
+    // Tick enough times for the pipeline to process all L1 blocks.
+    for _ in 0..15 {
+        node.tick().await;
     }
 
     assert_eq!(
-        node.l2_safe_number(),
+        node.engine.safe_head().block_info.number,
         0,
         "safe head must remain at genesis: non-sequential frame was pruned, channel never completed"
     );
@@ -204,7 +189,7 @@ async fn holocene_non_sequential_frame_pruned_channel_never_completes() {
 /// block 1 (from the abandoned channel A) is never derived.
 ///
 /// [`FrameQueue::prune`]: base_consensus_derive::stages::FrameQueue::prune
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn holocene_new_channel_abandons_incomplete_old_channel() {
     let batcher_cfg = BatcherConfig {
         encoder: EncoderConfig {
@@ -250,26 +235,10 @@ async fn holocene_new_channel_abandons_incomplete_old_channel() {
     let n_b = batcher_b.pending_count();
     assert!(n_a >= 2, "channel A needs ≥2 frames; got {n_a}");
 
-    let (mut node, chain) = h.create_test_rollup_node_from_sequencer(
-        &mut sequencer,
-        SharedL1Chain::from_blocks(h.l1.chain().to_vec()),
-    );
-
     // L1 block 1: only frame 0 of channel A (channel is incomplete).
     batcher_a.stage_n_frames(&mut h.l1, 1); // frame 0 of channel A
     let block_1_num = h.l1.mine_block().number();
     batcher_a.confirm_staged(block_1_num).await;
-    chain.push(h.l1.tip().clone()); // L1 block 1: frame 0 of channel A
-
-    node.initialize().await;
-    node.run_until_idle().await;
-
-    // Channel A is open but incomplete — safe head stays at genesis.
-    assert_eq!(
-        node.l2_safe_number(),
-        0,
-        "channel A only has frame 0; safe head must stay at genesis"
-    );
 
     // L1 block 2: ALL frames of channel B (starts with frame 0, different ID).
     // Under Holocene pruning: channel A's frame 0 is in the queue. When
@@ -280,9 +249,14 @@ async fn holocene_new_channel_abandons_incomplete_old_channel() {
     }
     let block_2_num = h.l1.mine_block().number();
     batcher_b.confirm_staged(block_2_num).await;
-    chain.push(h.l1.tip().clone()); // L1 block 2: all frames of channel B
 
-    node.run_until_idle().await;
+    let chain = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
+    let node = h.create_actor_derivation_node(chain).await;
+    node.initialize().await;
+    // Tick enough times for the pipeline to process both L1 blocks.
+    for _ in 0..6 {
+        node.tick().await;
+    }
 
     // Channel A was abandoned (Holocene pruning). Channel B derived block B.
     // Block A was never derived since channel A was discarded.
@@ -294,7 +268,7 @@ async fn holocene_new_channel_abandons_incomplete_old_channel() {
     // block 2 is a future batch from the perspective of the batch queue
     // (expected_timestamp = genesis + block_time = 2, but block B is ts=4).
     assert_eq!(
-        node.l2_safe_number(),
+        node.engine.safe_head().block_info.number,
         0,
         "channel A was abandoned; block A (L2 block 1) never derived; \
          block B (L2 block 2) is a future batch and cannot be emitted"
@@ -315,7 +289,7 @@ async fn holocene_new_channel_abandons_incomplete_old_channel() {
 /// advance to 1, proving the pipeline recovers once valid data arrives.
 ///
 /// [`Batcher`]: base_action_harness::Batcher
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn holocene_non_sequential_frame_pruned_then_recovery_succeeds() {
     let batcher_cfg = BatcherConfig {
         encoder: EncoderConfig {
@@ -351,62 +325,46 @@ async fn holocene_non_sequential_frame_pruned_then_recovery_succeeds() {
     let frame_count = batcher.pending_count();
     assert!(frame_count >= 3, "need ≥3 frames to skip frame 1; got {frame_count}");
 
-    let (mut node, chain) = h.create_test_rollup_node_from_sequencer(
-        &mut sequencer,
-        SharedL1Chain::from_blocks(h.l1.chain().to_vec()),
-    );
-
     // Submit frame 0 and frame 2 in the same L1 block — skipping frame 1.
     batcher.stage_n_frames(&mut h.l1, 1); // frame 0
     batcher.drop_n_frames(1); // drop frame 1
     batcher.stage_n_frames(&mut h.l1, 1); // frame 2 (non-sequential)
     let block_1_num = h.l1.mine_block().number();
     batcher.confirm_staged(block_1_num).await;
-    chain.push(h.l1.tip().clone());
 
-    node.initialize().await;
-    node.run_until_idle().await;
-
-    // Channel is broken — safe head stays at genesis.
-    assert_eq!(
-        node.l2_safe_number(),
-        0,
-        "channel with missing frame 1 must never complete under Holocene"
-    );
-
-    // Mine empty L1 blocks to confirm the broken channel never completes.
+    // Mine a few extra empty L1 blocks to confirm the broken channel never completes.
     // Under Holocene, FrameQueue::prune drops frame 2 immediately upon arrival
-    // (non-sequential after frame 0), so the channel is permanently broken
-    // regardless of timeout. We mine fewer than channel_timeout (10) blocks:
-    // recovery does not require the broken channel to expire — it relies on
-    // ChannelAssembler unconditionally replacing its active channel when a new
-    // channel's frame 0 arrives (regardless of timeout state).
+    // (non-sequential after frame 0), so the channel is permanently broken.
     for _ in 0..5 {
-        h.mine_and_push(&chain);
+        h.l1.mine_block();
     }
-    for _ in 2..=h.l1.latest_number() {
-        node.run_until_idle().await;
+
+    let chain = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
+
+    let node = h.create_actor_derivation_node(chain.clone()).await;
+    node.initialize().await;
+    // Tick enough times to process all existing L1 blocks.
+    for _ in 0..8 {
+        node.tick().await;
     }
+
     assert_eq!(
-        node.l2_safe_number(),
+        node.engine.safe_head().block_info.number,
         0,
         "safe head must remain at genesis: broken channel was pruned, no recovery submitted yet"
     );
 
-    // -- Recovery: new Batcher (new channel ID) re-submits all frames in order.
-    // `block` was cloned into `source` above (line 372), so the original value
-    // is still valid here — same L2 block 1 with the same transactions and
-    // timestamp. The sequencer has not advanced since build_next_block_with_single_transaction().
+    // Recovery: new Batcher (new channel ID) re-submits all frames in order.
     let mut recovery_source = ActionL2Source::new();
     recovery_source.push(block);
     let mut batcher2 = Batcher::new(recovery_source, &h.rollup_config, batcher_cfg.clone());
     batcher2.advance(&mut h.l1).await;
     chain.push(h.l1.tip().clone());
 
-    node.run_until_idle().await;
+    node.sync_until_safe(1).await;
 
     assert_eq!(
-        node.l2_safe_number(),
+        node.engine.safe_head().block_info.number,
         1,
         "safe head must advance to 1 after clean recovery submission"
     );

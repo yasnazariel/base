@@ -1,9 +1,8 @@
 //! Action tests for batch format transitions across hardfork boundaries.
 
-use alloy_primitives::B256;
 use base_action_harness::{
-    ActionL2Source, ActionTestHarness, Batcher, BatcherConfig, DerivedBlock, L1MinerConfig,
-    SharedL1Chain, TestRollupConfigBuilder,
+    ActionL2Source, ActionTestHarness, Batcher, BatcherConfig, L1MinerConfig, SharedL1Chain,
+    TestRollupConfigBuilder,
 };
 use base_batcher_encoder::{DaType, EncoderConfig};
 use base_consensus_genesis::{HardForkConfig, RollupConfig};
@@ -32,7 +31,7 @@ use tracing_subscriber::EnvFilter;
 ///
 /// Note: `NonEmptyTransitionBlock` only fires for the first Jovian block, not
 /// for earlier hardforks like Ecotone or Isthmus.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn span_batch_with_non_empty_transition_block_rejected() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::new("error"))
@@ -73,11 +72,6 @@ async fn span_batch_with_non_empty_transition_block_rejected() {
     let block3_invalid = builder.build_next_block_with_single_transaction().await; // ts=6
     let block4 = builder.build_next_block_with_single_transaction().await; // ts=8
 
-    let (mut node, chain) = h.create_test_rollup_node_from_sequencer(
-        &mut builder,
-        SharedL1Chain::from_blocks(h.l1.chain().to_vec()),
-    );
-
     // --- Phase 1: submit all 4 blocks as one span batch (block 3 has user txs) ---
     {
         let span_cfg = BatcherConfig { batch_type: BatchType::Span, ..batcher_cfg.clone() };
@@ -88,23 +82,21 @@ async fn span_batch_with_non_empty_transition_block_rejected() {
         source.push(block4.clone());
         Batcher::new(source, &h.rollup_config, span_cfg).advance(&mut h.l1).await;
     }
-    chain.push(h.l1.tip().clone()); // L1 block 1: span batch with invalid block 3
 
-    // The sequencer registered state roots for blocks 3 and 4 that will not match
-    // what derivation produces (block 3 becomes deposit-only; block 4 has a different
-    // parent). Clear the state root entries so the engine skips validation for these.
-    node.register_block_hash(3, B256::ZERO);
-    node.register_block_hash(4, B256::ZERO);
-
+    // L1 block 1: span batch with invalid block 3.
+    // Create the shared chain and the actor node with L1 block 1 only.
+    let chain = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
+    let node = h.create_actor_derivation_node(chain.clone()).await;
     node.initialize().await;
-    node.run_until_idle().await;
 
     // Under Holocene, when the pipeline reaches block 3 in the span batch and
     // detects a user tx in the upgrade block, it sends FlushChannel (via
     // BatchStream::flush), discarding the channel entirely. Blocks 1 and 2 were
     // already emitted as individual batches before the failure, so safe head is 2.
+    node.sync_until_safe(2).await;
+
     assert_eq!(
-        node.l2_safe_number(),
+        node.engine.safe_head().block_info.number,
         2,
         "blocks 1 and 2 should derive before span batch fails on block 3"
     );
@@ -136,9 +128,13 @@ async fn span_batch_with_non_empty_transition_block_rejected() {
     }
     chain.push(h.l1.tip().clone()); // L1 block 2: recovery span batch (blocks 3–4)
 
-    node.run_until_idle().await;
+    node.sync_until_safe(4).await;
 
-    assert_eq!(node.l2_safe_number(), 4, "after recovery submission, safe head must reach block 4");
+    assert_eq!(
+        node.engine.safe_head().block_info.number,
+        4,
+        "after recovery submission, safe head must reach block 4"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -153,7 +149,7 @@ async fn span_batch_with_non_empty_transition_block_rejected() {
 /// Prior to Delta, span batches are rejected outright (`SpanBatchPreDelta`).
 /// After Delta, both formats are valid. The derivation pipeline must derive
 /// all 2 L2 blocks regardless of which format each batch uses.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn mixed_singular_and_span_batches_after_delta() {
     let batcher_cfg = BatcherConfig {
         encoder: EncoderConfig { da_type: DaType::Calldata, ..EncoderConfig::default() },
@@ -171,11 +167,6 @@ async fn mixed_singular_and_span_batches_after_delta() {
     let block1 = builder.build_next_block_with_single_transaction().await;
     let block2 = builder.build_next_block_with_single_transaction().await;
 
-    let (mut node, chain) = h.create_test_rollup_node_from_sequencer(
-        &mut builder,
-        SharedL1Chain::from_blocks(h.l1.chain().to_vec()),
-    );
-
     // L1 block 1: block 1 as a SINGULAR batch.
     {
         let singular_cfg = BatcherConfig { batch_type: BatchType::Single, ..batcher_cfg.clone() };
@@ -183,7 +174,6 @@ async fn mixed_singular_and_span_batches_after_delta() {
         source.push(block1);
         Batcher::new(source, &h.rollup_config, singular_cfg).advance(&mut h.l1).await;
     }
-    chain.push(h.l1.tip().clone()); // L1 block 1: singular batch for L2 block 1
 
     // L1 block 2: block 2 as a SPAN batch.
     {
@@ -192,17 +182,14 @@ async fn mixed_singular_and_span_batches_after_delta() {
         source.push(block2);
         Batcher::new(source, &h.rollup_config, span_cfg).advance(&mut h.l1).await;
     }
-    chain.push(h.l1.tip().clone()); // L1 block 2: span batch for L2 block 2
 
+    let chain = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
+    let node = h.create_actor_derivation_node(chain).await;
     node.initialize().await;
+    node.sync_until_safe(2).await;
 
-    let total_derived = node.run_until_idle().await;
     assert_eq!(
-        total_derived, 2,
-        "mixed singular + span batches must both derive; safe head should reach 2"
-    );
-    assert_eq!(
-        node.l2_safe_number(),
+        node.engine.safe_head().block_info.number,
         2,
         "mixed singular + span batches must both derive; safe head should reach 2"
     );
@@ -232,7 +219,7 @@ async fn mixed_singular_and_span_batches_after_delta() {
 ///
 /// Phase 2 (recovery): a new batcher submits all frames in a single L1 block
 /// and derivation advances the safe head to 1.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn granite_channel_timeout_enforced() {
     // All forks through Fjord at genesis, Granite at timestamp 6.
     // The pre-Granite channel_timeout (300) is never exercised because every
@@ -274,11 +261,6 @@ async fn granite_channel_timeout_enforced() {
     let mut sequencer = h.create_l2_sequencer(l1_chain);
     let block = sequencer.build_next_block_with_single_transaction().await;
 
-    let (mut node, chain) = h.create_test_rollup_node_from_sequencer(
-        &mut sequencer,
-        SharedL1Chain::from_blocks(h.l1.chain().to_vec()),
-    );
-
     // Encode block into multiple frames (max_frame_size=80 forces multi-frame).
     let mut source = ActionL2Source::new();
     source.push(block.clone());
@@ -294,13 +276,23 @@ async fn granite_channel_timeout_enforced() {
     // L1 block 1: submit only frame 0. Channel opens at block 1.
     batcher.stage_n_frames(&mut h.l1, 1);
     let block_1_num = h.l1.mine_block().number();
-    chain.push(h.l1.tip().clone());
     batcher.confirm_staged(block_1_num).await;
 
+    // Create the shared chain with L1 block 1, then create the node.
+    let chain = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
+    let node = h.create_actor_derivation_node(chain.clone()).await;
     node.initialize().await;
-    node.run_until_idle().await;
 
-    assert_eq!(node.l2_safe_number(), 0, "incomplete channel should not advance safe head");
+    // Tick a few times to process L1 block 1. Channel is incomplete.
+    for _ in 0..5 {
+        node.tick().await;
+    }
+
+    assert_eq!(
+        node.engine.safe_head().block_info.number,
+        0,
+        "incomplete channel should not advance safe head"
+    );
 
     // Mine 51 empty L1 blocks (blocks 2..=52). After block 52, the channel
     // opened at block 1 has been open for 51 blocks: 1 + 50 = 51 < 52,
@@ -309,13 +301,13 @@ async fn granite_channel_timeout_enforced() {
         h.mine_and_push(&chain);
     }
 
-    // Signal all empty blocks to the verifier.
-    for _ in 2..=52u64 {
-        node.run_until_idle().await;
+    // Tick enough times for the pipeline to process all 52 L1 blocks.
+    for _ in 0..30 {
+        node.tick().await;
     }
 
     assert_eq!(
-        node.l2_safe_number(),
+        node.engine.safe_head().block_info.number,
         0,
         "channel must have timed out under Granite's 50-block limit; safe head stays at 0"
     );
@@ -331,15 +323,14 @@ async fn granite_channel_timeout_enforced() {
     chain.push(h.l1.tip().clone());
     batcher.confirm_staged(late_block_num).await;
 
-    let derived = node.run_until_idle().await;
+    for _ in 0..10 {
+        node.tick().await;
+    }
+
     assert_eq!(
-        derived, 0,
-        "late non-zero frames after timeout create an incomplete channel; no L2 block derived"
-    );
-    assert_eq!(
-        node.l2_safe_number(),
+        node.engine.safe_head().block_info.number,
         0,
-        "safe head must still be at genesis before recovery; channel timed out"
+        "late non-zero frames after timeout create an incomplete channel; no L2 block derived"
     );
 
     // --- Recovery: new batcher, all frames in one L1 block ---
@@ -348,10 +339,13 @@ async fn granite_channel_timeout_enforced() {
     Batcher::new(source2, &h.rollup_config, batcher_cfg).advance(&mut h.l1).await;
     chain.push(h.l1.tip().clone());
 
-    let recovered = node.run_until_idle().await;
+    node.sync_until_safe(1).await;
 
-    assert_eq!(recovered, 1, "recovery channel should derive L2 block 1");
-    assert_eq!(node.l2_safe_number(), 1, "safe head should recover to 1");
+    assert_eq!(
+        node.engine.safe_head().block_info.number,
+        1,
+        "recovery channel should derive L2 block 1"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -374,7 +368,7 @@ async fn granite_channel_timeout_enforced() {
 /// After the pipeline drops block 3's batch and the sequencer window expires,
 /// it auto-generates a deposit-only block 3 and then derives block 4 from its
 /// submitted batch. Safe head reaches 4.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn jovian_single_batch_transition_block_deposit_only() {
     let jovian_time = 6u64;
     let hardforks = HardForkConfig {
@@ -432,18 +426,12 @@ async fn jovian_single_batch_transition_block_deposit_only() {
         block3_invalid.body.transactions.len(),
     );
 
-    let (mut node, chain) = h.create_test_rollup_node_from_sequencer(
-        &mut builder,
-        SharedL1Chain::from_blocks(h.l1.chain().to_vec()),
-    );
-
     // Submit each block as a separate SingleBatch channel, one L1 block each.
     // L1 blocks 1–4 each contain one singular batch.
     let mut batcher = Batcher::new(ActionL2Source::new(), &h.rollup_config, batcher_cfg.clone());
     for block in [block1, block2, block3_invalid, block4] {
         batcher.push_block(block);
         batcher.advance(&mut h.l1).await;
-        chain.push(h.l1.tip().clone());
     }
 
     // Mine additional empty L1 blocks so the sequencer window (size=4) expires
@@ -453,23 +441,16 @@ async fn jovian_single_batch_transition_block_deposit_only() {
     // when processing L1 block 5 (the first block past the window). We already
     // have L1 blocks 1–4 from batch submission; mine 2 more (blocks 5-6) to
     // ensure the window expires before the pipeline tip.
-    for _ in 0..2 {
-        h.mine_and_push(&chain);
-    }
+    let chain = SharedL1Chain::from_blocks(h.l1.chain().to_vec());
+    h.mine_and_push(&chain); // L1 block 5
+    h.mine_and_push(&chain); // L1 block 6
 
-    // The sequencer registered state roots for blocks 3 and 4 that will not match
-    // what derivation produces (block 3 becomes deposit-only; block 4 has a different
-    // parent). Clear the state root entries so the engine skips validation for these.
-    node.register_block_hash(3, B256::ZERO);
-    node.register_block_hash(4, B256::ZERO);
-
+    // The actor derivation node starts with an empty block-hash registry,
+    // so state-root validation is skipped for blocks 3 and 4 (which become
+    // deposit-only and have a different parent respectively).
+    let node = h.create_actor_derivation_node(chain).await;
     node.initialize().await;
-
-    // Signal all L1 blocks to the node and drive derivation.
-    let tip = h.l1.latest_number();
-    for _ in 1..=tip {
-        node.run_until_idle().await;
-    }
+    node.sync_until_safe(4).await;
 
     // With singular batches and the Holocene batch validator: the pipeline
     // derives blocks 1 and 2 from their submitted batches; drops block 3's
@@ -477,7 +458,7 @@ async fn jovian_single_batch_transition_block_deposit_only() {
     // user txs); force-generates a deposit-only block 3 once the sequencer
     // window expires; then derives block 4 from its submitted batch.
     assert_eq!(
-        node.l2_safe_number(),
+        node.engine.safe_head().block_info.number,
         4,
         "singular batches: safe head must reach 4 (block 3 replaced with deposit-only)"
     );
@@ -486,12 +467,16 @@ async fn jovian_single_batch_transition_block_deposit_only() {
     // accepted the invalid batch and derived a normal block. Without this
     // assertion, removing the NonEmptyTransitionBlock validation would still
     // produce safe_head == 4.
-    let block3: DerivedBlock =
-        node.derived_block(3).expect("block 3 must have been derived before safe head reached 4");
-    assert!(
-        block3.is_deposit_only(),
-        "block 3 must be deposit-only (NonEmptyTransitionBlock batch dropped); \
-         got {} user txs",
-        block3.user_tx_count,
+    //
+    // Block 3 (first Jovian block) receives:
+    //   1 L1 info deposit + 5 Jovian upgrade txs = 6 deposit-type txs.
+    // If the invalid batch was accepted, we would also see the user tx:
+    //   1 L1 info + 5 upgrade + 1 user tx = 7 txs.
+    // A count of exactly 6 proves no user tx was included.
+    assert_eq!(
+        node.engine.executed_tx_count(3),
+        6,
+        "block 3 must be deposit-only (1 L1 info + 5 Jovian upgrade txs = 6); \
+         an accepted invalid batch would give 7 total (+ 1 user tx)"
     );
 }
