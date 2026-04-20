@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 
 use alloy_genesis::ChainConfig;
 use alloy_provider::RootProvider;
@@ -8,15 +8,17 @@ use base_consensus_providers::{OnlineBeaconClient, OnlineBlobProvider};
 use base_proof_primitives::ProofRequest;
 use serde::Serialize;
 
+use crate::L1HeaderPrefetcher;
+
 /// The providers required for the host.
 #[derive(Debug, Clone)]
 pub struct HostProviders {
-    /// The L1 EL provider.
-    pub l1: RootProvider,
     /// The L1 beacon node provider.
     pub blobs: OnlineBlobProvider<OnlineBeaconClient>,
     /// The L2 EL provider.
     pub l2: RootProvider<Base>,
+    /// Rate-limited L1 RPC client with background header prefetching.
+    pub prefetcher: Arc<L1HeaderPrefetcher>,
 }
 
 /// Static infrastructure config — set once at startup, reused across proofs.
@@ -38,6 +40,11 @@ pub struct ProverConfig {
     pub l1_config: ChainConfig,
     /// Enables `debug_executePayload` for execution witness collection.
     pub enable_experimental_witness_endpoint: bool,
+    /// Maximum concurrent L1 RPC requests for the proof host.
+    pub l1_rpc_concurrency: usize,
+    /// Number of parent L1 headers to speculatively prefetch when an
+    /// `L1BlockHeader` hint is received.
+    pub l1_prefetch_depth: usize,
 }
 
 /// Configuration for the proof host.

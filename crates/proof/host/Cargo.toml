@@ -39,6 +39,7 @@ alloy-rpc-types = { workspace = true, features = ["debug"] }
 
 # async
 tokio.workspace = true
+backon.workspace = true
 
 # crypto
 ark-ff.workspace = true
@@ -46,6 +47,7 @@ ark-ff.workspace = true
 # misc
 serde.workspace = true
 tracing.workspace = true
+dashmap.workspace = true
 thiserror.workspace = true
 serde_json.workspace = true
 async-trait.workspace = true
@@ -62,6 +64,7 @@ rocksdb = { workspace = true, optional = true, features = ["snappy", "bindgen-ru
 
 [dev-dependencies]
 proptest.workspace = true
+alloy-json-rpc.workspace = true
 
 [features]
 disk = [ "dep:rocksdb" ]

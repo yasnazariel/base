@@ -87,6 +87,15 @@ struct ProverServerArgs {
     #[arg(long, env = "ENABLE_EXPERIMENTAL_WITNESS_ENDPOINT")]
     enable_experimental_witness_endpoint: bool,
 
+    /// Maximum concurrent L1 RPC requests during proof generation (must be >= 1).
+    #[arg(long, env = "L1_RPC_CONCURRENCY", default_value_t = base_proof_host::DEFAULT_L1_CONCURRENCY, value_parser = parse_nonzero_usize)]
+    l1_rpc_concurrency: usize,
+
+    /// Number of parent L1 headers to speculatively prefetch in the
+    /// background when an L1 block header hint is received.
+    #[arg(long, env = "L1_PREFETCH_DEPTH", default_value_t = base_proof_host::DEFAULT_PREFETCH_DEPTH)]
+    l1_prefetch_depth: usize,
+
     /// Maximum seconds for a single proof request before it is aborted.
     #[arg(long, env = "PROOF_REQUEST_TIMEOUT_SECS", default_value = "1740", value_parser = clap::value_parser!(u64).range(1..))]
     proof_request_timeout_secs: u64,
@@ -159,6 +168,8 @@ impl ServerArgs {
             rollup_config,
             l1_config,
             enable_experimental_witness_endpoint: self.server.enable_experimental_witness_endpoint,
+            l1_rpc_concurrency: self.server.l1_rpc_concurrency,
+            l1_prefetch_depth: self.server.l1_prefetch_depth,
         };
 
         let transport = Arc::new(NitroTransport::vsock(self.vsock_cid, VSOCK_PORT));
@@ -183,6 +194,15 @@ struct LocalArgs {
     server: ProverServerArgs,
 }
 
+/// Parses a `usize` that must be at least 1.
+fn parse_nonzero_usize(s: &str) -> std::result::Result<usize, String> {
+    let val: usize = s.parse().map_err(|e: std::num::ParseIntError| e.to_string())?;
+    if val == 0 {
+        return Err("value must be >= 1".into());
+    }
+    Ok(val)
+}
+
 #[cfg(feature = "local")]
 impl LocalArgs {
     async fn run(self) -> eyre::Result<()> {
@@ -204,6 +224,8 @@ impl LocalArgs {
             rollup_config,
             l1_config,
             enable_experimental_witness_endpoint: self.server.enable_experimental_witness_endpoint,
+            l1_rpc_concurrency: self.server.l1_rpc_concurrency,
+            l1_prefetch_depth: self.server.l1_prefetch_depth,
         };
 
         let enclave_server = Arc::new(EnclaveServer::new_local()?);

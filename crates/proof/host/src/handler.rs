@@ -86,11 +86,8 @@ async fn handle_hint_inner(
             }
 
             let hash: B256 = hint.data.as_ref().try_into()?;
-            let raw_header: Bytes =
-                providers.l1.client().request("debug_getRawHeader", [hash]).await?;
-
-            let mut kv_lock = kv.write().await;
-            kv_lock.set(PreimageKey::new_keccak256(*hash).into(), raw_header.into())?;
+            let header = providers.prefetcher.fetch_and_store_header(hash).await?;
+            providers.prefetcher.prefetch_parents(&header);
         }
         HintType::L1Transactions => {
             if hint.data.len() != 32 {
@@ -99,9 +96,8 @@ async fn handle_hint_inner(
 
             let hash: B256 = hint.data.as_ref().try_into()?;
             let Block { transactions, .. } = providers
-                .l1
-                .get_block_by_hash(hash)
-                .full()
+                .prefetcher
+                .fetch_block_by_hash(hash)
                 .await?
                 .ok_or(HostError::BlockNotFound)?;
             let encoded_transactions = transactions
@@ -117,8 +113,7 @@ async fn handle_hint_inner(
             }
 
             let hash: B256 = hint.data.as_ref().try_into()?;
-            let raw_receipts: Vec<Bytes> =
-                providers.l1.client().request("debug_getRawReceipts", [hash]).await?;
+            let raw_receipts = providers.prefetcher.fetch_raw_receipts(hash).await?;
 
             store_ordered_trie(kv.as_ref(), raw_receipts.as_slice()).await?;
         }

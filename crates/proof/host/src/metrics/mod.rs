@@ -49,6 +49,9 @@ base_metrics::define_metrics! {
 
     #[describe("Client replay duration")]
     replay_duration_seconds: histogram,
+
+    #[describe("L1 headers stored by background prefetcher")]
+    l1_prefetch_stored_total: counter,
 }
 
 impl Metrics {

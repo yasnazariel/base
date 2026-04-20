@@ -19,9 +19,9 @@ use tracing::{Instrument, info, info_span};
 #[cfg(feature = "disk")]
 use crate::DiskKeyValueStore;
 use crate::{
-    BootKeyValueStore, HostConfig, HostError, HostProviders, MemoryKeyValueStore, Metrics,
-    OfflineHostBackend, OnlineHostBackend, PreimageServer, RecordingOracle, Result,
-    SharedKeyValueStore, SplitKeyValueStore,
+    BootKeyValueStore, HostConfig, HostError, HostProviders, L1HeaderPrefetcher,
+    MemoryKeyValueStore, Metrics, OfflineHostBackend, OnlineHostBackend, PreimageServer,
+    RecordingOracle, Result, SharedKeyValueStore, SplitKeyValueStore,
 };
 
 /// The proof host orchestrator.
@@ -55,7 +55,7 @@ impl Host {
                 .await
             })
         } else {
-            let providers = self.create_providers().await?;
+            let providers = self.create_providers(Arc::clone(&kv_store)).await?;
             let backend =
                 OnlineHostBackend::new(self.config.clone(), Arc::clone(&kv_store), providers)
                     .with_proactive_hint(HintType::L2PayloadWitness);
@@ -86,7 +86,7 @@ impl Host {
         let witness = Arc::new(witness);
 
         let kv_store = self.create_key_value_store()?;
-        let providers = self.create_providers().await?;
+        let providers = self.create_providers(Arc::clone(&kv_store)).await?;
         let backend = Arc::new(
             OnlineHostBackend::new(self.config.clone(), Arc::clone(&kv_store), providers)
                 .with_proactive_hint(HintType::L2PayloadWitness),
@@ -189,7 +189,7 @@ impl Host {
     }
 
     /// Creates the providers required for the host backend.
-    pub async fn create_providers(&self) -> Result<HostProviders> {
+    pub async fn create_providers(&self, kv: SharedKeyValueStore) -> Result<HostProviders> {
         let l1_provider = rpc_provider(&self.config.prover.l1_eth_url).await?;
         let blob_provider = OnlineBlobProvider::init(OnlineBeaconClient::new_http(
             self.config.prover.l1_beacon_url.clone(),
@@ -197,7 +197,14 @@ impl Host {
         .await;
         let l2_provider = rpc_provider::<Base>(&self.config.prover.l2_eth_url).await?;
 
-        Ok(HostProviders { l1: l1_provider, blobs: blob_provider, l2: l2_provider })
+        let prefetcher = Arc::new(L1HeaderPrefetcher::new(
+            l1_provider,
+            kv,
+            self.config.prover.l1_rpc_concurrency,
+            self.config.prover.l1_prefetch_depth,
+        ));
+
+        Ok(HostProviders { blobs: blob_provider, l2: l2_provider, prefetcher })
     }
 }
 
