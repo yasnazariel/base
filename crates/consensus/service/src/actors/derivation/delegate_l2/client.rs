@@ -70,7 +70,22 @@ impl LocalL2Provider for RootProvider<Base> {
     }
 
     async fn block_hash_at(&self, n: u64) -> Option<B256> {
-        self.get_block_by_number(n.into()).await.ok()?.map(|b| b.header.hash)
+        match self.get_block_by_number(n.into()).await {
+            Ok(Some(b)) => Some(b.header.hash),
+            Ok(None) => None,
+            Err(e) => {
+                // Per the trait doc, `None` is treated as agreement by callers.
+                // A transient RPC failure here will cause the caller to skip the
+                // divergence check; surface the error so operators can spot it.
+                tracing::warn!(
+                    target: "derivation",
+                    block = n,
+                    error = %e,
+                    "Failed to fetch local block hash; treating as unknown"
+                );
+                None
+            }
+        }
     }
 
     async fn proofs_latest_block(&self) -> Result<Option<u64>, alloy_transport::TransportError> {

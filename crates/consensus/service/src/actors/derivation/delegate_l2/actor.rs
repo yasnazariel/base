@@ -387,6 +387,9 @@ where
         let source_hash = safe_payload.execution_payload.block_hash();
 
         // Detect hash mismatch between source and local EL for the delegated safe block.
+        // On mismatch, return early rather than instructing the local engine to treat a
+        // block it didn't execute (or executed differently) as safe — matching the
+        // behaviour of `TestFollowNode::update_safe_and_finalized` in the test harness.
         if let Some(local_hash) = self.local_l2_provider.block_hash_at(clamped_safe).await
             && local_hash != source_hash
         {
@@ -397,6 +400,7 @@ where
                 source_hash = %source_hash,
                 "Delegated safe block hash mismatch between source and local EL"
             );
+            return Ok(());
         }
 
         let safe_l2 = L2BlockInfo {

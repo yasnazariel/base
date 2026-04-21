@@ -50,7 +50,7 @@ where
     L2Source: L2SourceClient + Clone + std::fmt::Debug + Send + Sync + 'static,
 {
     /// Creates a new [`FollowNode`].
-    pub fn new(
+    pub const fn new(
         config: Arc<RollupConfig>,
         engine_config: EngineConfig,
         local_l2_provider: Arc<dyn LocalL2Provider>,

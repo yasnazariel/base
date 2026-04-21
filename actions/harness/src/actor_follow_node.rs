@@ -6,18 +6,15 @@ use alloy_genesis::ChainConfig as GenesisChainConfig;
 use alloy_provider::RootProvider;
 use base_consensus_engine::EngineClientBuilder;
 use base_consensus_genesis::RollupConfig;
-use base_consensus_node::{
-    EngineConfig, FollowNode, L1Config, NetworkActor, NetworkInboundData, NodeActor, NodeMode,
-    QueuedNetworkEngineClient,
-};
+use base_consensus_node::{EngineConfig, FollowNode, L1Config, NodeMode};
 use base_consensus_providers::OnlineBeaconClient;
 use base_protocol::L2BlockInfo;
-use tokio::{sync::mpsc, task::JoinHandle};
+use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
     ActionEngineClient, ActionL2LocalProvider, ActionL2SourceBridge, HarnessEngineServer,
-    HarnessL1Server, ProdEngineClient, SupervisedP2P, TestGossipTransport,
+    HarnessL1Server, ProdEngineClient,
 };
 
 /// An action test harness that drives the production [`FollowNode`] supervisor with an
@@ -29,14 +26,16 @@ use crate::{
 /// through the real [`FollowNode::start_with_engine_client`] code path.
 ///
 /// The engine actors communicate with the execution layer over localhost HTTP
-/// via a real [`BaseEngineClient`], so the JWT-authenticated JSON-RPC transport
-/// path is also exercised.  The [`ActionEngineClient`] held on `engine` is the
-/// same instance that the HTTP server delegates to, so test assertions on
-/// `engine.unsafe_head()` reflect the post-RPC state.
+/// via a real [`BaseEngineClient`], so the JSON-RPC transport path is exercised
+/// end-to-end. The client supplies a JWT header on each request, but the
+/// in-process [`HarnessEngineServer`] does not install JWT validation — token
+/// generation/sending is exercised, server-side verification is not. The
+/// [`ActionEngineClient`] held on `engine` is the same instance the HTTP server
+/// delegates to, so test assertions on `engine.unsafe_head()` reflect the
+/// post-RPC state.
 ///
-/// A real [`NetworkActor`] with a [`TestGossipTransport`] is also wired
-/// alongside the [`FollowNode`] actors. Use [`Self::gossip_tx`] to inject
-/// gossip blocks into the network actor's transport channel.
+/// `FollowNode` explicitly omits P2P, so this harness does not wire a network
+/// actor — gossip injection is not exposed.
 ///
 /// # Timing
 ///
@@ -52,17 +51,11 @@ pub struct TestActorFollowNode {
     pub engine: ActionEngineClient,
     /// The rollup config used by the derivation actor.
     pub rollup_config: Arc<RollupConfig>,
-    /// Sender for injecting gossip blocks directly into the network actor.
-    pub gossip_tx: SupervisedP2P,
-    /// Cancellation token to stop the `NetworkActor` on drop.
+    /// Cancellation token to stop the spawned tasks on drop.
     cancel: CancellationToken,
     /// Handle to the spawned [`FollowNode`] task — aborted on drop to stop all
     /// internal actors (`DelegateL2DerivationActor`, `EngineActor`, `L1WatcherActor`).
     _follow_handle: JoinHandle<()>,
-    /// Handle to the spawned network actor task.
-    _network_handle: JoinHandle<()>,
-    /// Keeps the network actor's inbound channels alive for the lifetime of the test.
-    _network_inbound: NetworkInboundData,
     /// Keeps the in-process engine API HTTP server alive for the duration of the test.
     _engine_server: HarnessEngineServer,
     /// Keeps the in-process L1 JSON-RPC HTTP server alive for the duration of the test.
@@ -78,10 +71,6 @@ impl TestActorFollowNode {
     /// [`EngineActor`], [`L1WatcherActor`], and [`L1WatcherQueryProcessor`] —
     /// runs exactly as in production, with only the [`ActionEngineClient`] and
     /// [`ActionL2SourceBridge`] injected at the trait boundaries.
-    ///
-    /// A [`NetworkActor`] with a [`TestGossipTransport`] is wired separately
-    /// (outside [`FollowNode`], which explicitly omits P2P) so the gossip path
-    /// remains exercisable from tests via [`Self::gossip_tx`].
     pub async fn new(
         config: Arc<RollupConfig>,
         engine: ActionEngineClient,
@@ -110,23 +99,6 @@ impl TestActorFollowNode {
             .await
             .expect("TestActorFollowNode: failed to build BaseEngineClient"),
         );
-
-        // Wire NetworkActor with TestGossipTransport alongside FollowNode.
-        // FollowNode explicitly omits P2P — the network actor is added here to
-        // maintain the Change B production-path fidelity guarantee.
-        let (engine_actor_request_tx, engine_actor_request_rx) = mpsc::channel(1024);
-        let (gossip_tx, transport) = TestGossipTransport::channel();
-        let (network_inbound, network_actor) = NetworkActor::with_transport(
-            QueuedNetworkEngineClient { engine_actor_request_tx },
-            cancel.clone(),
-            transport,
-        );
-        let network_handle = tokio::spawn(async move {
-            let _ = network_actor.start(()).await;
-        });
-        // The engine actor request receiver is consumed by FollowNode internally;
-        // drop the dummy channel we created for the NetworkActor's send side only.
-        drop(engine_actor_request_rx);
 
         // Build FollowNode. EngineConfig values are provided for completeness but
         // are not used by start_with_engine_client (the engine client is injected
@@ -170,11 +142,8 @@ impl TestActorFollowNode {
             source,
             engine,
             rollup_config: Arc::clone(&config),
-            gossip_tx,
             cancel,
             _follow_handle: follow_handle,
-            _network_handle: network_handle,
-            _network_inbound: network_inbound,
             _engine_server: engine_server,
             _l1_server: l1_server,
         }
@@ -219,7 +188,7 @@ impl TestActorFollowNode {
         self.engine.unsafe_head()
     }
 
-    /// Cancel the `NetworkActor` and abort the `FollowNode` task.
+    /// Abort the `FollowNode` task.
     pub fn cancel(&self) {
         self.cancel.cancel();
         self._follow_handle.abort();

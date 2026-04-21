@@ -41,7 +41,8 @@ impl<L1P: Provider> BlockStream<L1P> {
         L1P: Send + 'static,
     {
         if matches!(tag, BlockNumberOrTag::Number(_)) {
-            error!("Invalid BlockNumberOrTag variant - Must be a tag");
+            error!(tag = ?tag, "invalid BlockNumberOrTag variant - must be a tag");
+            return Err("Invalid BlockNumberOrTag variant - Must be a tag".to_string());
         }
         Ok(Self { l1_provider, tag, poll_interval }.into_stream())
     }
@@ -71,6 +72,8 @@ impl<L1P: Provider> BlockStream<L1P> {
         .into_stream();
 
         Box::pin(stream! {
+            // INVARIANT: `_keep` holds the provider alive so `weak` (captured by
+            // PollerBuilder) can always be upgraded for the lifetime of this stream.
             let _keep = provider;
             let mut last_block = None;
             while let Some(next) = poll_stream.next().await {

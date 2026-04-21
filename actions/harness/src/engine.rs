@@ -862,7 +862,7 @@ impl ActionEngineClient {
     fn header_to_l2_rpc_block(
         header: &Header,
         block_hash: B256,
-        txs: Option<&Vec<BaseTxEnvelope>>,
+        txs: Option<&[BaseTxEnvelope]>,
     ) -> Block<BaseTransaction> {
         let sealed = Sealed::new_unchecked(header.clone(), block_hash);
         let rpc_header = alloy_rpc_types_eth::Header::from_sealed(sealed);
@@ -909,14 +909,14 @@ impl ActionEngineClient {
         match numtag {
             BlockNumberOrTag::Number(n) => guard.executed_headers.get(&n).map(|h| {
                 let bh = h.hash_slow();
-                let txs = guard.executed_transactions.get(&n);
+                let txs = guard.executed_transactions.get(&n).map(Vec::as_slice);
                 Self::header_to_l2_rpc_block(h, bh, txs)
             }),
             BlockNumberOrTag::Latest | BlockNumberOrTag::Pending => {
                 let number = guard.canonical_head.block_info.number;
                 guard.executed_headers.get(&number).map(|h| {
                     let bh = h.hash_slow();
-                    let txs = guard.executed_transactions.get(&number);
+                    let txs = guard.executed_transactions.get(&number).map(Vec::as_slice);
                     Self::header_to_l2_rpc_block(h, bh, txs)
                 })
             }
@@ -924,7 +924,7 @@ impl ActionEngineClient {
                 let number = guard.safe_head.block_info.number;
                 guard.executed_headers.get(&number).map(|h| {
                     let bh = h.hash_slow();
-                    let txs = guard.executed_transactions.get(&number);
+                    let txs = guard.executed_transactions.get(&number).map(Vec::as_slice);
                     Self::header_to_l2_rpc_block(h, bh, txs)
                 })
             }
@@ -932,12 +932,12 @@ impl ActionEngineClient {
                 let number = guard.finalized_head.block_info.number;
                 guard.executed_headers.get(&number).map(|h| {
                     let bh = h.hash_slow();
-                    let txs = guard.executed_transactions.get(&number);
+                    let txs = guard.executed_transactions.get(&number).map(Vec::as_slice);
                     Self::header_to_l2_rpc_block(h, bh, txs)
                 })
             }
             BlockNumberOrTag::Earliest => {
-                let txs = guard.executed_transactions.get(&0);
+                let txs = guard.executed_transactions.get(&0).map(Vec::as_slice);
                 guard
                     .executed_headers
                     .get(&0)
@@ -954,7 +954,7 @@ impl ActionEngineClient {
         let guard = self.inner.lock().expect("action engine inner lock poisoned");
         guard.executed_headers.values().find(|h| h.hash_slow() == hash).map(|h| {
             let bh = h.hash_slow();
-            let txs = guard.executed_transactions.get(&h.number);
+            let txs = guard.executed_transactions.get(&h.number).map(Vec::as_slice);
             Self::header_to_l2_rpc_block(h, bh, txs)
         })
     }
@@ -1023,16 +1023,18 @@ impl EngineClient for ActionEngineClient {
                                 BlockNumberOrTag::Latest | BlockNumberOrTag::Pending => {
                                     Some(guard.canonical_head.block_info.number)
                                 }
-                                // Safe and Finalized are not separately tracked: return None so
-                                // `L2ForkchoiceState::current` falls back to genesis, which works
-                                // without transactions via the `from_block_and_genesis` fast path.
-                                BlockNumberOrTag::Safe | BlockNumberOrTag::Finalized => None,
+                                BlockNumberOrTag::Safe => {
+                                    Some(guard.safe_head.block_info.number)
+                                }
+                                BlockNumberOrTag::Finalized => {
+                                    Some(guard.finalized_head.block_info.number)
+                                }
                                 BlockNumberOrTag::Earliest => Some(0),
                             };
                             opt_number.and_then(|number| {
                                 guard.executed_headers.get(&number).map(|h| {
                                     let block_hash = h.hash_slow();
-                                    let txs = guard.executed_transactions.get(&number);
+                                    let txs = guard.executed_transactions.get(&number).map(Vec::as_slice);
                                     Self::header_to_l2_rpc_block(h, block_hash, txs)
                                 })
                             })
@@ -1043,7 +1045,7 @@ impl EngineClient for ActionEngineClient {
                             .find(|h| h.hash_slow() == block_hash.block_hash)
                             .map(|h| {
                                 let bh = h.hash_slow();
-                                let txs = guard.executed_transactions.get(&h.number);
+                                let txs = guard.executed_transactions.get(&h.number).map(Vec::as_slice);
                                 Self::header_to_l2_rpc_block(h, bh, txs)
                             }),
                     };
@@ -1081,29 +1083,37 @@ impl EngineClient for ActionEngineClient {
         let block = match numtag {
             BlockNumberOrTag::Number(n) => guard.executed_headers.get(&n).map(|h| {
                 let bh = h.hash_slow();
-                let txs = guard.executed_transactions.get(&n);
+                let txs = guard.executed_transactions.get(&n).map(Vec::as_slice);
                 Self::header_to_l2_rpc_block(h, bh, txs)
             }),
             BlockNumberOrTag::Latest | BlockNumberOrTag::Pending => {
                 let number = guard.canonical_head.block_info.number;
                 guard.executed_headers.get(&number).map(|h| {
                     let bh = h.hash_slow();
-                    let txs = guard.executed_transactions.get(&number);
+                    let txs = guard.executed_transactions.get(&number).map(Vec::as_slice);
                     Self::header_to_l2_rpc_block(h, bh, txs)
                 })
             }
-            BlockNumberOrTag::Safe | BlockNumberOrTag::Finalized => {
-                let number = guard.canonical_head.block_info.number;
+            BlockNumberOrTag::Safe => {
+                let number = guard.safe_head.block_info.number;
                 guard.executed_headers.get(&number).map(|h| {
                     let bh = h.hash_slow();
-                    let txs = guard.executed_transactions.get(&number);
+                    let txs = guard.executed_transactions.get(&number).map(Vec::as_slice);
+                    Self::header_to_l2_rpc_block(h, bh, txs)
+                })
+            }
+            BlockNumberOrTag::Finalized => {
+                let number = guard.finalized_head.block_info.number;
+                guard.executed_headers.get(&number).map(|h| {
+                    let bh = h.hash_slow();
+                    let txs = guard.executed_transactions.get(&number).map(Vec::as_slice);
                     Self::header_to_l2_rpc_block(h, bh, txs)
                 })
             }
             BlockNumberOrTag::Earliest => {
                 guard.executed_headers.values().min_by_key(|h| h.number).map(|h| {
                     let bh = h.hash_slow();
-                    let txs = guard.executed_transactions.get(&h.number);
+                    let txs = guard.executed_transactions.get(&h.number).map(Vec::as_slice);
                     Self::header_to_l2_rpc_block(h, bh, txs)
                 })
             }
@@ -1117,10 +1127,9 @@ impl EngineClient for ActionEngineClient {
     ) -> Result<Option<L2BlockInfo>, EngineClientError> {
         let guard = self.inner.lock().expect("action engine inner lock poisoned");
         let info = match numtag {
-            BlockNumberOrTag::Latest
-            | BlockNumberOrTag::Safe
-            | BlockNumberOrTag::Finalized
-            | BlockNumberOrTag::Pending => Some(guard.canonical_head),
+            BlockNumberOrTag::Latest | BlockNumberOrTag::Pending => Some(guard.canonical_head),
+            BlockNumberOrTag::Safe => Some(guard.safe_head),
+            BlockNumberOrTag::Finalized => Some(guard.finalized_head),
             BlockNumberOrTag::Number(n) => {
                 if n == guard.canonical_head.block_info.number {
                     Some(guard.canonical_head)
