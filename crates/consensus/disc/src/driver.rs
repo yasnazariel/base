@@ -110,7 +110,12 @@ impl Discv5Driver {
 
         let initial_store_length = store.len();
 
-        for bn in bootnodes.0.into_iter().chain(BootNodes::from_chain_id(chain_id).0.into_iter()) {
+        // Caller-provided list takes precedence; fall back to chain defaults only when empty so
+        // a deliberate `--cl.bootnode` override actually replaces (not augments) the defaults.
+        let effective =
+            if bootnodes.is_empty() { BootNodes::from_chain_id(chain_id) } else { bootnodes };
+
+        for bn in effective.0 {
             let res = match bn {
                 BootNode::Enr(enr) => Ok(enr.clone()),
                 BootNode::Enode(enode) => disc.request_enr(enode.clone()).await,

@@ -2466,12 +2466,15 @@ dependencies = [
 name = "base"
 version = "0.0.0"
 dependencies = [
+ "base-bootnode",
  "base-cli-utils",
  "base-common-chains",
  "clap",
  "eyre",
  "figment",
+ "reth-net-nat",
  "serde",
+ "tokio-util",
  "tracing",
 ]
 
@@ -2704,6 +2707,30 @@ dependencies = [
  "base-protocol",
  "rstest",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "base-bootnode"
+version = "0.0.0"
+dependencies = [
+ "base-common-chains",
+ "base-consensus-disc",
+ "base-consensus-peers",
+ "discv5",
+ "futures",
+ "libp2p-identity",
+ "reth-cli-util",
+ "reth-discv4",
+ "reth-discv5",
+ "reth-net-nat",
+ "reth-network-peers",
+ "secp256k1 0.30.0",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-stream",
+ "tokio-util",
+ "tracing",
 ]
 
 [[package]]
@@ -19662,6 +19689,7 @@ dependencies = [
  "futures-core",
  "futures-io",
  "futures-sink",
+ "futures-util",
  "pin-project-lite",
  "slab",
  "tokio",

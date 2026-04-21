@@ -209,6 +209,7 @@ base-execution-payload-builder = { path = "crates/execution/payload" }
 
 # Infra
 based = { path = "crates/infra/based" }
+base-bootnode = { path = "crates/infra/bootnode" }
 basectl-cli = { path = "crates/infra/basectl" }
 audit-archiver-lib = { path = "crates/infra/audit" }
 base-load-tests = { path = "crates/infra/load-tests" }
@@ -321,7 +322,10 @@ reth-tasks = { git = "https://github.com/paradigmxyz/reth", tag = "v1.11.3" }
 reth-errors = { git = "https://github.com/paradigmxyz/reth", tag = "v1.11.3" }
 reth-codecs = { git = "https://github.com/paradigmxyz/reth", tag = "v1.11.3" }
 reth-db-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.11.3" }
+reth-discv4 = { git = "https://github.com/paradigmxyz/reth", tag = "v1.11.3" }
+reth-discv5 = { git = "https://github.com/paradigmxyz/reth", tag = "v1.11.3" }
 reth-metrics = { git = "https://github.com/paradigmxyz/reth", tag = "v1.11.3" }
+reth-net-nat = { git = "https://github.com/paradigmxyz/reth", tag = "v1.11.3" }
 reth-trie-db = { git = "https://github.com/paradigmxyz/reth", tag = "v1.11.3" }
 reth-rpc-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.11.3" }
 reth-network = { git = "https://github.com/paradigmxyz/reth", tag = "v1.11.3" }

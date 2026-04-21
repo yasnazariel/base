@@ -1,7 +1,10 @@
 use clap::{Args, Parser, Subcommand};
 use tracing::info;
 
-use crate::config::{ChainArg, ResolvedChainConfig};
+use crate::{
+    bootnode::BootnodeArgs,
+    config::{ChainArg, ResolvedChainConfig},
+};
 
 base_cli_utils::define_log_args!("BASE_NODE");
 base_cli_utils::define_metrics_args!("BASE_NODE", 9090);
@@ -40,6 +43,10 @@ pub(crate) enum BaseCommand {
     /// Start the integrated Base node.
     #[command(name = "node")]
     Node(NodeArgs),
+    /// Run a standalone EL + CL discv5 bootnode. Hidden from `--help`: this is operator-internal
+    /// infrastructure tooling, not part of the user-facing surface.
+    #[command(name = "bootnode", hide = true)]
+    Bootnode(Box<BootnodeArgs>),
 }
 
 impl BaseCommand {
@@ -47,6 +54,7 @@ impl BaseCommand {
     pub(crate) fn run(self, resolved_chain: ResolvedChainConfig) -> eyre::Result<()> {
         match self {
             Self::Node(node) => node.run(resolved_chain),
+            Self::Bootnode(bootnode) => (*bootnode).run(resolved_chain),
         }
     }
 }

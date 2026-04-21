@@ -17,11 +17,18 @@ workspace = true
 
 [dependencies]
 # workspace
+base-bootnode.workspace = true
 base-cli-utils.workspace = true
 base-common-chains.workspace = true
 
+# reth p2p (for re-exporting NatResolver as a clap arg)
+reth-net-nat.workspace = true
+
 # cli
 clap = { workspace = true, features = ["env"] }
+
+# async
+tokio-util.workspace = true
 
 # tracing
 tracing = { workspace = true, features = ["std"] }

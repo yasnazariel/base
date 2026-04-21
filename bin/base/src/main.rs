@@ -6,6 +6,7 @@
 use clap::Parser;
 
 mod app;
+mod bootnode;
 mod cli;
 mod config;
 
