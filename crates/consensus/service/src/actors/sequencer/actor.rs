@@ -320,17 +320,37 @@ where
                         None => std::future::pending().await,
                     }
                 } => {
+                    // Embedded leadership replaces op-conductor's `admin_startSequencer`
+                    // signal: when this node wins the election, automatically activate
+                    // sequencing. Conversely, on losing leadership we deactivate so the
+                    // legacy `is_active` gate matches reality. Without this, a node booted
+                    // with `--sequencer.stopped` (the standby pattern in the embedded
+                    // compose) would never produce blocks even after becoming leader,
+                    // because no admin RPC ever flips `is_active`.
+                    let is_leader_now = self
+                        .leader_status
+                        .as_ref()
+                        .is_some_and(|rx| rx.borrow().is_leader());
+                    let was_active = self.is_active;
+                    if self.leader_status.is_some() {
+                        self.is_active = is_leader_now;
+                    }
                     // On the Unknown → Leader transition, fire the build immediately
                     // instead of waiting up to one full block_time for the next
                     // scheduled tick.
-                    if self.is_active
-                        && self.sealer.is_none()
-                        && self
-                            .leader_status
-                            .as_ref()
-                            .is_none_or(|rx| rx.borrow().is_leader())
-                    {
+                    if self.is_active && self.sealer.is_none() && is_leader_now {
+                        if !was_active {
+                            info!(
+                                target: "sequencer",
+                                "embedded leadership: activating sequencer (became leader)",
+                            );
+                        }
                         build_ticker.reset_immediately();
+                    } else if was_active && !self.is_active {
+                        info!(
+                            target: "sequencer",
+                            "embedded leadership: deactivating sequencer (lost leadership)",
+                        );
                     }
                 }
                 // Drive the seal pipeline (commit → gossip → insert) one step per iteration.
