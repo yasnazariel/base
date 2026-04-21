@@ -31,7 +31,10 @@ use crate::{
     ActionEngineClient, HarnessEngineServer, HarnessL1Server, SupervisedP2P, TestGossipTransport,
 };
 
-type ProdEngineClient = BaseEngineClient<RootProvider, RootProvider<base_common_network::Base>>;
+/// Concrete type of the production [`BaseEngineClient`] used by both
+/// [`TestActorDerivationNode`] and [`crate::TestActorFollowNode`] to talk to
+/// the in-process [`HarnessEngineServer`] over HTTP.
+pub type ProdEngineClient = BaseEngineClient<RootProvider, RootProvider<base_common_network::Base>>;
 
 /// An action test harness that drives the production [`DerivationActor`],
 /// [`EngineActor`], and [`L1WatcherActor`] with an HTTP-backed
@@ -130,12 +133,7 @@ impl TestActorDerivationNode {
     /// Call [`initialize`] before any derivation calls.
     ///
     /// [`initialize`]: Self::initialize
-    pub async fn new<P>(
-        config: Arc<RollupConfig>,
-        engine: ActionEngineClient,
-        pipeline: P,
-        _genesis_safe_head: L2BlockInfo,
-    ) -> Self
+    pub async fn new<P>(config: Arc<RollupConfig>, engine: ActionEngineClient, pipeline: P) -> Self
     where
         P: Pipeline + SignalReceiver + std::fmt::Debug + Send + Sync + 'static,
     {

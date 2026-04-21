@@ -4,7 +4,7 @@ use std::{sync::Arc, time::Duration};
 
 use alloy_genesis::ChainConfig as GenesisChainConfig;
 use alloy_provider::RootProvider;
-use base_consensus_engine::{BaseEngineClient, EngineClientBuilder};
+use base_consensus_engine::EngineClientBuilder;
 use base_consensus_genesis::RollupConfig;
 use base_consensus_node::{
     EngineConfig, FollowNode, L1Config, NetworkActor, NetworkInboundData, NodeActor, NodeMode,
@@ -17,10 +17,8 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     ActionEngineClient, ActionL2LocalProvider, ActionL2SourceBridge, HarnessEngineServer,
-    HarnessL1Server, SupervisedP2P, TestGossipTransport,
+    HarnessL1Server, ProdEngineClient, SupervisedP2P, TestGossipTransport,
 };
-
-type ProdEngineClient = BaseEngineClient<RootProvider, RootProvider<base_common_network::Base>>;
 
 /// An action test harness that drives the production [`FollowNode`] supervisor with an
 /// HTTP-backed [`BaseEngineClient`].
@@ -164,7 +162,7 @@ impl TestActorFollowNode {
         let follow_client = Arc::clone(&http_client) as Arc<ProdEngineClient>;
         let follow_handle = tokio::spawn(async move {
             if let Err(e) = follow_node.start_with_engine_client(follow_client).await {
-                eprintln!("TestActorFollowNode: FollowNode exited with error: {e}");
+                tracing::error!(error = %e, "TestActorFollowNode: FollowNode exited");
             }
         });
 

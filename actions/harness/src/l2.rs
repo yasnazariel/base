@@ -1,3 +1,9 @@
+//! L2 sequencer harness: builds payloads in-process via the production
+//! [`SequencerEngineClient`] and exposes them through [`ActionL2Source`] and
+//! [`SharedBlockHashRegistry`] for both the batcher and follow-node harnesses.
+//!
+//! [`SequencerEngineClient`]: base_consensus_node::SequencerEngineClient
+
 use std::{
     collections::{HashMap, VecDeque},
     sync::{Arc, Mutex},

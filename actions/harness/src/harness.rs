@@ -1,3 +1,8 @@
+//! [`ActionTestHarness`]: top-level setup that wires the L1 miner, L2 sequencer,
+//! batcher, and rollup config used by every action test, plus factory helpers
+//! for the actor-based [`crate::TestActorDerivationNode`] and
+//! [`crate::TestActorFollowNode`] harnesses.
+
 use std::sync::Arc;
 
 use alloy_eips::BlockNumHash;
@@ -267,7 +272,7 @@ impl ActionTestHarness {
             l1_chain,
         );
 
-        TestActorDerivationNode::new(rollup_config, engine, pipeline, genesis_safe_head).await
+        TestActorDerivationNode::new(rollup_config, engine, pipeline).await
     }
 
     /// Create a blob-DA [`TestActorDerivationNode`] wired to the production actor stack.
@@ -323,7 +328,7 @@ impl ActionTestHarness {
             l1_chain,
         );
 
-        TestActorDerivationNode::new(rollup_config, engine, pipeline, genesis_safe_head).await
+        TestActorDerivationNode::new(rollup_config, engine, pipeline).await
     }
 
     /// Decode the [`L1BlockInfoTx`] from the first deposit transaction of an

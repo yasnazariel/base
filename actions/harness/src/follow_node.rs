@@ -1,3 +1,13 @@
+//! Follow-node test harness: in-process [`FollowNode`] driver, source bridge, and
+//! [`L2Sequencer`] adapter for action tests.
+//!
+//! Predecessor of [`crate::TestActorFollowNode`]; retained for tests that
+//! exercise the [`FollowNode`] sync kernel and `SafeDB` storage layer in
+//! isolation from the gossip / L1-watcher actors.
+//!
+//! [`FollowNode`]: base_consensus_node::FollowNode
+//! [`L2Sequencer`]: crate::L2Sequencer
+
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},

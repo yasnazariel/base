@@ -231,7 +231,7 @@ async fn test_actor_proofs_gating() {
 
 /// Chains-agree guard prevents the safe FCU when the local hash differs from the source.
 ///
-/// 1. Push 3 blocks and sync to block 3 (safe_number = 0, no safe FCU sent).
+/// 1. Push 3 blocks and sync to block 3 (`safe_number` = 0, no safe FCU sent).
 /// 2. Insert a wrong hash for block 2 into the engine's block-hash registry.
 /// 3. Push block 4 to the source and mark source safe = 2.
 /// 4. Tick — the actor syncs block 4, calls `update_safe_and_finalized`, detects the

@@ -1120,7 +1120,7 @@ async fn derive_chain_from_near_l1_genesis() {
         chain,
     );
 
-    let node = TestActorDerivationNode::new(rollup_arc, engine, pipeline, genesis_head).await;
+    let node = TestActorDerivationNode::new(rollup_arc, engine, pipeline).await;
     node.initialize().await;
     node.sync_until_safe(2).await;
 

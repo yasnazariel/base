@@ -25,6 +25,12 @@ use crate::{L1Block, SharedL1Chain};
 
 #[rpc(server, namespace = "eth")]
 pub trait HarnessEthApi {
+    /// Look up an L1 block by number or tag.  Transactions are always
+    /// returned as hashes only (`full` is ignored).  Returns `None` for
+    /// `Finalized` and `Safe` tags so the production [`BlockStream`] silently
+    /// skips ticks rather than surfacing a deserialization error.
+    ///
+    /// [`BlockStream`]: base_consensus_node::BlockStream
     #[method(name = "getBlockByNumber")]
     async fn get_block_by_number(
         &self,
@@ -32,6 +38,8 @@ pub trait HarnessEthApi {
         full: bool,
     ) -> RpcResult<Option<Block<EthTransaction>>>;
 
+    /// Look up an L1 block by hash.  Transactions are always returned as
+    /// hashes only (`full` is ignored).
     #[method(name = "getBlockByHash")]
     async fn get_block_by_hash(
         &self,
@@ -50,18 +58,26 @@ pub trait HarnessEthApi {
     async fn get_logs(&self, filter: Filter) -> RpcResult<Vec<Log>>;
 }
 
-struct HarnessL1Rpc {
+/// JSON-RPC server adapter that resolves L1 `eth_*` reads against a
+/// [`SharedL1Chain`] snapshot.
+#[derive(Debug)]
+pub struct HarnessL1Rpc {
     chain: SharedL1Chain,
 }
 
-fn l1_block_to_rpc(l1: &L1Block) -> Block<EthTransaction> {
-    let sealed = Sealed::new_unchecked(l1.header.clone(), l1.hash());
-    let rpc_header = alloy_rpc_types_eth::Header::from_sealed(sealed);
-    Block {
-        header: rpc_header,
-        uncles: vec![],
-        transactions: BlockTransactions::Hashes(vec![]),
-        withdrawals: None,
+impl HarnessL1Rpc {
+    /// Convert an [`L1Block`] into an `eth`-namespace [`Block<EthTransaction>`]
+    /// suitable for [`HarnessEthApi`] responses (transactions are returned as
+    /// hashes only).
+    pub fn l1_block_to_eth_rpc(l1: &L1Block) -> Block<EthTransaction> {
+        let sealed = Sealed::new_unchecked(l1.header.clone(), l1.hash());
+        let rpc_header = alloy_rpc_types_eth::Header::from_sealed(sealed);
+        Block {
+            header: rpc_header,
+            uncles: vec![],
+            transactions: BlockTransactions::Hashes(vec![]),
+            withdrawals: None,
+        }
     }
 }
 
@@ -83,7 +99,7 @@ impl HarnessEthApiServer for HarnessL1Rpc {
             // silently skips the tick rather than surfacing a deserialization error.
             BlockNumberOrTag::Finalized | BlockNumberOrTag::Safe => return Ok(None),
         };
-        Ok(self.chain.get_block(number).as_ref().map(l1_block_to_rpc))
+        Ok(self.chain.get_block(number).as_ref().map(Self::l1_block_to_eth_rpc))
     }
 
     async fn get_block_by_hash(
@@ -91,7 +107,7 @@ impl HarnessEthApiServer for HarnessL1Rpc {
         hash: B256,
         _full: bool,
     ) -> RpcResult<Option<Block<EthTransaction>>> {
-        Ok(self.chain.block_by_hash(hash).as_ref().map(l1_block_to_rpc))
+        Ok(self.chain.block_by_hash(hash).as_ref().map(Self::l1_block_to_eth_rpc))
     }
 
     async fn get_logs(&self, _filter: Filter) -> RpcResult<Vec<Log>> {

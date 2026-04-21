@@ -12,7 +12,7 @@ use base_batcher_encoder::{DaType, EncoderConfig};
 /// 2. The node is initialized before any L1 batch is available.
 /// 3. Each block is gossiped via [`act_l2_unsafe_gossip_receive`], advancing
 ///    `unsafe_head` to 5.  `safe_head` stays at genesis throughout because the
-///    L1 batch has not landed yet and the L1WatcherActor has nothing to deliver.
+///    L1 batch has not landed yet and the `L1WatcherActor` has nothing to deliver.
 /// 4. All blocks are batched and submitted to L1; one L1 block is mined.
 /// 5. `sync_until_safe(5)` drives derivation; `safe_head` catches up to
 ///    `unsafe_head` (both at 5).

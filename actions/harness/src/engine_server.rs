@@ -36,18 +36,22 @@ use crate::ActionEngineClient;
 
 /// Implements [`BaseEngineApiServer`] by delegating every call to an
 /// in-process [`ActionEngineClient`].
-struct HarnessEngineRpc {
+#[derive(Debug)]
+pub struct HarnessEngineRpc {
     engine: Arc<ActionEngineClient>,
 }
 
-fn rpc_err(e: impl std::fmt::Display) -> ErrorObject<'static> {
-    ErrorObject::owned(-32603, e.to_string(), None::<()>)
+impl HarnessEngineRpc {
+    /// Wrap an arbitrary [`Display`] error into an internal-error [`ErrorObject`].
+    pub fn rpc_err(e: impl std::fmt::Display) -> ErrorObject<'static> {
+        ErrorObject::owned(-32603, e.to_string(), None::<()>)
+    }
 }
 
 #[async_trait]
 impl BaseEngineApiServer<BaseEngineTypes<BasePayloadTypes>> for HarnessEngineRpc {
     async fn new_payload_v2(&self, payload: ExecutionPayloadInputV2) -> RpcResult<PayloadStatus> {
-        self.engine.new_payload_v2(payload).await.map_err(rpc_err)
+        self.engine.new_payload_v2(payload).await.map_err(Self::rpc_err)
     }
 
     async fn new_payload_v3(
@@ -56,7 +60,7 @@ impl BaseEngineApiServer<BaseEngineTypes<BasePayloadTypes>> for HarnessEngineRpc
         _versioned_hashes: Vec<B256>,
         parent_beacon_block_root: B256,
     ) -> RpcResult<PayloadStatus> {
-        self.engine.new_payload_v3(payload, parent_beacon_block_root).await.map_err(rpc_err)
+        self.engine.new_payload_v3(payload, parent_beacon_block_root).await.map_err(Self::rpc_err)
     }
 
     async fn new_payload_v4(
@@ -66,7 +70,7 @@ impl BaseEngineApiServer<BaseEngineTypes<BasePayloadTypes>> for HarnessEngineRpc
         parent_beacon_block_root: B256,
         _execution_requests: Requests,
     ) -> RpcResult<PayloadStatus> {
-        self.engine.new_payload_v4(payload, parent_beacon_block_root).await.map_err(rpc_err)
+        self.engine.new_payload_v4(payload, parent_beacon_block_root).await.map_err(Self::rpc_err)
     }
 
     async fn fork_choice_updated_v1(
@@ -77,7 +81,7 @@ impl BaseEngineApiServer<BaseEngineTypes<BasePayloadTypes>> for HarnessEngineRpc
         self.engine
             .fork_choice_updated_v2(fork_choice_state, payload_attributes)
             .await
-            .map_err(rpc_err)
+            .map_err(Self::rpc_err)
     }
 
     async fn fork_choice_updated_v2(
@@ -88,7 +92,7 @@ impl BaseEngineApiServer<BaseEngineTypes<BasePayloadTypes>> for HarnessEngineRpc
         self.engine
             .fork_choice_updated_v2(fork_choice_state, payload_attributes)
             .await
-            .map_err(rpc_err)
+            .map_err(Self::rpc_err)
     }
 
     async fn fork_choice_updated_v3(
@@ -99,32 +103,32 @@ impl BaseEngineApiServer<BaseEngineTypes<BasePayloadTypes>> for HarnessEngineRpc
         self.engine
             .fork_choice_updated_v3(fork_choice_state, payload_attributes)
             .await
-            .map_err(rpc_err)
+            .map_err(Self::rpc_err)
     }
 
     async fn get_payload_v2(&self, payload_id: PayloadId) -> RpcResult<ExecutionPayloadEnvelopeV2> {
-        self.engine.get_payload_v2(payload_id).await.map_err(rpc_err)
+        self.engine.get_payload_v2(payload_id).await.map_err(Self::rpc_err)
     }
 
     async fn get_payload_v3(
         &self,
         payload_id: PayloadId,
     ) -> RpcResult<BaseExecutionPayloadEnvelopeV3> {
-        self.engine.get_payload_v3(payload_id).await.map_err(rpc_err)
+        self.engine.get_payload_v3(payload_id).await.map_err(Self::rpc_err)
     }
 
     async fn get_payload_v4(
         &self,
         payload_id: PayloadId,
     ) -> RpcResult<BaseExecutionPayloadEnvelopeV4> {
-        self.engine.get_payload_v4(payload_id).await.map_err(rpc_err)
+        self.engine.get_payload_v4(payload_id).await.map_err(Self::rpc_err)
     }
 
     async fn get_payload_v5(
         &self,
         payload_id: PayloadId,
     ) -> RpcResult<BaseExecutionPayloadEnvelopeV5> {
-        self.engine.get_payload_v5(payload_id).await.map_err(rpc_err)
+        self.engine.get_payload_v5(payload_id).await.map_err(Self::rpc_err)
     }
 
     async fn get_payload_bodies_by_hash_v1(
@@ -162,7 +166,9 @@ impl BaseEngineApiServer<BaseEngineTypes<BasePayloadTypes>> for HarnessEngineRpc
 /// These two methods provide those lookups so that `find_starting_forkchoice`
 /// and related bootstrap calls can resolve L2 block data over HTTP.
 #[rpc(server, namespace = "eth")]
-trait HarnessEthL2Api {
+pub trait HarnessEthL2Api {
+    /// Look up an L2 block by number or tag.  Transactions are always returned
+    /// as hashes only (`full` is ignored).
     #[method(name = "getBlockByNumber")]
     async fn get_block_by_number(
         &self,
@@ -170,6 +176,8 @@ trait HarnessEthL2Api {
         full: bool,
     ) -> RpcResult<Option<Block<BaseTransaction>>>;
 
+    /// Look up an L2 block by hash.  Transactions are always returned as
+    /// hashes only (`full` is ignored).
     #[method(name = "getBlockByHash")]
     async fn get_block_by_hash(
         &self,
@@ -178,7 +186,10 @@ trait HarnessEthL2Api {
     ) -> RpcResult<Option<Block<BaseTransaction>>>;
 }
 
-struct HarnessEthL2Rpc {
+/// JSON-RPC server adapter that resolves L2 `eth_getBlockBy*` calls against an
+/// in-process [`ActionEngineClient`].
+#[derive(Debug)]
+pub struct HarnessEthL2Rpc {
     engine: Arc<ActionEngineClient>,
 }
 
