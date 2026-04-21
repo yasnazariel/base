@@ -1,0 +1,183 @@
+# Vibenet overlay on top of etc/docker/docker-compose.yml.
+#
+# IMPORTANT: docker compose resolves all relative paths against the project
+# directory, which defaults to the directory of the first -f file
+# (etc/docker/). That means `./foo` and `../../bar` in THIS file are both
+# relative to etc/docker/, NOT etc/vibenet/.
+#
+# Layers on:
+#   - FAUCET_ADDR propagated into setup-l1 so the faucet EOA is prefunded on L1.
+#   - nginx-gateway: public HTTP gateway, host-routed and rate-limited.
+#   - cloudflared: outbound-only tunnel to Cloudflare for TLS.
+#   - vibenet-faucet: axum service, private to the docker network.
+#   - vibenet-setup: one-shot. Sweeps anvil balances -> faucet on L2, then
+#     deploys demo contracts and writes /shared/contracts.json.
+#   - proxyd: per-method rate limits as a second line of defense.
+
+services:
+  # --- Prefund the faucet on L1 via the existing setup-l1 anvil genesis ----
+  setup-l1:
+    environment:
+      - FAUCET_ADDR=${FAUCET_ADDR}
+
+  # --- Public HTTP gateway --------------------------------------------------
+  nginx-gateway:
+    image: nginx:1.27-alpine
+    container_name: vibenet-nginx
+    # Loopback-only host port for local curl testing. Cloudflare reaches nginx
+    # via the docker network in production; this binding is harmless there
+    # because the production host firewall denies inbound 18080 anyway.
+    ports:
+      - "127.0.0.1:${VIBENET_HOST_PORT:-18080}:8080"
+    depends_on:
+      vibenet-faucet:
+        condition: service_started
+      base-client:
+        condition: service_healthy
+      proxyd:
+        condition: service_healthy
+      grafana:
+        condition: service_started
+      vibenet-config-renderer:
+        condition: service_completed_successfully
+      vibenet-htpasswd:
+        condition: service_completed_successfully
+    volumes:
+      - ../vibenet/nginx/vibenet.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ../vibenet/nginx/cf-ips.conf:/etc/nginx/cf-ips.conf:ro
+      - vibenet-htpasswd:/etc/nginx/htpasswd-dir:ro
+      - vibenet-config:/srv/config:ro
+      - vibenet-shared:/srv/shared:ro
+      - ../../apps/vibenet-ui/public:/srv/ui:ro
+    environment:
+      - RPC_SECRET_PATH=${VIBENET_API_KEY:-changeme}
+    # nginx:alpine auto-runs envsubst on /etc/nginx/templates/*.template
+    # and writes the result to /etc/nginx/conf.d/*.conf before starting.
+    restart: unless-stopped
+
+  # --- Writes ADMIN_HTPASSWD into a shared volume for nginx basic-auth -----
+  vibenet-htpasswd:
+    image: alpine:3.21
+    container_name: vibenet-htpasswd
+    environment:
+      - ADMIN_HTPASSWD=${ADMIN_HTPASSWD:-}
+    volumes:
+      - vibenet-htpasswd:/out
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        if [ -z "$${ADMIN_HTPASSWD}" ]; then
+          echo "WARNING: ADMIN_HTPASSWD is unset; admin panel will deny all" >&2
+          printf 'disabled:$$2y$$05$$invalidhash\n' > /out/htpasswd
+        else
+          printf '%s\n' "$${ADMIN_HTPASSWD}" > /out/htpasswd
+        fi
+        chmod 644 /out/htpasswd
+    restart: "no"
+
+  # --- Cloudflare Tunnel ----------------------------------------------------
+  cloudflared:
+    image: cloudflare/cloudflared:2025.10.1
+    container_name: vibenet-cloudflared
+    depends_on:
+      nginx-gateway:
+        condition: service_started
+    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
+    restart: unless-stopped
+
+  # --- Faucet service -------------------------------------------------------
+  vibenet-faucet:
+    image: base-vibenet-faucet:local
+    build:
+      context: ../..
+      dockerfile: etc/vibenet/faucet/Dockerfile
+      args:
+        PROFILE: ${CARGO_PROFILE:-release}
+    container_name: vibenet-faucet
+    depends_on:
+      base-client:
+        condition: service_healthy
+    environment:
+      - VIBENET_FAUCET_BIND=0.0.0.0:8080
+      - VIBENET_FAUCET_RPC_URL=http://base-client:${L2_CLIENT_HTTP_PORT}
+      - VIBENET_FAUCET_CHAIN_ID=${L2_CHAIN_ID}
+      - VIBENET_FAUCET_PRIVATE_KEY=${FAUCET_PRIVATE_KEY}
+      - VIBENET_FAUCET_ADDR=${FAUCET_ADDR}
+      - VIBENET_FAUCET_DRIP_WEI=${VIBENET_FAUCET_DRIP_WEI:-100000000000000000}
+      - VIBENET_FAUCET_IP_COOLDOWN_SECS=${VIBENET_FAUCET_IP_COOLDOWN_SECS:-1800}
+      - VIBENET_FAUCET_ADDR_COOLDOWN_SECS=${VIBENET_FAUCET_ADDR_COOLDOWN_SECS:-86400}
+      - RUST_LOG=info,base_vibenet_faucet=debug
+    restart: unless-stopped
+
+  # --- One-shot contract deployer ------------------------------------------
+  vibenet-setup:
+    image: vibenet-setup:local
+    build:
+      context: ../..
+      dockerfile: etc/vibenet/setup/Dockerfile
+    container_name: vibenet-setup
+    depends_on:
+      base-client:
+        condition: service_healthy
+    environment:
+      - L2_RPC_URL=http://base-client:${L2_CLIENT_HTTP_PORT}
+      - L2_CHAIN_ID=${L2_CHAIN_ID}
+      - FAUCET_ADDR=${FAUCET_ADDR}
+      - FAUCET_PRIVATE_KEY=${FAUCET_PRIVATE_KEY}
+      - OUT_FILE=/shared/contracts.json
+      - VIBENET_BRANCH=${VIBENET_BRANCH:-unknown}
+      - VIBENET_COMMIT=${VIBENET_COMMIT:-unknown}
+    volumes:
+      - vibenet-shared:/shared
+      - ../vibenet/setup/contracts.yaml:/setup/contracts.yaml:ro
+    entrypoint: ["/usr/local/bin/deploy-contracts.sh"]
+
+  # --- Renders vibenet.yaml into config.json for the UI --------------------
+  # yq runs at startup and writes to a shared volume exposed at /config.json.
+  vibenet-config-renderer:
+    image: mikefarah/yq:4.44.3
+    container_name: vibenet-config-renderer
+    user: "0:0"
+    volumes:
+      - ../vibenet/config/vibenet.yaml:/in/vibenet.yaml:ro
+      - vibenet-config:/out
+    environment:
+      - VIBENET_BRANCH=${VIBENET_BRANCH:-unknown}
+      - VIBENET_COMMIT=${VIBENET_COMMIT:-unknown}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        yq -o=json \
+          'with(.branch; . = strenv(VIBENET_BRANCH)) |
+           with(.commit; . = strenv(VIBENET_COMMIT))' \
+          /in/vibenet.yaml > /out/config.json
+        echo "Wrote /out/config.json"
+    restart: "no"
+
+  # --- proxyd (Go) as a second line of defense with per-method rate limits -
+  proxyd:
+    image: proxyd:local
+    build:
+      context: .
+      dockerfile: Dockerfile.proxyd
+    container_name: vibenet-proxyd
+    depends_on:
+      base-client:
+        condition: service_healthy
+    volumes:
+      - ../vibenet/proxyd/proxyd-ratelimit.toml:/config/proxyd-ratelimit.toml:ro
+    command: ["/config/proxyd-ratelimit.toml"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "-X", "POST", "-H", "Content-Type: application/json", "-H", "X-Forwarded-For: 127.0.0.1", "--data", "{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"params\":[],\"id\":1}", "http://localhost:8080"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  vibenet-shared:
+  vibenet-config:
+  vibenet-htpasswd:

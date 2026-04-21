@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>vibenet</title>
+  <link rel="stylesheet" href="/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/marked@14/marked.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1 id="title">vibenet</h1>
+    <p id="subtitle" class="muted"></p>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/faucet.html">Faucet</a>
+      <a href="/admin/" target="_blank" rel="noopener">Admin</a>
+      <a id="rpc-link" href="#" target="_blank" rel="noopener">RPC</a>
+    </nav>
+  </header>
+
+  <main>
+    <section id="instructions"></section>
+
+    <section>
+      <h2>Features in this build</h2>
+      <ul id="features"></ul>
+    </section>
+
+    <section>
+      <h2>Deployed contracts</h2>
+      <pre id="contracts">loading...</pre>
+    </section>
+
+    <section>
+      <h2>Quick test</h2>
+      <p>Make sure your API key is correct, then paste in a terminal:</p>
+      <pre id="curl-snippet"></pre>
+    </section>
+  </main>
+
+  <footer>
+    <span>branch <code id="branch"></code></span>
+    <span>commit <code id="commit"></code></span>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>

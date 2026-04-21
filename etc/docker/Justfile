@@ -78,6 +78,53 @@ transfer-leader to='':
 conductor:
     cargo run --quiet -p basectl -- conductor
 
+# Vibenet: public devnet behind Cloudflare. Single sequencer + nginx gateway +
+# faucet + contract deployer + cloudflared tunnel. Requires etc/vibenet/vibenet-env
+# (copy from vibenet-env.example and fill in secrets before running).
+vibe: vibe-down _build-setup-image (_build-rust-images "devnet" "dev")
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -f etc/vibenet/vibenet-env ]; then
+      echo "ERROR: etc/vibenet/vibenet-env missing. Copy from etc/vibenet/vibenet-env.example." >&2
+      exit 1
+    fi
+    export VIBENET_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+    export VIBENET_COMMIT="$(git rev-parse --short HEAD)"
+    docker compose \
+      --env-file etc/docker/devnet-env \
+      --env-file etc/vibenet/vibenet-env \
+      -f etc/docker/docker-compose.yml \
+      -f etc/vibenet/docker-compose.vibenet.yml \
+      up -d --build --scale contender=0
+
+# Stops vibenet and deletes all data
+vibe-down:
+    -docker compose \
+      --env-file etc/docker/devnet-env \
+      --env-file etc/vibenet/vibenet-env \
+      -f etc/docker/docker-compose.yml \
+      -f etc/vibenet/docker-compose.vibenet.yml \
+      down --remove-orphans
+    -docker run --rm -v "$(pwd)/.devnet:/devnet" alpine sh -c 'rm -rf /devnet/*'
+
+# Stream logs from vibenet containers (optionally specify container names)
+vibe-logs *containers:
+    docker compose \
+      --env-file etc/docker/devnet-env \
+      --env-file etc/vibenet/vibenet-env \
+      -f etc/docker/docker-compose.yml \
+      -f etc/vibenet/docker-compose.vibenet.yml \
+      logs -f {{ containers }}
+
+# Shows vibenet container status
+vibe-ps *services:
+    docker compose \
+      --env-file etc/docker/devnet-env \
+      --env-file etc/vibenet/vibenet-env \
+      -f etc/docker/docker-compose.yml \
+      -f etc/vibenet/docker-compose.vibenet.yml \
+      ps {{ services }}
+
 # Stops devnet+ingress, deletes data, and starts fresh with full ingress stack
 ingress: ingress-down _build-setup-image (_build-rust-images "ingress" "dev")
     docker compose {{ _env }} {{ _ha }} -f etc/docker/docker-compose.ingress.yml up -d --no-build --scale contender=0

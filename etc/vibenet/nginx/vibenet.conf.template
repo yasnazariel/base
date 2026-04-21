@@ -1,0 +1,131 @@
+# nginx gateway for vibenet.
+#
+# Two server blocks, routed by Host header:
+#   - vibenet.base.org      -> UI + faucet + admin + config + contracts
+#   - vibenet-rpc.base.org  -> /rpc/<key> -> proxyd -> base-client
+#
+# Rate limiting uses the real client IP from Cloudflare's CF-Connecting-IP
+# header (cloudflared runs inside the docker network, so the real client IP
+# is only visible via that header, not $remote_addr).
+#
+# Env substitutions (via nginx:alpine built-in envsubst at startup):
+#   ${RPC_SECRET_PATH}   URL-path API key (matches eip-8130-v2 pattern)
+
+# Trust Cloudflare IP ranges. Full list is maintained in /etc/nginx/cf-ips.conf
+# mounted from etc/vibenet/nginx/cf-ips.conf.
+include /etc/nginx/cf-ips.conf;
+real_ip_header CF-Connecting-IP;
+real_ip_recursive on;
+
+# Rate limit zones - keyed on the real client IP after real_ip processing.
+limit_req_zone $binary_remote_addr zone=ui_ip:10m     rate=60r/m;
+limit_req_zone $binary_remote_addr zone=rpc_ip:10m    rate=600r/m;
+# nginx only supports r/s and r/m here, so we set 1 r/m and cap bursts.
+# True per-address / per-IP cooldowns are enforced in the faucet service.
+limit_req_zone $binary_remote_addr zone=faucet_ip:10m rate=1r/m;
+
+# WebSocket upgrade helper
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+# =============================================================================
+# vibenet.base.org - UI, faucet, admin
+# =============================================================================
+server {
+    listen 8080 default_server;
+    server_name vibenet.base.org;
+
+    # Static config read by the UI at runtime. Rendered from vibenet.yaml
+    # into /srv/config/config.json at container start.
+    location = /config.json {
+        alias /srv/config/config.json;
+        add_header Cache-Control "no-store";
+        default_type application/json;
+    }
+
+    # Contract addresses written by vibenet-setup after deploying testnet
+    # contracts. Returns 404 briefly at boot before vibenet-setup finishes.
+    location = /contracts.json {
+        alias /srv/shared/contracts.json;
+        add_header Cache-Control "no-store";
+        default_type application/json;
+    }
+
+    # Faucet /status is cheap (just reads balance/cooldown state), share the
+    # UI IP-bucket so dashboards can poll without hitting the drip limiter.
+    location = /faucet/status {
+        limit_req zone=ui_ip burst=30 nodelay;
+        proxy_pass http://vibenet-faucet:8080/status;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header CF-Connecting-IP $remote_addr;
+    }
+
+    # Faucet drip: strict per-IP limiter. The faucet itself also enforces
+    # per-IP and per-address cooldowns as the authoritative check.
+    location /faucet/ {
+        limit_req zone=faucet_ip burst=2 nodelay;
+        proxy_pass http://vibenet-faucet:8080/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header CF-Connecting-IP $remote_addr;
+    }
+
+    # Admin = Grafana, gated by basic-auth.
+    location /admin/ {
+        auth_basic "vibenet admin";
+        auth_basic_user_file /etc/nginx/htpasswd-dir/htpasswd;
+        proxy_pass http://grafana:3000/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    # Static UI (HTML/JS/CSS mounted from apps/vibenet-ui/public).
+    location / {
+        limit_req zone=ui_ip burst=30 nodelay;
+        root /srv/ui;
+        index index.html;
+        try_files $uri $uri/ /index.html;
+    }
+}
+
+# =============================================================================
+# vibenet-rpc.base.org - RPC gated by URL-path API key
+# =============================================================================
+server {
+    listen 8080;
+    server_name vibenet-rpc.base.org;
+
+    # HTTP JSON-RPC: POST to /rpc/<key> -> strip prefix -> proxyd
+    location = /rpc/${RPC_SECRET_PATH} {
+        limit_req zone=rpc_ip burst=30 nodelay;
+        proxy_pass http://proxyd:8080/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header Content-Type "application/json";
+    }
+
+    # WebSocket: wss://.../ws/<key> -> base-client WS
+    location = /ws/${RPC_SECRET_PATH} {
+        limit_req zone=rpc_ip burst=30 nodelay;
+        proxy_pass http://base-client:8546/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_read_timeout 86400s;
+    }
+
+    # Anything else on the RPC host is 404 - do not leak that /rpc exists.
+    location / {
+        return 404;
+    }
+}

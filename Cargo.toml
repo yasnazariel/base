@@ -47,6 +47,7 @@ members = [
   "crates/infra/*",
   "crates/common/*",
   "crates/execution/*",
+  "crates/vibenet/*",
   "etc/tools/*",
   "devnet",
   "actions/*",
@@ -253,6 +254,9 @@ base-batcher-source = { path = "crates/batcher/source" }
 base-batcher-encoder = { path = "crates/batcher/encoder" }
 base-batcher-service = { path = "crates/batcher/service" }
 base-comp = { path = "crates/batcher/comp", default-features = false }
+
+# Vibenet
+base-vibenet-faucet = { path = "crates/vibenet/faucet" }
 
 # Utilities
 base-jwt = { path = "crates/utilities/jwt" }
