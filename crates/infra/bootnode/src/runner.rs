@@ -74,7 +74,7 @@ impl Bootnode {
         }
     }
 
-    async fn run_both(
+    pub async fn run_both(
         el: ElBootnode,
         cl: ClBootnode,
         cancel: CancellationToken,
