@@ -74,6 +74,12 @@ impl Bootnode {
         }
     }
 
+    /// Runs both the EL and CL halves concurrently under shared cancellation.
+    ///
+    /// When one half exits, the other is cancelled and awaited so its outcome is captured. The
+    /// first non-`Ok` result is returned; if both succeed the orchestrator returns `Ok(())`. On a
+    /// task panic (`JoinError`) both tokens are cancelled and the surviving task is drained before
+    /// propagating the error.
     pub async fn run_both(
         el: ElBootnode,
         cl: ClBootnode,

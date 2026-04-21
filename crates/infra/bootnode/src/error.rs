@@ -28,7 +28,7 @@ pub enum BootnodeError {
     },
 
     /// Failed to load or generate the CL secret key.
-    #[error("failed to load CL secret key from {path}: {source}")]
+    #[error("failed to load CL secret key from {path}")]
     ClSecretKey {
         /// The path that was attempted.
         path: PathBuf,
@@ -42,7 +42,7 @@ pub enum BootnodeError {
     ClKeyConversion(#[source] BoxedError),
 
     /// Failed to parse a user-supplied bootnode string.
-    #[error("failed to parse CL bootnode '{raw}': {source}")]
+    #[error("failed to parse CL bootnode '{raw}'")]
     ClBootnodeParse {
         /// The raw bootnode string that failed to parse.
         raw: String,

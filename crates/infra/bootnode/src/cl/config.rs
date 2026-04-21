@@ -38,7 +38,12 @@ pub struct ClBootnodeConfig {
 }
 
 impl ClBootnodeConfig {
-    /// Returns a config bound to all interfaces on the default port for the given chain.
+    /// Returns a config skeleton bound to all interfaces on the default port for the given chain.
+    ///
+    /// **`advertise_ip` is left as `0.0.0.0` and MUST be replaced with the node's
+    /// externally-routable IP before passing to [`super::ClBootnode`].**
+    /// [`super::ClBootnode::run`] will immediately return
+    /// [`super::super::BootnodeError::UnroutableClAdvertiseIp`] if the field is left unset.
     pub const fn for_chain(chain_id: u64) -> Self {
         Self {
             chain_id,
@@ -66,5 +71,7 @@ mod tests {
         assert_eq!(cfg.listen_udp_port, DEFAULT_CL_BOOTNODE_PORT);
         assert_eq!(cfg.advertise_udp_port, DEFAULT_CL_BOOTNODE_PORT);
         assert!(cfg.bootnodes.is_empty());
+        // for_chain is a skeleton — callers must set advertise_ip to a routable address.
+        assert!(cfg.advertise_ip.is_unspecified());
     }
 }
