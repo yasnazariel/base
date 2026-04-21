@@ -996,8 +996,11 @@ async fn l2_finalized_advances_via_l1_finalized_signal() {
     node.sync_until_safe(2).await;
     assert_eq!(node.engine.safe_head().block_info.number, 2);
 
-    let l1_block_1 = h.l1.block_info_at(1);
-    node.act_l1_finalized_signal(l1_block_1).await;
+    // L2#1 and L2#2 were each batched into their own L1 inclusion block (L1#1
+    // and L1#2). Signalling L1#2 as finalized covers both, so L2 finalization
+    // advances to L2#2.
+    let l1_block_2 = h.l1.block_info_at(2);
+    node.act_l1_finalized_signal(l1_block_2).await;
     assert_eq!(
         node.engine.finalized_head().block_info.number,
         2,
