@@ -68,6 +68,7 @@ std = [
 	"alloy-eips/kzg",
 	"alloy-eips/std",
 	"alloy-evm/std",
+	"alloy-genesis/std",
 	"alloy-primitives/std",
 	"alloy-rlp/std",
 	"alloy-trie/std",

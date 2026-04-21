@@ -11,7 +11,7 @@ use base_execution_chainspec::BaseChainSpec;
 use base_execution_consensus::BaseBeaconConsensus;
 use base_execution_evm::{BaseEvmConfig, BaseRethReceiptBuilder};
 use base_execution_payload_builder::{
-    Attributes, BaseBuiltPayload, BasePayloadBuilderAttributes, PayloadPrimitives,
+    Attributes, BaseBuiltPayload, OpPayloadBuilderAttributes, PayloadPrimitives,
     builder::BasePayloadTransactions,
     config::{BaseBuilderConfig, BaseDAConfig, GasLimitConfig},
 };
@@ -115,13 +115,13 @@ impl BaseLocalPayloadAttributesBuilder {
     }
 }
 
-impl PayloadAttributesBuilder<BasePayloadBuilderAttributes<BaseTxEnvelope>>
+impl PayloadAttributesBuilder<OpPayloadBuilderAttributes<BaseTxEnvelope>>
     for BaseLocalPayloadAttributesBuilder
 {
     fn build(
         &self,
         parent: &SealedHeader<alloy_consensus::Header>,
-    ) -> BasePayloadBuilderAttributes<BaseTxEnvelope> {
+    ) -> OpPayloadBuilderAttributes<BaseTxEnvelope> {
         /// Dummy system transaction for dev mode.
         const TX_SET_L1_BLOCK_BASE_MAINNET_BLOCK_1: [u8; 349] = alloy_primitives::hex!(
             "7ef90159a024fa2288af14732611c4b9a8f99b2c929eaf2af8fb45981a752a01417994df3b94deaddeaddeaddeaddeaddeaddeaddeaddead00019442000000000000000000000000000000000000158080830f424080b90104015d8eb900000000000000000000000000000000000000000000000000000000010ac02800000000000000000000000000000000000000000000000000000000648a5ce300000000000000000000000000000000000000000000000000000003ded24b5e5c13d307623a926cd31415036c8b7fa14572f9dac64528e857a470511fc3077100000000000000000000000000000000000000000000000000000000000000010000000000000000000000005050f69a9786f081509234f1a7f4684b5e5b76c900000000000000000000000000000000000000000000000000000000000000bc00000000000000000000000000000000000000000000000000000000000a6fe0"
@@ -171,7 +171,7 @@ impl PayloadAttributesBuilder<BasePayloadBuilderAttributes<BaseTxEnvelope>>
             min_base_fee: Some(0),
         };
 
-        BasePayloadBuilderAttributes::try_new(parent.hash(), attributes, 3)
+        OpPayloadBuilderAttributes::try_new(parent.hash(), attributes, 3)
             .expect("static dev payload attributes must decode")
     }
 }

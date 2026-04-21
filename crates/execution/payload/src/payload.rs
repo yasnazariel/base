@@ -71,6 +71,7 @@ pub struct BasePayloadBuilderAttributes<T> {
     pub min_base_fee: Option<u64>,
 }
 
+/// OP payload builder attributes used by Base payload construction.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OpPayloadBuilderAttributes<T> {
     /// Inner ethereum payload builder attributes
@@ -137,6 +138,36 @@ impl<T> OpPayloadBuilderAttributes<T> {
             min_base_fee: self.min_base_fee,
         }
     }
+
+    /// Extracts the extra data parameters post-Holocene hardfork.
+    /// In Holocene, those parameters are the EIP-1559 base fee parameters.
+    pub fn get_holocene_extra_data(
+        &self,
+        default_base_fee_params: BaseFeeParams,
+    ) -> Result<Bytes, EIP1559ParamError> {
+        self.eip_1559_params
+            .map(|params| HoloceneExtraData::encode(params, default_base_fee_params))
+            .ok_or(EIP1559ParamError::NoEIP1559Params)?
+    }
+
+    /// Extracts the extra data parameters post-Jovian hardfork.
+    /// Those parameters are the EIP-1559 parameters from Holocene and the minimum base fee.
+    pub fn get_jovian_extra_data(
+        &self,
+        default_base_fee_params: BaseFeeParams,
+    ) -> Result<Bytes, EIP1559ParamError> {
+        let min_base_fee = self.min_base_fee.ok_or(EIP1559ParamError::MinBaseFeeNotSet)?;
+        self.eip_1559_params
+            .map(|params| JovianExtraData::encode(params, default_base_fee_params, min_base_fee))
+            .ok_or(EIP1559ParamError::NoEIP1559Params)?
+    }
+
+    /// Extracts the Holocene EIP-1559 parameters from the encoded form.
+    ///
+    /// Returns (`elasticity`, `denominator`).
+    pub fn decode_eip_1559_params(&self) -> Option<(u32, u32)> {
+        self.eip_1559_params.map(HoloceneExtraData::decode_params)
+    }
 }
 
 impl<T> BasePayloadBuilderAttributes<T> {
@@ -192,6 +223,7 @@ impl<T> BasePayloadBuilderAttributes<T> {
         }
     }
 
+    /// Creates payload builder attributes for the given parent block and RPC payload attributes.
     pub fn try_new(
         parent: B256,
         attributes: BasePayloadAttributes,

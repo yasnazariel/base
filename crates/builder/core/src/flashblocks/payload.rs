@@ -21,7 +21,7 @@ use base_common_flashblocks::{
 };
 use base_execution_consensus::{calculate_receipt_root_no_memo, isthmus};
 use base_execution_evm::{BaseEvmConfig, BaseNextBlockEnvAttributes};
-use base_execution_payload_builder::{BaseBuiltPayload, BasePayloadBuilderAttributes};
+use base_execution_payload_builder::{BaseBuiltPayload, OpPayloadBuilderAttributes};
 use either::Either;
 use eyre::WrapErr as _;
 use reth_basic_payload_builder::BuildOutcome;
@@ -122,7 +122,7 @@ where
     Pool: Clone + Send + Sync,
     Client: Clone + Send + Sync,
 {
-    type Attributes = BasePayloadBuilderAttributes<BaseTransactionSigned>;
+    type Attributes = OpPayloadBuilderAttributes<BaseTransactionSigned>;
     type BuiltPayload = BaseBuiltPayload;
 
     fn try_build(
@@ -155,7 +155,7 @@ where
     fn get_op_payload_builder_ctx(
         &self,
         config: reth_basic_payload_builder::PayloadConfig<
-            BasePayloadBuilderAttributes<base_common_consensus::BaseTxEnvelope>,
+            OpPayloadBuilderAttributes<base_common_consensus::BaseTxEnvelope>,
         >,
         cancel: CancellationToken,
         extra: FlashblocksExtraCtx,
@@ -214,7 +214,7 @@ where
     /// a result indicating success with the payload or an error in case of failure.
     async fn build_payload(
         &self,
-        args: BuildArguments<BasePayloadBuilderAttributes<BaseTransactionSigned>, BaseBuiltPayload>,
+        args: BuildArguments<OpPayloadBuilderAttributes<BaseTransactionSigned>, BaseBuiltPayload>,
         best_payload: BlockCell<BaseBuiltPayload>,
     ) -> Result<(), PayloadBuilderError> {
         let block_build_start_time = Instant::now();
@@ -896,7 +896,7 @@ where
     Pool: PoolBounds,
     Client: ClientBounds,
 {
-    type Attributes = BasePayloadBuilderAttributes<BaseTransactionSigned>;
+    type Attributes = OpPayloadBuilderAttributes<BaseTransactionSigned>;
     type BuiltPayload = BaseBuiltPayload;
 
     async fn try_build(

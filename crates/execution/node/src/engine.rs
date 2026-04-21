@@ -11,7 +11,7 @@ use base_common_rpc_types_engine::{
 };
 use base_execution_consensus::isthmus;
 use base_execution_payload_builder::{
-    BaseExecutionPayloadValidator, BasePayloadBuilderAttributes, BasePayloadTypes,
+    BaseExecutionPayloadValidator, BasePayloadTypes, OpPayloadBuilderAttributes,
 };
 use reth_consensus::ConsensusError;
 use reth_node_api::{
@@ -163,7 +163,7 @@ where
 impl<Types, P, Tx, ChainSpec> EngineApiValidator<Types> for BaseEngineValidator<P, Tx, ChainSpec>
 where
     Types: PayloadTypes<
-            PayloadAttributes = BasePayloadBuilderAttributes<Tx>,
+            PayloadAttributes = OpPayloadBuilderAttributes<Tx>,
             ExecutionData = ExecutionData,
             BuiltPayload: BuiltPayload<Primitives: NodePrimitives<SignedTx = Tx>>,
         >,
@@ -330,8 +330,8 @@ mod tests {
         eip_1559_params: Option<B64>,
         min_base_fee: Option<u64>,
         timestamp: u64,
-    ) -> BasePayloadBuilderAttributes<BaseTxEnvelope> {
-        BasePayloadBuilderAttributes::try_new(
+    ) -> OpPayloadBuilderAttributes<BaseTxEnvelope> {
+        OpPayloadBuilderAttributes::try_new(
             B256::ZERO,
             BasePayloadAttributes {
                 gas_limit: Some(1000),
