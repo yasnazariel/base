@@ -324,10 +324,10 @@ impl ActionEngineClient {
 
     /// Directly reset the tracked finalized head to `head`.
     ///
-    /// Used by [`crate::TestActorDerivationNode::act_reset`] to mirror the
-    /// synchronous finalized-head reset that the old `TestRollupNode::act_reset`
-    /// applied directly.  In production the finalized head is only advanced via
-    /// `fork_choice_updated_vX`; resetting it is a test-only operation.
+    /// Used by [`crate::TestActorDerivationNode::act_reset`] to perform a
+    /// synchronous finalized-head reset. In production the finalized head is
+    /// only advanced via `fork_choice_updated_vX`; resetting it is a
+    /// test-only operation.
     pub fn reset_finalized_head(&self, head: L2BlockInfo) {
         self.inner.lock().expect("action engine inner lock poisoned").finalized_head = head;
     }
@@ -592,8 +592,8 @@ impl ActionEngineClient {
         // In sequencer mode `payload.block_hash` is the real sealed hash; skip only when it
         // matches the stored header's hash to guard against hash collisions.
         //
-        // In derivation mode (`TestRollupNode`) the payload is constructed with a zeroed
-        // `block_hash` placeholder because the engine is expected to fill it in. When we see
+        // In derivation mode the payload is constructed with a zeroed `block_hash`
+        // placeholder because the engine is expected to fill it in. When we see
         // B256::ZERO we treat the block-number lookup alone as sufficient — the block was
         // pre-built by the sequencer and its state is already committed to the DB.
         if let Some(existing) = inner.executed_headers.get(&payload.block_number) {

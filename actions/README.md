@@ -40,24 +40,28 @@ Concretely, an action test can verify things like:
 actions/
 └── harness/        base-action-harness crate
     src/
-    ├── lib.rs                  public API (re-exports)
-    ├── action.rs               Action trait, L2BlockProvider trait
-    ├── miner.rs                L1Miner, L1 blocks, PendingTx, reorgs
-    ├── l2.rs                   L2Sequencer, ActionL2Source, TestAccount
-    ├── harness.rs              ActionTestHarness
-    ├── matrix.rs               ForkMatrix (upgrade combinations)
-    ├── test_rollup_config.rs   TestRollupConfigBuilder
-    ├── p2p.rs                  SupervisedP2P, TestGossipTransport
-    ├── engine.rs               ActionEngineClient
-    ├── node.rs                 TestRollupNode, derivation / verifier pipelines
+    ├── lib.rs                    public API (re-exports)
+    ├── action.rs                 Action trait, L2BlockProvider trait
+    ├── miner.rs                  L1Miner, L1 blocks, PendingTx, reorgs
+    ├── l2.rs                     L2Sequencer, ActionL2Source, TestAccount
+    ├── harness.rs                ActionTestHarness
+    ├── matrix.rs                 ForkMatrix (upgrade combinations)
+    ├── test_rollup_config.rs     TestRollupConfigBuilder
+    ├── p2p.rs                    SupervisedP2P, TestGossipTransport
+    ├── engine.rs                 ActionEngineClient
+    ├── engine_server.rs          HarnessEngineServer
+    ├── l1_server.rs              HarnessL1Server
+    ├── follow_node.rs            TestFollowNode (legacy follow-mode harness)
+    ├── actor_follow_node.rs      TestActorFollowNode (production follow-mode actor stack)
+    ├── actor_derivation_node.rs  TestActorDerivationNode (production derivation actor stack)
     ├── batcher/
-    │   ├── actor.rs            Batcher actor
-    │   └── tx_manager.rs       L1MinerTxManager (inbox submission)
-    └── providers/              L1 / L2 / blob sources for pipelines
-        ├── l1.rs               SharedL1Chain, ActionL1ChainProvider, ActionDataSource
-        ├── l1_block_fetcher.rs ActionL1BlockFetcher
-        ├── l2.rs               ActionL2ChainProvider
-        └── blob.rs             ActionBlobDataSource, blob DA
+    │   ├── actor.rs              Batcher actor
+    │   └── tx_manager.rs         L1MinerTxManager (inbox submission)
+    └── providers/                L1 / L2 / blob sources for pipelines
+        ├── l1.rs                 SharedL1Chain, ActionL1ChainProvider, ActionDataSource
+        ├── l1_block_fetcher.rs   ActionL1BlockFetcher
+        ├── l2.rs                 ActionL2ChainProvider
+        └── blob.rs               ActionBlobDataSource, blob DA
     tests/                      integration tests - one scenario per module (subdirs when grouped)
 ```
 
