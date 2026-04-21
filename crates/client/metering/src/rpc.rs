@@ -26,7 +26,9 @@ use tracing::{debug, error, info, warn};
 use crate::{
     MeterBlockResponse, MeteredPriorityFeeResponse, PendingState, PendingStateRootTimes,
     PendingTrieCache, PriorityFeeEstimator, ResourceDemand, ResourceFeeEstimateResponse,
-    block::meter_block, meter::meter_bundle, traits::MeteringApiServer,
+    block::meter_block,
+    meter::{MeterBundleInput, meter_bundle},
+    traits::MeteringApiServer,
 };
 
 /// Implementation of the metering RPC API.
@@ -42,6 +44,9 @@ pub struct MeteringApiImpl<Provider, FB> {
     state_root_cache: Option<Arc<RwLock<PendingStateRootTimes>>>,
     /// Whether metering data collection is enabled.
     metering_enabled: Arc<AtomicBool>,
+    /// Opcodes and precompiles to track for gas metering. When non-empty, a
+    /// `MeteringInspector` is attached during bundle execution.
+    metered_opcodes: Arc<crate::MeteredOpcodes>,
 }
 
 impl<Provider, FB> std::fmt::Debug for MeteringApiImpl<Provider, FB> {
@@ -63,7 +68,11 @@ where
     FB: FlashblocksAPI,
 {
     /// Creates a new instance of `MeteringApi` without priority fee estimation.
-    pub fn new(provider: Provider, flashblocks_api: Arc<FB>) -> Self {
+    pub fn new(
+        provider: Provider,
+        flashblocks_api: Arc<FB>,
+        metered_opcodes: Arc<crate::MeteredOpcodes>,
+    ) -> Self {
         Self {
             provider,
             flashblocks_api,
@@ -71,6 +80,7 @@ where
             priority_fee_estimator: None,
             state_root_cache: None,
             metering_enabled: Arc::new(AtomicBool::new(true)),
+            metered_opcodes,
         }
     }
 
@@ -80,6 +90,7 @@ where
         flashblocks_api: Arc<FB>,
         estimator: Arc<PriorityFeeEstimator>,
         state_root_cache: Arc<RwLock<PendingStateRootTimes>>,
+        metered_opcodes: Arc<crate::MeteredOpcodes>,
     ) -> Self {
         Self {
             provider,
@@ -88,6 +99,7 @@ where
             priority_fee_estimator: Some(estimator),
             state_root_cache: Some(state_root_cache),
             metering_enabled: Arc::new(AtomicBool::new(true)),
+            metered_opcodes,
         }
     }
 }
@@ -221,15 +233,16 @@ where
         let l1_block_info = self.get_l1_block_info(canonical_block_number)?;
 
         // Meter bundle using utility function
-        let output = meter_bundle(
+        let output = meter_bundle(MeterBundleInput {
             state_provider,
-            self.provider.chain_spec(),
-            parsed_bundle,
-            &header,
+            chain_spec: self.provider.chain_spec(),
+            bundle: parsed_bundle,
+            header: header.clone(),
             parent_beacon_block_root,
             pending_state,
             l1_block_info,
-        )
+            metered_opcodes: Arc::clone(&self.metered_opcodes),
+        })
         .map_err(|e| {
             // Sample error msg:
             // Transaction $TX_HASH execution failed: EVM reported invalid transaction ($TX_HASH): nonce $EXPECTED_NONCE too high, expected $EXPECTED_NONCE"

@@ -279,6 +279,7 @@ mod tests {
                 tx_hash: TxHash::ZERO,
                 value: U256::ZERO,
                 execution_time_us: 500,
+                opcode_gas: vec![],
             }],
             ..Default::default()
         }
