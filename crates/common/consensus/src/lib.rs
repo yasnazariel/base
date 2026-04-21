@@ -10,6 +10,9 @@
 
 extern crate alloc;
 
+#[cfg(feature = "reth")]
+use revm as _;
+
 #[cfg(feature = "alloy-compat")]
 mod alloy_compat;
 

@@ -39,25 +39,21 @@ where
     let input_len = input.len();
 
     if input_len > BLS12_MAX_G2_MSM_SIZE_ISTHMUS {
-        return Err(PrecompileError::Other(
-            alloc::format!("G2MSM input length must be at most {BLS12_MAX_G2_MSM_SIZE_ISTHMUS}")
-                .into(),
-        ));
+        return Err(PrecompileError::Fatal(alloc::format!(
+            "G2MSM input length must be at most {BLS12_MAX_G2_MSM_SIZE_ISTHMUS}"
+        )));
     }
 
     if input_len == 0 || !input_len.is_multiple_of(G2_MSM_INPUT_LENGTH) {
-        return Err(PrecompileError::Other(
-            alloc::format!(
-                "G2MSM input length should be multiple of {G2_MSM_INPUT_LENGTH}, was {input_len}"
-            )
-            .into(),
-        ));
+        return Err(PrecompileError::Fatal(alloc::format!(
+            "G2MSM input length should be multiple of {G2_MSM_INPUT_LENGTH}, was {input_len}"
+        )));
     }
 
     let k = input_len / G2_MSM_INPUT_LENGTH;
     let required_gas = msm_required_gas(k, &DISCOUNT_TABLE_G2_MSM, G2_MSM_BASE_GAS_FEE);
     if required_gas > gas_limit {
-        return Err(PrecompileError::OutOfGas);
+        return Err(PrecompileError::Fatal("out of gas".to_string()));
     }
 
     let precompile = bls12_381::g2_msm::PRECOMPILE;
@@ -67,9 +63,9 @@ where
         oracle_reader,
         &[precompile.address().as_slice(), &required_gas.to_be_bytes(), input]
     })
-    .map_err(|e| PrecompileError::Other(e.to_string().into()))?;
+    .map_err(|e| PrecompileError::Fatal(e.to_string()))?;
 
-    Ok(PrecompileOutput::new(required_gas, result_data.into()))
+    Ok(PrecompileOutput::new(required_gas, result_data.into(), 0))
 }
 
 /// Performs an FPVM-accelerated BLS12-381 G2 msm check after the Jovian Hardfork.
@@ -84,10 +80,9 @@ where
     O: PreimageOracleClient + Send + Sync,
 {
     if input.len() > BLS12_MAX_G2_MSM_SIZE_JOVIAN {
-        return Err(PrecompileError::Other(
-            alloc::format!("G2MSM input length must be at most {BLS12_MAX_G2_MSM_SIZE_JOVIAN}")
-                .into(),
-        ));
+        return Err(PrecompileError::Fatal(alloc::format!(
+            "G2MSM input length must be at most {BLS12_MAX_G2_MSM_SIZE_JOVIAN}"
+        )));
     }
 
     fpvm_bls12_g2_msm(input, gas_limit, hint_writer, oracle_reader)
@@ -137,7 +132,7 @@ mod tests {
                 oracle_reader,
             )
             .unwrap_err();
-            assert!(matches!(accelerated_result, PrecompileError::Other(_)));
+            assert!(matches!(accelerated_result, PrecompileError::Fatal(_)));
         })
         .await;
     }
@@ -147,7 +142,7 @@ mod tests {
         test_accelerated_precompile(|hint_writer, oracle_reader| {
             let accelerated_result =
                 fpvm_bls12_g2_msm(&[], u64::MAX, hint_writer, oracle_reader).unwrap_err();
-            assert!(matches!(accelerated_result, PrecompileError::Other(_)));
+            assert!(matches!(accelerated_result, PrecompileError::Fatal(_)));
         })
         .await;
     }
@@ -158,7 +153,7 @@ mod tests {
             let accelerated_result =
                 fpvm_bls12_g2_msm(&[0u8; G2_MSM_INPUT_LENGTH], 0, hint_writer, oracle_reader)
                     .unwrap_err();
-            assert!(matches!(accelerated_result, PrecompileError::OutOfGas));
+            assert!(matches!(accelerated_result, PrecompileError::Fatal(_)));
         })
         .await;
     }
@@ -188,7 +183,7 @@ mod tests {
             let input = [0u8; INPUT_SIZE];
             let accelerated_result =
                 fpvm_bls12_g2_msm_jovian(&input, u64::MAX, hint_writer, oracle_reader).unwrap_err();
-            assert!(matches!(accelerated_result, PrecompileError::Other(_)));
+            assert!(matches!(accelerated_result, PrecompileError::Fatal(_)));
         })
         .await;
     }

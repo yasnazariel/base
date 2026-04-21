@@ -25,7 +25,7 @@ where
     const ECRECOVER_BASE: u64 = 3_000;
 
     if ECRECOVER_BASE > gas_limit {
-        return Err(PrecompileError::OutOfGas);
+        return Err(PrecompileError::Fatal("ecrecover out of gas".to_string()));
     }
 
     let truncated_input = &input[..input.len().min(128)];
@@ -35,10 +35,10 @@ where
         oracle_reader,
         &[ECRECOVER_ADDR.as_slice(), &ECRECOVER_BASE.to_be_bytes(), truncated_input]
     })
-    .map_err(|e| PrecompileError::Other(e.to_string().into()))
+    .map_err(|e| PrecompileError::Fatal(e.to_string()))
     .unwrap_or_default();
 
-    Ok(PrecompileOutput::new(ECRECOVER_BASE, result_data.into()))
+    Ok(PrecompileOutput::new(ECRECOVER_BASE, result_data.into(), 0))
 }
 
 #[cfg(test)]
@@ -75,7 +75,7 @@ mod tests {
             let accelerated_result =
                 fpvm_ec_recover(&[], 0, hint_writer, oracle_reader).unwrap_err();
 
-            assert!(matches!(accelerated_result, PrecompileError::OutOfGas));
+            assert!(matches!(accelerated_result, PrecompileError::Fatal(_)));
         })
         .await;
     }

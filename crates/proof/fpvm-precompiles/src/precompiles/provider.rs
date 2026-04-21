@@ -9,7 +9,7 @@ use revm::{
     context::{Cfg, ContextTr, LocalContextTr},
     handler::{EthPrecompiles, PrecompileProvider},
     interpreter::{CallInputs, Gas, InstructionResult, InterpreterResult},
-    precompile::{PrecompileError, PrecompileResult, Precompiles, bls12_381_const, bn254},
+    precompile::{PrecompileResult, Precompiles, bls12_381_const, bn254},
     primitives::{hardfork::SpecId, hash_map::HashMap},
 };
 
@@ -124,25 +124,21 @@ where
             if let Some(accelerated) = self.accelerated_precompiles.get(&inputs.bytecode_address) {
                 (accelerated)(&input, inputs.gas_limit, &self.hint_writer, &self.oracle_reader)
             } else if let Some(precompile) = self.inner.precompiles.get(&inputs.bytecode_address) {
-                precompile.execute(&input, inputs.gas_limit)
+                precompile.execute(&input, inputs.gas_limit, 0)
             } else {
                 return Ok(None);
             };
 
         match output {
             Ok(output) => {
-                let underflow = result.gas.record_cost(output.gas_used);
+                let underflow = result.gas.record_regular_cost(output.gas_used);
                 assert!(underflow, "Gas underflow is not possible");
                 result.result = InstructionResult::Return;
                 result.output = output.bytes;
             }
-            Err(PrecompileError::Fatal(e)) => return Err(e),
             Err(e) => {
-                result.result = if e.is_oog() {
-                    InstructionResult::PrecompileOOG
-                } else {
-                    InstructionResult::PrecompileError
-                };
+                result.result = InstructionResult::PrecompileError;
+                let _ = e;
             }
         }
 
@@ -348,12 +344,13 @@ mod tests {
         let input = oversized_modexp_input();
 
         assert!(
-            jovian.precompiles().get(addr).unwrap().execute(&input, u64::MAX).is_ok(),
+            jovian.precompiles().get(addr).unwrap().execute(&input, u64::MAX, 0).is_ok(),
             "JOVIAN MODEXP must accept oversized input (Berlin pricing, no EIP-7823 limit)",
         );
+        let result = base_v1.precompiles().get(addr).unwrap().execute(&input, u64::MAX, 0);
         assert!(
-            base_v1.precompiles().get(addr).unwrap().execute(&input, u64::MAX).is_err(),
-            "BASE_V1 MODEXP must reject oversized input (Osaka pricing, EIP-7823 limit)",
+            matches!(&result, Ok(output) if output.halt_reason().is_some()),
+            "BASE_V1 MODEXP must reject oversized input (Osaka pricing, EIP-7823 limit), got {result:?}",
         );
     }
 }

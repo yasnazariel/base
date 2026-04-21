@@ -36,25 +36,21 @@ where
     let input_len = input.len();
 
     if input_len > BLS12_MAX_PAIRING_SIZE_ISTHMUS {
-        return Err(PrecompileError::Other(
-            alloc::format!("Pairing input length must be at most {BLS12_MAX_PAIRING_SIZE_ISTHMUS}")
-                .into(),
-        ));
+        return Err(PrecompileError::Fatal(alloc::format!(
+            "Pairing input length must be at most {BLS12_MAX_PAIRING_SIZE_ISTHMUS}"
+        )));
     }
 
     if !input_len.is_multiple_of(PAIRING_INPUT_LENGTH) {
-        return Err(PrecompileError::Other(
-            alloc::format!(
-                "Pairing input length should be multiple of {PAIRING_INPUT_LENGTH}, was {input_len}"
-            )
-            .into(),
-        ));
+        return Err(PrecompileError::Fatal(alloc::format!(
+            "Pairing input length should be multiple of {PAIRING_INPUT_LENGTH}, was {input_len}"
+        )));
     }
 
     let k = input_len / PAIRING_INPUT_LENGTH;
     let required_gas: u64 = PAIRING_MULTIPLIER_BASE * k as u64 + PAIRING_OFFSET_BASE;
     if required_gas > gas_limit {
-        return Err(PrecompileError::OutOfGas);
+        return Err(PrecompileError::Fatal("out of gas".to_string()));
     }
 
     let precompile = bls12_381::pairing::PRECOMPILE;
@@ -64,9 +60,9 @@ where
         oracle_reader,
         &[precompile.address().as_slice(), &required_gas.to_be_bytes(), input]
     })
-    .map_err(|e| PrecompileError::Other(e.to_string().into()))?;
+    .map_err(|e| PrecompileError::Fatal(e.to_string()))?;
 
-    Ok(PrecompileOutput::new(required_gas, result_data.into()))
+    Ok(PrecompileOutput::new(required_gas, result_data.into(), 0))
 }
 
 /// Performs an FPVM-accelerated BLS12-381 pairing check after the Jovian Hardfork.
@@ -81,10 +77,9 @@ where
     O: PreimageOracleClient + Send + Sync,
 {
     if input.len() > BLS12_MAX_PAIRING_SIZE_JOVIAN {
-        return Err(PrecompileError::Other(
-            alloc::format!("Pairing input length must be at most {BLS12_MAX_PAIRING_SIZE_JOVIAN}")
-                .into(),
-        ));
+        return Err(PrecompileError::Fatal(alloc::format!(
+            "Pairing input length must be at most {BLS12_MAX_PAIRING_SIZE_JOVIAN}"
+        )));
     }
 
     fpvm_bls12_pairing(input, gas_limit, hint_writer, oracle_reader)
@@ -133,7 +128,7 @@ mod tests {
                 oracle_reader,
             )
             .unwrap_err();
-            assert!(matches!(accelerated_result, PrecompileError::Other(_)));
+            assert!(matches!(accelerated_result, PrecompileError::Fatal(_)));
         })
         .await;
     }
@@ -144,7 +139,7 @@ mod tests {
             let accelerated_result =
                 fpvm_bls12_pairing(&[0u8; PAIRING_INPUT_LENGTH - 1], 0, hint_writer, oracle_reader)
                     .unwrap_err();
-            assert!(matches!(accelerated_result, PrecompileError::Other(_)));
+            assert!(matches!(accelerated_result, PrecompileError::Fatal(_)));
         })
         .await;
     }
@@ -155,7 +150,7 @@ mod tests {
             let accelerated_result =
                 fpvm_bls12_pairing(&[0u8; PAIRING_INPUT_LENGTH], 0, hint_writer, oracle_reader)
                     .unwrap_err();
-            assert!(matches!(accelerated_result, PrecompileError::OutOfGas));
+            assert!(matches!(accelerated_result, PrecompileError::Fatal(_)));
         })
         .await;
     }
@@ -186,7 +181,7 @@ mod tests {
             let accelerated_result =
                 fpvm_bls12_pairing_jovian(&input, u64::MAX, hint_writer, oracle_reader)
                     .unwrap_err();
-            assert!(matches!(accelerated_result, PrecompileError::Other(_)));
+            assert!(matches!(accelerated_result, PrecompileError::Fatal(_)));
         })
         .await;
     }

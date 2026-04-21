@@ -31,17 +31,14 @@ where
     O: PreimageOracleClient + Send + Sync,
 {
     if MAP_FP2_TO_G2_BASE_GAS_FEE > gas_limit {
-        return Err(PrecompileError::OutOfGas);
+        return Err(PrecompileError::Fatal("out of gas".to_string()));
     }
 
     if input.len() != PADDED_FP2_LENGTH {
-        return Err(PrecompileError::Other(
-            alloc::format!(
-                "MAP_FP2_TO_G2 input should be {PADDED_FP2_LENGTH} bytes, was {}",
-                input.len()
-            )
-            .into(),
-        ));
+        return Err(PrecompileError::Fatal(alloc::format!(
+            "MAP_FP2_TO_G2 input should be {PADDED_FP2_LENGTH} bytes, was {}",
+            input.len()
+        )));
     }
 
     let precompile = bls12_381::map_fp2_to_g2::PRECOMPILE;
@@ -51,9 +48,9 @@ where
         oracle_reader,
         &[precompile.address().as_slice(), &MAP_FP2_TO_G2_BASE_GAS_FEE.to_be_bytes(), input]
     })
-    .map_err(|e| PrecompileError::Other(e.to_string().into()))?;
+    .map_err(|e| PrecompileError::Fatal(e.to_string()))?;
 
-    Ok(PrecompileOutput::new(MAP_FP2_TO_G2_BASE_GAS_FEE, result_data.into()))
+    Ok(PrecompileOutput::new(MAP_FP2_TO_G2_BASE_GAS_FEE, result_data.into(), 0))
 }
 
 #[cfg(test)]
@@ -85,7 +82,7 @@ mod tests {
         test_accelerated_precompile(|hint_writer, oracle_reader| {
             let accelerated_result =
                 fpvm_bls12_map_fp2(&[], 0, hint_writer, oracle_reader).unwrap_err();
-            assert!(matches!(accelerated_result, PrecompileError::OutOfGas));
+            assert!(matches!(accelerated_result, PrecompileError::Fatal(_)));
         })
         .await;
     }
@@ -95,7 +92,7 @@ mod tests {
         test_accelerated_precompile(|hint_writer, oracle_reader| {
             let accelerated_result =
                 fpvm_bls12_map_fp2(&[], u64::MAX, hint_writer, oracle_reader).unwrap_err();
-            assert!(matches!(accelerated_result, PrecompileError::Other(_)));
+            assert!(matches!(accelerated_result, PrecompileError::Fatal(_)));
         })
         .await;
     }

@@ -64,6 +64,7 @@ pub fn optimism_payload_attributes<T>(timestamp: u64) -> OpPayloadBuilderAttribu
         suggested_fee_recipient: Address::ZERO,
         withdrawals: Some(vec![]),
         parent_beacon_block_root: Some(B256::ZERO),
+        slot_number: None,
     };
 
     OpPayloadBuilderAttributes {
@@ -76,6 +77,7 @@ pub fn optimism_payload_attributes<T>(timestamp: u64) -> OpPayloadBuilderAttribu
             has_withdrawals: attributes.withdrawals.is_some(),
             withdrawals: attributes.withdrawals.unwrap_or_default().into(),
             parent_beacon_block_root: attributes.parent_beacon_block_root,
+            slot_number: None,
         },
         transactions: vec![],
         no_tx_pool: false,

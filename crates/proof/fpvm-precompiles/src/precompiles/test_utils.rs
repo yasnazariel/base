@@ -49,7 +49,7 @@ pub(crate) fn execute_native_precompile<T: Into<Bytes>>(
         panic!("Precompile not found");
     };
     let input = input.into();
-    precompile.execute(&input, gas)
+    precompile.execute(&input, gas, 0)
 }
 
 /// Starts a mock host thread that serves [`base_proof::HintType::L1Precompile`] hints and

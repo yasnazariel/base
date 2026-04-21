@@ -541,7 +541,7 @@ impl OpPayloadBuilderCtx {
             };
 
             // add gas used by the transaction to cumulative gas used, before creating the receipt
-            let gas_used = result.gas_used();
+            let gas_used = result.tx_gas_used();
             info.cumulative_gas_used += gas_used;
 
             if !sequencer_tx.is_deposit() {
@@ -877,7 +877,7 @@ impl OpPayloadBuilderCtx {
                 BuilderMetrics::execution_time_prediction_error_us().record(error);
             }
 
-            let gas_used = result.gas_used();
+            let gas_used = result.tx_gas_used();
             let is_success = result.is_success();
             if is_success {
                 log_txn(Ok(TxnOutcome::Success));

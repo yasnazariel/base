@@ -31,17 +31,14 @@ where
     O: PreimageOracleClient + Send + Sync,
 {
     if G2_ADD_BASE_GAS_FEE > gas_limit {
-        return Err(PrecompileError::OutOfGas);
+        return Err(PrecompileError::Fatal("out of gas".to_string()));
     }
 
     let input_len = input.len();
     if input_len != G2_ADD_INPUT_LENGTH {
-        return Err(PrecompileError::Other(
-            alloc::format!(
-                "G2 addition input length should be {G2_ADD_INPUT_LENGTH} bytes, was {input_len}"
-            )
-            .into(),
-        ));
+        return Err(PrecompileError::Fatal(alloc::format!(
+            "G2 addition input length should be {G2_ADD_INPUT_LENGTH} bytes, was {input_len}"
+        )));
     }
 
     let precompile = bls12_381::g2_add::PRECOMPILE;
@@ -51,9 +48,9 @@ where
         oracle_reader,
         &[precompile.address().as_slice(), &G2_ADD_BASE_GAS_FEE.to_be_bytes(), input]
     })
-    .map_err(|e| PrecompileError::Other(e.to_string().into()))?;
+    .map_err(|e| PrecompileError::Fatal(e.to_string()))?;
 
-    Ok(PrecompileOutput::new(G2_ADD_BASE_GAS_FEE, result_data.into()))
+    Ok(PrecompileOutput::new(G2_ADD_BASE_GAS_FEE, result_data.into(), 0))
 }
 
 #[cfg(test)]
@@ -86,7 +83,7 @@ mod tests {
         test_accelerated_precompile(|hint_writer, oracle_reader| {
             let accelerated_result =
                 fpvm_bls12_g2_add(&[], u64::MAX, hint_writer, oracle_reader).unwrap_err();
-            assert!(matches!(accelerated_result, PrecompileError::Other(_)));
+            assert!(matches!(accelerated_result, PrecompileError::Fatal(_)));
         })
         .await;
     }
@@ -96,7 +93,7 @@ mod tests {
         test_accelerated_precompile(|hint_writer, oracle_reader| {
             let accelerated_result =
                 fpvm_bls12_g2_add(&[], 0, hint_writer, oracle_reader).unwrap_err();
-            assert!(matches!(accelerated_result, PrecompileError::OutOfGas));
+            assert!(matches!(accelerated_result, PrecompileError::Fatal(_)));
         })
         .await;
     }

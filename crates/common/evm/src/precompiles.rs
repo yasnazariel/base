@@ -173,11 +173,12 @@ impl Default for BasePrecompiles {
 
 /// Bn254 pair precompile.
 pub(crate) mod bn254_pair {
+    use revm::precompile::EthPrecompileResult;
+
     use super::{
         Precompile, PrecompileHalt, PrecompileId, PrecompileOutput, PrecompileResult, bn254,
         call_eth_precompile,
     };
-    use revm::precompile::EthPrecompileResult;
 
     /// Max input size for the bn254 pair precompile.
     pub(crate) const GRANITE_MAX_INPUT_SIZE: usize = 112687;

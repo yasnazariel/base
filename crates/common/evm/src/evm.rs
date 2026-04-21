@@ -176,6 +176,7 @@ mod tests {
             is_static: false,
             target_address: Address::ZERO,
             bytecode_address: Address::ZERO,
+            reservoir: 0,
             internals: EvmInternals::from_context(ctx),
         });
         assert!(result.is_ok(), "precompile {address} should succeed at max input size");
@@ -201,8 +202,12 @@ mod tests {
             is_static: false,
             target_address: Address::ZERO,
             bytecode_address: Address::ZERO,
+            reservoir: 0,
             internals: EvmInternals::from_context(ctx),
         });
-        assert!(result.is_err(), "precompile {address} should fail over max input size");
+        assert!(
+            matches!(&result, Ok(output) if output.halt_reason().is_some()),
+            "precompile {address} should fail over max input size, got {result:?}"
+        );
     }
 }

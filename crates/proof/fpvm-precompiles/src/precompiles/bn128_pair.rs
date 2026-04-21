@@ -31,11 +31,11 @@ where
         (input.len() / PAIR_ELEMENT_LEN) as u64 * ISTANBUL_PAIR_PER_POINT + ISTANBUL_PAIR_BASE;
 
     if gas_used > gas_limit {
-        return Err(PrecompileError::OutOfGas);
+        return Err(PrecompileError::Fatal("bn128 pair out of gas".to_string()));
     }
 
     if !input.len().is_multiple_of(PAIR_ELEMENT_LEN) {
-        return Err(PrecompileError::Bn254PairLength);
+        return Err(PrecompileError::Fatal("bn128 pair invalid input length".to_string()));
     }
 
     let precompile = pair::ISTANBUL;
@@ -45,9 +45,9 @@ where
         oracle_reader,
         &[precompile.address().as_slice(), &gas_used.to_be_bytes(), input]
     })
-    .map_err(|e| PrecompileError::Other(e.to_string().into()))?;
+    .map_err(|e| PrecompileError::Fatal(e.to_string()))?;
 
-    Ok(PrecompileOutput::new(gas_used, result_data.into()))
+    Ok(PrecompileOutput::new(gas_used, result_data.into(), 0))
 }
 
 /// Runs the FPVM-accelerated `ecpairing` precompile call, with the input size limited by the
@@ -63,7 +63,7 @@ where
     O: PreimageOracleClient + Send + Sync,
 {
     if input.len() > BN256_MAX_PAIRING_SIZE_GRANITE {
-        return Err(PrecompileError::Bn254PairLength);
+        return Err(PrecompileError::Fatal("bn128 pair granite input too large".to_string()));
     }
 
     fpvm_bn128_pair(input, gas_limit, hint_writer, oracle_reader)
@@ -82,7 +82,7 @@ where
     O: PreimageOracleClient + Send + Sync,
 {
     if input.len() > BN256_MAX_PAIRING_SIZE_JOVIAN {
-        return Err(PrecompileError::Bn254PairLength);
+        return Err(PrecompileError::Fatal("bn128 pair jovian input too large".to_string()));
     }
 
     fpvm_bn128_pair(input, gas_limit, hint_writer, oracle_reader)
@@ -141,7 +141,7 @@ mod tests {
             let accelerated_result =
                 fpvm_bn128_pair(&input, 0, hint_writer, oracle_reader).unwrap_err();
 
-            assert!(matches!(accelerated_result, PrecompileError::OutOfGas));
+            assert!(matches!(accelerated_result, PrecompileError::Fatal(_)));
         })
         .await;
     }
@@ -153,7 +153,7 @@ mod tests {
             let accelerated_result =
                 fpvm_bn128_pair(&input, u64::MAX, hint_writer, oracle_reader).unwrap_err();
 
-            assert!(matches!(accelerated_result, PrecompileError::Bn254PairLength));
+            assert!(matches!(accelerated_result, PrecompileError::Fatal(_)));
         })
         .await;
     }
@@ -169,7 +169,7 @@ mod tests {
             let accelerated_result =
                 fpvm_bn128_pair_granite(&input, u64::MAX, hint_writer, oracle_reader).unwrap_err();
 
-            assert!(matches!(accelerated_result, PrecompileError::Bn254PairLength));
+            assert!(matches!(accelerated_result, PrecompileError::Fatal(_)));
         })
         .await;
     }
@@ -201,7 +201,7 @@ mod tests {
             let accelerated_result =
                 fpvm_bn128_pair_jovian(&input, u64::MAX, hint_writer, oracle_reader).unwrap_err();
 
-            assert!(matches!(accelerated_result, PrecompileError::Bn254PairLength));
+            assert!(matches!(accelerated_result, PrecompileError::Fatal(_)));
         })
         .await;
     }

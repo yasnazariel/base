@@ -25,11 +25,11 @@ where
     const GAS_COST: u64 = 50_000;
 
     if gas_limit < GAS_COST {
-        return Err(PrecompileError::OutOfGas);
+        return Err(PrecompileError::Fatal("kzg point eval out of gas".to_string()));
     }
 
     if input.len() != 192 {
-        return Err(PrecompileError::BlobInvalidInputLength);
+        return Err(PrecompileError::Fatal("kzg point eval invalid input length".to_string()));
     }
 
     let result_data = base_proof::block_on(precompile_run! {
@@ -37,9 +37,9 @@ where
         oracle_reader,
         &[KZG_POINT_EVAL_ADDR.as_slice(), &GAS_COST.to_be_bytes(), input]
     })
-    .map_err(|e| PrecompileError::Other(e.to_string().into()))?;
+    .map_err(|e| PrecompileError::Fatal(e.to_string()))?;
 
-    Ok(PrecompileOutput::new(GAS_COST, result_data.into()))
+    Ok(PrecompileOutput::new(GAS_COST, result_data.into(), 0))
 }
 
 #[cfg(test)]
@@ -80,7 +80,7 @@ mod tests {
         test_accelerated_precompile(|hint_writer, oracle_reader| {
             let accelerated_result =
                 fpvm_kzg_point_eval(&[], 0, hint_writer, oracle_reader).unwrap_err();
-            assert!(matches!(accelerated_result, PrecompileError::OutOfGas));
+            assert!(matches!(accelerated_result, PrecompileError::Fatal(_)));
         })
         .await;
     }
@@ -90,7 +90,7 @@ mod tests {
         test_accelerated_precompile(|hint_writer, oracle_reader| {
             let accelerated_result =
                 fpvm_kzg_point_eval(&[], u64::MAX, hint_writer, oracle_reader).unwrap_err();
-            assert!(matches!(accelerated_result, PrecompileError::BlobInvalidInputLength));
+            assert!(matches!(accelerated_result, PrecompileError::Fatal(_)));
         })
         .await;
     }

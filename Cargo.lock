@@ -186,7 +186,7 @@ dependencies = [
  "alloy-core",
  "alloy-eips 1.8.3",
  "alloy-network 1.8.3",
- "alloy-node-bindings",
+ "alloy-node-bindings 1.8.3",
  "alloy-provider 1.8.3",
  "alloy-rpc-client 1.8.3",
  "alloy-rpc-types 1.8.3",
@@ -699,6 +699,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "alloy-node-bindings"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "85195890fcee519312718dc8418035935ad0d57f57943ca82689732432a702c9"
+dependencies = [
+ "alloy-genesis 2.0.0",
+ "alloy-hardforks 0.2.13",
+ "alloy-network 2.0.0",
+ "alloy-primitives",
+ "alloy-signer 2.0.0",
+ "alloy-signer-local 2.0.0",
+ "k256",
+ "libc",
+ "rand 0.8.6",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "alloy-primitives"
 version = "1.5.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -741,7 +763,7 @@ dependencies = [
  "alloy-json-rpc 1.8.3",
  "alloy-network 1.8.3",
  "alloy-network-primitives 1.8.3",
- "alloy-node-bindings",
+ "alloy-node-bindings 1.8.3",
  "alloy-primitives",
  "alloy-rpc-client 1.8.3",
  "alloy-rpc-types-anvil 1.8.3",
@@ -2973,6 +2995,7 @@ name = "base-balance-monitor"
 version = "0.0.0"
 dependencies = [
  "alloy-network 2.0.0",
+ "alloy-node-bindings 2.0.0",
  "alloy-primitives",
  "alloy-provider 2.0.0",
  "tokio",
@@ -3612,6 +3635,7 @@ dependencies = [
  "alloy-consensus 2.0.0",
  "alloy-eips 2.0.0",
  "alloy-network 2.0.0",
+ "alloy-node-bindings 2.0.0",
  "alloy-primitives",
  "alloy-rpc-types-eth 2.0.0",
  "alloy-signer 2.0.0",
@@ -5481,6 +5505,7 @@ dependencies = [
  "alloy-eips 2.0.0",
  "alloy-json-rpc 2.0.0",
  "alloy-network 2.0.0",
+ "alloy-node-bindings 2.0.0",
  "alloy-primitives",
  "alloy-provider 2.0.0",
  "alloy-rpc-types-eth 2.0.0",

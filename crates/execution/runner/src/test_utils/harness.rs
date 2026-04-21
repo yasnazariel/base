@@ -165,6 +165,7 @@ impl TestHarness {
                     timestamp: next_timestamp,
                     parent_beacon_block_root: Some(parent_beacon_block_root),
                     withdrawals: Some(vec![]),
+                    slot_number: None,
                     ..Default::default()
                 },
                 transactions: Some(transactions),
