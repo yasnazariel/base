@@ -229,41 +229,44 @@ impl L1HeaderPrefetcher {
         for block_number in blocks {
             let me = Arc::clone(&self);
             tasks.spawn(async move {
+                // RAII guard ensures the block is removed from `in_flight` even
+                // if this task is cancelled mid-flight (e.g. on shutdown).
+                let _guard = InFlightGuard { set: Arc::clone(&me.in_flight), block: block_number };
+
                 let raw = match me.fetch_raw_header_by_number(block_number).await {
-                    Ok(raw) => Some(raw),
+                    Ok(raw) => raw,
                     Err(e) => {
                         debug!(block_number, error = %e, "L1 header prefetch failed");
-                        None
+                        return;
                     }
                 };
-                me.in_flight.remove(&block_number);
-                raw
+
+                let key = PreimageKey::new_keccak256(*keccak256(&raw));
+                // Acquire the KV write lock per-entry so the hint handler is
+                // not blocked by the entire batch, and prefetched headers
+                // become visible as soon as each RPC completes.
+                match me.kv.write().await.set(key.into(), raw.into()) {
+                    Ok(()) => Metrics::l1_prefetch_stored_total().increment(1),
+                    Err(e) => debug!(block_number, error = %e, "L1 prefetch store failed"),
+                }
             });
         }
 
-        let entries: Vec<(PreimageKey, Bytes)> = tasks
-            .join_all()
-            .await
-            .into_iter()
-            .flatten()
-            .map(|raw| (PreimageKey::new_keccak256(*keccak256(&raw)), raw))
-            .collect();
-        if entries.is_empty() {
-            return;
-        }
+        // Drain to keep tasks scheduled until completion.
+        tasks.join_all().await;
+    }
+}
 
-        let mut kv = self.kv.write().await;
-        let mut stored: u64 = 0;
-        for (key, raw) in entries {
-            if let Err(e) = kv.set(key.into(), raw.into()) {
-                debug!(error = %e, "L1 prefetch store failed");
-            } else {
-                stored += 1;
-            }
-        }
-        if stored > 0 {
-            Metrics::l1_prefetch_stored_total().increment(stored);
-        }
+/// RAII guard that removes a block number from the prefetcher's `in_flight`
+/// set when dropped, so cancellation can't leak entries permanently.
+struct InFlightGuard {
+    set: Arc<DashSet<u64>>,
+    block: u64,
+}
+
+impl Drop for InFlightGuard {
+    fn drop(&mut self) {
+        self.set.remove(&self.block);
     }
 }
 
