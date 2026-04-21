@@ -56,15 +56,41 @@ impl L1HeaderPrefetcher {
         {
             let kv = self.kv.read().await;
             if let Some(raw) = kv.get(key.into()) {
-                return Header::decode(&mut raw.as_slice()).map_err(HostError::Rlp);
+                let cached_hash = keccak256(raw.as_slice());
+                if cached_hash == hash {
+                    return Self::decode_header(raw.as_slice());
+                }
+
+                debug!(
+                    expected_hash = %hash,
+                    cached_hash = %cached_hash,
+                    "discarding mismatched cached L1 header"
+                );
             }
         }
 
         let raw = self.fetch_raw_header_by_hash(hash).await?;
-        let header = Header::decode(&mut raw.as_ref()).map_err(HostError::Rlp)?;
+        Self::verify_header_hash(raw.as_ref(), hash)?;
+        let header = Self::decode_header(raw.as_ref())?;
         self.kv.write().await.set(key.into(), raw.into())?;
 
         Ok(header)
+    }
+
+    fn verify_header_hash(raw: &[u8], hash: B256) -> Result<()> {
+        let computed_hash = keccak256(raw);
+        if computed_hash != hash {
+            return Err(HostError::Custom(format!(
+                "L1 header hash mismatch: expected {hash}, got {computed_hash}"
+            )));
+        }
+
+        Ok(())
+    }
+
+    fn decode_header(raw: &[u8]) -> Result<Header> {
+        let mut raw = raw;
+        Header::decode(&mut raw).map_err(HostError::Rlp)
     }
 
     /// Spawns a fire-and-forget background task that prefetches up to
@@ -249,6 +275,61 @@ mod tests {
         assert_eq!(got.number, 200);
         let cached = kv.read().await.get(PreimageKey::new_keccak256(*hash).into());
         assert_eq!(cached, Some(raw));
+    }
+
+    #[tokio::test]
+    async fn fetch_and_store_header_rejects_hash_mismatch() {
+        let (prefetcher, kv, asserter) = mock_prefetcher(0);
+
+        let raw = rlp_encode(&make_header(300));
+        let requested_hash = keccak256(b"expected header");
+        assert_ne!(requested_hash, keccak256(&raw));
+
+        asserter.push_success(&alloy_primitives::Bytes::from(raw));
+
+        let err = prefetcher
+            .fetch_and_store_header(requested_hash)
+            .await
+            .expect_err("mismatched RPC header should be rejected");
+
+        assert!(matches!(
+            err,
+            HostError::Custom(message) if message.contains("L1 header hash mismatch")
+        ));
+        assert!(
+            kv.read().await.get(PreimageKey::new_keccak256(*requested_hash).into()).is_none(),
+            "mismatched header should not be cached"
+        );
+    }
+
+    #[tokio::test]
+    async fn fetch_and_store_header_recovers_from_mismatched_kv_entry() {
+        let (prefetcher, kv, asserter) = mock_prefetcher(0);
+
+        let corrupt_raw = rlp_encode(&make_header(400));
+        let expected_header = make_header(401);
+        let expected_raw = rlp_encode(&expected_header);
+        let requested_hash = keccak256(&expected_raw);
+        assert_ne!(requested_hash, keccak256(&corrupt_raw));
+
+        kv.write()
+            .await
+            .set(PreimageKey::new_keccak256(*requested_hash).into(), corrupt_raw)
+            .expect("kv set should succeed");
+        asserter.push_success(&alloy_primitives::Bytes::from(expected_raw.clone()));
+
+        let got = prefetcher
+            .fetch_and_store_header(requested_hash)
+            .await
+            .expect("mismatched cached header should fall back to RPC");
+
+        assert_eq!(got.number, expected_header.number);
+        assert_eq!(
+            kv.read().await.get(PreimageKey::new_keccak256(*requested_hash).into()),
+            Some(expected_raw),
+            "verified RPC header should replace the corrupt cache entry"
+        );
+        assert!(asserter.read_q().is_empty(), "corrupt KV hit should consume one RPC response");
     }
 
     #[tokio::test(flavor = "current_thread")]

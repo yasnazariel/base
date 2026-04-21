@@ -69,6 +69,7 @@ impl Host {
             let providers = self.create_providers(Arc::clone(&kv_store)).await?;
             let backend =
                 OnlineHostBackend::new(self.config.clone(), Arc::clone(&kv_store), providers)
+                    .with_proactive_hint(HintType::L1BlockHeader)
                     .with_proactive_hint(HintType::L2PayloadWitness);
 
             task::spawn(async {
@@ -100,6 +101,7 @@ impl Host {
         let providers = self.create_providers(Arc::clone(&kv_store)).await?;
         let backend = Arc::new(
             OnlineHostBackend::new(self.config.clone(), Arc::clone(&kv_store), providers)
+                .with_proactive_hint(HintType::L1BlockHeader)
                 .with_proactive_hint(HintType::L2PayloadWitness),
         );
 
