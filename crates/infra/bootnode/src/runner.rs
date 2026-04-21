@@ -92,7 +92,15 @@ impl Bootnode {
         let mut first_completed = false;
 
         while let Some(joined) = set.join_next().await {
-            let (side, result) = joined?;
+            let (side, result) = match joined {
+                Ok(sr) => sr,
+                Err(join_err) => {
+                    el_cancel.cancel();
+                    cl_cancel.cancel();
+                    while set.join_next().await.is_some() {}
+                    return Err(BootnodeError::TaskJoin(join_err));
+                }
+            };
             info!(target: "bootnode", side = side.as_str(), "bootnode half exited");
 
             if !first_completed {

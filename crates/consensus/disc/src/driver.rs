@@ -48,6 +48,9 @@ pub struct Discv5Driver {
     /// The frequency at which to remove random nodes from the discovery table.
     /// This is not enabled (`None`) by default.
     pub remove_interval: Option<Duration>,
+    /// When `true`, user-supplied bootnodes replace chain defaults. When `false` (the default),
+    /// user-supplied bootnodes are merged with chain defaults.
+    pub replace_chain_defaults: bool,
 }
 
 impl Discv5Driver {
@@ -77,6 +80,7 @@ impl Discv5Driver {
             remove_interval: None,
             store_interval: Duration::from_secs(60),
             bootstore,
+            replace_chain_defaults: false,
         })
     }
 
@@ -102,6 +106,7 @@ impl Discv5Driver {
         bootstore: Option<BootStoreFile>,
         bootnodes: BootNodes,
         chain_id: u64,
+        replace_chain_defaults: bool,
         disc: &Discv5,
     ) -> BootStore {
         // Note: if the bootstore file cannot be created, we use a default bootstore.
@@ -110,12 +115,16 @@ impl Discv5Driver {
 
         let initial_store_length = store.len();
 
-        // Caller-provided list takes precedence; fall back to chain defaults only when empty so
-        // a deliberate `--cl.bootnode` override actually replaces (not augments) the defaults.
-        let effective =
-            if bootnodes.is_empty() { BootNodes::from_chain_id(chain_id) } else { bootnodes };
+        let effective: Vec<BootNode> = if replace_chain_defaults {
+            // Bootnode mode: user-supplied list replaces chain defaults entirely; fall back to
+            // chain defaults only when the user supplied nothing.
+            if bootnodes.is_empty() { BootNodes::from_chain_id(chain_id).0 } else { bootnodes.0 }
+        } else {
+            // Default: merge user-supplied bootnodes with chain defaults.
+            bootnodes.0.into_iter().chain(BootNodes::from_chain_id(chain_id).0).collect()
+        };
 
-        for bn in effective.0 {
+        for bn in effective {
             let res = match bn {
                 BootNode::Enr(enr) => Ok(enr.clone()),
                 BootNode::Enode(enode) => disc.request_enr(enode.clone()).await,
@@ -175,8 +184,14 @@ impl Discv5Driver {
             trace!(target: "discovery", "Discv5 Initialized");
 
             // Step 2: Bootstrap the discovery table with bootnodes.
-            let mut store =
-                Self::bootstrap_peers(self.bootstore, self.bootnodes, chain_id, &self.disc).await;
+            let mut store = Self::bootstrap_peers(
+                self.bootstore,
+                self.bootnodes,
+                chain_id,
+                self.replace_chain_defaults,
+                &self.disc,
+            )
+            .await;
 
             let enrs = self.disc.table_entries_enr();
             info!(target: "discovery", count = enrs.len(), "Discv5 Started");
@@ -441,6 +456,7 @@ mod tests {
             discovery.bootstore,
             discovery.bootnodes,
             ChainConfig::sepolia().chain_id,
+            discovery.replace_chain_defaults,
             &discovery.disc,
         )
         .await;
@@ -537,6 +553,7 @@ mod tests {
             discovery.bootstore,
             discovery.bootnodes,
             ChainConfig::mainnet().chain_id,
+            discovery.replace_chain_defaults,
             &discovery.disc,
         )
         .await;

@@ -70,6 +70,7 @@ impl ClBootnode {
         let driver = Discv5Builder::new(local_node, chain_id, discovery_config)
             .with_bootnodes(bootnodes)
             .with_bootstore_file(Some(bootstore))
+            .replace_chain_defaults()
             .disable_forward()
             .build()?;
 

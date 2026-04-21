@@ -90,6 +90,9 @@ pub struct Discv5Builder {
     store_interval: Option<Duration>,
     /// Whether or not to forward the initial set of valid ENRs to the gossip layer.
     forward: bool,
+    /// When `true`, user-supplied bootnodes replace chain defaults entirely.
+    /// When `false` (the default), user-supplied bootnodes are merged with chain defaults.
+    replace_chain_defaults: bool,
 }
 
 impl Discv5Builder {
@@ -105,6 +108,7 @@ impl Discv5Builder {
             bootnodes: BootNodes::default(),
             store_interval: None,
             forward: true,
+            replace_chain_defaults: false,
         }
     }
 
@@ -162,6 +166,13 @@ impl Discv5Builder {
         self
     }
 
+    /// When called, user-supplied bootnodes will replace chain defaults instead of merging with
+    /// them. By default, chain defaults are always added alongside any user-supplied bootnodes.
+    pub const fn replace_chain_defaults(mut self) -> Self {
+        self.replace_chain_defaults = true;
+        self
+    }
+
     /// Builds a [`Discv5Driver`].
     pub fn build(self) -> Result<Discv5Driver, Discv5BuilderError> {
         let chain_id = self.chain_id;
@@ -182,6 +193,7 @@ impl Discv5Builder {
         driver.store_interval = self.store_interval.unwrap_or(Duration::from_secs(60));
         driver.forward = self.forward;
         driver.remove_interval = self.randomize;
+        driver.replace_chain_defaults = self.replace_chain_defaults;
         Ok(driver)
     }
 }
