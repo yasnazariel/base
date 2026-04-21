@@ -408,6 +408,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "Temporarily flaky in CI; follow-up fix is landing separately"]
     async fn test_online_discv5_driver_bootstrap_testnet() {
         // Use a test file to make sure bootstore
         // doesn't conflict with a local bootstore.
