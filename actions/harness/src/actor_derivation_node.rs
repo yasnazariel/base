@@ -399,10 +399,27 @@ impl TestActorDerivationNode {
     ///
     /// Panics if `target` is not reached within 200 ticks.
     ///
+    /// Before ticking, the current L1 tip is re-delivered to the derivation
+    /// actor as a [`ProcessL1HeadUpdateRequest`]. The [`L1WatcherActor`]'s
+    /// [`BlockStream`] dedupes consecutive identical [`BlockInfo`]s, so after
+    /// a reorg+reset where the new tip happens to share number/hash bytes the
+    /// pipeline has already observed, the watcher can sit silent. The kick
+    /// guarantees derivation is unblocked even when the natural poll would
+    /// not re-emit.
+    ///
     /// [`tick`]: Self::tick
     /// [`SafeDB`]: base_consensus_safedb::SafeDB
     /// [`ProcessEngineSafeHeadUpdateRequest`]: DerivationActorRequest::ProcessEngineSafeHeadUpdateRequest
+    /// [`ProcessL1HeadUpdateRequest`]: DerivationActorRequest::ProcessL1HeadUpdateRequest
+    /// [`BlockStream`]: base_consensus_node::BlockStream
     pub async fn sync_until_safe(&self, target: u64) {
+        if let Some(tip) = self.engine.l1_chain().tip() {
+            let tip_info = crate::miner::block_info_from(&tip);
+            self.derivation_actor_tx
+                .send(DerivationActorRequest::ProcessL1HeadUpdateRequest(Box::new(tip_info)))
+                .await
+                .expect("TestActorDerivationNode: l1 head channel closed");
+        }
         for _ in 0..200 {
             let safe = self.engine.safe_head().block_info.number;
             if safe >= target {
