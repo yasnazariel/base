@@ -18,35 +18,35 @@ use crate::config::ResolvedChainConfig;
 /// Arguments for `base bootnode`.
 #[derive(Args, Clone, Debug)]
 #[command(next_help_heading = "Bootnode")]
-pub(crate) struct BootnodeArgs {
+pub struct BootnodeArgs {
     /// Skip starting the execution-layer (reth) bootnode.
     #[arg(long = "no-el", env = "BASE_BOOTNODE_NO_EL", global = false)]
-    pub(crate) no_el: bool,
+    pub no_el: bool,
 
     /// Skip starting the consensus-layer (base-consensus) bootnode.
     #[arg(long = "no-cl", env = "BASE_BOOTNODE_NO_CL", global = false)]
-    pub(crate) no_cl: bool,
+    pub no_cl: bool,
 
     #[command(flatten)]
-    pub(crate) el: ElArgs,
+    pub el: ElArgs,
 
     #[command(flatten)]
-    pub(crate) cl: ClArgs,
+    pub cl: ClArgs,
 }
 
 /// Execution-layer bootnode arguments.
 #[derive(Args, Clone, Debug)]
 #[command(next_help_heading = "Bootnode (Execution Layer)")]
-pub(crate) struct ElArgs {
+pub struct ElArgs {
     /// Combined UDP/TCP listen address for the EL discovery service.
     #[arg(
         id = "el_addr",
         long = "el.addr",
         value_name = "ADDR",
         env = "BASE_BOOTNODE_EL_ADDR",
-        default_value_t = default_el_addr(),
+        default_value_t = ElArgs::default_addr(),
     )]
-    pub(crate) addr: SocketAddr,
+    pub addr: SocketAddr,
 
     /// Path to a hex-encoded secp256k1 secret key for the EL ENR. Generated
     /// and persisted at this path if the file does not exist.
@@ -56,7 +56,7 @@ pub(crate) struct ElArgs {
         value_name = "PATH",
         env = "BASE_BOOTNODE_EL_SECRET_KEY"
     )]
-    pub(crate) secret_key: Option<PathBuf>,
+    pub secret_key: Option<PathBuf>,
 
     /// Strategy for resolving the externally-advertised EL IP.
     #[arg(
@@ -66,17 +66,17 @@ pub(crate) struct ElArgs {
         env = "BASE_BOOTNODE_EL_NAT",
         default_value = "any"
     )]
-    pub(crate) nat: NatResolver,
+    pub nat: NatResolver,
 
     /// Disable the EL discv5 service (discv4 still runs).
     #[arg(id = "el_no_discv5", long = "el.no-discv5", env = "BASE_BOOTNODE_EL_NO_DISCV5")]
-    pub(crate) no_discv5: bool,
+    pub no_discv5: bool,
 }
 
 /// Consensus-layer bootnode arguments.
 #[derive(Args, Clone, Debug)]
 #[command(next_help_heading = "Bootnode (Consensus Layer)")]
-pub(crate) struct ClArgs {
+pub struct ClArgs {
     /// IP to bind the CL discv5 socket to.
     #[arg(
         id = "cl_listen_ip",
@@ -85,7 +85,7 @@ pub(crate) struct ClArgs {
         env = "BASE_BOOTNODE_CL_LISTEN_IP",
         default_value_t = IpAddr::V4(Ipv4Addr::UNSPECIFIED),
     )]
-    pub(crate) listen_ip: IpAddr,
+    pub listen_ip: IpAddr,
 
     /// UDP port to bind the CL discv5 socket to.
     #[arg(
@@ -95,7 +95,7 @@ pub(crate) struct ClArgs {
         env = "BASE_BOOTNODE_CL_LISTEN_PORT",
         default_value_t = DEFAULT_CL_BOOTNODE_PORT,
     )]
-    pub(crate) listen_port: u16,
+    pub listen_port: u16,
 
     /// IP to advertise in the local CL ENR. Defaults to `--cl.listen-ip`.
     #[arg(
@@ -104,7 +104,7 @@ pub(crate) struct ClArgs {
         value_name = "IP",
         env = "BASE_BOOTNODE_CL_ADVERTISE_IP"
     )]
-    pub(crate) advertise_ip: Option<IpAddr>,
+    pub advertise_ip: Option<IpAddr>,
 
     /// TCP port to advertise in the local CL ENR. Defaults to `--cl.listen-port`.
     #[arg(
@@ -113,7 +113,7 @@ pub(crate) struct ClArgs {
         value_name = "PORT",
         env = "BASE_BOOTNODE_CL_ADVERTISE_TCP"
     )]
-    pub(crate) advertise_tcp: Option<u16>,
+    pub advertise_tcp: Option<u16>,
 
     /// UDP port to advertise in the local CL ENR. Defaults to `--cl.listen-port`.
     #[arg(
@@ -122,7 +122,7 @@ pub(crate) struct ClArgs {
         value_name = "PORT",
         env = "BASE_BOOTNODE_CL_ADVERTISE_UDP"
     )]
-    pub(crate) advertise_udp: Option<u16>,
+    pub advertise_udp: Option<u16>,
 
     /// Path to a hex-encoded secp256k1 secret key for the CL ENR. Generated
     /// and persisted at this path if the file does not exist.
@@ -132,7 +132,7 @@ pub(crate) struct ClArgs {
         value_name = "PATH",
         env = "BASE_BOOTNODE_CL_SECRET_KEY"
     )]
-    pub(crate) secret_key: Option<PathBuf>,
+    pub secret_key: Option<PathBuf>,
 
     /// Override the on-disk bootstore path. Defaults to
     /// `~/.base/<chain_id>/bootstore.json`.
@@ -142,7 +142,7 @@ pub(crate) struct ClArgs {
         value_name = "PATH",
         env = "BASE_BOOTNODE_CL_BOOTSTORE"
     )]
-    pub(crate) bootstore: Option<PathBuf>,
+    pub bootstore: Option<PathBuf>,
 
     /// User-supplied bootnodes (`enr:...` or `enode://...`). When provided,
     /// these replace the chain default list. Repeat the flag for multiple.
@@ -152,15 +152,18 @@ pub(crate) struct ClArgs {
         value_name = "BOOTNODE",
         env = "BASE_BOOTNODE_CL_BOOTNODE"
     )]
-    pub(crate) bootnodes: Vec<String>,
+    pub bootnodes: Vec<String>,
 
     /// Disable ENR auto-update so the advertised CL IP is static.
     #[arg(id = "cl_static_ip", long = "cl.static-ip", env = "BASE_BOOTNODE_CL_STATIC_IP")]
-    pub(crate) static_ip: bool,
+    pub static_ip: bool,
 }
 
-const fn default_el_addr() -> SocketAddr {
-    SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), DEFAULT_EL_BOOTNODE_PORT)
+impl ElArgs {
+    /// Default combined UDP/TCP listen address for the EL discovery service.
+    pub const fn default_addr() -> SocketAddr {
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), DEFAULT_EL_BOOTNODE_PORT)
+    }
 }
 
 impl From<ElArgs> for ElBootnodeConfig {
@@ -176,13 +179,13 @@ impl From<ElArgs> for ElBootnodeConfig {
 
 impl ClArgs {
     /// Returns the IP that will end up in the local CL ENR.
-    fn effective_advertise_ip(&self) -> IpAddr {
+    pub fn effective_advertise_ip(&self) -> IpAddr {
         self.advertise_ip.unwrap_or(self.listen_ip)
     }
 
     /// Fails when the effective advertise IP is unspecified (`0.0.0.0` / `::`), since
     /// publishing such an ENR results in undialable peers.
-    fn validate_advertise_ip(&self) -> eyre::Result<()> {
+    pub fn validate_advertise_ip(&self) -> eyre::Result<()> {
         let ip = self.effective_advertise_ip();
         if ip.is_unspecified() {
             return Err(eyre::eyre!(
@@ -192,7 +195,7 @@ impl ClArgs {
         Ok(())
     }
 
-    fn into_config(self, chain_id: u64) -> ClBootnodeConfig {
+    pub fn into_config(self, chain_id: u64) -> ClBootnodeConfig {
         let advertise_ip = self.effective_advertise_ip();
         let advertise_tcp = self.advertise_tcp.unwrap_or(self.listen_port);
         let advertise_udp = self.advertise_udp.unwrap_or(self.listen_port);
@@ -213,7 +216,7 @@ impl ClArgs {
 
 impl BootnodeArgs {
     /// Runs the bootnode subcommand against the resolved chain.
-    pub(crate) fn run(self, chain: ResolvedChainConfig) -> eyre::Result<()> {
+    pub fn run(self, chain: ResolvedChainConfig) -> eyre::Result<()> {
         if self.no_el && self.no_cl {
             return Err(eyre::eyre!("--no-el and --no-cl cannot both be set"));
         }
