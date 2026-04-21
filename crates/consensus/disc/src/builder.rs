@@ -90,8 +90,7 @@ pub struct Discv5Builder {
     store_interval: Option<Duration>,
     /// Whether or not to forward the initial set of valid ENRs to the gossip layer.
     forward: bool,
-    /// When `true`, user-supplied bootnodes replace chain defaults entirely.
-    /// When `false` (the default), user-supplied bootnodes are merged with chain defaults.
+    /// Replaces chain-default bootnodes with user-supplied ones when `true`; merges when `false`.
     replace_chain_defaults: bool,
 }
 
@@ -166,8 +165,7 @@ impl Discv5Builder {
         self
     }
 
-    /// When called, user-supplied bootnodes will replace chain defaults instead of merging with
-    /// them. By default, chain defaults are always added alongside any user-supplied bootnodes.
+    /// Configures user-supplied bootnodes to replace chain defaults rather than merge with them.
     pub const fn replace_chain_defaults(mut self) -> Self {
         self.replace_chain_defaults = true;
         self

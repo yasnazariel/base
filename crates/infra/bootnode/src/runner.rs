@@ -95,7 +95,6 @@ impl Bootnode {
         set.spawn(async move { (BootnodeSide::Cl, cl.run(cl_token).await) });
 
         let mut first_error: Option<BootnodeError> = None;
-        let mut first_completed = false;
 
         while let Some(joined) = set.join_next().await {
             let (side, result) = match joined {
@@ -109,12 +108,10 @@ impl Bootnode {
             };
             info!(target: "bootnode", side = side.as_str(), "bootnode half exited");
 
-            if !first_completed {
-                first_completed = true;
-                match side {
-                    BootnodeSide::El => cl_cancel.cancel(),
-                    BootnodeSide::Cl => el_cancel.cancel(),
-                }
+            // Cancel the peer — idempotent if already cancelled or if both halves exit together.
+            match side {
+                BootnodeSide::El => cl_cancel.cancel(),
+                BootnodeSide::Cl => el_cancel.cancel(),
             }
 
             if let Err(err) = result

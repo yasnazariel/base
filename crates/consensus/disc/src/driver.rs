@@ -48,8 +48,7 @@ pub struct Discv5Driver {
     /// The frequency at which to remove random nodes from the discovery table.
     /// This is not enabled (`None`) by default.
     pub remove_interval: Option<Duration>,
-    /// When `true`, user-supplied bootnodes replace chain defaults. When `false` (the default),
-    /// user-supplied bootnodes are merged with chain defaults.
+    /// Replaces chain-default bootnodes with user-supplied ones when `true`; merges when `false`.
     pub replace_chain_defaults: bool,
 }
 

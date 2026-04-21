@@ -20,11 +20,11 @@ use crate::config::ResolvedChainConfig;
 #[command(next_help_heading = "Bootnode")]
 pub struct BootnodeArgs {
     /// Skip starting the execution-layer (reth) bootnode.
-    #[arg(long = "no-el", env = "BASE_BOOTNODE_NO_EL", global = false)]
+    #[arg(long = "no-el", env = "BASE_BOOTNODE_NO_EL")]
     pub no_el: bool,
 
     /// Skip starting the consensus-layer (base-consensus) bootnode.
-    #[arg(long = "no-cl", env = "BASE_BOOTNODE_NO_CL", global = false)]
+    #[arg(long = "no-cl", env = "BASE_BOOTNODE_NO_CL")]
     pub no_cl: bool,
 
     #[command(flatten)]
@@ -195,6 +195,7 @@ impl ClArgs {
         Ok(())
     }
 
+    /// Converts these arguments into a [`ClBootnodeConfig`] for the given chain.
     pub fn into_config(self, chain_id: u64) -> ClBootnodeConfig {
         let advertise_ip = self.effective_advertise_ip();
         let advertise_tcp = self.advertise_tcp.unwrap_or(self.listen_port);
