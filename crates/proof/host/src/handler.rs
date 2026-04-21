@@ -96,8 +96,9 @@ async fn handle_hint_inner(
 
             let hash: B256 = hint.data.as_ref().try_into()?;
             let Block { transactions, .. } = providers
-                .prefetcher
-                .fetch_block_by_hash(hash)
+                .l1
+                .get_block_by_hash(hash)
+                .full()
                 .await?
                 .ok_or(HostError::BlockNotFound)?;
             let encoded_transactions = transactions
@@ -113,7 +114,8 @@ async fn handle_hint_inner(
             }
 
             let hash: B256 = hint.data.as_ref().try_into()?;
-            let raw_receipts = providers.prefetcher.fetch_raw_receipts(hash).await?;
+            let raw_receipts: Vec<Bytes> =
+                providers.l1.client().request("debug_getRawReceipts", [hash]).await?;
 
             store_ordered_trie(kv.as_ref(), raw_receipts.as_slice()).await?;
         }
@@ -411,7 +413,26 @@ async fn handle_hint_inner(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use alloy_consensus::EMPTY_ROOT_HASH;
+    use alloy_genesis::ChainConfig;
+    use alloy_provider::RootProvider;
+    use alloy_rlp::EMPTY_STRING_CODE;
+    use alloy_rpc_client::RpcClient;
+    use alloy_transport::mock::Asserter;
+    use base_consensus_genesis::RollupConfig;
+    use base_consensus_providers::{OnlineBeaconClient, OnlineBlobProvider};
+    use base_proof::Hint;
+    use base_proof_preimage::{PreimageKey, PreimageKeyType};
+    use base_proof_primitives::ProofRequest;
+    use tokio::sync::RwLock;
+
     use super::*;
+    use crate::{
+        DEFAULT_L1_CONCURRENCY, DEFAULT_PREFETCH_DEPTH, HostConfig, HostProviders,
+        L1HeaderPrefetcher, MemoryKeyValueStore, ProverConfig, SharedKeyValueStore,
+    };
 
     const TEST_HASH: B256 = B256::new([0x42u8; 32]);
     const TEST_TIMESTAMP: u64 = 1234567890;
@@ -450,5 +471,115 @@ mod tests {
         assert!(err_msg.contains("Invalid blob hint length"));
         assert!(err_msg.contains("expected 40 or 48 bytes"));
         assert!(err_msg.contains("got 35"));
+    }
+
+    fn mock_providers() -> (HostConfig, HostProviders, SharedKeyValueStore, Asserter) {
+        let l1_asserter = Asserter::new();
+        let l1: RootProvider = RootProvider::new(RpcClient::mocked(l1_asserter.clone()));
+
+        let l2: RootProvider<base_common_network::Base> =
+            RootProvider::new(RpcClient::mocked(Asserter::new()));
+
+        // Stub fields avoid calling `OnlineBlobProvider::init`, which needs a
+        // live beacon client; the L1Transactions/L1Receipts paths don't touch it.
+        let blobs = OnlineBlobProvider {
+            beacon_client: OnlineBeaconClient::new_http("http://stub.invalid".into()),
+            genesis_time: 0,
+            slot_interval: 12,
+        };
+
+        let kv: SharedKeyValueStore = Arc::new(RwLock::new(MemoryKeyValueStore::new()));
+        let prefetcher =
+            Arc::new(L1HeaderPrefetcher::new(l1.clone(), Arc::clone(&kv), DEFAULT_PREFETCH_DEPTH));
+
+        let providers = HostProviders { l1, blobs, l2, prefetcher };
+
+        let cfg = HostConfig {
+            request: ProofRequest::default(),
+            prover: ProverConfig {
+                l1_eth_url: String::new(),
+                l2_eth_url: String::new(),
+                l1_beacon_url: String::new(),
+                l2_chain_id: 0,
+                rollup_config: RollupConfig::default(),
+                l1_config: ChainConfig::default(),
+                enable_experimental_witness_endpoint: false,
+                l1_rpc_concurrency: DEFAULT_L1_CONCURRENCY,
+                l1_prefetch_depth: DEFAULT_PREFETCH_DEPTH,
+            },
+            data_dir: None,
+        };
+
+        (cfg, providers, kv, l1_asserter)
+    }
+
+    #[tokio::test]
+    async fn handle_l1_receipts_empty() {
+        let (cfg, providers, kv, l1_asserter) = mock_providers();
+
+        let raw_receipts: Vec<Bytes> = Vec::new();
+        l1_asserter.push_success(&raw_receipts);
+
+        let hint = Hint { ty: HintType::L1Receipts, data: TEST_HASH.to_vec().into() };
+        handle_hint(hint, &cfg, &providers, Arc::clone(&kv)).await.expect("handler ok");
+
+        assert!(l1_asserter.read_q().is_empty(), "L1 RPC should have been consumed");
+
+        let empty_key = PreimageKey::new(*EMPTY_ROOT_HASH, PreimageKeyType::Keccak256);
+        let stored = kv.read().await.get(empty_key.into()).expect("empty trie sentinel");
+        assert_eq!(stored, vec![EMPTY_STRING_CODE]);
+    }
+
+    #[tokio::test]
+    async fn handle_l1_receipts_single_item() {
+        let (cfg, providers, kv, l1_asserter) = mock_providers();
+
+        let receipt = Bytes::from_static(b"raw-receipt-payload");
+        let raw_receipts = vec![receipt.clone()];
+        l1_asserter.push_success(&raw_receipts);
+
+        let hint = Hint { ty: HintType::L1Receipts, data: TEST_HASH.to_vec().into() };
+        handle_hint(hint, &cfg, &providers, Arc::clone(&kv)).await.expect("handler ok");
+
+        assert!(l1_asserter.read_q().is_empty());
+        let kv = kv.read().await;
+        let empty_key = PreimageKey::new(*EMPTY_ROOT_HASH, PreimageKeyType::Keccak256);
+        assert!(kv.get(empty_key.into()).is_none(), "non-empty trie should skip empty sentinel");
+    }
+
+    #[tokio::test]
+    async fn handle_l1_receipts_rejects_invalid_length() {
+        let (cfg, providers, kv, l1_asserter) = mock_providers();
+
+        let hint = Hint { ty: HintType::L1Receipts, data: vec![0u8; 16].into() };
+        let err = handle_hint(hint, &cfg, &providers, kv).await.expect_err("must reject");
+
+        assert!(matches!(err, HostError::InvalidHintDataLength));
+        assert!(l1_asserter.read_q().is_empty(), "no RPC should have been popped");
+    }
+
+    #[tokio::test]
+    async fn handle_l1_transactions_block_not_found() {
+        let (cfg, providers, kv, l1_asserter) = mock_providers();
+
+        let none: Option<()> = None;
+        l1_asserter.push_success(&none);
+
+        let hint = Hint { ty: HintType::L1Transactions, data: TEST_HASH.to_vec().into() };
+        let err = handle_hint(hint, &cfg, &providers, kv).await.expect_err("must error");
+
+        assert!(matches!(err, HostError::BlockNotFound));
+        assert!(l1_asserter.read_q().is_empty(), "L1 RPC should have been consumed");
+    }
+
+    #[tokio::test]
+    async fn handle_l1_transactions_rejects_invalid_length() {
+        let (cfg, providers, kv, l1_asserter) = mock_providers();
+
+        let hint = Hint { ty: HintType::L1Transactions, data: vec![0u8; 16].into() };
+        let err = handle_hint(hint, &cfg, &providers, kv).await.expect_err("must reject");
+
+        assert!(matches!(err, HostError::InvalidHintDataLength));
+        assert!(l1_asserter.read_q().is_empty(), "no RPC should have been popped");
     }
 }

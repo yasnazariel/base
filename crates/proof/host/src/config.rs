@@ -10,14 +10,19 @@ use serde::Serialize;
 
 use crate::L1HeaderPrefetcher;
 
+/// Default maximum concurrent L1 RPC requests across foreground and prefetch paths.
+pub const DEFAULT_L1_CONCURRENCY: usize = 24;
+
 /// The providers required for the host.
 #[derive(Debug, Clone)]
 pub struct HostProviders {
+    /// The L1 EL provider.
+    pub l1: RootProvider,
     /// The L1 beacon node provider.
     pub blobs: OnlineBlobProvider<OnlineBeaconClient>,
     /// The L2 EL provider.
     pub l2: RootProvider<Base>,
-    /// Rate-limited L1 RPC client with background header prefetching.
+    /// KV-aware L1 header prefetcher.
     pub prefetcher: Arc<L1HeaderPrefetcher>,
 }
 

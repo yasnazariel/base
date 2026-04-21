@@ -19,13 +19,21 @@ base-common-rpc-types-engine = { workspace = true, features = ["serde"] }
 
 # Alloy
 alloy-network.workspace = true
+alloy-json-rpc.workspace = true
 alloy-provider.workspace = true
 alloy-transport.workspace = true
 alloy-primitives = { workspace = true, features = ["rlp", "serde"] }
 alloy-rpc-types-engine = { workspace = true, features = ["serde", "std"] }
 
+# async
+tower.workspace = true
+tokio = { workspace = true, features = ["sync"] }
+
 # misc
 async-trait.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 
 [features]
 std = [

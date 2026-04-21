@@ -17,10 +17,10 @@ pub use metrics::ProofGuard;
 pub use metrics::{Metrics, NoopProofGuard};
 
 mod prefetch;
-pub use prefetch::{DEFAULT_L1_CONCURRENCY, DEFAULT_PREFETCH_DEPTH, L1HeaderPrefetcher};
+pub use prefetch::{DEFAULT_PREFETCH_DEPTH, L1HeaderPrefetcher};
 
 mod config;
-pub use config::{HostConfig, HostProviders, ProverConfig};
+pub use config::{DEFAULT_L1_CONCURRENCY, HostConfig, HostProviders, ProverConfig};
 
 mod host;
 pub use host::Host;

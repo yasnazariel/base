@@ -1,56 +1,32 @@
-//! L1 header prefetching and rate-limited RPC access.
+//! KV-aware L1 header fetch and parent-header prefetching.
 //!
-//! When the proof program walks backwards through L1 headers (following `parent_hash`
-//! pointers), each header triggers a separate `debug_getRawHeader` RPC call. This
-//! module introduces [`L1HeaderPrefetcher`] which:
-//!
-//! - **Rate-limits** outbound L1 RPCs through a shared [`Semaphore`].
-//! - **Retries** transient failures (transport errors, rate-limit responses) with
-//!   exponential backoff.
-//! - **Speculatively prefetches** parent headers in parallel by block number, so
-//!   subsequent oracle requests hit the KV store instead of the RPC.
+//! When the proof program walks backwards through L1 headers (following
+//! `parent_hash` pointers), each header triggers a separate
+//! `debug_getRawHeader` RPC call. [`L1HeaderPrefetcher`] short-circuits on KV
+//! hits and speculatively fetches parent headers in parallel so subsequent
+//! oracle requests hit the KV store instead of the RPC.
 
-use std::{future::Future, sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use alloy_consensus::Header;
 use alloy_eips::BlockNumberOrTag;
 use alloy_primitives::{B256, Bytes, keccak256};
 use alloy_provider::{Provider, RootProvider};
 use alloy_rlp::Decodable;
-use alloy_rpc_types::Block;
 use alloy_transport::TransportError;
-use backon::{ExponentialBuilder, Retryable};
 use base_proof_preimage::PreimageKey;
 use dashmap::DashSet;
-use tokio::{sync::Semaphore, task::JoinSet};
+use tokio::task::JoinSet;
 use tracing::{debug, trace};
 
 use crate::{HostError, Metrics, Result, SharedKeyValueStore};
 
-/// Default maximum concurrent L1 RPC requests.
-pub const DEFAULT_L1_CONCURRENCY: usize = 8;
-
 /// Default number of parent headers to speculatively prefetch.
 pub const DEFAULT_PREFETCH_DEPTH: usize = 64;
 
-const MAX_RETRY_ATTEMPTS: usize = 5;
-const RETRY_MIN_DELAY: Duration = Duration::from_millis(100);
-const RETRY_MAX_DELAY: Duration = Duration::from_secs(10);
-
-/// Manages rate-limited, retried L1 RPC calls and background header prefetching.
-///
-/// All L1 RPC requests flow through a shared [`Semaphore`] that caps the number
-/// of in-flight calls. Transient errors (including rate-limit responses) are
-/// automatically retried with exponential back-off. The semaphore permit is
-/// acquired inside the retry closure so it is released during back-off sleep,
-/// freeing the slot for other requests while this one waits to retry.
-///
-/// When an `L1BlockHeader` hint arrives, the prefetcher speculatively fetches
-/// parent headers in parallel (bounded by the same semaphore) so subsequent
-/// oracle look-ups find the data in the KV store and skip the RPC entirely.
+/// KV-aware L1 header fetch + background parent-header prefetch.
 pub struct L1HeaderPrefetcher {
     provider: RootProvider,
-    semaphore: Arc<Semaphore>,
     kv: SharedKeyValueStore,
     prefetch_depth: usize,
     in_flight: Arc<DashSet<u64>>,
@@ -66,25 +42,8 @@ impl std::fmt::Debug for L1HeaderPrefetcher {
 
 impl L1HeaderPrefetcher {
     /// Creates a new [`L1HeaderPrefetcher`].
-    ///
-    /// # Panics
-    /// Panics if `concurrency == 0`. Callers must enforce this at the boundary
-    /// (e.g. via clap's `value_parser!(usize).range(1..)`).
-    pub fn new(
-        provider: RootProvider,
-        kv: SharedKeyValueStore,
-        concurrency: usize,
-        prefetch_depth: usize,
-    ) -> Self {
-        assert!(concurrency > 0, "concurrency must be >= 1");
-
-        Self {
-            provider,
-            semaphore: Arc::new(Semaphore::new(concurrency)),
-            kv,
-            prefetch_depth,
-            in_flight: Arc::new(DashSet::new()),
-        }
+    pub fn new(provider: RootProvider, kv: SharedKeyValueStore, prefetch_depth: usize) -> Self {
+        Self { provider, kv, prefetch_depth, in_flight: Arc::new(DashSet::new()) }
     }
 
     /// Fetches an L1 header by hash and stores it in the KV store.
@@ -116,12 +75,16 @@ impl L1HeaderPrefetcher {
         }
 
         let start = header.number - 1;
-        // depth >= 1 here, so subtraction is safe; saturating_sub bounds at block 1.
         let end = start.saturating_sub((self.prefetch_depth - 1) as u64).max(1);
 
-        let blocks: Vec<u64> = (end..=start).filter(|n| self.in_flight.insert(*n)).collect();
+        // Construct guards at the insert site so cancellation between here
+        // and the per-block spawn still releases the in_flight entries.
+        let guards: Vec<InFlightGuard> = (end..=start)
+            .filter(|n| self.in_flight.insert(*n))
+            .map(|block| InFlightGuard { set: Arc::clone(&self.in_flight), block })
+            .collect();
 
-        if blocks.is_empty() {
+        if guards.is_empty() {
             trace!(from_block = start, to_block = end, "all blocks already in-flight, skipping");
             return;
         }
@@ -129,109 +92,41 @@ impl L1HeaderPrefetcher {
         debug!(
             from_block = start,
             to_block = end,
-            new_blocks = blocks.len(),
+            new_blocks = guards.len(),
             "spawning L1 header prefetch"
         );
 
         let me = Arc::clone(self);
-        tokio::spawn(async move { me.prefetch_range(blocks).await });
-    }
-
-    /// Fetches a full block by hash through the semaphore + retry layer.
-    pub async fn fetch_block_by_hash(&self, hash: B256) -> Result<Option<Block>> {
-        let provider = self.provider.clone();
-        Ok(self
-            .rpc("eth_getBlockByHash", move || {
-                let provider = provider.clone();
-                async move { provider.get_block_by_hash(hash).full().await }
-            })
-            .await?)
-    }
-
-    /// Fetches raw receipts by block hash through the semaphore + retry layer.
-    pub async fn fetch_raw_receipts(&self, hash: B256) -> Result<Vec<Bytes>> {
-        let provider = self.provider.clone();
-        Ok(self
-            .rpc("debug_getRawReceipts", move || {
-                let provider = provider.clone();
-                async move {
-                    provider
-                        .client()
-                        .request::<[B256; 1], Vec<Bytes>>("debug_getRawReceipts", [hash])
-                        .await
-                }
-            })
-            .await?)
+        tokio::spawn(async move { me.prefetch_range(guards).await });
     }
 
     async fn fetch_raw_header_by_hash(
         &self,
         hash: B256,
     ) -> std::result::Result<Bytes, TransportError> {
-        let provider = self.provider.clone();
-        self.rpc("debug_getRawHeader[hash]", move || {
-            let provider = provider.clone();
-            async move {
-                provider.client().request::<[B256; 1], Bytes>("debug_getRawHeader", [hash]).await
-            }
-        })
-        .await
+        self.provider.client().request::<[B256; 1], Bytes>("debug_getRawHeader", [hash]).await
     }
 
     async fn fetch_raw_header_by_number(
         &self,
         block_number: u64,
     ) -> std::result::Result<Bytes, TransportError> {
-        let provider = self.provider.clone();
-        self.rpc("debug_getRawHeader[number]", move || {
-            let provider = provider.clone();
-            async move {
-                provider
-                    .client()
-                    .request::<[BlockNumberOrTag; 1], Bytes>(
-                        "debug_getRawHeader",
-                        [BlockNumberOrTag::Number(block_number)],
-                    )
-                    .await
-            }
-        })
-        .await
+        self.provider
+            .client()
+            .request::<[BlockNumberOrTag; 1], Bytes>(
+                "debug_getRawHeader",
+                [BlockNumberOrTag::Number(block_number)],
+            )
+            .await
     }
 
-    /// Runs `op` under the shared semaphore with exponential-backoff retry on
-    /// transient transport errors. The semaphore permit is acquired inside the
-    /// retry closure so it is released during back-off sleep.
-    async fn rpc<T, F, Fut>(
-        &self,
-        op_name: &'static str,
-        op: F,
-    ) -> std::result::Result<T, TransportError>
-    where
-        F: Fn() -> Fut,
-        Fut: Future<Output = std::result::Result<T, TransportError>>,
-    {
-        (|| async {
-            let _permit =
-                self.semaphore.acquire().await.expect("semaphore is owned and never closed");
-            op().await
-        })
-        .retry(backoff_builder())
-        .when(is_retryable_transport)
-        .notify(|err, dur| {
-            debug!(error = %err, delay = ?dur, op = op_name, "retrying L1 RPC");
-        })
-        .await
-    }
-
-    async fn prefetch_range(self: Arc<Self>, blocks: Vec<u64>) {
+    async fn prefetch_range(self: Arc<Self>, guards: Vec<InFlightGuard>) {
         let mut tasks = JoinSet::new();
 
-        for block_number in blocks {
+        for guard in guards {
             let me = Arc::clone(&self);
             tasks.spawn(async move {
-                // RAII guard ensures the block is removed from `in_flight` even
-                // if this task is cancelled mid-flight (e.g. on shutdown).
-                let _guard = InFlightGuard { set: Arc::clone(&me.in_flight), block: block_number };
+                let block_number = guard.block;
 
                 let raw = match me.fetch_raw_header_by_number(block_number).await {
                     Ok(raw) => raw,
@@ -242,9 +137,8 @@ impl L1HeaderPrefetcher {
                 };
 
                 let key = PreimageKey::new_keccak256(*keccak256(&raw));
-                // Acquire the KV write lock per-entry so the hint handler is
-                // not blocked by the entire batch, and prefetched headers
-                // become visible as soon as each RPC completes.
+                // Per-entry write so the hint handler isn't blocked by the
+                // whole batch and headers appear as each RPC completes.
                 match me.kv.write().await.set(key.into(), raw.into()) {
                     Ok(()) => Metrics::l1_prefetch_stored_total().increment(1),
                     Err(e) => debug!(block_number, error = %e, "L1 prefetch store failed"),
@@ -252,7 +146,6 @@ impl L1HeaderPrefetcher {
             });
         }
 
-        // Drain to keep tasks scheduled until completion.
         tasks.join_all().await;
     }
 }
@@ -270,98 +163,147 @@ impl Drop for InFlightGuard {
     }
 }
 
-fn backoff_builder() -> ExponentialBuilder {
-    ExponentialBuilder::default()
-        .with_min_delay(RETRY_MIN_DELAY)
-        .with_max_delay(RETRY_MAX_DELAY)
-        .with_max_times(MAX_RETRY_ATTEMPTS)
-        .with_jitter()
-}
-
-fn is_retryable_transport(err: &TransportError) -> bool {
-    matches!(err, TransportError::Transport(_)) || is_rate_limited(err)
-}
-
-/// Different RPC providers signal rate-limiting in different ways:
-/// - HTTP 429 surfaced as a transport error string.
-/// - JSON-RPC error code `429` (non-standard but common).
-/// - JSON-RPC error code `-32005` (Infura/Alchemy rate limit).
-/// - Message containing "rate limit" or "too many requests".
-fn is_rate_limited(err: &TransportError) -> bool {
-    match err {
-        TransportError::ErrorResp(payload) => {
-            if payload.code == 429 || payload.code == -32005 {
-                return true;
-            }
-            let msg = payload.message.to_lowercase();
-            msg.contains("rate limit") || msg.contains("too many requests")
-        }
-        TransportError::Transport(err) => {
-            let msg = err.to_string().to_lowercase();
-            msg.contains("429") || msg.contains("rate limit")
-        }
-        _ => false,
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use alloy_json_rpc::ErrorPayload;
+    use alloy_primitives::U256;
+    use alloy_rlp::Encodable;
+    use alloy_rpc_client::RpcClient;
+    use alloy_transport::mock::Asserter;
+    use tokio::{
+        sync::RwLock,
+        time::{Duration, sleep},
+    };
 
     use super::*;
+    use crate::MemoryKeyValueStore;
 
-    #[test]
-    fn test_is_rate_limited_error_code_429() {
-        let err = TransportError::ErrorResp(ErrorPayload {
-            code: 429,
-            message: "Too Many Requests".into(),
-            data: None,
-        });
-        assert!(is_rate_limited(&err));
-        assert!(is_retryable_transport(&err));
+    fn mock_prefetcher(
+        prefetch_depth: usize,
+    ) -> (Arc<L1HeaderPrefetcher>, SharedKeyValueStore, Asserter) {
+        let asserter = Asserter::new();
+        let provider = RootProvider::new(RpcClient::mocked(asserter.clone()));
+        let kv: SharedKeyValueStore = Arc::new(RwLock::new(MemoryKeyValueStore::new()));
+        let prefetcher =
+            Arc::new(L1HeaderPrefetcher::new(provider, Arc::clone(&kv), prefetch_depth));
+        (prefetcher, kv, asserter)
     }
 
-    #[test]
-    fn test_is_rate_limited_error_code_minus_32005() {
-        let err = TransportError::ErrorResp(ErrorPayload {
-            code: -32005,
-            message: "daily request count exceeded".into(),
-            data: None,
-        });
-        assert!(is_rate_limited(&err));
-        assert!(is_retryable_transport(&err));
+    fn in_flight_blocks(prefetcher: &L1HeaderPrefetcher) -> Vec<u64> {
+        let mut blocks: Vec<u64> = prefetcher.in_flight.iter().map(|e| *e).collect();
+        blocks.sort_unstable();
+        blocks
     }
 
-    #[test]
-    fn test_is_rate_limited_message_contains_rate_limit() {
-        let err = TransportError::ErrorResp(ErrorPayload {
-            code: -32000,
-            message: "Rate Limit exceeded, try again later".into(),
-            data: None,
-        });
-        assert!(is_rate_limited(&err));
+    fn make_header(number: u64) -> Header {
+        Header { number, difficulty: U256::from(number), ..Header::default() }
     }
 
-    #[test]
-    fn test_non_retryable_error_resp() {
-        let err = TransportError::ErrorResp(ErrorPayload {
-            code: -32600,
-            message: "invalid request".into(),
-            data: None,
-        });
-        assert!(!is_rate_limited(&err));
-        assert!(!is_retryable_transport(&err));
+    fn rlp_encode(header: &Header) -> Vec<u8> {
+        let mut out = Vec::new();
+        header.encode(&mut out);
+        out
     }
 
-    #[test]
-    fn test_transport_error_is_retryable() {
-        let err = alloy_transport::TransportErrorKind::custom_str("connection reset");
-        assert!(is_retryable_transport(&err));
+    async fn wait_until<F: FnMut() -> bool>(mut predicate: F) {
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while !predicate() {
+            if std::time::Instant::now() > deadline {
+                panic!("predicate did not become true before deadline");
+            }
+            sleep(Duration::from_millis(5)).await;
+        }
     }
 
-    #[test]
-    fn test_ser_error_is_not_retryable() {
-        let err = TransportError::SerError(serde_json::Error::io(std::io::Error::other("test")));
-        assert!(!is_retryable_transport(&err));
+    #[tokio::test]
+    async fn fetch_and_store_header_short_circuits_on_kv_hit() {
+        let (prefetcher, kv, asserter) = mock_prefetcher(0);
+
+        let header = make_header(100);
+        let raw = rlp_encode(&header);
+        let hash = keccak256(&raw);
+        let key = PreimageKey::new_keccak256(*hash);
+        kv.write().await.set(key.into(), raw.clone()).expect("kv set");
+
+        let got = prefetcher
+            .fetch_and_store_header(hash)
+            .await
+            .expect("cache hit should succeed without RPC");
+
+        assert_eq!(got.number, 100);
+        assert_eq!(got.difficulty, U256::from(100u64));
+        assert!(asserter.read_q().is_empty(), "no RPC should have been popped");
+    }
+
+    #[tokio::test]
+    async fn fetch_and_store_header_falls_back_to_rpc_on_miss() {
+        let (prefetcher, kv, asserter) = mock_prefetcher(0);
+
+        let header = make_header(200);
+        let raw = rlp_encode(&header);
+        let hash = keccak256(&raw);
+
+        asserter.push_success(&alloy_primitives::Bytes::from(raw.clone()));
+
+        let got = prefetcher.fetch_and_store_header(hash).await.expect("rpc fetch should succeed");
+
+        assert_eq!(got.number, 200);
+        let cached = kv.read().await.get(PreimageKey::new_keccak256(*hash).into());
+        assert_eq!(cached, Some(raw));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn prefetch_parents_dedups_overlapping_calls() {
+        // current_thread runtime: spawned tasks don't run until we yield, so
+        // the synchronous in-flight state is observable here.
+        let (prefetcher, _kv, asserter) = mock_prefetcher(4);
+
+        let head = make_header(101);
+
+        prefetcher.prefetch_parents(&head);
+        assert_eq!(in_flight_blocks(&prefetcher), vec![97, 98, 99, 100]);
+
+        prefetcher.prefetch_parents(&head);
+        assert_eq!(in_flight_blocks(&prefetcher), vec![97, 98, 99, 100]);
+
+        for _ in 0..4 {
+            asserter.push_failure_msg("simulated rpc failure");
+        }
+
+        wait_until(|| in_flight_blocks(&prefetcher).is_empty()).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn prefetch_parents_releases_guards_on_success() {
+        let (prefetcher, kv, asserter) = mock_prefetcher(3);
+
+        let headers: Vec<Header> = (97..=99).map(make_header).collect();
+        for header in &headers {
+            asserter.push_success(&alloy_primitives::Bytes::from(rlp_encode(header)));
+        }
+
+        prefetcher.prefetch_parents(&make_header(100));
+        assert_eq!(in_flight_blocks(&prefetcher), vec![97, 98, 99]);
+
+        wait_until(|| in_flight_blocks(&prefetcher).is_empty()).await;
+
+        let kv = kv.read().await;
+        for header in &headers {
+            let raw = rlp_encode(header);
+            let key = PreimageKey::new_keccak256(*keccak256(&raw));
+            assert_eq!(kv.get(key.into()), Some(raw), "header {} not in kv", header.number);
+        }
+    }
+
+    #[tokio::test]
+    async fn prefetch_parents_no_op_below_genesis() {
+        let (prefetcher, _kv, asserter) = mock_prefetcher(8);
+
+        prefetcher.prefetch_parents(&make_header(1));
+        assert!(in_flight_blocks(&prefetcher).is_empty());
+
+        prefetcher.prefetch_parents(&make_header(0));
+        assert!(in_flight_blocks(&prefetcher).is_empty());
+
+        assert!(asserter.read_q().is_empty(), "no RPCs should have been queued");
     }
 }

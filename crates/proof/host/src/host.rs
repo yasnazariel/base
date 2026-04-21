@@ -1,8 +1,14 @@
 use std::sync::Arc;
 
 use alloy_provider::{Network, RootProvider};
+use alloy_rpc_client::ClientBuilder;
+use alloy_transport::{
+    TransportError,
+    layers::{RateLimitRetryPolicy, RetryBackoffLayer},
+};
 use base_common_evm::BaseEvmFactory;
 use base_common_network::Base;
+use base_common_provider::ConcurrencyLimitLayer;
 use base_consensus_providers::{OnlineBeaconClient, OnlineBlobProvider};
 use base_proof::HintType;
 use base_proof_client::{FaultProofProgramError, Prologue};
@@ -23,6 +29,11 @@ use crate::{
     MemoryKeyValueStore, Metrics, OfflineHostBackend, OnlineHostBackend, PreimageServer,
     RecordingOracle, Result, SharedKeyValueStore, SplitKeyValueStore,
 };
+
+const L1_MAX_RATE_LIMIT_RETRIES: u32 = 10;
+const L1_INITIAL_BACKOFF_MS: u64 = 100;
+/// Sized to match Alchemy free-tier throughput; only affects retry spacing.
+const L1_COMPUTE_UNITS_PER_SECOND: u64 = 330;
 
 /// The proof host orchestrator.
 #[derive(Debug)]
@@ -190,26 +201,54 @@ impl Host {
 
     /// Creates the providers required for the host backend.
     pub async fn create_providers(&self, kv: SharedKeyValueStore) -> Result<HostProviders> {
-        let l1_provider = rpc_provider(&self.config.prover.l1_eth_url).await?;
+        let l1_provider = Self::rate_limited_l1_provider(
+            &self.config.prover.l1_eth_url,
+            self.config.prover.l1_rpc_concurrency,
+        )
+        .await?;
         let blob_provider = OnlineBlobProvider::init(OnlineBeaconClient::new_http(
             self.config.prover.l1_beacon_url.clone(),
         ))
         .await;
-        let l2_provider = rpc_provider::<Base>(&self.config.prover.l2_eth_url).await?;
+        let l2_provider = Self::rpc_provider::<Base>(&self.config.prover.l2_eth_url).await?;
 
         let prefetcher = Arc::new(L1HeaderPrefetcher::new(
-            l1_provider,
-            kv,
-            self.config.prover.l1_rpc_concurrency,
+            l1_provider.clone(),
+            Arc::clone(&kv),
             self.config.prover.l1_prefetch_depth,
         ));
 
-        Ok(HostProviders { blobs: blob_provider, l2: l2_provider, prefetcher })
+        Ok(HostProviders { l1: l1_provider, blobs: blob_provider, l2: l2_provider, prefetcher })
     }
-}
 
-async fn rpc_provider<N: Network>(url: &str) -> Result<RootProvider<N>> {
-    RootProvider::connect(url)
-        .await
-        .map_err(|e| HostError::Custom(format!("failed to connect to RPC at {url}: {e}")))
+    async fn rpc_provider<N: Network>(url: &str) -> Result<RootProvider<N>> {
+        RootProvider::connect(url)
+            .await
+            .map_err(|e| HostError::Custom(format!("failed to connect to RPC at {url}: {e}")))
+    }
+
+    /// Builds an L1 [`RootProvider`] with retry-then-concurrency-cap layered on
+    /// the transport. Retry wraps the cap so the permit releases during back-off.
+    async fn rate_limited_l1_provider(url: &str, concurrency: usize) -> Result<RootProvider> {
+        let policy = RateLimitRetryPolicy::default().or(Self::is_transient_transport);
+        let client = ClientBuilder::default()
+            .layer(RetryBackoffLayer::new_with_policy(
+                L1_MAX_RATE_LIMIT_RETRIES,
+                L1_INITIAL_BACKOFF_MS,
+                L1_COMPUTE_UNITS_PER_SECOND,
+                policy,
+            ))
+            .layer(ConcurrencyLimitLayer::new(concurrency))
+            .connect(url)
+            .await
+            .map_err(|e| HostError::Custom(format!("failed to connect to L1 RPC at {url}: {e}")))?;
+        Ok(RootProvider::new(client))
+    }
+
+    /// Extends [`RateLimitRetryPolicy`] to also retry generic transport
+    /// failures (connection resets, DNS, transient 5xx) that don't surface
+    /// as explicit rate-limit signals.
+    const fn is_transient_transport(err: &TransportError) -> bool {
+        matches!(err, TransportError::Transport(_))
+    }
 }
