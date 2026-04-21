@@ -1,6 +1,6 @@
 //! Action tests that exercise [`TestFollowNode`] end-to-end.
 //!
-//! These tests validate the **execution kernel and SafeDB storage layer** of
+//! These tests validate the **execution kernel and `SafeDB` storage layer** of
 //! the follow node: that blocks from a source are correctly re-executed through
 //! the production [`OpPayloadBuilder`], that safe-head mappings are recorded in
 //! the real redb-backed [`SafeDB`], and that head pointers (unsafe/safe/finalized)
@@ -11,7 +11,7 @@
 //! - The production actor coordination layer ([`DelegateL2DerivationActor`],
 //!   [`EngineActor`], channel message ordering, poll-interval timing).
 //! - The RPC surface (`optimism_syncStatus`, `optimism_safeHeadAtL1Block`, etc.)
-//!   — [`TestFollowNode`] has no HTTP server; SafeDB is queried at the library
+//!   — [`TestFollowNode`] has no HTTP server; `SafeDB` is queried at the library
 //!   level, not through [`RollupRpc`].
 //! - Reorg / fork-divergence scenarios.
 //!
@@ -71,9 +71,9 @@ async fn test_follow_node_syncs_unsafe_blocks() {
     );
 }
 
-/// Follow node records L1→L2 safe head mappings in SafeDB.
+/// Follow node records L1→L2 safe head mappings in `SafeDB`.
 ///
-/// After syncing N blocks and calling `update_safe_and_finalized`, the SafeDB
+/// After syncing N blocks and calling `update_safe_and_finalized`, the `SafeDB`
 /// must contain an entry for the L1 origin of the safe block. A query for that
 /// L1 block number returns the correct L2 safe head hash.
 #[tokio::test]
@@ -191,11 +191,11 @@ async fn test_follow_node_safe_lags_unsafe() {
     assert_eq!(follow_node.l2_safe_number(), SAFE_COUNT, "safe head must stop at {SAFE_COUNT}");
 }
 
-/// SafeDB range-scan returns the latest safe head for queries above any recorded L1 origin.
+/// `SafeDB` range-scan returns the latest safe head for queries above any recorded L1 origin.
 ///
 /// Querying an L1 block number *higher* than the safe head's recorded L1 origin should
 /// return the most recent safe head recorded, not an error. This exercises the
-/// SafeDB's "at-or-before" range-scan behavior using `u64::MAX` as an extreme upper bound.
+/// `SafeDB`'s "at-or-before" range-scan behavior using `u64::MAX` as an extreme upper bound.
 #[tokio::test]
 async fn test_follow_node_safedb_range_query_above_latest() {
     const BLOCK_COUNT: u64 = 2;
