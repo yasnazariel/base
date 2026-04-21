@@ -16,6 +16,7 @@ use base_consensus_node::{
 use base_consensus_providers::OnlineBeaconClient;
 use base_consensus_registry::Registry;
 use clap::{Args, Parser, Subcommand};
+use eyre::Context;
 use strum::IntoEnumIterator;
 use tracing::{error, info, warn};
 use url::Url;
@@ -207,6 +208,7 @@ impl Follow {
             beacon_client: l1_beacon,
             engine_provider: RootProvider::new_http(self.l1_rpc_args.l1_eth_rpc.clone()),
             finalized_poll_interval: L1Config::default_finalized_poll_interval(cfg.l1_chain_id),
+            verifier_l1_confs: self.l1_rpc_args.l1_verifier_confs,
         };
 
         FollowNode::new(
@@ -359,6 +361,7 @@ impl Node {
             beacon: self.l1_rpc_args.l1_beacon.clone(),
             rpc_url: self.l1_rpc_args.l1_eth_rpc.clone(),
             slot_duration_override: self.l1_rpc_args.l1_slot_duration_override,
+            verifier_l1_confs: self.l1_rpc_args.l1_verifier_confs,
         };
 
         // If metrics are enabled, initialize the global cli metrics.
@@ -403,10 +406,12 @@ impl Node {
         if let Some(path) = self.safedb_path.clone() {
             builder = builder.with_safedb_path(path);
         }
-        builder.build().start().await.map_err(|e| {
-            error!(target: "rollup_node", error = %e, "Failed to start rollup node service");
-            eyre::eyre!("{e}")
-        })?;
+        builder.build().await.wrap_err("Failed to build rollup node")?.start().await.map_err(
+            |e| {
+                error!(target: "rollup_node", error = %e, "Failed to start rollup node service");
+                eyre::eyre!("{e}")
+            },
+        )?;
 
         Ok(())
     }

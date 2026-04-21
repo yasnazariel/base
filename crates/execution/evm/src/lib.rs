@@ -20,14 +20,15 @@ use base_common_consensus::{BasePrimitives, DepositReceiptExt, EIP1559ParamError
 use base_common_evm::{
     BaseBlockExecutionCtx, BaseBlockExecutorFactory, BaseEvmFactory, BaseReceiptBuilder, BaseTxEnv,
     OpSpecId, OpTransaction,
-    spec_by_timestamp_after_bedrock as revm_spec_by_timestamp_after_bedrock,
 };
 use base_execution_chainspec::BaseChainSpec;
 use reth_chainspec::EthChainSpec;
 #[cfg(feature = "std")]
 use reth_evm::{ConfigureEngineEvm, ExecutableTxIterator};
 use reth_evm::{ConfigureEvm, EvmEnv, TransactionEnvMut, precompiles::PrecompilesMap};
-use reth_primitives_traits::{NodePrimitives, SealedBlock, SealedHeader, SignedTransaction};
+use reth_primitives_traits::{
+    NodePrimitives, SealedBlock, SealedHeader, SignedTransaction, constants::MAX_TX_GAS_LIMIT_OSAKA,
+};
 use revm::context::{BlockEnv, TxEnv};
 #[allow(unused_imports)]
 use {
@@ -44,7 +45,7 @@ use {
 };
 
 mod config;
-pub use config::OpNextBlockEnvAttributes;
+pub use config::BaseNextBlockEnvAttributes;
 mod execute;
 pub use execute::*;
 pub mod l1;
@@ -57,11 +58,25 @@ pub use build::BaseBlockAssembler;
 mod error;
 pub use error::{BaseBlockExecutionError, L1BlockInfoError};
 
-/// Builds an [`EvmEnv`] for a given block header using [`base_common_evm`]'s spec resolution.
-fn op_evm_env(header: &Header, chain_spec: &(impl Upgrades + EthChainSpec)) -> EvmEnv<OpSpecId> {
-    let spec = revm_spec_by_timestamp_after_bedrock(chain_spec, header.timestamp);
-    let cfg_env =
+fn build_cfg_env(
+    spec: OpSpecId,
+    timestamp: u64,
+    chain_spec: &(impl Upgrades + EthChainSpec),
+) -> CfgEnv<OpSpecId> {
+    let mut cfg_env =
         CfgEnv::new().with_chain_id(chain_spec.chain().id()).with_spec_and_mainnet_gas_params(spec);
+
+    if chain_spec.is_base_azul_active_at_timestamp(timestamp) {
+        cfg_env.tx_gas_limit_cap = Some(MAX_TX_GAS_LIMIT_OSAKA);
+    }
+
+    cfg_env
+}
+
+/// Builds an [`EvmEnv`] for a given block header using [`base_common_evm`]'s spec resolution.
+fn build_evm_env(header: &Header, chain_spec: &(impl Upgrades + EthChainSpec)) -> EvmEnv<OpSpecId> {
+    let spec = OpSpecId::from_header(chain_spec, header);
+    let cfg_env = build_cfg_env(spec, header.timestamp, chain_spec);
 
     let blob_excess_gas_and_price = spec
         .into_eth_spec()
@@ -86,15 +101,14 @@ fn op_evm_env(header: &Header, chain_spec: &(impl Upgrades + EthChainSpec)) -> E
 }
 
 /// Builds an [`EvmEnv`] for the next block given a parent header.
-fn op_next_evm_env(
+fn build_next_evm_env(
     parent: &Header,
-    attributes: &OpNextBlockEnvAttributes,
+    attributes: &BaseNextBlockEnvAttributes,
     base_fee_per_gas: u64,
     chain_spec: &(impl Upgrades + EthChainSpec),
 ) -> EvmEnv<OpSpecId> {
-    let spec = revm_spec_by_timestamp_after_bedrock(chain_spec, attributes.timestamp);
-    let cfg_env =
-        CfgEnv::new().with_chain_id(chain_spec.chain().id()).with_spec_and_mainnet_gas_params(spec);
+    let spec = OpSpecId::from_timestamp(chain_spec, attributes.timestamp);
+    let cfg_env = build_cfg_env(spec, attributes.timestamp, chain_spec);
 
     let blob_excess_gas_and_price = spec
         .into_eth_spec()
@@ -123,7 +137,7 @@ fn op_next_evm_env(
 pub struct BaseEvmConfig<
     ChainSpec = BaseChainSpec,
     N: NodePrimitives = BasePrimitives,
-    R = OpRethReceiptBuilder,
+    R = BaseRethReceiptBuilder,
     EvmFactory = BaseEvmFactory,
 > {
     /// Inner [`BaseBlockExecutorFactory`].
@@ -148,8 +162,8 @@ impl<ChainSpec, N: NodePrimitives, R: Clone, EvmFactory: Clone> Clone
 
 impl<ChainSpec: Upgrades> BaseEvmConfig<ChainSpec> {
     /// Creates a new [`BaseEvmConfig`] with the given chain spec for Base chains.
-    pub fn optimism(chain_spec: Arc<ChainSpec>) -> Self {
-        Self::new(chain_spec, OpRethReceiptBuilder::default())
+    pub fn base(chain_spec: Arc<ChainSpec>) -> Self {
+        Self::new(chain_spec, BaseRethReceiptBuilder::default())
     }
 }
 
@@ -204,7 +218,7 @@ where
 {
     type Primitives = N;
     type Error = EIP1559ParamError;
-    type NextBlockEnvCtx = OpNextBlockEnvAttributes;
+    type NextBlockEnvCtx = BaseNextBlockEnvAttributes;
     type BlockExecutorFactory = BaseBlockExecutorFactory<R, Arc<ChainSpec>, EvmF>;
     type BlockAssembler = BaseBlockAssembler<ChainSpec>;
 
@@ -217,7 +231,7 @@ where
     }
 
     fn evm_env(&self, header: &Header) -> Result<EvmEnv<OpSpecId>, Self::Error> {
-        Ok(op_evm_env(header, self.chain_spec()))
+        Ok(build_evm_env(header, self.chain_spec()))
     }
 
     fn next_evm_env(
@@ -228,7 +242,7 @@ where
         let base_fee =
             self.chain_spec().next_block_base_fee(parent, attributes.timestamp).unwrap_or_default();
 
-        Ok(op_next_evm_env(parent, attributes, base_fee, self.chain_spec()))
+        Ok(build_next_evm_env(parent, attributes, base_fee, self.chain_spec()))
     }
 
     fn context_for_block(
@@ -274,11 +288,8 @@ where
         let timestamp = payload.payload.timestamp();
         let block_number = payload.payload.block_number();
 
-        let spec = revm_spec_by_timestamp_after_bedrock(self.chain_spec(), timestamp);
-
-        let cfg_env = CfgEnv::new()
-            .with_chain_id(self.chain_spec().chain().id())
-            .with_spec_and_mainnet_gas_params(spec);
+        let spec = OpSpecId::from_timestamp(self.chain_spec(), timestamp);
+        let cfg_env = build_cfg_env(spec, timestamp, self.chain_spec());
 
         let blob_excess_gas_and_price = spec
             .into_eth_spec()
@@ -365,22 +376,23 @@ mod tests {
     use super::*;
 
     fn test_evm_config() -> BaseEvmConfig {
-        BaseEvmConfig::optimism(BASE_MAINNET.clone())
+        BaseEvmConfig::base(BASE_MAINNET.clone())
     }
 
     #[test]
-    fn test_evm_env_uses_base_v1_for_genesis_chain_spec() {
+    fn test_evm_env_uses_azul_for_genesis_chain_spec() {
         let chain_spec = Arc::new(
             BaseChainSpecBuilder::default()
                 .chain(0.into())
                 .genesis(Genesis::default())
-                .base_v1_activated()
+                .azul_activated()
                 .build(),
         );
-        let evm_config = BaseEvmConfig::optimism(chain_spec);
+        let evm_config = BaseEvmConfig::base(chain_spec);
         let header = Header { timestamp: 0, ..Default::default() };
         let EvmEnv { cfg_env, .. } = evm_config.evm_env(&header).unwrap();
-        assert_eq!(cfg_env.spec, OpSpecId::BASE_V1);
+        assert_eq!(cfg_env.spec, OpSpecId::AZUL);
+        assert_eq!(cfg_env.tx_gas_limit_cap, Some(MAX_TX_GAS_LIMIT_OSAKA));
     }
 
     #[test]
@@ -401,7 +413,7 @@ mod tests {
         // Use the `BaseEvmConfig` to create the `cfg_env` and `block_env` based on the ChainSpec,
         // Header, and total difficulty
         let EvmEnv { cfg_env, .. } =
-            BaseEvmConfig::optimism(Arc::new(BaseChainSpec { inner: chain_spec.clone() }))
+            BaseEvmConfig::base(Arc::new(BaseChainSpec { inner: chain_spec.clone() }))
                 .evm_env(&header)
                 .unwrap();
 

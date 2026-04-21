@@ -14,7 +14,7 @@ use async_trait::async_trait;
 use base_common_flashblocks::FlashblocksPayloadV1;
 use base_common_network::Base;
 use base_execution_chainspec::BaseChainSpec;
-use base_execution_rpc::OpEthApiBuilder;
+use base_execution_rpc::BaseEthApiBuilder;
 use base_execution_txpool::BasePooledTransaction;
 use base_node_core::{BasePayloadValidatorBuilder, args::RollupArgs, node::BasePoolBuilder};
 use base_node_runner::{BaseNode, test_utils::init_silenced_tracing};
@@ -135,12 +135,15 @@ impl LocalInstance {
         let gas_limit_config = builder_config.gas_limit_config.clone();
         let metering_provider = Arc::clone(&builder_config.metering_provider);
 
-        let addons: base_node_runner::BaseAddOns<_, OpEthApiBuilder, BasePayloadValidatorBuilder> =
-            base_node
-                .add_ons_builder()
-                .with_da_config(da_config.clone())
-                .with_gas_limit_config(gas_limit_config.clone())
-                .build();
+        let addons: base_node_runner::BaseAddOns<
+            _,
+            BaseEthApiBuilder,
+            BasePayloadValidatorBuilder,
+        > = base_node
+            .add_ons_builder()
+            .with_da_config(da_config.clone())
+            .with_gas_limit_config(gas_limit_config.clone())
+            .build();
 
         let node_builder = NodeBuilder::<_, BaseChainSpec>::new(node_config.clone())
             .with_database(create_test_db(node_config.clone()))
@@ -310,22 +313,22 @@ pub fn chain_spec() -> Arc<BaseChainSpec> {
 }
 
 /// Returns a chain spec identical to the default test chain spec but with
-/// `BaseUpgrade::V1` activated at genesis (timestamp 0).
-pub fn chain_spec_with_base_v1() -> Arc<BaseChainSpec> {
+/// `BaseUpgrade::Azul` activated at genesis (timestamp 0).
+pub fn chain_spec_with_azul() -> Arc<BaseChainSpec> {
     use base_common_chains::BaseUpgrade;
     use reth_chainspec::ForkCondition;
 
     let genesis = include_str!("./artifacts/genesis.json.tmpl");
     let genesis = serde_json::from_str(genesis).expect("invalid genesis JSON");
     let mut spec = BaseChainSpec::from_genesis(genesis);
-    spec.inner.hardforks.insert(BaseUpgrade::V1, ForkCondition::Timestamp(0));
+    spec.inner.hardforks.insert(BaseUpgrade::Azul, ForkCondition::Timestamp(0));
     Arc::new(spec)
 }
 
-/// Returns a node config using a chain spec with `BaseUpgrade::V1` activated
+/// Returns a node config using a chain spec with `BaseUpgrade::Azul` activated
 /// at genesis.
-pub fn default_node_config_with_base_v1() -> NodeConfig<BaseChainSpec> {
-    node_config_with_chain_spec(chain_spec_with_base_v1())
+pub fn default_node_config_with_azul() -> NodeConfig<BaseChainSpec> {
+    node_config_with_chain_spec(chain_spec_with_azul())
 }
 
 fn node_config_with_chain_spec(spec: Arc<BaseChainSpec>) -> NodeConfig<BaseChainSpec> {

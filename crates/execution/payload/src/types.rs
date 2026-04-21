@@ -3,7 +3,7 @@ use base_common_rpc_types_engine::ExecutionData;
 use reth_payload_primitives::{BuiltPayload, PayloadTypes};
 use reth_primitives_traits::{Block, NodePrimitives, SealedBlock};
 
-use crate::{OpBuiltPayload, OpPayloadBuilderAttributes};
+use crate::{BaseBuiltPayload, OpPayloadBuilderAttributes};
 
 /// ZST that aggregates Base [`PayloadTypes`].
 #[derive(Debug, Default, Clone, serde::Deserialize, serde::Serialize)]
@@ -12,10 +12,10 @@ pub struct BasePayloadTypes<N: NodePrimitives = BasePrimitives>(core::marker::Ph
 
 impl<N: NodePrimitives> PayloadTypes for BasePayloadTypes<N>
 where
-    OpBuiltPayload<N>: BuiltPayload,
+    BaseBuiltPayload<N>: BuiltPayload,
 {
     type ExecutionData = ExecutionData;
-    type BuiltPayload = OpBuiltPayload<N>;
+    type BuiltPayload = BaseBuiltPayload<N>;
     type PayloadAttributes = OpPayloadBuilderAttributes<N::SignedTx>;
 
     fn block_to_payload(

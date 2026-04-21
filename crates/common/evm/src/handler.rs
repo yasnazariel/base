@@ -1,6 +1,7 @@
 //! Handler related to Base chain
 use alloc::{boxed::Box, vec::Vec};
 
+use base_common_consensus::Predeploys;
 use revm::{
     context::{
         LocalContextTr,
@@ -27,7 +28,6 @@ use revm::{
 
 use crate::{
     L1BlockInfo, OpContextTr, OpHaltReason, OpSpecId,
-    constants::{BASE_FEE_RECIPIENT, L1_FEE_RECIPIENT, OPERATOR_FEE_RECIPIENT},
     transaction::{DEPOSIT_TRANSACTION_TYPE, OpTransactionError, OpTxTr},
 };
 
@@ -70,8 +70,6 @@ impl<EVM, ERROR, FRAME> Handler for OpHandler<EVM, ERROR, FRAME>
 where
     EVM: EvmTr<Context: OpContextTr, Frame = FRAME>,
     ERROR: EvmTrError<EVM> + From<OpTransactionError> + FromStringError + IsTxError,
-    // TODO `FrameResult` should be a generic trait.
-    // TODO `FrameInit` should be a generic.
     FRAME: FrameTr<FrameResult = FrameResult, FrameInit = FrameInit>,
 {
     type Evm = EVM;
@@ -292,9 +290,9 @@ where
 
         // Send fees to their respective recipients
         for (recipient, amount) in [
-            (L1_FEE_RECIPIENT, l1_cost),
-            (BASE_FEE_RECIPIENT, base_fee_amount),
-            (OPERATOR_FEE_RECIPIENT, operator_fee_cost),
+            (Predeploys::L1_FEE_VAULT, l1_cost),
+            (Predeploys::BASE_FEE_VAULT, base_fee_amount),
+            (Predeploys::OPERATOR_FEE_VAULT, operator_fee_cost),
         ] {
             ctx.journal_mut().balance_incr(recipient, amount)?;
         }
@@ -399,6 +397,7 @@ where
 mod tests {
 
     use alloy_primitives::uint;
+    use base_common_consensus::Predeploys;
     use revm::{
         bytecode::Bytecode,
         context::{BlockEnv, CfgEnv, Context, TxEnv},
@@ -411,13 +410,7 @@ mod tests {
     };
 
     use super::*;
-    use crate::{
-        Builder, DefaultOp, OpContext, OpSpecId, OpTransaction,
-        constants::{
-            BASE_FEE_SCALAR_OFFSET, ECOTONE_L1_BLOB_BASE_FEE_SLOT, ECOTONE_L1_FEE_SCALARS_SLOT,
-            L1_BASE_FEE_SLOT, L1_BLOCK_CONTRACT, OPERATOR_FEE_SCALARS_SLOT,
-        },
-    };
+    use crate::{Builder, DefaultOp, L1BlockInfo, OpContext, OpSpecId, OpTransaction};
 
     /// Creates frame result.
     fn call_last_frame_return(
@@ -555,7 +548,7 @@ mod tests {
             .unwrap();
 
         // Check the account balance is updated.
-        let account = evm.ctx().journal_mut().load_account(caller).unwrap();
+        let account = evm.ctx_mut().journal_mut().load_account(caller).unwrap();
         assert_eq!(account.info.balance, U256::from(1010));
     }
 
@@ -599,7 +592,7 @@ mod tests {
             .unwrap();
 
         // Check the account balance is updated.
-        let account = evm.ctx().journal_mut().load_account(caller).unwrap();
+        let account = evm.ctx_mut().journal_mut().load_account(caller).unwrap();
         assert_eq!(account.info.balance, U256::from(10)); // 1058 - 1048 = 10
     }
 
@@ -612,7 +605,8 @@ mod tests {
         const L1_BLOB_BASE_FEE_SCALAR: u64 = 4;
         const L1_FEE_SCALARS: U256 = U256::from_limbs([
             0,
-            (L1_BASE_FEE_SCALAR << (64 - BASE_FEE_SCALAR_OFFSET * 2)) | L1_BLOB_BASE_FEE_SCALAR,
+            (L1_BASE_FEE_SCALAR << (64 - L1BlockInfo::BASE_FEE_SCALAR_OFFSET * 2))
+                | L1_BLOB_BASE_FEE_SCALAR,
             0,
             0,
         ]);
@@ -622,11 +616,13 @@ mod tests {
             U256::from_limbs([OPERATOR_FEE_CONST, OPERATOR_FEE_SCALAR, 0, 0]);
 
         let mut db = InMemoryDB::default();
-        let l1_block_contract = db.load_account(L1_BLOCK_CONTRACT).unwrap();
-        l1_block_contract.storage.insert(L1_BASE_FEE_SLOT, L1_BASE_FEE);
-        l1_block_contract.storage.insert(ECOTONE_L1_BLOB_BASE_FEE_SLOT, L1_BLOB_BASE_FEE);
-        l1_block_contract.storage.insert(ECOTONE_L1_FEE_SCALARS_SLOT, L1_FEE_SCALARS);
-        l1_block_contract.storage.insert(OPERATOR_FEE_SCALARS_SLOT, OPERATOR_FEE);
+        let l1_block_contract = db.load_account(Predeploys::L1_BLOCK_INFO).unwrap();
+        l1_block_contract.storage.insert(L1BlockInfo::L1_BASE_FEE_SLOT, L1_BASE_FEE);
+        l1_block_contract
+            .storage
+            .insert(L1BlockInfo::ECOTONE_L1_BLOB_BASE_FEE_SLOT, L1_BLOB_BASE_FEE);
+        l1_block_contract.storage.insert(L1BlockInfo::ECOTONE_L1_FEE_SCALARS_SLOT, L1_FEE_SCALARS);
+        l1_block_contract.storage.insert(L1BlockInfo::OPERATOR_FEE_SCALARS_SLOT, OPERATOR_FEE);
         db.insert_account_info(
             Address::ZERO,
             AccountInfo { balance: U256::from(1000), ..Default::default() },
@@ -671,7 +667,7 @@ mod tests {
     }
 
     #[test]
-    fn test_base_v1_tx_gas_limit_cap_rejected() {
+    fn test_azul_tx_gas_limit_cap_rejected() {
         let ctx = Context::op()
             .with_tx(
                 OpTransaction::builder()
@@ -679,7 +675,7 @@ mod tests {
                     .enveloped_tx(Some(bytes!("FACADE")))
                     .build_fill(),
             )
-            .with_cfg(CfgEnv::new_with_spec(OpSpecId::BASE_V1));
+            .with_cfg(CfgEnv::new_with_spec(OpSpecId::AZUL));
         let mut evm = ctx.build_op();
         let handler =
             OpHandler::<_, EVMError<_, OpTransactionError>, EthFrame<EthInterpreter>>::new();
@@ -688,7 +684,7 @@ mod tests {
     }
 
     #[test]
-    fn test_base_v1_tx_gas_limit_at_cap_ok() {
+    fn test_azul_tx_gas_limit_at_cap_ok() {
         let ctx = Context::op()
             .with_tx(
                 OpTransaction::builder()
@@ -696,7 +692,7 @@ mod tests {
                     .enveloped_tx(Some(bytes!("FACADE")))
                     .build_fill(),
             )
-            .with_cfg(CfgEnv::new_with_spec(OpSpecId::BASE_V1));
+            .with_cfg(CfgEnv::new_with_spec(OpSpecId::AZUL));
         let mut evm = ctx.build_op();
         let handler =
             OpHandler::<_, EVMError<_, OpTransactionError>, EthFrame<EthInterpreter>>::new();
@@ -722,7 +718,7 @@ mod tests {
     }
 
     #[test]
-    fn test_base_v1_deposit_skips_gas_limit_cap() {
+    fn test_azul_deposit_skips_gas_limit_cap() {
         let ctx = Context::op()
             .with_tx(
                 OpTransaction::builder()
@@ -730,7 +726,7 @@ mod tests {
                     .source_hash(B256::from([1u8; 32]))
                     .build_fill(),
             )
-            .with_cfg(CfgEnv::new_with_spec(OpSpecId::BASE_V1));
+            .with_cfg(CfgEnv::new_with_spec(OpSpecId::AZUL));
         let mut evm = ctx.build_op();
         let handler =
             OpHandler::<_, EVMError<_, OpTransactionError>, EthFrame<EthInterpreter>>::new();
@@ -739,8 +735,8 @@ mod tests {
     }
 
     #[test]
-    fn test_osaka_opcodes_activated_base_v1() {
-        assert_eq!(OpSpecId::BASE_V1.into_eth_spec(), SpecId::OSAKA);
+    fn test_osaka_opcodes_activated_azul() {
+        assert_eq!(OpSpecId::AZUL.into_eth_spec(), SpecId::OSAKA);
     }
 
     /// Runs CLZ bytecode (`PUSH1 0x80, CLZ, PUSH1 0x00, MSTORE, PUSH1 0x20, PUSH1 0x00, RETURN`)
@@ -785,9 +781,9 @@ mod tests {
     }
 
     #[test]
-    fn test_clz_opcode_base_v1() {
-        let result = run_clz_bytecode(OpSpecId::BASE_V1);
-        assert!(result.is_success(), "CLZ opcode should execute successfully on BASE_V1");
+    fn test_clz_opcode_azul() {
+        let result = run_clz_bytecode(OpSpecId::AZUL);
+        assert!(result.is_success(), "CLZ opcode should execute successfully on AZUL");
 
         let output = result.output().unwrap();
         let expected = U256::from(248);

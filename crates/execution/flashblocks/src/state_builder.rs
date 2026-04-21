@@ -13,8 +13,8 @@ use alloy_primitives::B256;
 use alloy_rpc_types::TransactionTrait;
 use alloy_rpc_types_eth::state::StateOverride;
 use base_common_chains::Upgrades;
-use base_common_consensus::{BasePrimitives, BaseReceipt, BaseTxEnvelope};
-use base_common_evm::{L1_BLOCK_CONTRACT, L1BlockInfo, OpHaltReason, ensure_create2_deployer};
+use base_common_consensus::{BasePrimitives, BaseReceipt, BaseTxEnvelope, Predeploys};
+use base_common_evm::{L1BlockInfo, OpHaltReason, ensure_create2_deployer};
 use base_common_flz::tx_estimated_size_fjord as estimate_tx_compressed_size;
 use base_common_rpc_types::{BaseTransactionReceipt, Transaction};
 use base_execution_rpc::BaseReceiptBuilder as OpRpcReceiptBuilder;
@@ -238,7 +238,7 @@ where
 
         // Load the L1 block contract into the cache. If the L1 block contract is not pre-loaded the
         // database will panic when trying to fetch the DA footprint gas scalar.
-        self.evm.db_mut().basic(L1_BLOCK_CONTRACT).map_err(|err| {
+        self.evm.db_mut().basic(Predeploys::L1_BLOCK_INFO).map_err(|err| {
             StateProcessorError::Execution(ExecutionError::DaFootprintEstimation(err.to_string()))
         })?;
 
@@ -432,7 +432,7 @@ mod tests {
         let db = make_db_with_beacon_roots_contract();
 
         let chain_spec = Arc::new(BaseChainSpecBuilder::base_mainnet().build());
-        let evm_config = BaseEvmConfig::optimism(Arc::clone(&chain_spec));
+        let evm_config = BaseEvmConfig::base(Arc::clone(&chain_spec));
         let header = Header { timestamp: POST_ECOTONE_TIMESTAMP, number: 1, ..Default::default() };
         let evm_env = evm_config.evm_env(&header).expect("failed to build evm env");
         let evm = evm_config.evm_with_env(db, evm_env);
@@ -488,7 +488,7 @@ mod tests {
         let pre_ecotone_timestamp = BASE_MAINNET_ECOTONE_TIMESTAMP - 1;
 
         let chain_spec = Arc::new(BaseChainSpecBuilder::base_mainnet().build());
-        let evm_config = BaseEvmConfig::optimism(Arc::clone(&chain_spec));
+        let evm_config = BaseEvmConfig::base(Arc::clone(&chain_spec));
         let header = Header { timestamp: pre_ecotone_timestamp, number: 1, ..Default::default() };
         let evm_env = evm_config.evm_env(&header).expect("failed to build evm env");
         let evm = evm_config.evm_with_env(db, evm_env);
@@ -549,7 +549,7 @@ mod tests {
     #[test]
     fn cached_execute_transaction_preserves_timing_from_prev_pending_blocks() {
         let chain_spec = Arc::new(BaseChainSpecBuilder::base_mainnet().build());
-        let evm_config = BaseEvmConfig::optimism(Arc::clone(&chain_spec));
+        let evm_config = BaseEvmConfig::base(Arc::clone(&chain_spec));
 
         let header = Header {
             number: 1,
@@ -671,7 +671,7 @@ mod tests {
             base_fee_per_gas: Some(1_000_000_000),
             ..Default::default()
         };
-        let evm_config = BaseEvmConfig::optimism(Arc::clone(&chain_spec));
+        let evm_config = BaseEvmConfig::base(Arc::clone(&chain_spec));
         let evm_env = evm_config.evm_env(&header).expect("failed to create evm env");
         let evm = evm_config.evm_with_env(db, evm_env);
 
@@ -714,7 +714,7 @@ mod tests {
             base_fee_per_gas: Some(1_000_000_000),
             ..Default::default()
         };
-        let evm_config = BaseEvmConfig::optimism(Arc::clone(&chain_spec));
+        let evm_config = BaseEvmConfig::base(Arc::clone(&chain_spec));
         let evm_env = evm_config.evm_env(&header).expect("failed to create evm env");
         let evm = evm_config.evm_with_env(db, evm_env);
 
@@ -770,7 +770,7 @@ mod tests {
             base_fee_per_gas: Some(1_000_000_000),
             ..Default::default()
         };
-        let evm_config = BaseEvmConfig::optimism(Arc::clone(&chain_spec));
+        let evm_config = BaseEvmConfig::base(Arc::clone(&chain_spec));
         let evm_env = evm_config.evm_env(&header).expect("failed to create evm env");
         let evm = evm_config.evm_with_env(db, evm_env);
 

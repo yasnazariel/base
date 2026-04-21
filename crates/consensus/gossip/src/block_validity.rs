@@ -93,19 +93,19 @@ impl BlockHandler {
     /// Ie, the entries pruned must be old enough blocks to be considered invalid
     /// if new blocks for that height are received.
     ///
-    /// This value is chosen to match `op-node` validator's lru cache size.
+    /// This value is chosen to match the reference node validator's lru cache size.
     /// See: <https://github.com/ethereum-optimism/optimism/blob/836d50be5d5f4ae14ffb2ea6106720a2b080cdae/op-node/p2p/gossip.go#L266>
     pub const SEEN_HASH_CACHE_SIZE: usize = 1_000;
 
     /// The maximum number of blocks to keep per height.
     /// This value is chosen according to the Base specs:
-    /// <https://specs.optimism.io/protocol/rollup-node-p2p.html#block-validation>
+    /// <https://specs.base.org/protocol/consensus/p2p#block-validation>
     const MAX_BLOCKS_TO_KEEP: usize = 5;
 
     /// Determines if a block is valid.
     ///
     /// We validate the block according to the rules defined here:
-    /// <https://specs.optimism.io/protocol/rollup-node-p2p.html#block-validation>
+    /// <https://specs.base.org/protocol/consensus/p2p#block-validation>
     ///
     /// The block encoding/compression are assumed to be valid at this point (they are first checked
     /// in the handle).

@@ -6,7 +6,7 @@ use alloy_consensus::{BlockHeader, Header, transaction::SignerRecoverable};
 use alloy_primitives::B256;
 use base_common_consensus::BaseBlock;
 use base_execution_chainspec::BaseChainSpec;
-use base_execution_evm::{BaseEvmConfig, OpNextBlockEnvAttributes};
+use base_execution_evm::{BaseEvmConfig, BaseNextBlockEnvAttributes};
 use eyre::{Result as EyreResult, eyre};
 use reth_evm::{ConfigureEvm, execute::BlockBuilder};
 use reth_primitives_traits::Block as BlockT;
@@ -60,7 +60,7 @@ where
     let mut db = State::builder().with_database(state_db).with_bundle_update().build();
 
     // Set up block attributes from the actual block header
-    let attributes = OpNextBlockEnvAttributes {
+    let attributes = BaseNextBlockEnvAttributes {
         timestamp: block.header().timestamp(),
         suggested_fee_recipient: block.header().beneficiary(),
         prev_randao: block.header().mix_hash().unwrap_or_else(B256::random),
@@ -88,7 +88,7 @@ where
 
     let evm_start = Instant::now();
     {
-        let evm_config = BaseEvmConfig::optimism(chain_spec);
+        let evm_config = BaseEvmConfig::base(chain_spec);
         let mut builder = evm_config.builder_for_next_block(&mut db, &parent_header, attributes)?;
 
         builder.apply_pre_execution_changes()?;

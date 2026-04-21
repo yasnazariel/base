@@ -1,35 +1,59 @@
 //! Contains the `[OpSpecId]` type and its implementation.
-use core::str::FromStr;
 
-use revm::primitives::hardfork::{SpecId, UnknownHardfork};
+use alloy_consensus::BlockHeader;
+use base_common_chains::Upgrades;
+use revm::primitives::hardfork::SpecId;
 
 /// Base spec id.
 #[repr(u8)]
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Hash,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Default,
+    strum::Display,
+    strum::EnumString,
+    strum::IntoStaticStr,
+)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(non_camel_case_types)]
 pub enum OpSpecId {
     /// Bedrock spec id.
+    #[strum(serialize = "Bedrock")]
     BEDROCK = 100,
     /// Regolith spec id.
+    #[strum(serialize = "Regolith")]
     REGOLITH,
     /// Canyon spec id.
+    #[strum(serialize = "Canyon")]
     CANYON,
     /// Ecotone spec id.
+    #[strum(serialize = "Ecotone")]
     ECOTONE,
     /// Fjord spec id.
+    #[strum(serialize = "Fjord")]
     FJORD,
     /// Granite spec id.
+    #[strum(serialize = "Granite")]
     GRANITE,
     /// Holocene spec id.
+    #[strum(serialize = "Holocene")]
     HOLOCENE,
     /// Isthmus spec id.
     #[default]
+    #[strum(serialize = "Isthmus")]
     ISTHMUS,
     /// Jovian spec id.
+    #[strum(serialize = "Jovian")]
     JOVIAN,
-    /// Base V1 spec id.
-    BASE_V1,
+    /// Base Azul spec id.
+    #[strum(serialize = "Azul")]
+    AZUL,
 }
 
 impl OpSpecId {
@@ -40,7 +64,7 @@ impl OpSpecId {
             Self::CANYON => SpecId::SHANGHAI,
             Self::ECOTONE | Self::FJORD | Self::GRANITE | Self::HOLOCENE => SpecId::CANCUN,
             Self::ISTHMUS | Self::JOVIAN => SpecId::PRAGUE,
-            Self::BASE_V1 => SpecId::OSAKA,
+            Self::AZUL => SpecId::OSAKA,
         }
     }
 
@@ -48,73 +72,47 @@ impl OpSpecId {
     pub const fn is_enabled_in(self, other: Self) -> bool {
         other as u8 <= self as u8
     }
+
+    /// Parses the [`OpSpecId`] from the chain spec and block header.
+    pub fn from_header(chain_spec: impl Upgrades, header: impl BlockHeader) -> Self {
+        Self::from_timestamp(chain_spec, header.timestamp())
+    }
+
+    /// Returns the revm [`OpSpecId`] at the given timestamp.
+    ///
+    /// # Note
+    ///
+    /// This is only intended to be used after the Bedrock, when hardforks are activated by
+    /// timestamp.
+    pub fn from_timestamp(chain_spec: impl Upgrades, timestamp: u64) -> Self {
+        if chain_spec.is_base_azul_active_at_timestamp(timestamp) {
+            Self::AZUL
+        } else if chain_spec.is_jovian_active_at_timestamp(timestamp) {
+            Self::JOVIAN
+        } else if chain_spec.is_isthmus_active_at_timestamp(timestamp) {
+            Self::ISTHMUS
+        } else if chain_spec.is_holocene_active_at_timestamp(timestamp) {
+            Self::HOLOCENE
+        } else if chain_spec.is_granite_active_at_timestamp(timestamp) {
+            Self::GRANITE
+        } else if chain_spec.is_fjord_active_at_timestamp(timestamp) {
+            Self::FJORD
+        } else if chain_spec.is_ecotone_active_at_timestamp(timestamp) {
+            Self::ECOTONE
+        } else if chain_spec.is_canyon_active_at_timestamp(timestamp) {
+            Self::CANYON
+        } else if chain_spec.is_regolith_active_at_timestamp(timestamp) {
+            Self::REGOLITH
+        } else {
+            Self::BEDROCK
+        }
+    }
 }
 
 impl From<OpSpecId> for SpecId {
     fn from(spec: OpSpecId) -> Self {
         spec.into_eth_spec()
     }
-}
-
-impl FromStr for OpSpecId {
-    type Err = UnknownHardfork;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            name::BEDROCK => Ok(Self::BEDROCK),
-            name::REGOLITH => Ok(Self::REGOLITH),
-            name::CANYON => Ok(Self::CANYON),
-            name::ECOTONE => Ok(Self::ECOTONE),
-            name::FJORD => Ok(Self::FJORD),
-            name::GRANITE => Ok(Self::GRANITE),
-            name::HOLOCENE => Ok(Self::HOLOCENE),
-            name::ISTHMUS => Ok(Self::ISTHMUS),
-            name::JOVIAN => Ok(Self::JOVIAN),
-            name::BASE_V1 => Ok(Self::BASE_V1),
-            _ => Err(UnknownHardfork),
-        }
-    }
-}
-
-impl From<OpSpecId> for &'static str {
-    fn from(spec_id: OpSpecId) -> Self {
-        match spec_id {
-            OpSpecId::BEDROCK => name::BEDROCK,
-            OpSpecId::REGOLITH => name::REGOLITH,
-            OpSpecId::CANYON => name::CANYON,
-            OpSpecId::ECOTONE => name::ECOTONE,
-            OpSpecId::FJORD => name::FJORD,
-            OpSpecId::GRANITE => name::GRANITE,
-            OpSpecId::HOLOCENE => name::HOLOCENE,
-            OpSpecId::ISTHMUS => name::ISTHMUS,
-            OpSpecId::JOVIAN => name::JOVIAN,
-            OpSpecId::BASE_V1 => name::BASE_V1,
-        }
-    }
-}
-
-/// String identifiers for Base hardforks
-pub mod name {
-    /// Bedrock spec name.
-    pub const BEDROCK: &str = "Bedrock";
-    /// Regolith spec name.
-    pub const REGOLITH: &str = "Regolith";
-    /// Canyon spec name.
-    pub const CANYON: &str = "Canyon";
-    /// Ecotone spec name.
-    pub const ECOTONE: &str = "Ecotone";
-    /// Fjord spec name.
-    pub const FJORD: &str = "Fjord";
-    /// Granite spec name.
-    pub const GRANITE: &str = "Granite";
-    /// Holocene spec name.
-    pub const HOLOCENE: &str = "Holocene";
-    /// Isthmus spec name.
-    pub const ISTHMUS: &str = "Isthmus";
-    /// Jovian spec name.
-    pub const JOVIAN: &str = "Jovian";
-    /// Base V1 spec name.
-    pub const BASE_V1: &str = "V1";
 }
 
 #[cfg(test)]
@@ -211,7 +209,7 @@ mod tests {
                 ],
             ),
             (
-                OpSpecId::BASE_V1,
+                OpSpecId::AZUL,
                 vec![
                     (SpecId::OSAKA, true),
                     (SpecId::PRAGUE, true),

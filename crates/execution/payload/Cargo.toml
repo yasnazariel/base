@@ -29,7 +29,6 @@ reth-revm = { workspace = true, features = ["witness"] }
 reth-trie-common.workspace = true
 
 # op-reth
-base-protocol.workspace = true
 base-common-evm.workspace = true
 base-execution-evm.workspace = true
 base-execution-txpool.workspace = true

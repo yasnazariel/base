@@ -4,6 +4,7 @@
 
 use std::{
     net::{IpAddr, SocketAddr},
+    num::NonZeroUsize,
     path::PathBuf,
     time::Duration,
 };
@@ -42,6 +43,14 @@ pub struct RpcArgs {
     /// HTTP request timeout in seconds for the RPC server.
     #[arg(long = "rpc.timeout", default_value = "60", env = "BASE_NODE_RPC_TIMEOUT")]
     pub http_timeout_secs: u64,
+    /// Maximum number of concurrent in-flight RPC requests.
+    #[arg(
+        long = "rpc.max-concurrent",
+        default_value = "1024",
+        env = "BASE_NODE_RPC_MAX_CONCURRENT",
+        value_parser = clap::value_parser!(NonZeroUsize),
+    )]
+    pub max_concurrent_requests: NonZeroUsize,
 }
 
 impl Default for RpcArgs {
@@ -65,6 +74,7 @@ impl From<RpcArgs> for Option<RpcBuilder> {
             ws_enabled: args.ws_enabled,
             dev_enabled: args.dev_enabled,
             http_timeout: Duration::from_secs(args.http_timeout_secs),
+            max_concurrent_requests: args.max_concurrent_requests,
         })
     }
 }

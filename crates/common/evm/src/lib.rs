@@ -6,13 +6,7 @@
 extern crate alloc;
 
 mod spec;
-pub use spec::{OpSpecId, name};
-
-mod rollup_config_ext;
-pub use rollup_config_ext::RollupConfigExt;
-
-mod constants;
-pub use constants::*;
+pub use spec::OpSpecId;
 
 mod result;
 pub use result::OpHaltReason;
@@ -30,20 +24,17 @@ mod handler;
 pub use handler::{IsTxError, OpHandler};
 
 mod precompiles;
-pub use precompiles::BasePrecompiles;
-
-mod op_evm;
-pub use op_evm::OpEvm;
+pub use precompiles::{
+    BasePrecompiles, GRANITE, GRANITE_MAX_INPUT_SIZE, ISTHMUS_G1_MSM,
+    ISTHMUS_G1_MSM_MAX_INPUT_SIZE, ISTHMUS_G2_MSM, ISTHMUS_G2_MSM_MAX_INPUT_SIZE, ISTHMUS_PAIRING,
+    ISTHMUS_PAIRING_MAX_INPUT_SIZE, JOVIAN, JOVIAN_G1_MSM, JOVIAN_G1_MSM_MAX_INPUT_SIZE,
+    JOVIAN_G2_MSM, JOVIAN_G2_MSM_MAX_INPUT_SIZE, JOVIAN_MAX_INPUT_SIZE, JOVIAN_PAIRING,
+    JOVIAN_PAIRING_MAX_INPUT_SIZE, run_g1_msm_isthmus, run_g1_msm_jovian, run_g2_msm_isthmus,
+    run_g2_msm_jovian, run_pair_granite, run_pair_jovian, run_pairing_isthmus, run_pairing_jovian,
+};
 
 mod api;
-pub use api::{BaseError, Builder, DefaultOp, DefaultOpEvm, OpContext, OpContextTr};
-
-mod compat;
-
-mod consensus_compat;
-
-mod spec_id;
-pub use spec_id::{spec, spec_by_timestamp_after_bedrock};
+pub use api::{BaseError, Builder, DefaultOp, OpContext, OpContextTr};
 
 mod evm;
 pub use evm::BaseEvm;
@@ -53,9 +44,6 @@ pub use factory::BaseEvmFactory;
 
 mod tx_env;
 pub use tx_env::BaseTxEnv;
-
-mod ctx;
-pub use ctx::BaseBlockExecutionCtx;
 
 mod error;
 pub use error::BaseBlockExecutionError;
@@ -67,7 +55,6 @@ mod canyon;
 pub use canyon::ensure_create2_deployer;
 
 mod executor;
-pub use executor::{BaseBlockExecutor, BaseTxResult};
-
-mod executor_factory;
-pub use executor_factory::BaseBlockExecutorFactory;
+pub use executor::{
+    BaseBlockExecutionCtx, BaseBlockExecutor, BaseBlockExecutorFactory, BaseTxResult,
+};

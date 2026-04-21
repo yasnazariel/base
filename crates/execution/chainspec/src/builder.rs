@@ -9,7 +9,7 @@ use reth_primitives_traits::SealedHeader;
 
 use crate::BaseChainSpec;
 
-/// Chain spec builder for an OP stack chain.
+/// Chain spec builder for a Base chain.
 #[derive(Debug, Default, From)]
 pub struct BaseChainSpecBuilder {
     /// [`ChainSpecBuilder`]
@@ -122,11 +122,11 @@ impl BaseChainSpecBuilder {
         self
     }
 
-    /// Enable Base V1 at genesis.
-    pub fn base_v1_activated(mut self) -> Self {
+    /// Enable Base Azul at genesis.
+    pub fn azul_activated(mut self) -> Self {
         self = self.jovian_activated();
         self.inner = self.inner.with_fork(EthereumHardfork::Osaka, ForkCondition::Timestamp(0));
-        self.inner = self.inner.with_fork(BaseUpgrade::V1, ForkCondition::Timestamp(0));
+        self.inner = self.inner.with_fork(BaseUpgrade::Azul, ForkCondition::Timestamp(0));
         self
     }
 

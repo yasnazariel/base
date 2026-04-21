@@ -20,8 +20,8 @@ use tracing::{debug, instrument, trace};
 
 /// The list of all supported Engine capabilities available over the engine endpoint.
 ///
-/// Spec: <https://specs.optimism.io/protocol/exec-engine.html>
-pub const OP_ENGINE_CAPABILITIES: &[&str] = &[
+/// Spec: <https://specs.base.org/protocol/execution>
+pub const ENGINE_CAPABILITIES: &[&str] = &[
     "engine_forkchoiceUpdatedV1",
     "engine_forkchoiceUpdatedV2",
     "engine_forkchoiceUpdatedV3",
@@ -43,7 +43,7 @@ pub const OP_ENGINE_CAPABILITIES: &[&str] = &[
 /// > The provider should use a JWT authentication layer.
 ///
 /// This follows the Base specs that can be found at:
-/// <https://specs.optimism.io/protocol/exec-engine.html#engine-api>
+/// <https://specs.base.org/protocol/execution#engine-api>
 #[cfg_attr(not(feature = "client"), rpc(server, namespace = "engine"), server_bounds(Engine::PayloadAttributes: jsonrpsee::core::DeserializeOwned))]
 #[cfg_attr(feature = "client", rpc(server, client, namespace = "engine", client_bounds(Engine::PayloadAttributes: jsonrpsee::core::Serialize + Clone), server_bounds(Engine::PayloadAttributes: jsonrpsee::core::DeserializeOwned)))]
 pub trait BaseEngineApi<Engine: EngineTypes> {
@@ -90,7 +90,7 @@ pub trait BaseEngineApi<Engine: EngineTypes> {
 
     /// See also <https://github.com/ethereum/execution-apis/blob/6709c2a795b707202e93c4f2867fa0bf2640a84f/src/engine/paris.md#engine_forkchoiceupdatedv1>
     ///
-    /// This exists because it is used by op-node: <https://github.com/ethereum-optimism/optimism/blob/0bc5fe8d16155dc68bcdf1fa5733abc58689a618/op-node/rollup/types.go#L615-L617>
+    /// This exists for compatibility with consensus nodes: <https://github.com/ethereum-optimism/optimism/blob/0bc5fe8d16155dc68bcdf1fa5733abc58689a618/op-node/rollup/types.go#L615-L617>
     ///
     /// Caution: This should not accept the `withdrawals` field in the payload attributes.
     #[method(name = "forkchoiceUpdatedV1")]
@@ -108,7 +108,7 @@ pub trait BaseEngineApi<Engine: EngineTypes> {
     /// See also <https://github.com/ethereum/execution-apis/blob/6709c2a795b707202e93c4f2867fa0bf2640a84f/src/engine/shanghai.md#engine_forkchoiceupdatedv2>
     ///
     /// OP modifications:
-    /// - The `payload_attributes` parameter is extended with the [`EngineTypes::PayloadAttributes`](EngineTypes) type as described in <https://specs.optimism.io/protocol/exec-engine.html#extended-payloadattributesv2>
+    /// - The `payload_attributes` parameter is extended with the [`EngineTypes::PayloadAttributes`](EngineTypes) type as described in <https://specs.base.org/protocol/execution#extended-payloadattributesv2>
     #[method(name = "forkchoiceUpdatedV2")]
     async fn fork_choice_updated_v2(
         &self,
@@ -124,7 +124,7 @@ pub trait BaseEngineApi<Engine: EngineTypes> {
     /// OP modifications:
     /// - Must be called with an Ecotone payload
     /// - Attributes must contain the parent beacon block root field
-    /// - The `payload_attributes` parameter is extended with the [`EngineTypes::PayloadAttributes`](EngineTypes) type as described in <https://specs.optimism.io/protocol/exec-engine.html#extended-payloadattributesv2>
+    /// - The `payload_attributes` parameter is extended with the [`EngineTypes::PayloadAttributes`](EngineTypes) type as described in <https://specs.base.org/protocol/execution#extended-payloadattributesv2>
     #[method(name = "forkchoiceUpdatedV3")]
     async fn fork_choice_updated_v3(
         &self,

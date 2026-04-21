@@ -17,7 +17,7 @@ pub use handler::PayloadHandler;
 
 mod context;
 pub use context::{
-    FlashblockDiagnostics, FlashblockSelectionOutcome, FlashblocksExtraCtx, OpPayloadBuilderCtx,
+    BasePayloadBuilderCtx, FlashblockDiagnostics, FlashblockSelectionOutcome, FlashblocksExtraCtx,
 };
 
 mod payload;

@@ -14,8 +14,8 @@ use reth_cli_commands::{
 
 use crate::chainspec::BaseChainSpecParser;
 
+pub mod base_proofs;
 pub mod init_state;
-pub mod op_proofs;
 
 #[cfg(feature = "dev")]
 pub mod test_vectors;
@@ -58,7 +58,7 @@ pub enum Commands<Ext: clap::Args + fmt::Debug = NoArgs> {
     ReExecute(re_execute::Command<BaseChainSpecParser>),
     /// Manage storage of historical proofs in expanded trie db in fault proof window.
     #[command(name = "proofs")]
-    BaseProofs(op_proofs::Command<BaseChainSpecParser>),
+    BaseProofs(base_proofs::Command<BaseChainSpecParser>),
     /// Generate modular chunk archives and a snapshot manifest from a source datadir.
     #[command(name = "snapshot-manifest")]
     SnapshotManifest(SnapshotManifestCommand),

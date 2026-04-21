@@ -11,15 +11,6 @@
 extern crate alloc;
 
 #[cfg(feature = "reth")]
-use revm as _;
-
-#[cfg(feature = "alloy-compat")]
-mod alloy_compat;
-
-#[cfg(feature = "evm")]
-mod evm_compat;
-
-#[cfg(feature = "reth")]
 mod reth_compat;
 #[cfg(feature = "reth")]
 pub use reth_compat::{BaseBlockBody, BasePrimitives, CompactTxDeposit, DepositReceiptExt};
@@ -45,6 +36,9 @@ pub use source::{
     DepositSourceDomain, DepositSourceDomainIdentifier, L1InfoDepositSource, UpgradeDepositSource,
     UserDepositSource,
 };
+
+mod predeploys;
+pub use predeploys::{Deployers, Predeploys, SystemAddresses};
 
 mod block;
 pub use block::BaseBlock;

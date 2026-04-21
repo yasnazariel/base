@@ -7,10 +7,9 @@ use alloy_primitives::{B256, U256};
 use alloy_rpc_types_debug::ExecutionWitness;
 use alloy_rpc_types_engine::PayloadId;
 use base_common_chains::Upgrades;
-use base_common_consensus::BaseTransaction;
-use base_common_evm::{L1_BLOCK_CONTRACT, L1BlockInfo};
+use base_common_consensus::{BaseTransaction, Predeploys};
+use base_common_evm::L1BlockInfo;
 use base_execution_txpool::{OpPooledTx, estimated_da_size::DataAvailabilitySized};
-use base_protocol::Predeploys;
 use reth_basic_payload_builder::{
     BuildArguments, BuildOutcome, BuildOutcomeKind, MissingPayloadBehaviour, PayloadBuilder,
     PayloadConfig, is_better_payload,
@@ -41,18 +40,18 @@ use revm::context::{Block, BlockEnv};
 use tracing::{debug, trace, warn};
 
 use crate::{
-    Attributes, OpPayloadBuilderAttributes, PayloadPrimitives, config::BaseBuilderConfig,
-    error::BasePayloadBuilderError, payload::OpBuiltPayload,
+    Attributes, BasePayloadBuilderAttributes, PayloadPrimitives, config::BaseBuilderConfig,
+    error::BasePayloadBuilderError, payload::BaseBuiltPayload,
 };
 
 /// Base payload builder
 #[derive(Debug)]
-pub struct OpPayloadBuilder<
+pub struct BasePayloadBuilder<
     Pool,
     Client,
     Evm,
     Txs = (),
-    Attrs = OpPayloadBuilderAttributes<TxTy<<Evm as ConfigureEvm>::Primitives>>,
+    Attrs = BasePayloadBuilderAttributes<TxTy<<Evm as ConfigureEvm>::Primitives>>,
 > {
     /// The rollup's compute pending block configuration option.
     pub compute_pending_block: bool,
@@ -71,7 +70,7 @@ pub struct OpPayloadBuilder<
     _pd: PhantomData<Attrs>,
 }
 
-impl<Pool, Client, Evm, Txs, Attrs> Clone for OpPayloadBuilder<Pool, Client, Evm, Txs, Attrs>
+impl<Pool, Client, Evm, Txs, Attrs> Clone for BasePayloadBuilder<Pool, Client, Evm, Txs, Attrs>
 where
     Pool: Clone,
     Client: Clone,
@@ -91,8 +90,8 @@ where
     }
 }
 
-impl<Pool, Client, Evm, Attrs> OpPayloadBuilder<Pool, Client, Evm, (), Attrs> {
-    /// `OpPayloadBuilder` constructor.
+impl<Pool, Client, Evm, Attrs> BasePayloadBuilder<Pool, Client, Evm, (), Attrs> {
+    /// `BasePayloadBuilder` constructor.
     ///
     /// Configures the builder with the default settings.
     pub fn new(pool: Pool, client: Client, evm_config: Evm) -> Self {
@@ -118,7 +117,7 @@ impl<Pool, Client, Evm, Attrs> OpPayloadBuilder<Pool, Client, Evm, (), Attrs> {
     }
 }
 
-impl<Pool, Client, Evm, Txs, Attrs> OpPayloadBuilder<Pool, Client, Evm, Txs, Attrs> {
+impl<Pool, Client, Evm, Txs, Attrs> BasePayloadBuilder<Pool, Client, Evm, Txs, Attrs> {
     /// Sets the rollup's compute pending block configuration option.
     pub const fn set_compute_pending_block(mut self, compute_pending_block: bool) -> Self {
         self.compute_pending_block = compute_pending_block;
@@ -130,9 +129,9 @@ impl<Pool, Client, Evm, Txs, Attrs> OpPayloadBuilder<Pool, Client, Evm, Txs, Att
     pub fn with_transactions<T>(
         self,
         best_transactions: T,
-    ) -> OpPayloadBuilder<Pool, Client, Evm, T, Attrs> {
+    ) -> BasePayloadBuilder<Pool, Client, Evm, T, Attrs> {
         let Self { pool, client, compute_pending_block, evm_config, config, .. } = self;
-        OpPayloadBuilder {
+        BasePayloadBuilder {
             pool,
             client,
             compute_pending_block,
@@ -154,7 +153,7 @@ impl<Pool, Client, Evm, Txs, Attrs> OpPayloadBuilder<Pool, Client, Evm, Txs, Att
     }
 }
 
-impl<Pool, Client, Evm, N, T, Attrs> OpPayloadBuilder<Pool, Client, Evm, T, Attrs>
+impl<Pool, Client, Evm, N, T, Attrs> BasePayloadBuilder<Pool, Client, Evm, T, Attrs>
 where
     Pool: TransactionPool<Transaction: OpPooledTx<Consensus = N::SignedTx>>,
     Client: StateProviderFactory + ChainSpecProvider<ChainSpec: Upgrades>,
@@ -175,16 +174,16 @@ where
     /// a result indicating success with the payload or an error in case of failure.
     fn build_payload<'a, Txs>(
         &self,
-        args: BuildArguments<Attrs, OpBuiltPayload<N>>,
+        args: BuildArguments<Attrs, BaseBuiltPayload<N>>,
         best: impl FnOnce(BestTransactionsAttributes) -> Txs + Send + Sync + 'a,
-    ) -> Result<BuildOutcome<OpBuiltPayload<N>>, PayloadBuilderError>
+    ) -> Result<BuildOutcome<BaseBuiltPayload<N>>, PayloadBuilderError>
     where
         Txs:
             PayloadTransactions<Transaction: PoolTransaction<Consensus = N::SignedTx> + OpPooledTx>,
     {
         let BuildArguments { mut cached_reads, config, cancel, best_payload, .. } = args;
 
-        let ctx = OpPayloadBuilderCtx {
+        let ctx = BasePayloadBuilderCtx {
             evm_config: self.evm_config.clone(),
             builder_config: self.config.clone(),
             chain_spec: self.client.chain_spec(),
@@ -219,9 +218,9 @@ where
         let attributes =
             Attrs::try_new(parent.hash(), attributes, 3).map_err(PayloadBuilderError::other)?;
 
-        let payload_id = attributes.payload_id(&parent.hash());
-        let config = PayloadConfig::new(Arc::new(parent), attributes, payload_id);
-        let ctx = OpPayloadBuilderCtx {
+        let payload_id = attributes.payload_job_id();
+        let config = PayloadConfig { parent_header: Arc::new(parent), attributes, payload_id };
+        let ctx = BasePayloadBuilderCtx {
             evm_config: self.evm_config.clone(),
             builder_config: self.config.clone(),
             chain_spec: self.client.chain_spec(),
@@ -237,9 +236,9 @@ where
     }
 }
 
-/// Implementation of the [`PayloadBuilder`] trait for [`OpPayloadBuilder`].
+/// Implementation of the [`PayloadBuilder`] trait for [`BasePayloadBuilder`].
 impl<Pool, Client, Evm, N, Txs, Attrs> PayloadBuilder
-    for OpPayloadBuilder<Pool, Client, Evm, Txs, Attrs>
+    for BasePayloadBuilder<Pool, Client, Evm, Txs, Attrs>
 where
     N: PayloadPrimitives,
     Client: StateProviderFactory + ChainSpecProvider<ChainSpec: Upgrades> + Clone,
@@ -252,7 +251,7 @@ where
     Attrs: Attributes<Transaction = N::SignedTx>,
 {
     type Attributes = Attrs;
-    type BuiltPayload = OpBuiltPayload<N>;
+    type BuiltPayload = BaseBuiltPayload<N>;
 
     fn try_build(
         &self,
@@ -326,8 +325,8 @@ impl<Txs> Builder<'_, Txs> {
         self,
         db: impl Database<Error = ProviderError>,
         state_provider: impl StateProvider,
-        ctx: OpPayloadBuilderCtx<Evm, ChainSpec, Attrs>,
-    ) -> Result<BuildOutcomeKind<OpBuiltPayload<N>>, PayloadBuilderError>
+        ctx: BasePayloadBuilderCtx<Evm, ChainSpec, Attrs>,
+    ) -> Result<BuildOutcomeKind<BaseBuiltPayload<N>>, PayloadBuilderError>
     where
         Evm: ConfigureEvm<
                 Primitives = N,
@@ -347,7 +346,7 @@ impl<Txs> Builder<'_, Txs> {
         // Load the L1 block contract into the database cache. If the L1 block contract is not
         // pre-loaded the database will panic when trying to fetch the DA footprint gas
         // scalar.
-        db.load_cache_account(L1_BLOCK_CONTRACT).map_err(BlockExecutionError::other)?;
+        db.load_cache_account(Predeploys::L1_BLOCK_INFO).map_err(BlockExecutionError::other)?;
 
         let mut builder = ctx.block_builder(&mut db)?;
 
@@ -395,7 +394,7 @@ impl<Txs> Builder<'_, Txs> {
         let no_tx_pool = ctx.attributes().no_tx_pool();
 
         let payload =
-            OpBuiltPayload::new(ctx.payload_id(), sealed_block, info.total_fees, Some(executed));
+            BaseBuiltPayload::new(ctx.payload_id(), sealed_block, info.total_fees, Some(executed));
 
         if no_tx_pool {
             // if `no_tx_pool` is set only transactions from the payload attributes will be included
@@ -411,7 +410,7 @@ impl<Txs> Builder<'_, Txs> {
     pub fn witness<Evm, ChainSpec, N, Attrs>(
         self,
         state_provider: impl StateProvider,
-        ctx: &OpPayloadBuilderCtx<Evm, ChainSpec, Attrs>,
+        ctx: &BasePayloadBuilderCtx<Evm, ChainSpec, Attrs>,
     ) -> Result<ExecutionWitness, PayloadBuilderError>
     where
         Evm: ConfigureEvm<
@@ -543,10 +542,10 @@ impl ExecutionInfo {
 
 /// Container type that holds all necessities to build a new payload.
 #[derive(derive_more::Debug)]
-pub struct OpPayloadBuilderCtx<
+pub struct BasePayloadBuilderCtx<
     Evm: ConfigureEvm,
     ChainSpec,
-    Attrs = OpPayloadBuilderAttributes<TxTy<<Evm as ConfigureEvm>::Primitives>>,
+    Attrs = BasePayloadBuilderAttributes<TxTy<<Evm as ConfigureEvm>::Primitives>>,
 > {
     /// The type that knows how to perform system calls and configure the evm.
     pub evm_config: Evm,
@@ -559,10 +558,10 @@ pub struct OpPayloadBuilderCtx<
     /// Marker to check whether the job has been cancelled.
     pub cancel: CancelOnDrop,
     /// The currently best payload.
-    pub best_payload: Option<OpBuiltPayload<Evm::Primitives>>,
+    pub best_payload: Option<BaseBuiltPayload<Evm::Primitives>>,
 }
 
-impl<Evm, ChainSpec, Attrs> OpPayloadBuilderCtx<Evm, ChainSpec, Attrs>
+impl<Evm, ChainSpec, Attrs> BasePayloadBuilderCtx<Evm, ChainSpec, Attrs>
 where
     Evm: ConfigureEvm<
             Primitives: PayloadPrimitives,

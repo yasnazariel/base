@@ -33,8 +33,13 @@ pub use estimator::{
 mod extension;
 pub use extension::{MeteringConfig, MeteringExtension, MeteringResourceLimits};
 
+mod inspector;
+
 mod meter;
-pub use meter::{MeterBundleOutput, PendingState, PendingTrieInput, meter_bundle};
+pub use meter::{
+    MeterBundleInput, MeterBundleOutput, MeteredOpcodes, PendingState, PendingTrieInput,
+    meter_bundle,
+};
 
 mod metrics;
 

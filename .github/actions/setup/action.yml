@@ -61,7 +61,7 @@ runs:
       uses: awalsh128/cache-apt-pkgs-action@5902b33ae29014e6ca012c5d8025d4346556bd40 # v1.4.3
       with:
         packages: libsqlite3-dev clang libclang-dev llvm llvm-dev build-essential pkg-config protobuf-compiler
-        version: 1.3
+        version: 1.4
 
     - name: Install Rust (stable via rust-toolchain.toml)
       if: inputs.toolchain == 'stable'
@@ -115,5 +115,6 @@ runs:
       if: inputs.native-deps == 'true'
       shell: bash
       run: |
-        LLVM_VERSION=$(llvm-config --version | cut -d. -f1)
+        LLVM_BIN=$(command -v llvm-config || ls /usr/bin/llvm-config-* 2>/dev/null | sort -V | tail -1)
+        LLVM_VERSION=$($LLVM_BIN --version | cut -d. -f1)
         echo "LIBCLANG_PATH=/usr/lib/llvm-${LLVM_VERSION}/lib" >> $GITHUB_ENV

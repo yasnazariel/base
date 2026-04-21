@@ -5,7 +5,7 @@ use alloy_primitives::{Address, B256};
 use alloy_rpc_types_engine::PayloadAttributes;
 use base_execution_chainspec::BaseChainSpecBuilder;
 use base_execution_payload_builder::{
-    OpBuiltPayload, OpPayloadBuilderAttributes, payload::EthPayloadBuilderAttributes,
+    BaseBuiltPayload, BasePayloadBuilderAttributes, payload::EthPayloadBuilderAttributes,
 };
 use reth_e2e_test_utils::{
     NodeHelperType, TmpDB, transaction::TransactionTestContext, wallet::Wallet,
@@ -29,7 +29,7 @@ pub async fn setup(num_nodes: usize) -> eyre::Result<(Vec<BaseNode>, Wallet)> {
         Arc::new(BaseChainSpecBuilder::base_mainnet().genesis(genesis).ecotone_activated().build()),
         false,
         Default::default(),
-        optimism_payload_attributes,
+        payload_attributes,
     )
     .await
 }
@@ -39,7 +39,7 @@ pub async fn advance_chain(
     length: usize,
     node: &mut BaseNode,
     wallet: Arc<Mutex<Wallet>>,
-) -> eyre::Result<Vec<OpBuiltPayload>> {
+) -> eyre::Result<Vec<BaseBuiltPayload>> {
     node.advance(length as u64, |_| {
         let wallet = Arc::clone(&wallet);
         Box::pin(async move {
@@ -57,7 +57,7 @@ pub async fn advance_chain(
 }
 
 /// Helper function to create a new eth payload attributes
-pub fn optimism_payload_attributes<T>(timestamp: u64) -> OpPayloadBuilderAttributes<T> {
+pub fn payload_attributes<T>(timestamp: u64) -> BasePayloadBuilderAttributes<T> {
     let attributes = PayloadAttributes {
         timestamp,
         prev_randao: B256::ZERO,
@@ -67,18 +67,8 @@ pub fn optimism_payload_attributes<T>(timestamp: u64) -> OpPayloadBuilderAttribu
         slot_number: None,
     };
 
-    OpPayloadBuilderAttributes {
-        payload_attributes: EthPayloadBuilderAttributes {
-            id: Default::default(),
-            parent: B256::ZERO,
-            timestamp: attributes.timestamp,
-            suggested_fee_recipient: attributes.suggested_fee_recipient,
-            prev_randao: attributes.prev_randao,
-            has_withdrawals: attributes.withdrawals.is_some(),
-            withdrawals: attributes.withdrawals.unwrap_or_default().into(),
-            parent_beacon_block_root: attributes.parent_beacon_block_root,
-            slot_number: None,
-        },
+    BasePayloadBuilderAttributes {
+        payload_attributes: EthPayloadBuilderAttributes::new(B256::ZERO, attributes),
         transactions: vec![],
         no_tx_pool: false,
         gas_limit: Some(30_000_000),

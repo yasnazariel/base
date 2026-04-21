@@ -49,7 +49,7 @@ use tracing::{debug, error, info, instrument, warn};
 
 use crate::{
     Metrics,
-    constants::{PROPOSAL_TIMEOUT, RECOVERY_SCAN_CONCURRENCY},
+    constants::PROPOSAL_TIMEOUT,
     driver::{DriverConfig, RecoveredState},
     error::ProposerError,
     output_proposer::OutputProposer,
@@ -62,6 +62,8 @@ pub struct PipelineConfig {
     pub max_parallel_proofs: usize,
     /// Maximum retries for a single proof range before full pipeline reset.
     pub max_retries: u32,
+    /// Maximum number of concurrent RPC calls during the recovery scan.
+    pub recovery_scan_concurrency: usize,
     /// Base driver configuration.
     pub driver: DriverConfig,
     /// Optional address of the `TEEProverRegistry` contract on L1.
@@ -288,10 +290,6 @@ where
                     if chain_next {
                         self.try_submit(&mut state);
                     }
-                    // On failure / discard the proof stays in `proved`. Retry
-                    // can happen from the tick or prove_tasks arms, but those
-                    // fire at poll_interval (12s) or proof-completion cadence
-                    // (minutes), so the retry rate is naturally bounded.
                 }
 
                 Some(result) = state.prove_tasks.join_next() => {
@@ -350,12 +348,54 @@ where
         let mut start_block = recovered.l2_block_number;
         let mut start_output = recovered.output_root;
 
-        while cursor <= safe_head
-            && !state.inflight.contains(&cursor)
-            && !state.proved.contains_key(&cursor)
-            && state.submitting != Some(cursor)
-            && state.inflight.len() < self.config.max_parallel_proofs
-        {
+        while cursor <= safe_head && state.inflight.len() < self.config.max_parallel_proofs {
+            // Skip blocks already being handled (in-flight, proved, or
+            // submitting).  Track the last skipped block so we can fetch
+            // its output root once — only when we actually find a block
+            // to dispatch.
+            let mut last_skipped = None;
+            while cursor <= safe_head
+                && (state.inflight.contains(&cursor)
+                    || state.proved.contains_key(&cursor)
+                    || state.submitting == Some(cursor))
+            {
+                last_skipped = Some(cursor);
+                cursor = match cursor.checked_add(self.config.driver.block_interval) {
+                    Some(c) => c,
+                    // Overflow means there are no further blocks to dispatch.
+                    None => return Ok(()),
+                };
+            }
+
+            // Nothing left to dispatch after skipping.
+            if cursor > safe_head {
+                break;
+            }
+
+            // Still at max capacity after skipping.
+            if state.inflight.len() >= self.config.max_parallel_proofs {
+                break;
+            }
+
+            // Fetch the output root for the last skipped block so the
+            // proof request chains correctly.
+            if let Some(skipped) = last_skipped {
+                match self.rollup_client.output_at_block(skipped).await {
+                    Ok(output) => {
+                        start_block = skipped;
+                        start_output = output.output_root;
+                    }
+                    Err(e) => {
+                        warn!(
+                            error = %e,
+                            block = skipped,
+                            "Failed to fetch output root while skipping, stopping dispatch"
+                        );
+                        break;
+                    }
+                }
+            }
+
             match self.build_proof_request_for(start_block, start_output, cursor).await {
                 Ok(request) => {
                     let claimed_output = request.claimed_l2_output_root;
@@ -451,6 +491,10 @@ where
                         error: e,
                     }
                 }
+                Err(SubmitAction::GameAlreadyExists) => {
+                    submit_timer.disarm();
+                    SubmitOutcome::GameAlreadyExists { target_block: next_to_submit }
+                }
                 Err(SubmitAction::Discard(e)) => {
                     submit_timer.disarm();
                     SubmitOutcome::Discard { target_block: next_to_submit, error: e }
@@ -495,6 +539,32 @@ where
                     }
                     Err(e) => {
                         warn!(error = %e, "Failed to recover state after submission");
+                    }
+                }
+                state.record_gauges();
+                true
+            }
+            SubmitOutcome::GameAlreadyExists { target_block } => {
+                info!(target_block, "Game already exists on chain");
+                Metrics::last_proposed_block().set(target_block as f64);
+                state.retry_counts.remove(&target_block);
+                state.submitting = None;
+                // The game exists but the forward walk missed it — most
+                // likely because `game_count` was read from a different L1
+                // RPC replica than the one serving `factory.games()`.
+                // Decrement the cached game_count so the next recovery sees
+                // `actual_count > cached_count` and performs an incremental
+                // forward walk from the cached tip (O(1): a single
+                // `factory.games()` lookup at the next expected block).
+                if let Some(ref mut cached) = state.cached_recovery {
+                    cached.game_count = cached.game_count.saturating_sub(1);
+                }
+                match self.recover_latest_state(&mut state.cached_recovery).await {
+                    Ok(recovered) => {
+                        state.prune_stale(recovered.l2_block_number);
+                    }
+                    Err(e) => {
+                        warn!(error = %e, "Failed to recover state after GameAlreadyExists");
                     }
                 }
                 state.record_gauges();
@@ -766,6 +836,12 @@ where
                         // All other RPC errors (retryable or not) propagate so
                         // recovery retries on the next tick rather than caching
                         // a partial result.
+                        warn!(
+                            expected_block,
+                            parent_block,
+                            error = %e,
+                            "Forward walk failed to fetch canonical roots"
+                        );
                         return Err(e);
                     }
                 };
@@ -873,7 +949,7 @@ where
                         .map_err(ProposerError::Rpc)
                 }
             })
-            .buffered(RECOVERY_SCAN_CONCURRENCY)
+            .buffered(self.config.recovery_scan_concurrency)
             .try_collect()
             .await
     }
@@ -1114,7 +1190,7 @@ where
                         target_block,
                         "Game already exists, next tick will load fresh state from chain"
                     );
-                    Ok(())
+                    Err(SubmitAction::GameAlreadyExists)
                 } else {
                     propose_timer.disarm();
                     Err(SubmitAction::Failed(e))
@@ -1194,6 +1270,10 @@ where
 enum SubmitAction {
     /// Output root mismatch — proved root no longer matches canonical chain.
     RootMismatch,
+    /// The dispute game already exists on-chain by a previous attempt whose
+    /// result was lost to an RPC propagation delay. The pipeline must invalidate
+    /// its recovery cache so the next forward walk discovers the existing game.
+    GameAlreadyExists,
     /// Transient failure — retry later with the same proof.
     Failed(ProposerError),
     /// Proof is permanently invalid (e.g. signer not registered) — discard
@@ -1205,6 +1285,7 @@ impl std::fmt::Display for SubmitAction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::RootMismatch => write!(f, "output root mismatch"),
+            Self::GameAlreadyExists => write!(f, "game already exists"),
             Self::Failed(e) | Self::Discard(e) => write!(f, "{e}"),
         }
     }
@@ -1213,6 +1294,7 @@ impl std::fmt::Display for SubmitAction {
 /// Result of a concurrent submission task, returned to the coordinator.
 enum SubmitOutcome {
     Success { target_block: u64 },
+    GameAlreadyExists { target_block: u64 },
     RootMismatch { target_block: u64 },
     Failed { target_block: u64, proof: ProofResult, error: ProposerError },
     Discard { target_block: u64, error: ProposerError },
@@ -1403,6 +1485,7 @@ mod tests {
             PipelineConfig {
                 max_parallel_proofs: 1,
                 max_retries: 1,
+                recovery_scan_concurrency: 8,
                 tee_prover_registry_address: None,
                 driver: DriverConfig {
                     game_type: TEST_GAME_TYPE,
@@ -1432,6 +1515,7 @@ mod tests {
             PipelineConfig {
                 max_parallel_proofs: 2,
                 max_retries: 3,
+                recovery_scan_concurrency: 8,
                 tee_prover_registry_address: None,
                 driver: DriverConfig {
                     poll_interval: Duration::from_secs(3600),
@@ -1458,6 +1542,7 @@ mod tests {
             PipelineConfig {
                 max_parallel_proofs: 2,
                 max_retries: 3,
+                recovery_scan_concurrency: 8,
                 tee_prover_registry_address: None,
                 driver: DriverConfig {
                     poll_interval: Duration::from_millis(100),
@@ -1592,6 +1677,7 @@ mod tests {
             PipelineConfig {
                 max_parallel_proofs: 1,
                 max_retries: 1,
+                recovery_scan_concurrency: 8,
                 tee_prover_registry_address: None,
                 driver: DriverConfig {
                     game_type: TEST_GAME_TYPE,
@@ -1817,6 +1903,149 @@ mod tests {
         // Both games verified, walk should reach game 1.
         assert_eq!(state.parent_address, proxy_addr(1));
         assert_eq!(state.l2_block_number, RECOVERY_BI * 2);
+    }
+
+    // ---- Dispatch: slot filling ----
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn test_dispatch_skips_inflight_and_proved_blocks() {
+        // Scenario: 4 proof slots, blocks 512–2048 were dispatched on the
+        // first tick.  Proof for 512 completed (now in `proved`), proofs
+        // for 1024/1536/2048 are still in-flight.  The next tick calls
+        // dispatch_proofs which must skip past all four handled blocks and
+        // dispatch block 2560 to refill the freed slot.
+        let cancel = CancellationToken::new();
+        let safe_head = TEST_BLOCK_INTERVAL * 6;
+
+        let l1 = Arc::new(MockL1 { latest_block_number: TEST_L1_BLOCK_NUMBER });
+        let l2 = Arc::new(MockL2 { block_not_found: true, canonical_hash: None });
+        let prover: Arc<dyn ProverClient> = Arc::new(MockProver {
+            delay: Duration::from_secs(3600),
+            block_interval: TEST_BLOCK_INTERVAL,
+        });
+        let rollup = Arc::new(MockRollupClient {
+            sync_status: test_sync_status(safe_head, B256::ZERO),
+            output_roots: HashMap::new(),
+            max_safe_block: None,
+        });
+        let anchor_registry =
+            Arc::new(MockAnchorStateRegistry { anchor_root: test_anchor_root(TEST_ANCHOR_BLOCK) });
+        let factory = Arc::new(MockDisputeGameFactory::with_games(vec![]));
+
+        let pipeline = ProvingPipeline::new(
+            PipelineConfig {
+                max_parallel_proofs: 4,
+                max_retries: 3,
+                recovery_scan_concurrency: 8,
+                tee_prover_registry_address: None,
+                driver: DriverConfig {
+                    block_interval: TEST_BLOCK_INTERVAL,
+                    intermediate_block_interval: TEST_BLOCK_INTERVAL,
+                    ..Default::default()
+                },
+            },
+            prover,
+            l1,
+            l2,
+            rollup,
+            anchor_registry,
+            factory,
+            Arc::new(MockAggregateVerifier::default()),
+            Arc::new(MockOutputProposer),
+            cancel,
+        );
+
+        let recovered = RecoveredState {
+            parent_address: Address::ZERO,
+            output_root: B256::ZERO,
+            l2_block_number: TEST_ANCHOR_BLOCK,
+        };
+
+        let mut state = PipelineState::new();
+        state.proved.insert(TEST_BLOCK_INTERVAL, {
+            let p = test_proposal(TEST_BLOCK_INTERVAL);
+            ProofResult::Tee { aggregate_proposal: p.clone(), proposals: vec![p] }
+        });
+        state.inflight.insert(TEST_BLOCK_INTERVAL * 2);
+        state.inflight.insert(TEST_BLOCK_INTERVAL * 3);
+        state.inflight.insert(TEST_BLOCK_INTERVAL * 4);
+
+        pipeline.dispatch_proofs(&recovered, safe_head, &mut state).await.unwrap();
+
+        assert!(
+            state.inflight.contains(&(TEST_BLOCK_INTERVAL * 5)),
+            "block {} should have been dispatched to fill the freed slot",
+            TEST_BLOCK_INTERVAL * 5
+        );
+        assert_eq!(state.inflight.len(), 4, "should be back to max_parallel_proofs");
+        assert!(
+            state.proved.contains_key(&TEST_BLOCK_INTERVAL),
+            "proved entries must not be removed by dispatch"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn test_dispatch_skips_submitting_block() {
+        let cancel = CancellationToken::new();
+        let safe_head = TEST_BLOCK_INTERVAL * 4;
+
+        let l1 = Arc::new(MockL1 { latest_block_number: TEST_L1_BLOCK_NUMBER });
+        let l2 = Arc::new(MockL2 { block_not_found: true, canonical_hash: None });
+        let prover: Arc<dyn ProverClient> = Arc::new(MockProver {
+            delay: Duration::from_secs(3600),
+            block_interval: TEST_BLOCK_INTERVAL,
+        });
+        let rollup = Arc::new(MockRollupClient {
+            sync_status: test_sync_status(safe_head, B256::ZERO),
+            output_roots: HashMap::new(),
+            max_safe_block: None,
+        });
+        let anchor_registry =
+            Arc::new(MockAnchorStateRegistry { anchor_root: test_anchor_root(TEST_ANCHOR_BLOCK) });
+        let factory = Arc::new(MockDisputeGameFactory::with_games(vec![]));
+
+        let pipeline = ProvingPipeline::new(
+            PipelineConfig {
+                max_parallel_proofs: 4,
+                max_retries: 3,
+                recovery_scan_concurrency: 8,
+                tee_prover_registry_address: None,
+                driver: DriverConfig {
+                    block_interval: TEST_BLOCK_INTERVAL,
+                    intermediate_block_interval: TEST_BLOCK_INTERVAL,
+                    ..Default::default()
+                },
+            },
+            prover,
+            l1,
+            l2,
+            rollup,
+            anchor_registry,
+            factory,
+            Arc::new(MockAggregateVerifier::default()),
+            Arc::new(MockOutputProposer),
+            cancel,
+        );
+
+        let recovered = RecoveredState {
+            parent_address: Address::ZERO,
+            output_root: B256::ZERO,
+            l2_block_number: TEST_ANCHOR_BLOCK,
+        };
+
+        let mut state = PipelineState::new();
+        state.submitting = Some(TEST_BLOCK_INTERVAL);
+
+        pipeline.dispatch_proofs(&recovered, safe_head, &mut state).await.unwrap();
+
+        assert!(
+            !state.inflight.contains(&TEST_BLOCK_INTERVAL),
+            "submitting block must not be re-dispatched"
+        );
+        assert!(
+            state.inflight.contains(&(TEST_BLOCK_INTERVAL * 2)),
+            "block after submitting should be dispatched"
+        );
     }
 
     // ---- State management tests ----

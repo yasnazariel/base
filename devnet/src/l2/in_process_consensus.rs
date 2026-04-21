@@ -6,6 +6,7 @@
 
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
+    num::NonZeroUsize,
     sync::Arc,
     time::Duration,
 };
@@ -62,6 +63,8 @@ pub struct InProcessConsensusConfig {
     pub l1_slot_duration_override: Option<u64>,
     /// Whether the sequencer should start in stopped mode.
     pub sequencer_stopped: bool,
+    /// Number of L1 blocks to keep distance from the L1 head for the verifier.
+    pub verifier_l1_confs: u64,
 }
 
 /// A running in-process consensus node.
@@ -141,6 +144,7 @@ impl InProcessConsensus {
             beacon: config.l1_beacon_url,
             rpc_url: config.l1_rpc_url.clone(),
             slot_duration_override: config.l1_slot_duration_override,
+            verifier_l1_confs: config.verifier_l1_confs,
         };
 
         let engine_config = EngineConfig {
@@ -160,6 +164,7 @@ impl InProcessConsensus {
             ws_enabled: false,
             dev_enabled: false,
             http_timeout: Duration::from_secs(60),
+            max_concurrent_requests: NonZeroUsize::new(1024).expect("nonzero"),
         };
 
         let mut builder = RollupNodeBuilder::new(
@@ -180,7 +185,7 @@ impl InProcessConsensus {
             });
         }
 
-        let node = builder.build();
+        let node = builder.build().await.wrap_err("Failed to build consensus node")?;
 
         let mode = config.mode;
         let (startup_tx, startup_rx) = tokio::sync::oneshot::channel();

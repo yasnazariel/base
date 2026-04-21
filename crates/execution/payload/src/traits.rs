@@ -6,7 +6,7 @@ use base_common_rpc_types_engine::BasePayloadAttributes;
 use reth_payload_primitives::PayloadAttributes;
 use reth_primitives_traits::{FullBlockHeader, NodePrimitives, SignedTransaction, WithEncoded};
 
-use crate::OpPayloadBuilderAttributes;
+use crate::{BasePayloadBuilderAttributes, OpPayloadBuilderAttributes};
 
 /// Helper trait to encapsulate common bounds on [`NodePrimitives`] for OP payload builder.
 pub trait PayloadPrimitives:
@@ -62,6 +62,31 @@ pub trait Attributes: PayloadAttributes {
 
     /// Sequencer transactions to include in the payload.
     fn sequencer_transactions(&self) -> &[WithEncoded<Self::Transaction>];
+}
+
+impl<T: SignedTransaction> Attributes for BasePayloadBuilderAttributes<T> {
+    type Transaction = T;
+    type RpcPayloadAttributes = BasePayloadAttributes;
+
+    fn try_new(
+        parent: B256,
+        attributes: Self::RpcPayloadAttributes,
+        version: u8,
+    ) -> Result<Self, alloy_rlp::Error> {
+        Self::try_new(parent, attributes, version)
+    }
+
+    fn payload_job_id(&self) -> PayloadId {
+        self.payload_attributes.id
+    }
+
+    fn no_tx_pool(&self) -> bool {
+        self.no_tx_pool
+    }
+
+    fn sequencer_transactions(&self) -> &[WithEncoded<Self::Transaction>] {
+        &self.transactions
+    }
 }
 
 impl<T: SignedTransaction> Attributes for OpPayloadBuilderAttributes<T> {

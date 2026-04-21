@@ -14,6 +14,8 @@ workspace = true
 [dependencies]
 # workspace
 base-node-runner.workspace = true
+base-common-consensus.workspace = true
+base-execution-payload-builder.workspace = true
 
 # reth
 reth-db.workspace = true

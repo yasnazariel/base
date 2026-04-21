@@ -81,6 +81,11 @@ pub struct Args {
     #[arg(long = "metering.target-flashblocks-per-block", requires = "enable_metering")]
     pub metering_target_flashblocks_per_block: Option<usize>,
 
+    /// Comma-separated list of EVM opcodes to track for gas metering
+    /// (e.g., "SSTORE,SLOAD,KECCAK256"). Precompile gas is always tracked.
+    #[arg(long = "metering.metered-opcodes", requires = "enable_metering", value_delimiter = ',')]
+    pub metering_metered_opcodes: Vec<String>,
+
     /// Enable transaction forwarding for mempool nodes to builder RPC endpoints
     #[arg(
         long = "enable-tx-forwarding",

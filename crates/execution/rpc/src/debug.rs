@@ -11,7 +11,7 @@ use async_trait::async_trait;
 use base_common_chains::Upgrades;
 use base_execution_payload_builder::{
     Attributes, PayloadPrimitives,
-    builder::{Builder, OpPayloadBuilderCtx},
+    builder::{BasePayloadBuilderCtx, Builder},
 };
 use base_execution_trie::{BaseProofsStorage, BaseProofsStore};
 use base_execution_txpool::BasePooledTransaction;
@@ -207,10 +207,12 @@ where
                     let attributes = Attrs::try_new(parent_hash, attributes, 3)
                         .map_err(PayloadBuilderError::other)?;
                     let payload_id = attributes.payload_job_id();
-
-                    let config =
-                        PayloadConfig::new(Arc::new(parent_header), attributes, payload_id);
-                    let ctx = OpPayloadBuilderCtx {
+                    let config = PayloadConfig {
+                        parent_header: Arc::new(parent_header),
+                        attributes,
+                        payload_id,
+                    };
+                    let ctx = BasePayloadBuilderCtx {
                         evm_config: this.evm_config.clone(),
                         chain_spec: this.provider.chain_spec(),
                         config,

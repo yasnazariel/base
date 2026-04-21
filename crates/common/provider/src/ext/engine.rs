@@ -1,26 +1,26 @@
-use alloy_network::Network;
 use alloy_primitives::{B256, BlockHash, Bytes};
 use alloy_provider::Provider;
 use alloy_rpc_types_engine::{
     ClientVersionV1, ExecutionPayloadBodiesV1, ExecutionPayloadEnvelopeV2, ExecutionPayloadInputV2,
     ExecutionPayloadV3, ForkchoiceState, ForkchoiceUpdated, PayloadId, PayloadStatus,
 };
-use alloy_transport::{Transport, TransportResult};
+use alloy_transport::TransportResult;
+use base_common_network::Base;
 use base_common_rpc_types_engine::{
     BaseExecutionPayloadEnvelopeV3, BaseExecutionPayloadEnvelopeV4, BaseExecutionPayloadEnvelopeV5,
     BaseExecutionPayloadV4, BasePayloadAttributes,
 };
 
-/// Extension trait for engine API RPC methods.
+/// Extension trait for Base Engine API RPC methods.
 ///
 /// Note:
 /// > The provider should use a JWT authentication layer.
 ///
 /// This follows the Base specs:
-/// <https://specs.optimism.io/protocol/exec-engine.html#engine-api>
+/// <https://specs.base.org/protocol/execution#engine-api>
 #[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
-pub trait BaseEngineApi<N, T> {
+pub trait BaseEngineApi {
     /// Sends the given payload to the execution layer client, as specified for the Shanghai fork.
     ///
     /// See also <https://github.com/ethereum/execution-apis/blob/584905270d8ad665718058060267061ecfd79ca5/src/engine/shanghai.md#engine_newpayloadv2>
@@ -70,7 +70,7 @@ pub trait BaseEngineApi<N, T> {
     ///
     /// OP modifications:
     /// - The `payload_attributes` parameter is extended with the [`BasePayloadAttributes`] type
-    ///   as described in <https://specs.optimism.io/protocol/exec-engine.html#extended-payloadattributesv2>
+    ///   as described in <https://specs.base.org/protocol/execution#extended-payloadattributesv2>
     async fn fork_choice_updated_v2(
         &self,
         fork_choice_state: ForkchoiceState,
@@ -86,7 +86,7 @@ pub trait BaseEngineApi<N, T> {
     /// - Must be called with an Ecotone payload
     /// - Attributes must contain the parent beacon block root field
     /// - The `payload_attributes` parameter is extended with the [`BasePayloadAttributes`] type
-    ///   as described in <https://specs.optimism.io/protocol/exec-engine.html#extended-payloadattributesv2>
+    ///   as described in <https://specs.base.org/protocol/execution#extended-payloadattributesv2>
     async fn fork_choice_updated_v3(
         &self,
         fork_choice_state: ForkchoiceState,
@@ -199,11 +199,9 @@ pub trait BaseEngineApi<N, T> {
 
 #[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
-impl<N, T, P> BaseEngineApi<N, T> for P
+impl<P> BaseEngineApi for P
 where
-    N: Network,
-    T: Transport + Clone,
-    P: Provider<N>,
+    P: Provider<Base>,
 {
     async fn new_payload_v2(
         &self,

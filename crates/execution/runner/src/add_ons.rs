@@ -5,13 +5,14 @@ use base_execution_payload_builder::{
     config::{BaseDAConfig, GasLimitConfig},
 };
 use base_execution_rpc::{
+    MinerApiExtServer,
     config::{BaseEthConfigApiServer, BaseEthConfigHandler},
-    eth::OpEthApiBuilder,
-    miner::{MinerApiExtServer, OpMinerExtApi},
-    witness::OpDebugWitnessApi,
+    eth::BaseEthApiBuilder,
+    miner::OpMinerExtApi,
+    witness::BaseDebugWitnessApi,
 };
 use base_execution_txpool::OpPooledTx;
-use base_node_core::{BaseNodeTypes, BasePayloadValidatorBuilder, OpEngineApiBuilder};
+use base_node_core::{BaseEngineApiBuilder, BaseNodeTypes, BasePayloadValidatorBuilder};
 use reth_evm::ConfigureEvm;
 use reth_node_api::{BuildNextEnv, FullNodeComponents, HeaderTy, NodeAddOns, PayloadTypes, TxTy};
 use reth_node_builder::{
@@ -38,7 +39,7 @@ pub struct BaseAddOns<
     N: FullNodeComponents,
     EthB: EthApiBuilder<N>,
     PVB,
-    EB = OpEngineApiBuilder<PVB>,
+    EB = BaseEngineApiBuilder<PVB>,
     EVB = BasicEngineValidatorBuilder<PVB>,
     RpcMiddleware = Identity,
 > {
@@ -67,10 +68,10 @@ where
     }
 }
 
-impl<N> Default for BaseAddOns<N, OpEthApiBuilder, BasePayloadValidatorBuilder>
+impl<N> Default for BaseAddOns<N, BaseEthApiBuilder, BasePayloadValidatorBuilder>
 where
     N: FullNodeComponents<Types: BaseNodeTypes>,
-    OpEthApiBuilder: EthApiBuilder<N>,
+    BaseEthApiBuilder: EthApiBuilder<N>,
 {
     fn default() -> Self {
         Self::builder().build()
@@ -80,14 +81,14 @@ where
 impl<N, NetworkT, RpcMiddleware>
     BaseAddOns<
         N,
-        OpEthApiBuilder<NetworkT>,
+        BaseEthApiBuilder<NetworkT>,
         BasePayloadValidatorBuilder,
-        OpEngineApiBuilder<BasePayloadValidatorBuilder>,
+        BaseEngineApiBuilder<BasePayloadValidatorBuilder>,
         RpcMiddleware,
     >
 where
     N: FullNodeComponents<Types: BaseNodeTypes>,
-    OpEthApiBuilder<NetworkT>: EthApiBuilder<N>,
+    BaseEthApiBuilder<NetworkT>: EthApiBuilder<N>,
 {
     /// Build a [`BaseAddOns`] using [`BaseAddOnsBuilder`].
     pub fn builder() -> BaseAddOnsBuilder<NetworkT> {
@@ -211,13 +212,13 @@ where
         let eth_config =
             BaseEthConfigHandler::new(ctx.node.provider().clone(), ctx.node.evm_config().clone());
 
-        let builder = base_execution_payload_builder::OpPayloadBuilder::new(
+        let builder = base_execution_payload_builder::BasePayloadBuilder::new(
             ctx.node.pool().clone(),
             ctx.node.provider().clone(),
             ctx.node.evm_config().clone(),
         );
         // install additional OP specific rpc methods
-        let debug_ext = OpDebugWitnessApi::<_, _, _, Attrs>::new(
+        let debug_ext = BaseDebugWitnessApi::<_, _, _, Attrs>::new(
             ctx.node.provider().clone(),
             ctx.node.task_executor().clone(),
             builder,
@@ -358,13 +359,13 @@ impl<NetworkT, RpcMiddleware> BaseAddOnsBuilder<NetworkT, RpcMiddleware> {
         self
     }
 
-    /// Configure the data availability configuration for the OP builder.
+    /// Configure the data availability configuration for the Base builder.
     pub fn with_da_config(mut self, da_config: BaseDAConfig) -> Self {
         self.da_config = Some(da_config);
         self
     }
 
-    /// Configure the gas limit configuration for the OP payload builder.
+    /// Configure the gas limit configuration for the Base payload builder.
     pub fn with_gas_limit_config(mut self, gas_limit_config: GasLimitConfig) -> Self {
         self.gas_limit_config = Some(gas_limit_config);
         self
@@ -413,10 +414,10 @@ impl<NetworkT, RpcMiddleware> BaseAddOnsBuilder<NetworkT, RpcMiddleware> {
     /// Builds an instance of [`BaseAddOns`].
     pub fn build<N, PVB, EB, EVB>(
         self,
-    ) -> BaseAddOns<N, OpEthApiBuilder<NetworkT>, PVB, EB, EVB, RpcMiddleware>
+    ) -> BaseAddOns<N, BaseEthApiBuilder<NetworkT>, PVB, EB, EVB, RpcMiddleware>
     where
         N: FullNodeComponents<Types: NodeTypes>,
-        OpEthApiBuilder<NetworkT>: EthApiBuilder<N>,
+        BaseEthApiBuilder<NetworkT>: EthApiBuilder<N>,
         PVB: PayloadValidatorBuilder<N> + Default,
         EB: Default,
         EVB: Default,
@@ -434,7 +435,7 @@ impl<NetworkT, RpcMiddleware> BaseAddOnsBuilder<NetworkT, RpcMiddleware> {
 
         BaseAddOns::new(
             RpcAddOns::new(
-                OpEthApiBuilder::default()
+                BaseEthApiBuilder::default()
                     .with_sequencer(sequencer_url)
                     .with_sequencer_headers(sequencer_headers)
                     .with_min_suggested_priority_fee(min_suggested_priority_fee),

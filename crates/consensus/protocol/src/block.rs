@@ -2,7 +2,7 @@
 
 use alloc::vec::Vec;
 
-use alloy_consensus::{Block, Transaction, Typed2718};
+use alloy_consensus::{Block, Transaction};
 use alloy_eips::{BlockNumHash, eip2718::Eip2718Error, eip7685::EMPTY_REQUESTS_HASH};
 use alloy_primitives::B256;
 use alloy_rpc_types_engine::{CancunPayloadFields, PraguePayloadFields};
@@ -128,7 +128,7 @@ impl arbitrary::Arbitrary<'_> for L2BlockInfo {
     }
 }
 
-/// An error that can occur when converting an OP [`Block`] to [`L2BlockInfo`].
+/// An error that can occur when converting a [`Block`] to [`L2BlockInfo`].
 #[derive(Debug, thiserror::Error)]
 pub enum FromBlockError {
     /// The genesis block hash does not match the expected value.
@@ -140,8 +140,8 @@ pub enum FromBlockError {
     /// The first payload transaction has an unexpected type.
     #[error("First payload transaction has unexpected type: {0}")]
     UnexpectedTxType(u8),
-    /// Failed to decode the first transaction into an OP transaction.
-    #[error("Failed to decode the first transaction into an OP transaction: {0}")]
+    /// Failed to decode the first transaction into a Base transaction.
+    #[error("Failed to decode the first transaction into a Base transaction: {0}")]
     TxEnvelopeDecodeError(Eip2718Error),
     /// The first payload transaction is not a deposit transaction.
     #[error("First payload transaction is not a deposit transaction, type: {0}")]
@@ -181,7 +181,7 @@ impl L2BlockInfo {
     }
 
     /// Constructs an [`L2BlockInfo`] from a given OP [`Block`] and [`ChainGenesis`].
-    pub fn from_block_and_genesis<T: Typed2718 + AsRef<BaseTxEnvelope>>(
+    pub fn from_block_and_genesis<T: AsRef<BaseTxEnvelope>>(
         block: &Block<T>,
         genesis: &ChainGenesis,
     ) -> Result<Self, FromBlockError> {
@@ -199,7 +199,7 @@ impl L2BlockInfo {
 
             let tx = block.body.transactions[0].as_ref();
             let Some(tx) = tx.as_deposit() else {
-                return Err(FromBlockError::FirstTxNonDeposit(tx.ty()));
+                return Err(FromBlockError::FirstTxNonDeposit(tx.tx_type() as u8));
             };
 
             let l1_info = L1BlockInfoTx::decode_calldata(tx.input().as_ref())

@@ -1,6 +1,8 @@
 //! Contains the `[OpTransactionError]` type.
+
 use core::fmt::Display;
 
+use alloy_evm::InvalidTxError;
 use revm::{
     context::tx::TxEnvBuildError,
     context_interface::{
@@ -88,6 +90,15 @@ impl Display for OpTransactionError {
             Self::MissingEnvelopedTx => {
                 write!(f, "missing enveloped transaction bytes for non-deposit transaction")
             }
+        }
+    }
+}
+
+impl InvalidTxError for OpTransactionError {
+    fn as_invalid_tx_err(&self) -> Option<&InvalidTransaction> {
+        match self {
+            Self::Base(tx) => Some(tx),
+            _ => None,
         }
     }
 }

@@ -7,8 +7,8 @@ use alloy_genesis::Genesis;
 use alloy_hardforks::Hardfork;
 use alloy_primitives::{B256, U256};
 use base_common_chains::{BaseUpgrade, Upgrades};
+use base_common_consensus::Predeploys;
 use base_execution_upgrades::BASE_MAINNET_UPGRADES;
-use base_protocol::Predeploys;
 use derive_more::{Constructor, Deref, Into};
 use reth_chainspec::{
     BaseFeeParams, BaseFeeParamsKind, ChainSpec, DepositContract, DisplayHardforks, EthChainSpec,
@@ -270,7 +270,7 @@ impl From<Genesis> for BaseChainSpec {
 
         // Time-based hardforks
         // L1 hardforks are mapped to the activation timestamps of the corresponding Base hardforks
-        let base_v1_time = genesis_info.base.v1;
+        let azul_time = genesis_info.base.azul;
         let time_hardfork_opts = [
             (BaseUpgrade::Regolith.boxed(), genesis_info.regolith_time),
             (EthereumHardfork::Shanghai.boxed(), genesis_info.canyon_time),
@@ -283,8 +283,8 @@ impl From<Genesis> for BaseChainSpec {
             (EthereumHardfork::Prague.boxed(), genesis_info.isthmus_time),
             (BaseUpgrade::Isthmus.boxed(), genesis_info.isthmus_time),
             (BaseUpgrade::Jovian.boxed(), genesis_info.jovian_time),
-            (EthereumHardfork::Osaka.boxed(), base_v1_time),
-            (BaseUpgrade::V1.boxed(), base_v1_time),
+            (EthereumHardfork::Osaka.boxed(), azul_time),
+            (BaseUpgrade::Azul.boxed(), azul_time),
         ];
 
         let mut time_hardforks = time_hardfork_opts
@@ -344,7 +344,7 @@ mod tests {
     use alloy_consensus::proofs::storage_root_unhashed;
     use alloy_genesis::{ChainConfig as AlloyChainConfig, Genesis};
     use alloy_hardforks::Hardfork;
-    use alloy_primitives::{B256, U256, b256, hex};
+    use alloy_primitives::{B256, U256, b256};
     use base_common_chains::{BaseUpgrade, ChainConfig, Upgrades};
     use base_common_rpc_types::FeeInfo;
     use reth_chainspec::{
@@ -448,6 +448,14 @@ mod tests {
                     },
                     BASE_MAINNET.hardfork_fork_id(BaseUpgrade::Jovian).unwrap(),
                 ),
+                (
+                    Head {
+                        number: 0,
+                        timestamp: ChainConfig::mainnet().azul_timestamp.unwrap(),
+                        ..Default::default()
+                    },
+                    BASE_MAINNET.hardfork_fork_id(BaseUpgrade::Azul).unwrap(),
+                ),
             ],
         );
     }
@@ -550,7 +558,7 @@ mod tests {
     #[test]
     fn latest_base_mainnet_fork_id() {
         assert_eq!(
-            ForkId { hash: ForkHash(hex!("1cfeafc9")), next: 0 },
+            BASE_MAINNET.hardfork_fork_id(BaseUpgrade::Azul).unwrap(),
             BASE_MAINNET.latest_fork_id()
         )
     }
@@ -559,7 +567,7 @@ mod tests {
     fn latest_base_mainnet_fork_id_with_builder() {
         let base_mainnet = BaseChainSpecBuilder::base_mainnet().build();
         assert_eq!(
-            ForkId { hash: ForkHash(hex!("1cfeafc9")), next: 0 },
+            BASE_MAINNET.hardfork_fork_id(BaseUpgrade::Azul).unwrap(),
             base_mainnet.latest_fork_id()
         )
     }
@@ -615,8 +623,8 @@ mod tests {
         assert!(!chain_spec.is_fork_active_at_timestamp(EthereumHardfork::Osaka, 54));
         assert!(chain_spec.is_fork_active_at_timestamp(EthereumHardfork::Osaka, 55));
         assert!(chain_spec.is_fork_active_at_timestamp(EthereumHardfork::Osaka, 98));
-        assert!(!chain_spec.is_fork_active_at_timestamp(BaseUpgrade::V1, 54));
-        assert!(chain_spec.is_fork_active_at_timestamp(BaseUpgrade::V1, 55));
+        assert!(!chain_spec.is_fork_active_at_timestamp(BaseUpgrade::Azul, 54));
+        assert!(chain_spec.is_fork_active_at_timestamp(BaseUpgrade::Azul, 55));
     }
 
     #[test]
@@ -848,7 +856,7 @@ mod tests {
             BaseUpgrade::Isthmus.boxed(),
             BaseUpgrade::Jovian.boxed(),
             EthereumHardfork::Osaka.boxed(),
-            BaseUpgrade::V1.boxed(),
+            BaseUpgrade::Azul.boxed(),
         ];
 
         for (expected, actual) in expected_hardforks.iter().zip(hardforks.iter()) {

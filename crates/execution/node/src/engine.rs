@@ -4,16 +4,15 @@ use alloy_consensus::BlockHeader;
 use alloy_primitives::B256;
 use alloy_rpc_types_engine::{ExecutionPayloadEnvelopeV2, ExecutionPayloadV1};
 use base_common_chains::Upgrades;
-use base_common_consensus::BaseBlock;
+use base_common_consensus::{BaseBlock, Predeploys};
 use base_common_rpc_types_engine::{
     BaseExecutionPayloadEnvelopeV3, BaseExecutionPayloadEnvelopeV4, BaseExecutionPayloadEnvelopeV5,
     ExecutionData,
 };
 use base_execution_consensus::isthmus;
 use base_execution_payload_builder::{
-    BasePayloadTypes, OpExecutionPayloadValidator, OpPayloadBuilderAttributes,
+    BaseExecutionPayloadValidator, BasePayloadBuilderAttributes, BasePayloadTypes,
 };
-use base_protocol::Predeploys;
 use reth_consensus::ConsensusError;
 use reth_node_api::{
     BuiltPayload, EngineApiValidator, EngineTypes, NodePrimitives, PayloadValidator,
@@ -31,11 +30,11 @@ use reth_trie_common::{HashedPostState, KeyHasher};
 /// The types used in the Base beacon consensus engine.
 #[derive(Debug, Default, Clone, serde::Deserialize, serde::Serialize)]
 #[non_exhaustive]
-pub struct OpEngineTypes<T: PayloadTypes = BasePayloadTypes> {
+pub struct BaseEngineTypes<T: PayloadTypes = BasePayloadTypes> {
     _marker: PhantomData<T>,
 }
 
-impl<T: PayloadTypes<ExecutionData = ExecutionData>> PayloadTypes for OpEngineTypes<T> {
+impl<T: PayloadTypes<ExecutionData = ExecutionData>> PayloadTypes for BaseEngineTypes<T> {
     type ExecutionData = T::ExecutionData;
     type BuiltPayload = T::BuiltPayload;
     type PayloadAttributes = T::PayloadAttributes;
@@ -49,7 +48,7 @@ impl<T: PayloadTypes<ExecutionData = ExecutionData>> PayloadTypes for OpEngineTy
     }
 }
 
-impl<T: PayloadTypes<ExecutionData = ExecutionData>> EngineTypes for OpEngineTypes<T>
+impl<T: PayloadTypes<ExecutionData = ExecutionData>> EngineTypes for BaseEngineTypes<T>
 where
     T::BuiltPayload: BuiltPayload<Primitives: NodePrimitives<Block = BaseBlock>>
         + TryInto<ExecutionPayloadV1>
@@ -68,19 +67,19 @@ where
 
 /// Validator for Base engine API.
 #[derive(Debug)]
-pub struct OpEngineValidator<P, Tx, ChainSpec> {
-    inner: OpExecutionPayloadValidator<ChainSpec>,
+pub struct BaseEngineValidator<P, Tx, ChainSpec> {
+    inner: BaseExecutionPayloadValidator<ChainSpec>,
     provider: P,
     hashed_addr_l2tol1_msg_passer: B256,
     phantom: PhantomData<Tx>,
 }
 
-impl<P, Tx, ChainSpec> OpEngineValidator<P, Tx, ChainSpec> {
+impl<P, Tx, ChainSpec> BaseEngineValidator<P, Tx, ChainSpec> {
     /// Instantiates a new validator.
     pub fn new<KH: KeyHasher>(chain_spec: Arc<ChainSpec>, provider: P) -> Self {
         let hashed_addr_l2tol1_msg_passer = KH::hash_key(Predeploys::L2_TO_L1_MESSAGE_PASSER);
         Self {
-            inner: OpExecutionPayloadValidator::new(chain_spec),
+            inner: BaseExecutionPayloadValidator::new(chain_spec),
             provider,
             hashed_addr_l2tol1_msg_passer,
             phantom: PhantomData,
@@ -88,14 +87,14 @@ impl<P, Tx, ChainSpec> OpEngineValidator<P, Tx, ChainSpec> {
     }
 }
 
-impl<P, Tx, ChainSpec> Clone for OpEngineValidator<P, Tx, ChainSpec>
+impl<P, Tx, ChainSpec> Clone for BaseEngineValidator<P, Tx, ChainSpec>
 where
     P: Clone,
     ChainSpec: Upgrades,
 {
     fn clone(&self) -> Self {
         Self {
-            inner: OpExecutionPayloadValidator::new(self.inner.clone()),
+            inner: BaseExecutionPayloadValidator::new(self.inner.clone()),
             provider: self.provider.clone(),
             hashed_addr_l2tol1_msg_passer: self.hashed_addr_l2tol1_msg_passer,
             phantom: Default::default(),
@@ -103,7 +102,7 @@ where
     }
 }
 
-impl<P, Tx, ChainSpec> OpEngineValidator<P, Tx, ChainSpec>
+impl<P, Tx, ChainSpec> BaseEngineValidator<P, Tx, ChainSpec>
 where
     ChainSpec: Upgrades,
 {
@@ -114,7 +113,7 @@ where
     }
 }
 
-impl<P, Tx, ChainSpec, Types> PayloadValidator<Types> for OpEngineValidator<P, Tx, ChainSpec>
+impl<P, Tx, ChainSpec, Types> PayloadValidator<Types> for BaseEngineValidator<P, Tx, ChainSpec>
 where
     P: StateProviderFactory + Unpin + 'static,
     Tx: SignedTransaction + Unpin + 'static,
@@ -161,10 +160,10 @@ where
     }
 }
 
-impl<Types, P, Tx, ChainSpec> EngineApiValidator<Types> for OpEngineValidator<P, Tx, ChainSpec>
+impl<Types, P, Tx, ChainSpec> EngineApiValidator<Types> for BaseEngineValidator<P, Tx, ChainSpec>
 where
     Types: PayloadTypes<
-            PayloadAttributes = OpPayloadBuilderAttributes<Tx>,
+            PayloadAttributes = BasePayloadBuilderAttributes<Tx>,
             ExecutionData = ExecutionData,
             BuiltPayload: BuiltPayload<Primitives: NodePrimitives<SignedTx = Tx>>,
         >,
@@ -331,8 +330,8 @@ mod tests {
         eip_1559_params: Option<B64>,
         min_base_fee: Option<u64>,
         timestamp: u64,
-    ) -> OpPayloadBuilderAttributes<BaseTxEnvelope> {
-        OpPayloadBuilderAttributes::try_new(
+    ) -> BasePayloadBuilderAttributes<BaseTxEnvelope> {
+        BasePayloadBuilderAttributes::try_new(
             B256::ZERO,
             BasePayloadAttributes {
                 gas_limit: Some(1000),
@@ -356,103 +355,103 @@ mod tests {
 
     #[test]
     fn test_well_formed_attributes_pre_holocene() {
-        let validator = OpEngineValidator::new::<KeccakKeyHasher>(
+        let validator = BaseEngineValidator::new::<KeccakKeyHasher>(
             BASE_SEPOLIA.clone(),
             NoopProvider::default(),
         );
         let attributes = get_attributes(None, None, 1732633199);
 
-        let result = <engine::OpEngineValidator<_, _, _> as EngineApiValidator<
-            OpEngineTypes,
+        let result = <engine::BaseEngineValidator<_, _, _> as EngineApiValidator<
+            BaseEngineTypes,
         >>::ensure_well_formed_attributes(
-            &validator, EngineApiMessageVersion::V3, &attributes,
+            &validator, EngineApiMessageVersion::V3, &attributes
         );
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_well_formed_attributes_holocene_no_eip1559_params() {
-        let validator = OpEngineValidator::new::<KeccakKeyHasher>(
+        let validator = BaseEngineValidator::new::<KeccakKeyHasher>(
             BASE_SEPOLIA.clone(),
             NoopProvider::default(),
         );
         let attributes = get_attributes(None, None, 1732633200);
 
-        let result = <engine::OpEngineValidator<_, _, _> as EngineApiValidator<
-            OpEngineTypes,
+        let result = <engine::BaseEngineValidator<_, _, _> as EngineApiValidator<
+            BaseEngineTypes,
         >>::ensure_well_formed_attributes(
-            &validator, EngineApiMessageVersion::V3, &attributes,
+            &validator, EngineApiMessageVersion::V3, &attributes
         );
         assert_invalid_params_error!(result, "MissingEip1559ParamsInPayloadAttributes");
     }
 
     #[test]
     fn test_well_formed_attributes_holocene_eip1559_params_zero_denominator() {
-        let validator = OpEngineValidator::new::<KeccakKeyHasher>(
+        let validator = BaseEngineValidator::new::<KeccakKeyHasher>(
             BASE_SEPOLIA.clone(),
             NoopProvider::default(),
         );
         let attributes = get_attributes(Some(b64!("0000000000000008")), None, 1732633200);
 
-        let result = <engine::OpEngineValidator<_, _, _> as EngineApiValidator<
-            OpEngineTypes,
+        let result = <engine::BaseEngineValidator<_, _, _> as EngineApiValidator<
+            BaseEngineTypes,
         >>::ensure_well_formed_attributes(
-            &validator, EngineApiMessageVersion::V3, &attributes,
+            &validator, EngineApiMessageVersion::V3, &attributes
         );
         assert_invalid_params_error!(result, "Eip1559ParamsDenominatorZero");
     }
 
     #[test]
     fn test_well_formed_attributes_holocene_eip1559_params_zero_elasticity() {
-        let validator = OpEngineValidator::new::<KeccakKeyHasher>(
+        let validator = BaseEngineValidator::new::<KeccakKeyHasher>(
             BASE_SEPOLIA.clone(),
             NoopProvider::default(),
         );
         let attributes = get_attributes(Some(b64!("0000000800000000")), None, 1732633200);
 
-        let result = <engine::OpEngineValidator<_, _, _> as EngineApiValidator<
-            OpEngineTypes,
+        let result = <engine::BaseEngineValidator<_, _, _> as EngineApiValidator<
+            BaseEngineTypes,
         >>::ensure_well_formed_attributes(
-            &validator, EngineApiMessageVersion::V3, &attributes,
+            &validator, EngineApiMessageVersion::V3, &attributes
         );
         assert_invalid_params_error!(result, "Eip1559ParamsElasticityZero");
     }
 
     #[test]
     fn test_well_formed_attributes_holocene_valid() {
-        let validator = OpEngineValidator::new::<KeccakKeyHasher>(
+        let validator = BaseEngineValidator::new::<KeccakKeyHasher>(
             BASE_SEPOLIA.clone(),
             NoopProvider::default(),
         );
         let attributes = get_attributes(Some(b64!("0000000800000008")), None, 1732633200);
 
-        let result = <engine::OpEngineValidator<_, _, _> as EngineApiValidator<
-            OpEngineTypes,
+        let result = <engine::BaseEngineValidator<_, _, _> as EngineApiValidator<
+            BaseEngineTypes,
         >>::ensure_well_formed_attributes(
-            &validator, EngineApiMessageVersion::V3, &attributes,
+            &validator, EngineApiMessageVersion::V3, &attributes
         );
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_well_formed_attributes_holocene_valid_all_zero() {
-        let validator = OpEngineValidator::new::<KeccakKeyHasher>(
+        let validator = BaseEngineValidator::new::<KeccakKeyHasher>(
             BASE_SEPOLIA.clone(),
             NoopProvider::default(),
         );
         let attributes = get_attributes(Some(b64!("0000000000000000")), None, 1732633200);
 
-        let result = <engine::OpEngineValidator<_, _, _> as EngineApiValidator<
-            OpEngineTypes,
+        let result = <engine::BaseEngineValidator<_, _, _> as EngineApiValidator<
+            BaseEngineTypes,
         >>::ensure_well_formed_attributes(
-            &validator, EngineApiMessageVersion::V3, &attributes,
+            &validator, EngineApiMessageVersion::V3, &attributes
         );
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_well_formed_attributes_jovian_valid() {
-        let validator = OpEngineValidator::new::<KeccakKeyHasher>(
+        let validator = BaseEngineValidator::new::<KeccakKeyHasher>(
             BASE_SEPOLIA.clone(),
             NoopProvider::default(),
         );
@@ -462,10 +461,10 @@ mod tests {
             ChainConfig::sepolia().jovian_timestamp,
         );
 
-        let result = <engine::OpEngineValidator<_, _, _> as EngineApiValidator<
-            OpEngineTypes,
+        let result = <engine::BaseEngineValidator<_, _, _> as EngineApiValidator<
+            BaseEngineTypes,
         >>::ensure_well_formed_attributes(
-            &validator, EngineApiMessageVersion::V3, &attributes,
+            &validator, EngineApiMessageVersion::V3, &attributes
         );
         assert!(result.is_ok());
     }
@@ -473,16 +472,16 @@ mod tests {
     /// After Jovian (and holocene), eip1559 params must be Some
     #[test]
     fn test_malformed_attributes_jovian_with_eip_1559_params_none() {
-        let validator = OpEngineValidator::new::<KeccakKeyHasher>(
+        let validator = BaseEngineValidator::new::<KeccakKeyHasher>(
             BASE_SEPOLIA.clone(),
             NoopProvider::default(),
         );
         let attributes = get_attributes(None, Some(1), ChainConfig::sepolia().jovian_timestamp);
 
-        let result = <engine::OpEngineValidator<_, _, _> as EngineApiValidator<
-            OpEngineTypes,
+        let result = <engine::BaseEngineValidator<_, _, _> as EngineApiValidator<
+            BaseEngineTypes,
         >>::ensure_well_formed_attributes(
-            &validator, EngineApiMessageVersion::V3, &attributes,
+            &validator, EngineApiMessageVersion::V3, &attributes
         );
         assert_invalid_params_error!(result, "MissingEip1559ParamsInPayloadAttributes");
     }
@@ -490,16 +489,16 @@ mod tests {
     /// Before Jovian, min base fee must be None
     #[test]
     fn test_malformed_attributes_pre_jovian_with_min_base_fee() {
-        let validator = OpEngineValidator::new::<KeccakKeyHasher>(
+        let validator = BaseEngineValidator::new::<KeccakKeyHasher>(
             BASE_SEPOLIA.clone(),
             NoopProvider::default(),
         );
         let attributes = get_attributes(Some(b64!("0000000000000000")), Some(1), 1732633200);
 
-        let result = <engine::OpEngineValidator<_, _, _> as EngineApiValidator<
-            OpEngineTypes,
+        let result = <engine::BaseEngineValidator<_, _, _> as EngineApiValidator<
+            BaseEngineTypes,
         >>::ensure_well_formed_attributes(
-            &validator, EngineApiMessageVersion::V3, &attributes,
+            &validator, EngineApiMessageVersion::V3, &attributes
         );
         assert_invalid_params_error!(result, "MinBaseFeeNotAllowedBeforeJovian");
     }
@@ -507,7 +506,7 @@ mod tests {
     /// After Jovian, min base fee must be Some
     #[test]
     fn test_malformed_attributes_post_jovian_with_min_base_fee_none() {
-        let validator = OpEngineValidator::new::<KeccakKeyHasher>(
+        let validator = BaseEngineValidator::new::<KeccakKeyHasher>(
             BASE_SEPOLIA.clone(),
             NoopProvider::default(),
         );
@@ -517,10 +516,10 @@ mod tests {
             ChainConfig::sepolia().jovian_timestamp,
         );
 
-        let result = <engine::OpEngineValidator<_, _, _> as EngineApiValidator<
-            OpEngineTypes,
+        let result = <engine::BaseEngineValidator<_, _, _> as EngineApiValidator<
+            BaseEngineTypes,
         >>::ensure_well_formed_attributes(
-            &validator, EngineApiMessageVersion::V3, &attributes,
+            &validator, EngineApiMessageVersion::V3, &attributes
         );
         assert_invalid_params_error!(result, "MissingMinBaseFeeInPayloadAttributes");
     }

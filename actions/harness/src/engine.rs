@@ -1,4 +1,4 @@
-//! In-process engine client for action tests backed by the production `OpPayloadBuilder`.
+//! In-process engine client for action tests backed by the production `BasePayloadBuilder`.
 
 use std::{
     collections::HashMap,
@@ -20,7 +20,6 @@ use alloy_rpc_types_eth::{
     Block, BlockTransactions, EIP1186AccountProofResponse, Transaction as EthTransaction,
 };
 use alloy_transport::{TransportError, TransportErrorKind, TransportResult};
-use alloy_transport_http::Http;
 use async_trait::async_trait;
 use base_common_consensus::BasePrimitives;
 use base_common_network::Base;
@@ -31,13 +30,13 @@ use base_common_rpc_types_engine::{
     BaseExecutionPayloadEnvelopeV4, BaseExecutionPayloadEnvelopeV5, BaseExecutionPayloadV4,
     BasePayloadAttributes,
 };
-use base_consensus_engine::{EngineClient, EngineClientError, HyperAuthClient};
+use base_consensus_engine::{EngineClient, EngineClientError};
 use base_consensus_genesis::RollupConfig;
 use base_consensus_node::{EngineClientError as NodeEngineClientError, SequencerEngineClient};
 use base_execution_chainspec::BaseChainSpec;
 use base_execution_evm::BaseEvmConfig;
 use base_execution_payload_builder::{
-    OpBuiltPayload, OpPayloadBuilder, OpPayloadBuilderAttributes,
+    BaseBuiltPayload, BasePayloadBuilder, BasePayloadBuilderAttributes,
 };
 use base_execution_txpool::BasePooledTransaction;
 use base_node_core::BaseNode;
@@ -77,8 +76,8 @@ pub type TestPool = NoopTransactionPool<BasePooledTransaction>;
 /// A payload built in-process during sequencer mode, waiting to be fetched via `get_payload`.
 #[derive(Debug, Clone)]
 pub struct PendingPayload {
-    /// The built payload from the production `OpPayloadBuilder`.
-    pub built: OpBuiltPayload<BasePrimitives>,
+    /// The built payload from the production `BasePayloadBuilder`.
+    pub built: BaseBuiltPayload<BasePrimitives>,
 }
 
 /// Mutable state owned by [`ActionEngineClient`], protected by a `Mutex` so
@@ -99,10 +98,10 @@ pub struct ActionEngineClientInner {
     payload_counter: u64,
 }
 
-/// An in-process engine client for action tests backed by the production `OpPayloadBuilder`.
+/// An in-process engine client for action tests backed by the production `BasePayloadBuilder`.
 ///
 /// `ActionEngineClient` implements [`EngineClient`] using the real Reth payload building
-/// code path (`OpPayloadBuilder::try_build`). It supports two workflows:
+/// code path (`BasePayloadBuilder::try_build`). It supports two workflows:
 ///
 /// ## Derivation mode
 ///
@@ -172,13 +171,13 @@ impl ActionEngineClient {
         set_ts!("jovianTime", hf.jovian_time);
 
         // V1 requires Osaka (the EL counterpart). Both must be set together.
-        match hf.base.v1 {
+        match hf.base.azul {
             Some(ts) => {
                 genesis.config.osaka_time = Some(ts);
                 genesis
                     .config
                     .extra_fields
-                    .insert("base".to_string(), serde_json::json!({ "v1": ts }));
+                    .insert("base".to_string(), serde_json::json!({ "azul": ts }));
             }
             None => {
                 genesis.config.osaka_time = None;
@@ -204,7 +203,7 @@ impl ActionEngineClient {
     /// Create a new `ActionEngineClient` backed by a production payload builder.
     ///
     /// Initializes a temporary Reth database with the test genesis state and creates
-    /// a production `OpPayloadBuilder` for block building.
+    /// a production `BasePayloadBuilder` for block building.
     pub fn new(
         rollup_config: Arc<RollupConfig>,
         canonical_head: L2BlockInfo,
@@ -221,7 +220,7 @@ impl ActionEngineClient {
         init_genesis(&provider_factory).expect("failed to initialize genesis in action engine");
         let blockchain_provider = BlockchainProvider::new(provider_factory.clone())
             .expect("failed to create blockchain provider");
-        let evm_config = BaseEvmConfig::optimism(Arc::clone(&chain_spec));
+        let evm_config = BaseEvmConfig::base(Arc::clone(&chain_spec));
 
         let inner = Arc::new(Mutex::new(ActionEngineClientInner {
             provider_factory,
@@ -280,12 +279,12 @@ impl ActionEngineClient {
     }
 
     /// Build a block from the given `BasePayloadAttributes` and commit it to the database,
-    /// returning the `OpBuiltPayload`.
+    /// returning the `BaseBuiltPayload`.
     fn build_and_commit(
         inner: &mut ActionEngineClientInner,
         parent_hash: B256,
         attrs: BasePayloadAttributes,
-    ) -> TransportResult<OpBuiltPayload<BasePrimitives>> {
+    ) -> TransportResult<BaseBuiltPayload<BasePrimitives>> {
         // Look up the parent header from executed headers or fall back to the real genesis.
         // When building the first block the caller may pass B256::ZERO (the default rollup-config
         // genesis hash), but the Reth DB stores the genesis block under its actual computed hash.
@@ -308,7 +307,7 @@ impl ActionEngineClient {
                 (genesis_hash, genesis_header)
             });
 
-        let builder_attrs = OpPayloadBuilderAttributes::try_new(effective_parent_hash, attrs, 3)
+        let builder_attrs = BasePayloadBuilderAttributes::try_new(effective_parent_hash, attrs, 3)
             .map_err(|e| {
                 TransportError::from(TransportErrorKind::custom_str(&format!(
                     "failed to create builder attributes: {e}"
@@ -328,7 +327,7 @@ impl ActionEngineClient {
         );
 
         let pool = TestPool::new();
-        let payload_builder = OpPayloadBuilder::new(
+        let payload_builder = BasePayloadBuilder::new(
             pool,
             inner.blockchain_provider.clone(),
             inner.evm_config.clone(),
@@ -338,7 +337,7 @@ impl ActionEngineClient {
                 "payload builder failed: {e}"
             )))
         })?;
-        let built: OpBuiltPayload<BasePrimitives> = outcome.into_payload().ok_or_else(|| {
+        let built: BaseBuiltPayload<BasePrimitives> = outcome.into_payload().ok_or_else(|| {
             TransportError::from(TransportErrorKind::custom_str(
                 "payload builder returned no payload",
             ))
@@ -671,13 +670,6 @@ impl EngineClient for ActionEngineClient {
         })
     }
 
-    async fn new_payload_v1(&self, _payload: ExecutionPayloadV1) -> TransportResult<PayloadStatus> {
-        Err(TransportError::from(TransportErrorKind::custom_str(
-            "ActionEngineClient does not support new_payload_v1 \
-             (OP Stack derivation uses new_payload_v2 or later)",
-        )))
-    }
-
     async fn l2_block_by_label(
         &self,
         numtag: BlockNumberOrTag,
@@ -743,7 +735,7 @@ impl EngineClient for ActionEngineClient {
 }
 
 #[async_trait]
-impl BaseEngineApi<Base, Http<HyperAuthClient>> for ActionEngineClient {
+impl BaseEngineApi for ActionEngineClient {
     async fn new_payload_v2(
         &self,
         payload: ExecutionPayloadInputV2,

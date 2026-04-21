@@ -10,15 +10,14 @@ mod tests {
 
     use alloy_consensus::{Block, BlockBody, Header, SignableTransaction, TxEip1559};
     use alloy_primitives::{Address, Signature, StorageKey, StorageValue, U256, b256};
-    use base_common_consensus::{BaseReceipt, BaseTransactionSigned, TxDeposit};
-    use base_common_evm::L1_BLOCK_CONTRACT;
+    use base_common_consensus::{BaseReceipt, BaseTransactionSigned, Predeploys, TxDeposit};
     use base_execution_chainspec::{BaseChainSpec, BaseChainSpecBuilder};
     use reth_chainspec::MIN_TRANSACTION_GAS;
     use reth_evm::execute::{BasicBlockExecutor, Executor};
     use reth_primitives_traits::{Account, RecoveredBlock};
     use reth_revm::{database::StateProviderDatabase, test_utils::StateProviderTest};
 
-    use crate::{BaseEvmConfig, OpRethReceiptBuilder};
+    use crate::{BaseEvmConfig, BaseRethReceiptBuilder};
 
     fn create_op_state_provider() -> StateProviderTest {
         let mut db = StateProviderTest::default();
@@ -42,13 +41,18 @@ mod tests {
             .unwrap(),
         );
 
-        db.insert_account(L1_BLOCK_CONTRACT, l1_block_contract_account, None, l1_block_storage);
+        db.insert_account(
+            Predeploys::L1_BLOCK_INFO,
+            l1_block_contract_account,
+            None,
+            l1_block_storage,
+        );
 
         db
     }
 
     fn evm_config(chain_spec: Arc<BaseChainSpec>) -> BaseEvmConfig {
-        BaseEvmConfig::new(chain_spec, OpRethReceiptBuilder::default())
+        BaseEvmConfig::new(chain_spec, BaseRethReceiptBuilder::default())
     }
 
     #[test]
@@ -96,7 +100,7 @@ mod tests {
 
         // make sure the L1 block contract state is preloaded.
         executor.with_state_mut(|state| {
-            state.load_cache_account(L1_BLOCK_CONTRACT).unwrap();
+            state.load_cache_account(Predeploys::L1_BLOCK_INFO).unwrap();
         });
 
         // Attempt to execute a block with one deposit and one non-deposit transaction
@@ -169,7 +173,7 @@ mod tests {
 
         // make sure the L1 block contract state is preloaded.
         executor.with_state_mut(|state| {
-            state.load_cache_account(L1_BLOCK_CONTRACT).unwrap();
+            state.load_cache_account(Predeploys::L1_BLOCK_INFO).unwrap();
         });
 
         // attempt to execute an empty block with parent beacon block root, this should not fail

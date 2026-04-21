@@ -8,7 +8,7 @@ use alloy_primitives::B256;
 use alloy_rpc_types_engine::ForkchoiceState;
 use alloy_rpc_types_eth::BlockNumberOrTag;
 use base_execution_chainspec::BaseChainSpecBuilder;
-use base_node_core::{BaseNode, utils::optimism_payload_attributes};
+use base_node_core::{BaseNode, utils::payload_attributes};
 use reth_chainspec::EthChainSpec;
 use reth_db::test_utils::create_test_rw_db_with_path;
 use reth_e2e_test_utils::{
@@ -22,7 +22,7 @@ use reth_provider::{
 use reth_stages_types::StageId;
 use tokio::sync::Mutex;
 
-/// Tests that an OP node can initialize with a custom genesis block number.
+/// Tests that a Base node can initialize with a custom genesis block number.
 #[tokio::test]
 async fn test_op_node_custom_genesis_number() {
     reth_tracing::init_test_tracing();
@@ -69,8 +69,7 @@ async fn test_op_node_custom_genesis_number() {
         .await
         .expect("Failed to launch node");
 
-    let mut node =
-        NodeTestContext::new(node_handle.node, optimism_payload_attributes).await.unwrap();
+    let mut node = NodeTestContext::new(node_handle.node, payload_attributes).await.unwrap();
 
     let genesis_hash = node
         .inner
