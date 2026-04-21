@@ -1,10 +1,10 @@
 //! CLI definition for the Nitro TEE prover host binary.
 
-use std::net::SocketAddr;
 #[cfg(any(target_os = "linux", feature = "local"))]
 use std::sync::Arc;
 #[cfg(any(target_os = "linux", feature = "local"))]
 use std::time::Duration;
+use std::{net::SocketAddr, num::NonZeroUsize};
 
 use alloy_primitives::Address;
 use base_cli_utils::{LogConfig, RuntimeManager};
@@ -87,9 +87,9 @@ struct ProverServerArgs {
     #[arg(long, env = "ENABLE_EXPERIMENTAL_WITNESS_ENDPOINT")]
     enable_experimental_witness_endpoint: bool,
 
-    /// Maximum concurrent L1 RPC requests during proof generation (must be >= 1).
-    #[arg(long, env = "L1_RPC_CONCURRENCY", default_value_t = base_proof_host::DEFAULT_L1_CONCURRENCY, value_parser = parse_nonzero_usize)]
-    l1_rpc_concurrency: usize,
+    /// Maximum concurrent L1 RPC requests during proof generation.
+    #[arg(long, env = "L1_RPC_CONCURRENCY", default_value_t = NonZeroUsize::new(base_proof_host::DEFAULT_L1_CONCURRENCY).unwrap())]
+    l1_rpc_concurrency: NonZeroUsize,
 
     /// Number of parent L1 headers to speculatively prefetch in the
     /// background when an L1 block header hint is received.
@@ -168,7 +168,7 @@ impl ServerArgs {
             rollup_config,
             l1_config,
             enable_experimental_witness_endpoint: self.server.enable_experimental_witness_endpoint,
-            l1_rpc_concurrency: self.server.l1_rpc_concurrency,
+            l1_rpc_concurrency: self.server.l1_rpc_concurrency.get(),
             l1_prefetch_depth: self.server.l1_prefetch_depth,
         };
 
@@ -194,15 +194,6 @@ struct LocalArgs {
     server: ProverServerArgs,
 }
 
-/// Parses a `usize` that must be at least 1.
-fn parse_nonzero_usize(s: &str) -> std::result::Result<usize, String> {
-    let val: usize = s.parse().map_err(|e: std::num::ParseIntError| e.to_string())?;
-    if val == 0 {
-        return Err("value must be >= 1".into());
-    }
-    Ok(val)
-}
-
 #[cfg(feature = "local")]
 impl LocalArgs {
     async fn run(self) -> eyre::Result<()> {
@@ -224,7 +215,7 @@ impl LocalArgs {
             rollup_config,
             l1_config,
             enable_experimental_witness_endpoint: self.server.enable_experimental_witness_endpoint,
-            l1_rpc_concurrency: self.server.l1_rpc_concurrency,
+            l1_rpc_concurrency: self.server.l1_rpc_concurrency.get(),
             l1_prefetch_depth: self.server.l1_prefetch_depth,
         };
 
