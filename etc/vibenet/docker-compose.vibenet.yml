@@ -24,6 +24,37 @@ services:
     environment:
       - FAUCET_ADDR=${FAUCET_ADDR}
 
+  # --- Defense-in-depth memory caps on long-running core services ---------
+  # The public vibenet host stays up for weeks at a time. Without cgroup
+  # limits, a single runaway container (e.g. Jaeger's unbounded in-memory
+  # trace ring pre-fix) can swallow all host RAM, force swap, and starve
+  # the kernel page cache — making every other service IO-bound.
+  #
+  # These limits are sized for a 503 GiB bare-metal host (Hetzner AX-series).
+  # Caps are generous enough that normal operation never trips them; if a
+  # service does regress, cgroups OOM-kill the offender (and `restart:
+  # unless-stopped` from the base compose brings it back) instead of
+  # taking the host down with it. Total cap budget ≈ 165 GiB, ~33% of RAM.
+  #
+  # L1 services (l1-el / l1-cl / l1-vc) are deliberately uncapped: they
+  # run against a tiny anvil genesis and their footprint is bounded by
+  # the L1 chain state, not by request volume.
+  base-client:
+    mem_limit: 96g
+    memswap_limit: 96g
+  base-client-cl:
+    mem_limit: 16g
+    memswap_limit: 16g
+  base-builder:
+    mem_limit: 24g
+    memswap_limit: 24g
+  base-builder-cl:
+    mem_limit: 16g
+    memswap_limit: 16g
+  base-batcher:
+    mem_limit: 8g
+    memswap_limit: 8g
+
   # --- Public HTTP gateway --------------------------------------------------
   nginx-gateway:
     image: nginx:1.27-alpine
@@ -64,6 +95,8 @@ services:
     # and writes the result to /etc/nginx/conf.d/*.conf before starting.
     # The template no longer references any env vars, but the envsubst step
     # is still a no-op on static content so we leave it in place.
+    mem_limit: 512m
+    memswap_limit: 512m
     restart: unless-stopped
 
   # --- Writes ADMIN_HTPASSWD into a shared volume for nginx basic-auth -----
@@ -95,6 +128,8 @@ services:
       nginx-gateway:
         condition: service_started
     command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
+    mem_limit: 256m
+    memswap_limit: 256m
     restart: unless-stopped
 
   # --- Faucet service -------------------------------------------------------
@@ -128,6 +163,8 @@ services:
       - RUST_LOG=info,base_vibenet_faucet=debug
     volumes:
       - vibenet-shared:/shared:ro
+    mem_limit: 512m
+    memswap_limit: 512m
     restart: unless-stopped
 
   # --- One-shot contract deployer ------------------------------------------
@@ -207,6 +244,8 @@ services:
       - VIBESCAN_LOG=info,sqlx=warn,hyper=warn
     volumes:
       - vibescan-data:/data
+    mem_limit: 2g
+    memswap_limit: 2g
     restart: unless-stopped
 
   # --- proxyd (Go) as a second line of defense with per-method rate limits -
@@ -228,6 +267,8 @@ services:
       timeout: 5s
       retries: 30
       start_period: 10s
+    mem_limit: 512m
+    memswap_limit: 512m
     restart: unless-stopped
 
 volumes:

@@ -499,10 +499,21 @@ services:
   jaeger:
     image: jaegertracing/all-in-one:1.56
     container_name: jaeger
+    # Cap the in-memory trace ring. The default `SPAN_STORAGE_TYPE=memory`
+    # backend is UNBOUNDED: on a long-running host (e.g. the public vibenet
+    # box) traces accumulate until the process OOMs the whole machine.
+    # 50k traces is a few hundred MB of RAM and enough for dev debugging.
+    # See https://www.jaegertracing.io/docs/1.56/cli/#jaeger-all-in-one
+    command: ["--memory.max-traces=50000"]
     ports:
       - "3001:16686"  # Jaeger UI
     environment:
       - COLLECTOR_OTLP_ENABLED=true
+    # Defense in depth: if the ring cap is ever regressed, cgroups OOM-kill
+    # Jaeger instead of swap-thrashing the host. `restart: unless-stopped`
+    # brings it back afterwards.
+    mem_limit: 2g
+    memswap_limit: 2g
     restart: unless-stopped
 
   pyroscope:
@@ -542,7 +553,14 @@ services:
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --storage.tsdb.retention.size=8GB
       - --web.enable-lifecycle
+    # Hard cap so a noisy target or a label-cardinality blowup doesn't eat
+    # the whole host (see Jaeger incident; same failure shape). 7d/8GB
+    # TSDB retention above is the first line of defense.
+    mem_limit: 4g
+    memswap_limit: 4g
     restart: unless-stopped
 
   grafana:
