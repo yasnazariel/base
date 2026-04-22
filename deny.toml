@@ -45,6 +45,7 @@ multiple-versions = "deny"
 # These are primarily from reth, alloy, and upstream dependencies
 skip = [
     # Windows platform crates - different versions used by various upstream deps
+    "windows",
     "windows-sys",
     "windows-targets",
     "windows-core",
@@ -87,6 +88,21 @@ skip = [
     # Crypto crates - version differences from different crypto stacks
     "signature",
     "strum_macros",
+    "base16ct",
+    "crypto-bigint",
+    "der",
+    "ecdsa",
+    "elliptic-curve",
+    "ff",
+    "group",
+    "p256",
+    "pairing",
+    "pasta_curves",
+    "pkcs8",
+    "primeorder",
+    "rfc6979",
+    "sec1",
+    "spki",
 
     # arkworks crates - version differences from boundless/risc0 crypto stack
     "ark-ff",
@@ -98,6 +114,7 @@ skip = [
     # System/platform crates
     "socket2",
     "bitflags",
+    "redox_syscall",
     "redox_users",
 
     # Network crates
@@ -154,9 +171,29 @@ skip = [
     "http-body",
     "hyper",
     "hyper-rustls",
+    "hyper-timeout",
     "rustls",
     "rustls-webpki",
     "tokio-rustls",
+    "sync_wrapper",
+
+    # axum/tonic/tower stack version mismatches from upstream grpc/http deps
+    "axum",
+    "axum-core",
+    "tonic",
+    "tonic-build",
+    "tower",
+    "matchit",
+    "prost-build",
+    "prost-types",
+
+    # OpenTelemetry stack version mismatches (older vs newer otel deps)
+    "opentelemetry",
+    "opentelemetry-appender-tracing",
+    "opentelemetry-otlp",
+    "opentelemetry-proto",
+    "opentelemetry_sdk",
+    "tracing-opentelemetry",
 
     # toml/serde stack version mismatches from upstream deps
     "serde_spanned",
@@ -183,6 +220,25 @@ skip = [
     "tracing-subscriber",
     "wasm-streams",
     "winnow",
+
+    # Misc upstream version mismatches
+    "bindgen",
+    "console",
+    "derive_more",
+    "derive_more-impl",
+    "dirs",
+    "dirs-sys",
+    "indexmap",
+    "indicatif",
+    "jsonwebtoken",
+    "num_enum",
+    "num_enum_derive",
+    "ordered-float",
+    "petgraph",
+    "proc-macro-crate",
+    "rustc-hash",
+    "sysinfo",
+    "unicode-width",
 ]
 
 [sources]
