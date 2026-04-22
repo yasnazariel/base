@@ -1,12 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-/// @title MockUSDC
-/// @notice Minimal public-mint ERC20 used on vibenet for demos. Anyone can
-///         mint up to `MAX_MINT_PER_CALL` to any address. Not audited.
-contract MockUSDC {
-    string public constant name = "Vibenet Mock USDC";
-    string public constant symbol = "vUSDC";
+/// @title USDV - Vibe USD
+/// @notice Public-mint ERC-20 used on vibenet as a stand-in for USDC. Anyone
+///         can mint up to `MAX_MINT_PER_CALL` to any address; the faucet
+///         service uses this to "drip" test dollars, but any caller may do
+///         the same directly. Not audited - do not deploy to production.
+/// @dev    6 decimals to match USDC so UIs and integrations can treat it as
+///         a drop-in replacement. The symbol is USDV to make it obvious the
+///         balance is worthless.
+contract USDV {
+    string public constant name = "Vibe USD";
+    string public constant symbol = "USDV";
     uint8 public constant decimals = 6;
     uint256 public constant MAX_MINT_PER_CALL = 1_000_000 * 10 ** 6;
 

@@ -29,3 +29,4 @@ alloy-network = { workspace = true }
 alloy-signer = { workspace = true }
 alloy-signer-local = { workspace = true }
 alloy-rpc-types-eth = { workspace = true, features = ["serde"] }
+alloy-sol-types = { workspace = true, features = ["std"] }

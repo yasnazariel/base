@@ -6,10 +6,12 @@ A public, ephemeral devnet for showing off in-flight Base features.
 - Public HTTP gateway served through Cloudflare Tunnel (no open ports)
 - Per-IP rate limiting at the nginx layer and per-method rate limiting at
   proxyd
-- URL-path API key (`/rpc/<key>`) gating the RPC
+- Open RPC (no API key); abuse mitigated by the per-IP limits above
 - One prefunded faucet address; standard anvil accounts are drained
-- Mock testnet contracts (`MockUSDC`, `MockNFT`) auto-deployed on boot
+- Test contracts (`USDV` - public-mint ERC-20, `NFV` - public-mint ERC-721) auto-deployed on boot
 - A static landing page + a faucet UI + a Grafana admin panel
+- `vibescan` block explorer (in-house; indexes address -> activity in
+  sqlite, reads block/tx bodies directly from the node)
 
 ## Quick links
 
@@ -33,15 +35,34 @@ ${EDITOR} etc/vibenet/vibenet-env
 just -f etc/docker/Justfile vibe
 ```
 
-The gateway listens on `nginx-gateway:8080` inside the docker network. To hit
-it from the host without Cloudflare, forward the port:
+`nginx-gateway` publishes two loopback-only host ports so you can hit it
+directly without `/etc/hosts` entries or `Host` header spoofing:
+
+| URL                                            | Service                                  |
+| ---------------------------------------------- | ---------------------------------------- |
+| `http://localhost:18080/`                      | Landing page                             |
+| `http://localhost:18080/faucet`                | Faucet UI                                |
+| `http://localhost:18080/admin/`                | Grafana (basic auth via `ADMIN_HTPASSWD`)|
+| `http://localhost:18080/config.json`           | Rendered UI config                       |
+| `http://localhost:18080/contracts.json`        | Deployed contract addresses              |
+| `http://localhost:18081/rpc`                   | JSON-RPC (proxyd -> base-client)         |
+| `ws://localhost:18081/ws`                      | WebSocket RPC                            |
+| `http://localhost:18082/`                      | vibescan block explorer                  |
+
+Override the bindings with `VIBENET_HOST_PORT` / `VIBENET_RPC_HOST_PORT` /
+`VIBENET_EXPLORER_HOST_PORT` in `vibenet-env` if those collide with something
+else on your machine. The landing page's copy-pasteable RPC/explorer URLs
+automatically rewrite to the local ports when served from `localhost`, so the
+UI stays accurate in both modes.
+
+Quick smoke test once `just vibe` is up:
 
 ```bash
-docker compose --env-file etc/docker/devnet-env --env-file etc/vibenet/vibenet-env \
-  -f etc/docker/docker-compose.yml -f etc/vibenet/docker-compose.vibenet.yml \
-  exec nginx-gateway nginx -T
-# Or publish the port by adding a "ports:" override; intentionally not the
-# default because on a real deploy only cloudflared should reach nginx.
+curl -s http://localhost:18080/config.json | jq .title
+
+curl -s -X POST -H 'Content-Type: application/json' \
+  --data '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' \
+  http://localhost:18081/rpc
 ```
 
 ## Customizing what appears on the landing page
@@ -67,7 +88,7 @@ sources into [`setup/contracts/src/`](./setup/contracts/). Each entry is:
 ```yaml
 - name: myDemo                              # key in contracts.json
   artifact: src/MyDemo.sol:MyDemo           # forge target
-  args: ["0x1234...", "{{ mockUsdc }}"]     # optional; {{ }} resolves from
+  args: ["0x1234...", "{{ usdv }}"]         # optional; {{ }} resolves from
                                             # previously-deployed entries
 ```
 
@@ -75,27 +96,26 @@ Deployed addresses are published at
 `https://vibenet.base.org/contracts.json` (also mounted into the UI as a
 client-side feature list).
 
-## API key usage
+## RPC access
 
-Every RPC request must include the shared `VIBENET_API_KEY` in the path:
+The RPC is currently open; no API key is required. Clients hit:
 
 ```bash
-API=https://vibenet-rpc.base.org/rpc/$VIBENET_API_KEY
 curl -s -X POST -H 'Content-Type: application/json' \
-  --data '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' "$API"
+  --data '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' \
+  https://vibenet-rpc.base.org/rpc
 ```
 
 WebSocket:
 
 ```javascript
-new WebSocket(`wss://vibenet-rpc.base.org/ws/${API_KEY}`);
+new WebSocket("wss://vibenet-rpc.base.org/ws");
 ```
 
-The key is opaque to proxyd and base-client; nginx simply refuses to forward
-any path that doesn't match, so an incorrect key returns 404.
-
-Rotate the key by regenerating `VIBENET_API_KEY` in `vibenet-env` and
-re-running `just vibe`. All existing clients are invalidated immediately.
+Abuse is mitigated by nginx per-IP rate limits (keyed on the real client IP
+from Cloudflare's `CF-Connecting-IP` header) plus proxyd's per-method limits.
+If/when we need to gate the RPC again, add a URL-path prefix in
+`nginx/vibenet.conf.template` and re-run `just vibe`.
 
 ## Admin panel
 
@@ -111,13 +131,14 @@ Change the password by updating `ADMIN_HTPASSWD` and running
 
 | Container              | Image                              | Role |
 | ---------------------- | ---------------------------------- | ---- |
-| `nginx-gateway`        | `nginx:1.27-alpine`                | Host-routed HTTP gateway, per-IP rate limits, URL-path API key check |
+| `nginx-gateway`        | `nginx:1.27-alpine`                | Host-routed HTTP gateway, per-IP rate limits, admin basic-auth |
 | `cloudflared`          | `cloudflare/cloudflared:2025.10.1` | Outbound tunnel to Cloudflare, TLS terminated at the edge |
 | `vibenet-faucet`       | `base-vibenet-faucet:local` (rust) | `/drip` + `/status`, per-IP + per-address cooldowns, alloy signer |
 | `vibenet-setup`        | `vibenet-setup:local` (foundry)    | One-shot: waits for L2, sweeps anvil balances, deploys demo contracts |
 | `vibenet-config-renderer` | `mikefarah/yq`                  | Converts `vibenet.yaml` to `config.json` |
 | `vibenet-htpasswd`     | `alpine`                           | Materializes `ADMIN_HTPASSWD` into the htpasswd volume |
 | `proxyd`               | `proxyd:local`                     | Per-method JSON-RPC rate limits on top of nginx per-IP |
+| `vibescan`             | `vibescan:local` (rust)            | In-house block explorer: indexes address activity to sqlite, renders server-side HTML |
 | `base-client/builder/...` | same as `just up-single`        | Core devnet |
 
 ## File map
@@ -133,6 +154,7 @@ etc/vibenet/
   cloudflared/config.yml.template   host-routed tunnel config
   proxyd/proxyd-ratelimit.toml      per-method rate limits
   faucet/Dockerfile                 build image for base-vibenet-faucet
+  explorer/Dockerfile               build image for vibescan
   setup/Dockerfile                  build image for foundry-based deployer
   setup/contracts.yaml              list of contracts to deploy
   setup/contracts/                  foundry project: src/*.sol
@@ -143,4 +165,5 @@ etc/vibenet/
 apps/vibenet-ui/public/             static HTML/JS served by nginx
 
 crates/vibenet/faucet/              base-vibenet-faucet (axum + alloy)
+crates/vibenet/explorer/            vibescan (axum + alloy + sqlite)
 ```

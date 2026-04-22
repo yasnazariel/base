@@ -4,9 +4,10 @@ use std::net::{IpAddr, SocketAddr};
 use std::str::FromStr;
 
 use alloy_network::TransactionBuilder;
-use alloy_primitives::{Address, TxHash, U256};
+use alloy_primitives::{Address, Bytes, TxHash, U256};
 use alloy_provider::Provider;
 use alloy_rpc_types_eth::TransactionRequest;
+use alloy_sol_types::{SolCall, sol};
 use axum::{
     Json, Router,
     extract::{ConnectInfo, State},
@@ -19,7 +20,19 @@ use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
 use tracing::{info, warn};
 
-use crate::state::FaucetState;
+use crate::{
+    contracts,
+    state::{Asset, FaucetState},
+};
+
+// Minimal ABI for the USDV token. We only need `mint(address,uint256)` -
+// the rest of the ERC-20 interface is exercised by users directly.
+sol! {
+    #[allow(missing_docs)]
+    interface IUSDV {
+        function mint(address to, uint256 amount) external;
+    }
+}
 
 /// Header populated by Cloudflare that contains the true client IP.
 const CF_CONNECTING_IP: &str = "cf-connecting-ip";
@@ -50,7 +63,11 @@ impl FaucetServer {
 }
 
 fn build_router(state: FaucetState) -> Router {
-    Router::new().route("/status", get(status)).route("/drip", post(drip)).with_state(state)
+    Router::new()
+        .route("/status", get(status))
+        .route("/drip", post(drip))
+        .route("/drip-usdv", post(drip_usdv))
+        .with_state(state)
 }
 
 #[derive(Serialize)]
@@ -61,6 +78,14 @@ struct StatusResponse {
     balance_wei: U256,
     ip_cooldown_secs: u64,
     addr_cooldown_secs: u64,
+    /// USDV token address if vibenet-setup has deployed it and written
+    /// `/shared/contracts.json`; `None` otherwise. Clients use this to
+    /// decide whether to offer the USDV button.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    usdv_address: Option<Address>,
+    /// USDV minted per successful `/drip-usdv` call, in base units
+    /// (6-decimal). Only meaningful when `usdv_address` is present.
+    usdv_drip_units: U256,
 }
 
 async fn status(State(state): State<FaucetState>) -> Result<Json<StatusResponse>, ApiError> {
@@ -70,6 +95,11 @@ async fn status(State(state): State<FaucetState>) -> Result<Json<StatusResponse>
         .await
         .map_err(|e| ApiError::internal(format!("balance lookup failed: {e}")))?;
 
+    // Contracts.json is produced by the one-shot setup container. If the
+    // file is missing or the key is absent we silently omit the USDV row -
+    // status is a polling endpoint and should never spam on that path.
+    let usdv_address = contracts::lookup(&state.config.contracts_path, "usdv").ok().flatten();
+
     Ok(Json(StatusResponse {
         address: state.config.address,
         chain_id: state.config.chain_id,
@@ -77,6 +107,8 @@ async fn status(State(state): State<FaucetState>) -> Result<Json<StatusResponse>
         balance_wei: balance,
         ip_cooldown_secs: state.config.ip_cooldown.as_secs(),
         addr_cooldown_secs: state.config.addr_cooldown.as_secs(),
+        usdv_address,
+        usdv_drip_units: state.config.usdv_drip_units,
     }))
 }
 
@@ -102,16 +134,18 @@ async fn drip(
         .map_err(|_| ApiError::bad_request("invalid destination address"))?;
 
     let client_ip = client_ip(&headers, peer.ip());
+    let ip_key = (Asset::Eth, client_ip);
+    let addr_key = (Asset::Eth, to);
 
-    if let Some(remaining) = state.ip_limiter.try_acquire(client_ip, state.config.ip_cooldown) {
+    if let Some(remaining) = state.ip_limiter.try_acquire(ip_key, state.config.ip_cooldown) {
         return Err(ApiError::rate_limited(format!(
             "ip cooldown active; retry in {}s",
             remaining.as_secs().max(1)
         )));
     }
 
-    if let Some(remaining) = state.addr_limiter.try_acquire(to, state.config.addr_cooldown) {
-        state.ip_limiter.release(&client_ip);
+    if let Some(remaining) = state.addr_limiter.try_acquire(addr_key, state.config.addr_cooldown) {
+        state.ip_limiter.release(&ip_key);
         return Err(ApiError::rate_limited(format!(
             "address cooldown active; retry in {}s",
             remaining.as_secs().max(1)
@@ -130,10 +164,84 @@ async fn drip(
             Ok(Json(DripResponse { tx_hash, amount_wei: state.config.drip_wei, to }))
         }
         Err(e) => {
-            state.ip_limiter.release(&client_ip);
-            state.addr_limiter.release(&to);
+            state.ip_limiter.release(&ip_key);
+            state.addr_limiter.release(&addr_key);
             warn!(%to, %client_ip, error = %e, "drip submission failed");
             Err(ApiError::internal(format!("failed to submit drip: {e}")))
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct UsdvDripResponse {
+    tx_hash: TxHash,
+    token: Address,
+    amount_units: U256,
+    to: Address,
+}
+
+/// Mint `usdv_drip_units` of USDV to the requested address. USDV is a
+/// public-mint ERC-20, so the faucet signer doesn't need to be the token
+/// owner - we just go through the faucet for rate-limiting and to give
+/// the UI a single button to press.
+async fn drip_usdv(
+    State(state): State<FaucetState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(req): Json<DripRequest>,
+) -> Result<Json<UsdvDripResponse>, ApiError> {
+    let to = Address::from_str(req.address.trim())
+        .map_err(|_| ApiError::bad_request("invalid destination address"))?;
+
+    // Resolve the token address on every call. The file is on a shared
+    // volume and changes when vibenet-setup reruns (e.g. `just vibe` after
+    // a branch switch); re-reading keeps the faucet in sync without a
+    // restart. Reads are cheap (a few kB file) and only on the mint path.
+    let token = contracts::lookup(&state.config.contracts_path, "usdv")
+        .map_err(|e| ApiError::internal(format!("contracts lookup failed: {e}")))?
+        .ok_or_else(|| {
+            ApiError::service_unavailable(
+                "USDV has not been deployed yet. Try again once vibenet-setup completes.",
+            )
+        })?;
+
+    let client_ip = client_ip(&headers, peer.ip());
+    let ip_key = (Asset::Usdv, client_ip);
+    let addr_key = (Asset::Usdv, to);
+
+    if let Some(remaining) = state.ip_limiter.try_acquire(ip_key, state.config.ip_cooldown) {
+        return Err(ApiError::rate_limited(format!(
+            "ip cooldown active; retry in {}s",
+            remaining.as_secs().max(1)
+        )));
+    }
+
+    if let Some(remaining) = state.addr_limiter.try_acquire(addr_key, state.config.addr_cooldown) {
+        state.ip_limiter.release(&ip_key);
+        return Err(ApiError::rate_limited(format!(
+            "address cooldown active; retry in {}s",
+            remaining.as_secs().max(1)
+        )));
+    }
+
+    let amount = state.config.usdv_drip_units;
+    let calldata = IUSDV::mintCall { to, amount }.abi_encode();
+    let tx = TransactionRequest::default()
+        .with_to(token)
+        .with_input(Bytes::from(calldata))
+        .with_chain_id(state.config.chain_id);
+
+    match state.provider.send_transaction(tx).await {
+        Ok(pending) => {
+            let tx_hash = *pending.tx_hash();
+            info!(%to, %client_ip, %token, %tx_hash, usdv_units = %amount, "usdv drip submitted");
+            Ok(Json(UsdvDripResponse { tx_hash, token, amount_units: amount, to }))
+        }
+        Err(e) => {
+            state.ip_limiter.release(&ip_key);
+            state.addr_limiter.release(&addr_key);
+            warn!(%to, %client_ip, %token, error = %e, "usdv drip submission failed");
+            Err(ApiError::internal(format!("failed to submit usdv drip: {e}")))
         }
     }
 }
@@ -168,6 +276,10 @@ impl ApiError {
 
     fn internal(msg: impl Into<String>) -> Self {
         Self { status: StatusCode::INTERNAL_SERVER_ERROR, message: msg.into() }
+    }
+
+    fn service_unavailable(msg: impl Into<String>) -> Self {
+        Self { status: StatusCode::SERVICE_UNAVAILABLE, message: msg.into() }
     }
 }
 

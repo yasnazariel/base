@@ -31,6 +31,16 @@ pub(crate) type FaucetProvider = FillProvider<
     Ethereum,
 >;
 
+/// Which asset a drip request is for. Used as a namespace on the shared
+/// cooldown trackers so that a successful ETH drip does not put the caller
+/// into cooldown for USDV (and vice versa). Adding a new faucet-dispensed
+/// asset only requires adding a variant here.
+#[derive(Clone, Copy, Eq, PartialEq, Hash, Debug)]
+pub(crate) enum Asset {
+    Eth,
+    Usdv,
+}
+
 /// All state shared between HTTP handlers. Cheap to clone because every field
 /// is `Arc`-wrapped or trivially copyable.
 #[derive(Clone)]
@@ -39,10 +49,11 @@ pub struct FaucetState {
     pub(crate) config: Arc<FaucetConfig>,
     /// Wallet-enabled JSON-RPC provider for the upstream L2.
     pub(crate) provider: Arc<FaucetProvider>,
-    /// Per-client-IP cooldown tracker.
-    pub(crate) ip_limiter: Arc<Limiter<IpAddr>>,
-    /// Per-destination-address cooldown tracker.
-    pub(crate) addr_limiter: Arc<Limiter<Address>>,
+    /// Per-client-IP cooldown tracker, namespaced by asset so ETH and USDV
+    /// drips have independent cooldowns.
+    pub(crate) ip_limiter: Arc<Limiter<(Asset, IpAddr)>>,
+    /// Per-destination-address cooldown tracker, namespaced by asset.
+    pub(crate) addr_limiter: Arc<Limiter<(Asset, Address)>>,
 }
 
 impl FaucetState {

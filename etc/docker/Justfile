@@ -97,14 +97,18 @@ vibe: vibe-down _build-setup-image (_build-rust-images "devnet" "dev")
       -f etc/vibenet/docker-compose.vibenet.yml \
       up -d --build --scale contender=0
 
-# Stops vibenet and deletes all data
+# Stops vibenet and deletes all data. `-v` wipes the named volumes so state
+# that lives outside `.devnet/` (vibescan sqlite, rendered UI config, the
+# shared contracts.json, admin htpasswd) doesn't survive a chain reset -
+# otherwise e.g. vibescan's indexer would keep pointing at a pre-reset
+# cursor and silently drop new blocks below it.
 vibe-down:
     -docker compose \
       --env-file etc/docker/devnet-env \
       --env-file etc/vibenet/vibenet-env \
       -f etc/docker/docker-compose.yml \
       -f etc/vibenet/docker-compose.vibenet.yml \
-      down --remove-orphans
+      down --remove-orphans -v
     -docker run --rm -v "$(pwd)/.devnet:/devnet" alpine sh -c 'rm -rf /devnet/*'
 
 # Stream logs from vibenet containers (optionally specify container names)

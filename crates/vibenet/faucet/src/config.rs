@@ -1,6 +1,7 @@
 //! Environment-driven configuration for the vibenet faucet.
 
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -28,6 +29,14 @@ pub struct FaucetConfig {
     pub ip_cooldown: Duration,
     /// Per-destination-address cooldown.
     pub addr_cooldown: Duration,
+    /// Path to the contracts.json file written by vibenet-setup. Used only
+    /// for USDV drips; if the file does not exist or lacks a `usdv` entry,
+    /// the USDV drip endpoint returns a helpful error and the ETH drip
+    /// still works.
+    pub contracts_path: PathBuf,
+    /// Number of USDV *base units* (6 decimals) minted per USDV drip. The
+    /// default is 1000 * 10^6 = 1000 USDV.
+    pub usdv_drip_units: U256,
 }
 
 impl FaucetConfig {
@@ -69,9 +78,15 @@ impl FaucetConfig {
         let drip_wei = parse_u256_env("VIBENET_FAUCET_DRIP_WEI", "100000000000000000")?;
 
         let ip_cooldown =
-            Duration::from_secs(parse_u64_env("VIBENET_FAUCET_IP_COOLDOWN_SECS", 1800)?);
+            Duration::from_secs(parse_u64_env("VIBENET_FAUCET_IP_COOLDOWN_SECS", 3600)?);
         let addr_cooldown =
-            Duration::from_secs(parse_u64_env("VIBENET_FAUCET_ADDR_COOLDOWN_SECS", 86400)?);
+            Duration::from_secs(parse_u64_env("VIBENET_FAUCET_ADDR_COOLDOWN_SECS", 3600)?);
+
+        let contracts_path = std::env::var("VIBENET_FAUCET_CONTRACTS_PATH")
+            .unwrap_or_else(|_| "/shared/contracts.json".to_string())
+            .into();
+        // 1000 USDV by default. USDV has 6 decimals.
+        let usdv_drip_units = parse_u256_env("VIBENET_FAUCET_USDV_DRIP_UNITS", "1000000000")?;
 
         Ok(Self {
             bind,
@@ -82,6 +97,8 @@ impl FaucetConfig {
             drip_wei,
             ip_cooldown,
             addr_cooldown,
+            contracts_path,
+            usdv_drip_units,
         })
     }
 }

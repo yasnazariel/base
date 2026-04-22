@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="stats">
+  <div class="stat"><span class="label">Head</span><span class="value">{{ stats.head }}</span></div>
+  <div class="stat"><span class="label">Indexed blocks</span><span class="value">{{ stats.blocks }}</span></div>
+  <div class="stat"><span class="label">Indexed txs</span><span class="value">{{ stats.txs }}</span></div>
+  <div class="stat"><span class="label">Known addresses</span><span class="value">{{ stats.addresses }}</span></div>
+</section>
+
+<div class="two-col">
+  <section>
+    <h2>Latest blocks</h2>
+    <table>
+      <thead><tr><th>#</th><th>Hash</th><th>Age</th><th>Txs</th><th>Gas</th></tr></thead>
+      <tbody>
+        {% for b in blocks %}
+        <tr>
+          <td><a href="/block/{{ b.number }}">{{ b.number }}</a></td>
+          <td><code><a href="/block/{{ b.number }}">{{ b.hash.short }}</a></code></td>
+          <td>{{ b.age }}</td>
+          <td>{{ b.tx_count }}</td>
+          <td>{{ b.gas_used }} / {{ b.gas_limit }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Latest txs</h2>
+    <table>
+      <thead><tr><th>Hash</th><th>Block</th><th>From</th><th>To</th><th>Value</th></tr></thead>
+      <tbody>
+        {% for t in txs %}
+        <tr>
+          <td><code><a href="/tx/{{ t.hash.full }}">{{ t.hash.short }}</a></code></td>
+          <td><a href="/block/{{ t.block_num }}">{{ t.block_num }}</a></td>
+          <td><code class="addr"><a href="/address/{{ t.from.full }}">{{ t.from.full }}</a></code></td>
+          <td>
+            {% match t.to %}
+              {% when Some with (to) %}
+                <code class="addr"><a href="/address/{{ to.full }}">{{ to.full }}</a></code>
+              {% when None %}
+                <em>(create)</em>
+            {% endmatch %}
+          </td>
+          <td>{{ t.value_eth }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</div>
+{% endblock %}

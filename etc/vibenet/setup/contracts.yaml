@@ -12,11 +12,19 @@
 # TODO: add canonical ERC-4337 EntryPoint v0.7 / v0.8 deploys. These require
 # pulling the audited bytecode (eth-infinitism/account-abstraction) and
 # CREATE2-ing to the canonical address; leaving as follow-up work.
+#
+# TODO: add the Coinbase Smart Wallet factory. The factory bytecode lives in
+# coinbase/smart-wallet and is CREATE2-deployable at a canonical address.
+# Leaving as follow-up work so we don't block vibenet on pulling that repo
+# into our docker build context.
 
 contracts:
-  - name: mockUsdc
-    artifact: src/MockUSDC.sol:MockUSDC
+  # USDV (Vibe USD): public-mint ERC-20 with USDC-compatible 6 decimals.
+  # Replaces the older MockUSDC name so nobody mistakes it for real USDC.
+  - name: usdv
+    artifact: src/USDV.sol:USDV
     args: []
-  - name: mockNft
-    artifact: src/MockNFT.sol:MockNFT
+  # NFV (Non-Fungible Vibe): public-mint ERC-721 for NFT-flow demos.
+  - name: nfv
+    artifact: src/NFV.sol:NFV
     args: []

@@ -11,3 +11,5 @@ pub use limiter::Limiter;
 
 mod server;
 pub use server::FaucetServer;
+
+mod contracts;

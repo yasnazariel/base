@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-/// @title MockNFT
-/// @notice Minimal public-mint ERC721 used on vibenet for demos. Anyone can
+/// @title NFV - Non-Fungible Vibe
+/// @notice Minimal public-mint ERC-721 used on vibenet for demos. Anyone can
 ///         mint the next token to any address. Not audited; no metadata.
-contract MockNFT {
-    string public constant name = "Vibenet Mock NFT";
-    string public constant symbol = "vNFT";
+contract NFV {
+    string public constant name = "Non-Fungible Vibe";
+    string public constant symbol = "NFV";
 
     uint256 public nextTokenId;
 

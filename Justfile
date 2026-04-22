@@ -34,6 +34,26 @@ default:
 load-test-devnet-continuous:
     just load-test devnet-continuous
 
+# Subcommands:
+#   just vibe                    = up (default): build + start stack
+#   just vibe up                 = same as above
+#   just vibe down               = stop and wipe all data + named volumes
+#   just vibe logs [container..] = stream logs, optionally filtered
+#   just vibe ps   [service..]   = container status
+# Vibenet: manage the public devnet stack (subcommand: up | down | logs | ps)
+vibe cmd='up' *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "{{ cmd }}" in
+      up)   just devnet vibe ;;
+      down) just devnet vibe-down ;;
+      logs) just devnet vibe-logs {{ args }} ;;
+      ps)   just devnet vibe-ps {{ args }} ;;
+      *)    echo "unknown vibe subcommand: {{ cmd }}" >&2
+            echo "usage: just vibe [up|down|logs|ps] [args...]" >&2
+            exit 1 ;;
+    esac
+
 # Runs the specs docs locally
 specs:
     cd docs/specs && bun ci && bun dev

@@ -1,15 +1,24 @@
 # nginx gateway for vibenet.
 #
-# Two server blocks, routed by Host header:
-#   - vibenet.base.org      -> UI + faucet + admin + config + contracts
-#   - vibenet-rpc.base.org  -> /rpc/<key> -> proxyd -> base-client
+# In production, Cloudflare routes three hostnames to this container and nginx
+# splits them by Host:
+#   - vibenet.base.org           -> UI + faucet + admin + config + contracts
+#   - vibenet-rpc.base.org       -> /rpc -> proxyd -> base-client
+#   - vibenet-explorer.base.org  -> vibescan (in-house explorer)
+#
+# The RPC is intentionally open (no URL-path API key). Abuse is mitigated by
+# Cloudflare + nginx per-IP rate limits, and by proxyd's per-method limits.
+#
+# For local dev each server block also listens on a dedicated port so you can
+# hit them without /etc/hosts tricks:
+#   - http://localhost:18080/      -> UI + faucet + admin
+#   - http://localhost:18081/rpc   -> RPC
+#   - ws://localhost:18081/ws      -> RPC WS
+#   - http://localhost:18082/      -> vibescan explorer
 #
 # Rate limiting uses the real client IP from Cloudflare's CF-Connecting-IP
 # header (cloudflared runs inside the docker network, so the real client IP
 # is only visible via that header, not $remote_addr).
-#
-# Env substitutions (via nginx:alpine built-in envsubst at startup):
-#   ${RPC_SECRET_PATH}   URL-path API key (matches eip-8130-v2 pattern)
 
 # Trust Cloudflare IP ranges. Full list is maintained in /etc/nginx/cf-ips.conf
 # mounted from etc/vibenet/nginx/cf-ips.conf.
@@ -20,9 +29,16 @@ real_ip_recursive on;
 # Rate limit zones - keyed on the real client IP after real_ip processing.
 limit_req_zone $binary_remote_addr zone=ui_ip:10m     rate=60r/m;
 limit_req_zone $binary_remote_addr zone=rpc_ip:10m    rate=600r/m;
-# nginx only supports r/s and r/m here, so we set 1 r/m and cap bursts.
-# True per-address / per-IP cooldowns are enforced in the faucet service.
-limit_req_zone $binary_remote_addr zone=faucet_ip:10m rate=1r/m;
+# The faucet service enforces the authoritative per-IP + per-address cooldowns
+# (60s/60s by default). This zone is only here to blunt someone spamming the
+# endpoint faster than the faucet can respond - set generously so legitimate
+# UI use (retry-after-error, tab refresh, etc.) never hits nginx's limit.
+limit_req_zone $binary_remote_addr zone=faucet_ip:10m rate=30r/m;
+
+# Return 429 (Too Many Requests) instead of the default 503 when a zone
+# rejects a request. 429 is semantically correct and lets the frontend
+# render a "rate limited" message rather than a generic outage one.
+limit_req_status 429;
 
 # WebSocket upgrade helper
 map $http_upgrade $connection_upgrade {
@@ -35,7 +51,8 @@ map $http_upgrade $connection_upgrade {
 # =============================================================================
 server {
     listen 8080 default_server;
-    server_name vibenet.base.org;
+    # vibenet.base.org in prod; localhost for local dev (VIBENET_HOST_PORT).
+    server_name vibenet.base.org localhost 127.0.0.1;
 
     # Static config read by the UI at runtime. Rendered from vibenet.yaml
     # into /srv/config/config.json at container start.
@@ -64,10 +81,11 @@ server {
         proxy_set_header CF-Connecting-IP $remote_addr;
     }
 
-    # Faucet drip: strict per-IP limiter. The faucet itself also enforces
-    # per-IP and per-address cooldowns as the authoritative check.
+    # Faucet drip. nginx only catches obvious floods; the faucet service
+    # enforces the authoritative per-IP + per-address cooldowns and returns
+    # a descriptive JSON error body when either is tripped.
     location /faucet/ {
-        limit_req zone=faucet_ip burst=2 nodelay;
+        limit_req zone=faucet_ip burst=10 nodelay;
         proxy_pass http://vibenet-faucet:8080/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -95,14 +113,19 @@ server {
 }
 
 # =============================================================================
-# vibenet-rpc.base.org - RPC gated by URL-path API key
+# vibenet-rpc.base.org - RPC (open, rate-limited by IP)
 # =============================================================================
 server {
+    # Cloudflare path: vibenet-rpc.base.org on 8080 (Host-routed).
     listen 8080;
+    # Local-dev path: any Host on 8081 (only server on that port, so it's
+    # the implicit default). This lets `curl http://localhost:18081/rpc`
+    # work without a Host header override.
+    listen 8081;
     server_name vibenet-rpc.base.org;
 
-    # HTTP JSON-RPC: POST to /rpc/<key> -> strip prefix -> proxyd
-    location = /rpc/${RPC_SECRET_PATH} {
+    # HTTP JSON-RPC: POST to /rpc -> proxyd
+    location = /rpc {
         limit_req zone=rpc_ip burst=30 nodelay;
         proxy_pass http://proxyd:8080/;
         proxy_set_header Host $host;
@@ -111,8 +134,8 @@ server {
         proxy_set_header Content-Type "application/json";
     }
 
-    # WebSocket: wss://.../ws/<key> -> base-client WS
-    location = /ws/${RPC_SECRET_PATH} {
+    # WebSocket: wss://.../ws -> base-client WS
+    location = /ws {
         limit_req zone=rpc_ip burst=30 nodelay;
         proxy_pass http://base-client:8546/;
         proxy_http_version 1.1;
@@ -124,8 +147,29 @@ server {
         proxy_read_timeout 86400s;
     }
 
-    # Anything else on the RPC host is 404 - do not leak that /rpc exists.
     location / {
         return 404;
+    }
+}
+
+# =============================================================================
+# vibenet-explorer.base.org - vibescan (in-house block explorer)
+# =============================================================================
+# vibescan renders server-side HTML and does NOT make RPC calls from the
+# browser, so we don't need to mirror /rpc here. The container itself
+# talks to base-client over the docker network.
+server {
+    # Cloudflare path: vibenet-explorer.base.org on 8080 (Host-routed).
+    listen 8080;
+    # Local-dev path: any Host on 8082 (only server on that port).
+    listen 8082;
+    server_name vibenet-explorer.base.org;
+
+    location / {
+        limit_req zone=ui_ip burst=30 nodelay;
+        proxy_pass http://vibescan:8080/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
 }

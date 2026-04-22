@@ -2,12 +2,14 @@
 # container; the tunnel itself is authenticated via TUNNEL_TOKEN (see
 # etc/vibenet/vibenet-env).
 #
-# Both hostnames point at the internal nginx gateway on the docker network.
-# nginx does host-based routing and the URL-path API key check.
+# All three hostnames point at the internal nginx gateway on the docker
+# network. nginx does host-based routing and the URL-path API key check.
 
 ingress:
   - hostname: vibenet.base.org
     service: http://nginx-gateway:8080
   - hostname: vibenet-rpc.base.org
+    service: http://nginx-gateway:8080
+  - hostname: vibenet-explorer.base.org
     service: http://nginx-gateway:8080
   - service: http_status:404

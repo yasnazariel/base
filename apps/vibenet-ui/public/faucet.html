@@ -3,13 +3,17 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>vibenet faucet</title>
+  <title>base vibenet faucet</title>
+  <link rel="icon" type="image/png" href="/favicon.png" />
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
-  <header>
-    <h1>vibenet faucet</h1>
-    <nav>
+  <header class="site-header">
+    <a class="brand" href="/">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-text">base vibenet</span>
+    </a>
+    <nav class="site-nav">
       <a href="/">Home</a>
       <a href="/faucet.html">Faucet</a>
       <a href="/admin/" target="_blank" rel="noopener">Admin</a>
@@ -17,16 +21,30 @@
   </header>
 
   <main>
-    <section>
-      <p id="faucet-status" class="muted">loading status...</p>
-      <form id="drip-form">
-        <label for="addr">Recipient address</label>
-        <input id="addr" name="address" placeholder="0x..." required pattern="^0x[a-fA-F0-9]{40}$" />
-        <button type="submit">Drip</button>
-      </form>
-      <pre id="drip-result"></pre>
+    <section class="hero">
+      <h1 class="page-title">Faucet</h1>
+      <p class="subtitle">Drip testnet ETH or mint USDV (Vibe USD) to any address.</p>
+
+      <div class="chain-card">
+        <div id="faucet-status" class="muted faucet-status">loading status...</div>
+
+        <form id="drip-form" class="faucet-form">
+          <label for="addr">Recipient address</label>
+          <input id="addr" name="address" placeholder="0x..." required pattern="^0x[a-fA-F0-9]{40}$" />
+          <div class="drip-buttons">
+            <button type="submit" name="token" value="eth">Drip ETH</button>
+            <button type="submit" name="token" value="usdv" class="secondary">Mint USDV</button>
+          </div>
+        </form>
+        <pre id="drip-result" class="terminal-body drip-result"></pre>
+      </div>
     </section>
   </main>
+
+  <footer class="site-footer">
+    <span class="footer-spacer"></span>
+    <a href="https://base.org" target="_blank" rel="noopener">base.org</a>
+  </footer>
 
   <script src="/faucet.js"></script>
 </body>

@@ -3,15 +3,18 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>vibenet</title>
+  <title>base vibenet</title>
+  <link rel="icon" type="image/png" href="/favicon.png" />
   <link rel="stylesheet" href="/style.css" />
   <script src="https://cdn.jsdelivr.net/npm/marked@14/marked.min.js"></script>
 </head>
 <body>
-  <header>
-    <h1 id="title">vibenet</h1>
-    <p id="subtitle" class="muted"></p>
-    <nav>
+  <header class="site-header">
+    <a class="brand" href="/">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-text" id="title">base vibenet</span>
+    </a>
+    <nav class="site-nav">
       <a href="/">Home</a>
       <a href="/faucet.html">Faucet</a>
       <a href="/admin/" target="_blank" rel="noopener">Admin</a>
@@ -20,30 +23,71 @@
   </header>
 
   <main>
-    <section id="instructions"></section>
+    <section class="hero">
+      <p class="subtitle" id="subtitle"></p>
+
+      <div class="chain-card">
+        <div class="chain-row">
+          <span class="chain-label">Chain ID</span>
+          <code id="chain-id">84538453</code>
+        </div>
+        <div class="chain-row">
+          <span class="chain-label">RPC URL</span>
+          <code id="rpc-display" class="chain-value truncate">...</code>
+        </div>
+        <div class="chain-row">
+          <span class="chain-label">WS URL</span>
+          <code id="ws-display" class="chain-value truncate">...</code>
+        </div>
+        <div class="chain-row">
+          <span class="chain-label">Explorer</span>
+          <a id="explorer-link" class="chain-value" href="#" target="_blank" rel="noopener">...</a>
+        </div>
+        <div class="chain-actions">
+          <button id="add-to-wallet" type="button">Add to wallet</button>
+          <button id="copy-rpc" type="button" class="secondary">Copy RPC URL</button>
+        </div>
+        <p id="wallet-status" class="muted small"></p>
+      </div>
+    </section>
+
+    <section id="instructions" class="content-prose"></section>
 
     <section>
-      <h2>Features in this build</h2>
-      <ul id="features"></ul>
+      <h2>Features</h2>
+      <div id="features" class="features-grid"></div>
     </section>
 
     <section>
       <h2>Deployed contracts</h2>
-      <pre id="contracts">loading...</pre>
+      <div id="contracts-list" class="contracts-list">
+        <p class="muted">loading...</p>
+      </div>
     </section>
 
     <section>
       <h2>Quick test</h2>
-      <p>Make sure your API key is correct, then paste in a terminal:</p>
-      <pre id="curl-snippet"></pre>
+      <p class="muted">Paste this into a terminal to verify the RPC responds:</p>
+      <div class="terminal">
+        <div class="terminal-chrome">
+          <span class="dot dot-red" aria-hidden="true"></span>
+          <span class="dot dot-yellow" aria-hidden="true"></span>
+          <span class="dot dot-green" aria-hidden="true"></span>
+          <span class="terminal-title">zsh — vibenet</span>
+          <button id="copy-curl" type="button" class="copy-btn">Copy</button>
+        </div>
+        <pre id="curl-snippet" class="terminal-body"></pre>
+      </div>
     </section>
   </main>
 
-  <footer>
-    <span>branch <code id="branch"></code></span>
-    <span>commit <code id="commit"></code></span>
+  <footer class="site-footer">
+    <span>branch <code id="branch">unknown</code></span>
+    <span>commit <code id="commit">unknown</code></span>
+    <span class="footer-spacer"></span>
+    <a href="https://base.org" target="_blank" rel="noopener">base.org</a>
   </footer>
 
-  <script src="/app.js"></script>
+  <script type="module" src="/app.js"></script>
 </body>
 </html>

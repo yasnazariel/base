@@ -257,6 +257,7 @@ base-comp = { path = "crates/batcher/comp", default-features = false }
 
 # Vibenet
 base-vibenet-faucet = { path = "crates/vibenet/faucet" }
+base-vibenet-explorer = { path = "crates/vibenet/explorer" }
 
 # Utilities
 base-jwt = { path = "crates/utilities/jwt" }
@@ -457,6 +458,7 @@ hyper-util = "0.1.11"
 http-body-util = "0.1.3"
 axum = { version = "0.8.3", default-features = false }
 tower-http = { version = "0.6", features = ["limit", "timeout"] }
+askama = { version = "0.14", default-features = false, features = ["std", "derive", "alloc"] }
 
 # p2p
 discv5 = "0.10"

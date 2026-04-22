@@ -111,8 +111,8 @@ Next steps (as ${VIBENET_USER}):
 
   su - ${VIBENET_USER}
   cd ${VIBENET_CHECKOUT_DIR}
-  \$EDITOR etc/vibenet/vibenet-env   # fill in TUNNEL_TOKEN, VIBENET_API_KEY,
-                                     # FAUCET_ADDR, FAUCET_PRIVATE_KEY, etc.
+  \$EDITOR etc/vibenet/vibenet-env   # fill in TUNNEL_TOKEN, FAUCET_ADDR,
+                                     # FAUCET_PRIVATE_KEY, ADMIN_HTPASSWD, etc.
   just -f etc/docker/Justfile vibe
 
 Only SSH (22) is open inbound. The tunnel to Cloudflare is outbound-only.

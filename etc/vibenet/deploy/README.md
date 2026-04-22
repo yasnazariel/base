@@ -44,8 +44,6 @@ ${EDITOR} etc/vibenet/vibenet-env
 Required values (see `etc/vibenet/vibenet-env.example` for details):
 
 - `TUNNEL_TOKEN` - from the Cloudflare Tunnel dashboard.
-- `VIBENET_API_KEY` - any random string, e.g. `openssl rand -hex 16`.
-  This is the URL-path prefix for the RPC.
 - `FAUCET_ADDR` + `FAUCET_PRIVATE_KEY` - generate with `cast wallet new`. This
   address is the only account prefunded in vibenet genesis.
 - `ADMIN_HTPASSWD` - bcrypt line from `htpasswd -nbB admin '<password>'`.
@@ -69,7 +67,7 @@ Give it ~2 minutes. Check progress with `just -f etc/docker/Justfile vibe-logs`.
 
 - `https://vibenet.base.org/` - landing page with instructions + feature list
 - `https://vibenet.base.org/faucet/status` - faucet JSON status
-- `https://vibenet-rpc.base.org/rpc/<VIBENET_API_KEY>` - JSON-RPC endpoint
+- `https://vibenet-rpc.base.org/rpc` - JSON-RPC endpoint (open)
 - `https://vibenet.base.org/admin/` - Grafana (basic auth)
 
 ## Updating to a different branch
@@ -82,11 +80,6 @@ just -f etc/docker/Justfile vibe
 
 `just vibe` always wipes chain state, so the new branch starts from fresh
 genesis with the faucet prefunded.
-
-## Rotating the RPC API key
-
-Regenerate `VIBENET_API_KEY` in `vibenet-env`, then re-run `just vibe`. All
-existing clients are invalidated immediately.
 
 ## Teardown
 

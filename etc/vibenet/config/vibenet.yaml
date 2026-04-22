@@ -9,7 +9,7 @@
 # time by etc/vibenet/scripts/render-config.sh. Do not rely on values set
 # here for those two fields.
 
-title: "vibenet"
+title: "base vibenet"
 subtitle: "An ephemeral Base devnet for trying out in-flight features."
 
 # Human-readable instructions shown on the landing page. Markdown is rendered
@@ -18,33 +18,44 @@ instructions_markdown: |
   ## Connect your wallet
 
   - **Chain ID:** `84538453`
-  - **RPC URL:** `https://vibenet-rpc.base.org/rpc/<API_KEY>`
-  - **WS URL:** `wss://vibenet-rpc.base.org/ws/<API_KEY>`
-  - **Explorer:** _(not yet deployed)_
+  - **RPC URL:** `https://vibenet-rpc.base.org/rpc`
+  - **WS URL:** `wss://vibenet-rpc.base.org/ws`
+  - **Explorer:** [vibescan](https://vibenet-explorer.base.org/)
 
-  Replace `<API_KEY>` with the key shared by the vibenet operator.
+  The RPC is currently open (no auth). Be gentle - IP-based rate limits apply.
 
   ## Get test funds
 
-  Use the [faucet](/faucet) to receive a small amount of testnet ETH. Rate
-  limits apply per IP and per destination address.
+  Use the [faucet](/faucet) to drip testnet ETH or mint `USDV` (Vibe USD, our
+  public-mint ERC-20) to any address. Rate limits apply per IP and per
+  destination address.
 
   ## Pre-deployed contracts
 
-  See `/contracts.json` for the live addresses of MockUSDC, EntryPoint v0.7,
-  EntryPoint v0.8, SimpleAccountFactory, and MockNFT.
+  See `/contracts.json` for live addresses. Currently deployed:
+
+  - `USDV` - Vibe USD, public-mint ERC-20 (6 decimals) for token-flow demos.
+  - `NFV` - Non-Fungible Vibe, public-mint ERC-721.
+
+  Coming soon:
+
+  - ERC-4337 canonical EntryPoint v0.7 / v0.8 + SimpleAccountFactory.
+  - Coinbase Smart Wallet factory.
+
+  ## Block explorer
+
+  [vibescan](https://vibenet-explorer.base.org/) is the in-house block
+  explorer - browse blocks, transactions, and per-address activity feeds.
+  Server-rendered, no JS required.
 
 # Feature list shown on the landing page. Each item has a title, one-sentence
 # description, and optional link.
 features:
-  - title: "ERC-4337 Account Abstraction"
-    description: "EntryPoint v0.7 and v0.8 are pre-deployed; send UserOperations directly."
-    link: "https://eips.ethereum.org/EIPS/eip-4337"
-  - title: "Flashblocks"
-    description: "200ms sub-block finality. Point your client at the flashblocks WS endpoint."
-    link: "https://docs.base.org"
-  - title: "Test USDC"
-    description: "A public-mint ERC20 for testing token flows."
+  - title: "vibescan explorer"
+    description: "In-house block explorer with per-address activity feeds, indexed straight off the node."
+    link: "https://vibenet-explorer.base.org/"
+  - title: "USDV (Vibe USD)"
+    description: "Public-mint ERC-20 for testing token flows. The faucet can mint it to any address."
 
 # Override injected at build time. Do not edit.
 branch: "unknown"
