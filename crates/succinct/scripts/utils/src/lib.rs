@@ -1,7 +1,10 @@
+//! Shared CLI argument types and configuration helpers for succinct scripts.
+
 use std::path::PathBuf;
 
 use clap::Parser;
 
+/// Common configuration helpers shared across scripts.
 pub mod config_common;
 
 /// The arguments for the host executable.
@@ -51,6 +54,7 @@ impl HostExecutorArgs {
     }
 }
 
+/// Arguments for configuration generation scripts.
 #[derive(Debug, Clone, Parser)]
 pub struct ConfigArgs {
     /// The environment file to use.

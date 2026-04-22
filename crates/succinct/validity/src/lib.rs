@@ -1,3 +1,5 @@
+//! Validity proof proposer for the OP Stack using SP1 zero-knowledge proofs.
+
 #![recursion_limit = "256"]
 
 mod config;

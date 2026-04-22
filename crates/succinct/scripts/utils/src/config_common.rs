@@ -12,15 +12,21 @@ use base_succinct_host_utils::fetcher::OPSuccinctDataFetcher;
 use base_succinct_proof_utils::get_range_elf_embedded;
 use sp1_sdk::{Elf, HashableKey, Prover, ProverClient, ProvingKey};
 
+/// Two weeks expressed in seconds.
 pub const TWO_WEEKS_IN_SECONDS: u64 = 14 * 24 * 60 * 60;
 
 /// Shared configuration data that both L2OO and FDG configs use.
 #[derive(Debug, Clone)]
 pub struct SharedConfigData {
+    /// Hash of the rollup configuration.
     pub rollup_config_hash: String,
+    /// Aggregation verification key.
     pub aggregation_vkey: String,
+    /// Commitment to the range verification key.
     pub range_vkey_commitment: String,
+    /// On-chain verifier contract address.
     pub verifier_address: String,
+    /// Whether to use the SP1 mock verifier instead of real verification.
     pub use_sp1_mock_verifier: bool,
 }
 

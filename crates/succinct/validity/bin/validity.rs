@@ -1,3 +1,4 @@
+//! Binary entry point for the validity proposer.
 #![recursion_limit = "256"]
 
 use std::sync::Arc;
@@ -95,7 +96,7 @@ async fn main() -> Result<()> {
 
     let proposer = Proposer::new(
         l1_provider,
-        db_client.clone(),
+        Arc::clone(&db_client),
         fetcher.into(),
         proposer_config,
         env_config.signer,

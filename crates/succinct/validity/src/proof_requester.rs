@@ -29,32 +29,57 @@ use crate::{
     ValidityGauge, db::DriverDBClient,
 };
 
+/// Manages proof request lifecycle: submission, monitoring, and fulfillment for
+/// both range and aggregation proofs.
 pub struct OPSuccinctProofRequester<H: OPSuccinctHost> {
+    /// Host implementation for witness generation.
     pub host: Arc<H>,
+    /// SP1 network prover client (absent in cluster-only mode).
     pub network_prover: Option<Arc<NetworkProver>>,
+    /// Data fetcher for L1/L2 chain data.
     pub fetcher: Arc<OPSuccinctDataFetcher>,
+    /// Database client for persisting request state.
     pub db_client: Arc<DriverDBClient>,
+    /// ELF and verification key configuration for proving programs.
     pub program_config: ProgramConfig,
+    /// Whether to generate mock proofs instead of real ones.
     pub mock: bool,
+    /// Whether to use self-hosted cluster mode for proving.
     pub cluster: bool,
+    /// Cluster prover configuration (present only in cluster mode).
     pub cluster_config: Option<Arc<ClusterProofConfig>>,
+    /// In-flight cluster proof handles keyed by request ID.
     pub cluster_handles: Arc<Mutex<HashMap<i64, ClusterProofHandle>>>,
+    /// Fulfillment strategy for range proof requests on the prover network.
     pub range_strategy: FulfillmentStrategy,
+    /// Fulfillment strategy for aggregation proof requests on the prover network.
     pub agg_strategy: FulfillmentStrategy,
+    /// Proof mode for aggregation proofs.
     pub agg_mode: SP1ProofMode,
+    /// Whether to fall back to the safe-head from the database when the L2 node is unavailable.
     pub safe_db_fallback: bool,
+    /// Maximum price per proof generation unit (PGU) for network requests.
     pub max_price_per_pgu: u64,
+    /// Timeout in seconds before a proving request is considered failed.
     pub proving_timeout: u64,
+    /// Cycle limit for range proofs.
     pub range_cycle_limit: u64,
+    /// Gas limit for range proofs.
     pub range_gas_limit: u64,
+    /// Cycle limit for aggregation proofs.
     pub agg_cycle_limit: u64,
+    /// Gas limit for aggregation proofs.
     pub agg_gas_limit: u64,
+    /// Optional whitelist of prover addresses allowed to fulfill requests.
     pub whitelist: Option<Vec<Address>>,
+    /// Minimum auction period in seconds before a proof can be fulfilled.
     pub min_auction_period: u64,
+    /// Timeout in seconds for the auction phase of proof fulfillment.
     pub auction_timeout: u64,
 }
 
 impl<H: OPSuccinctHost> OPSuccinctProofRequester<H> {
+    /// Creates a new proof requester with the given configuration.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         host: Arc<H>,
@@ -512,6 +537,7 @@ impl<H: OPSuccinctHost> OPSuccinctProofRequester<H> {
         Ok(())
     }
 
+    /// Marks the given request as cancelled in the database.
     #[tracing::instrument(name = "proof_requester.handle_cancelled_request", skip(self, request))]
     pub async fn handle_cancelled_request(&self, request: OPSuccinctRequest) -> Result<()> {
         warn!(

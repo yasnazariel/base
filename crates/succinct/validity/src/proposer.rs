@@ -45,24 +45,38 @@ const MAX_CONSECUTIVE_POLL_FAILURES: u32 = 3;
 
 /// Configuration for the driver.
 pub struct DriverConfig {
+    /// SP1 network prover client (absent in cluster-only mode).
     pub network_prover: Option<Arc<NetworkProver>>,
+    /// Data fetcher for L1/L2 chain data.
     pub fetcher: Arc<OPSuccinctDataFetcher>,
+    /// Database client for persisting request state.
     pub driver_db_client: Arc<DriverDBClient>,
+    /// Signing lock used to serialize on-chain transactions.
     pub signer: SignerLock,
+    /// Seconds between proposer loop iterations.
     pub loop_interval: u64,
 }
-/// Type alias for a map of task IDs to their join handles and associated requests
+
+/// Type alias for a map of task IDs to their join handles and associated requests.
 pub type TaskMap = HashMap<i64, (tokio::task::JoinHandle<Result<()>>, OPSuccinctRequest)>;
 
+/// Orchestrates the full validity proving loop: range splitting, proof requesting,
+/// aggregation, and on-chain submission.
 pub struct Proposer<P, H: OPSuccinctHost>
 where
     P: Provider + 'static,
 {
+    /// Driver configuration (prover, fetcher, DB client, signer).
     driver_config: DriverConfig,
+    /// On-chain contract addresses and provider.
     contract_config: ContractConfig<P>,
+    /// ELF and verification key configuration for proving programs.
     program_config: ProgramConfig,
+    /// User-specified requester parameters (strategies, limits, timeouts).
     requester_config: RequesterConfig,
+    /// Shared proof requester handling submission and monitoring.
     proof_requester: Arc<OPSuccinctProofRequester<H>>,
+    /// Currently running proof tasks keyed by request ID.
     tasks: Arc<Mutex<TaskMap>>,
 }
 
@@ -70,6 +84,7 @@ impl<P, H: OPSuccinctHost> Proposer<P, H>
 where
     P: Provider + 'static + Clone,
 {
+    /// Initializes the proposer with on-chain contract state and proving configuration.
     pub async fn new(
         provider: P,
         db_client: Arc<DriverDBClient>,
@@ -1737,6 +1752,7 @@ where
         Ok(())
     }
 
+    /// Starts the main proposer loop: proves ranges, aggregates, and relays proofs on-chain.
     #[tracing::instrument(name = "proposer.run", skip(self))]
     pub async fn run(&self) -> Result<()> {
         // Handle the case where the proposer is being re-started and the proposer state needs to be

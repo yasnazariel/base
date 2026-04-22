@@ -7,36 +7,66 @@ use base_succinct_signer_utils::SignerLock;
 use reqwest::Url;
 use sp1_sdk::{SP1ProofMode, network::FulfillmentStrategy};
 
+/// Environment-sourced configuration for the validity proposer.
 #[derive(Debug, Clone)]
 pub struct EnvironmentConfig {
+    /// Database connection URL.
     pub db_url: String,
+    /// Port for the Prometheus metrics server.
     pub metrics_port: u16,
+    /// L1 RPC endpoint URL.
     pub l1_rpc: Url,
+    /// Transaction signer.
     pub signer: SignerLock,
+    /// Interval in seconds between proposer loop iterations.
     pub loop_interval: u64,
+    /// Fulfillment strategy for range proofs.
     pub range_proof_strategy: FulfillmentStrategy,
+    /// Fulfillment strategy for aggregation proofs.
     pub agg_proof_strategy: FulfillmentStrategy,
+    /// SP1 proof mode for aggregation proofs.
     pub agg_proof_mode: SP1ProofMode,
+    /// Address of the L2 Output Oracle contract.
     pub l2oo_address: Address,
+    /// Address of the Dispute Game Factory contract.
     pub dgf_address: Address,
+    /// EVM gas limit for range proofs. Zero disables gas-based splitting.
     pub evm_gas_limit: u64,
+    /// Number of blocks per range proof when gas-based splitting is disabled.
     pub range_proof_interval: u64,
+    /// Maximum number of concurrent witness generation tasks.
     pub max_concurrent_witness_gen: u64,
+    /// Maximum number of concurrent proof requests.
     pub max_concurrent_proof_requests: u64,
+    /// Minimum number of L2 blocks between on-chain submissions.
     pub submission_interval: u64,
+    /// Whether to generate mock proofs instead of real proofs.
     pub mock: bool,
+    /// Whether to fall back to timestamp-based L1 head estimation.
     pub safe_db_fallback: bool,
+    /// Name of the succinct configuration.
     pub base_succinct_config_name: String,
+    /// Whether to use AWS KMS for the network requester key.
     pub use_kms_requester: bool,
+    /// Maximum price per PGU for proving.
     pub max_price_per_pgu: u64,
+    /// Timeout in seconds for proving.
     pub proving_timeout: u64,
+    /// Timeout in seconds for network prover calls.
     pub network_calls_timeout: u64,
+    /// Cycle limit for range proofs.
     pub range_cycle_limit: u64,
+    /// Gas limit for range proofs.
     pub range_gas_limit: u64,
+    /// Cycle limit for aggregation proofs.
     pub agg_cycle_limit: u64,
+    /// Gas limit for aggregation proofs.
     pub agg_gas_limit: u64,
+    /// Allowlist of prover addresses permitted to bid on proof requests.
     pub whitelist: Option<Vec<Address>>,
+    /// Minimum auction period in seconds.
     pub min_auction_period: u64,
+    /// Timeout in seconds before cancelling an unassigned proof request.
     pub auction_timeout: u64,
 }
 

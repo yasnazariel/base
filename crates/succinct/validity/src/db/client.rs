@@ -13,6 +13,7 @@ use tracing::info;
 use crate::{CommitmentConfig, DriverDBClient, OPSuccinctRequest, RequestStatus, RequestType};
 
 impl DriverDBClient {
+    /// Connects to the database at the given URL and runs any pending migrations.
     pub async fn new(database_url: &str) -> Result<Self> {
         let pool = PgPool::connect(database_url).await?;
 

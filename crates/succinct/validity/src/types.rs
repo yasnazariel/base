@@ -10,38 +10,54 @@ use sp1_sdk::{
     network::{FulfillmentStrategy, proto::types::ProofRequest},
 };
 
+/// Request to validate an on-chain contract configuration.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ValidateConfigRequest {
+    /// Contract address to validate.
     pub address: String,
 }
 
+/// Response from validating an on-chain contract configuration.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ValidateConfigResponse {
+    /// Whether the rollup config hash matches.
     pub rollup_config_hash_valid: bool,
+    /// Whether the aggregation verification key matches.
     pub agg_vkey_valid: bool,
+    /// Whether the range verification key matches.
     pub range_vkey_valid: bool,
 }
 
+/// Request body for a span (range) proof.
 #[derive(Deserialize, Serialize, Debug)]
 pub struct SpanProofRequest {
+    /// Start L2 block number.
     pub start: u64,
+    /// End L2 block number.
     pub end: u64,
 }
 
+/// Request body for an aggregation proof.
 #[derive(Deserialize, Serialize, Debug)]
 pub struct AggProofRequest {
+    /// Serialized subproof byte arrays (base64-encoded in JSON).
     #[serde(deserialize_with = "deserialize_base64_vec")]
     pub subproofs: Vec<Vec<u8>>,
+    /// L1 head block hash.
     pub head: String,
 }
 
+/// Response from a mock proof request.
 #[derive(Deserialize, Serialize, Debug)]
 pub struct MockProofResponse {
+    /// Identifier of the generated mock proof.
     pub proof_id: String,
 }
 
+/// Response from a proof request.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ProofResponse {
+    /// Proof request identifier bytes.
     pub proof_id: Vec<u8>,
 }
 
@@ -50,9 +66,13 @@ pub struct ProofResponse {
 /// The type of error that occurred when unclaiming a proof. Based off of the `unclaim_description`
 /// field in the `ProofStatus` struct.
 pub enum UnclaimDescription {
+    /// The prover encountered an unexpected internal error.
     UnexpectedProverError = 0,
+    /// The proving program failed during execution.
     ProgramExecutionError = 1,
+    /// The program exceeded the allowed cycle limit.
     CycleLimitExceeded = 2,
+    /// Any other unclaim reason not covered above.
     Other = 3,
 }
 
@@ -74,25 +94,40 @@ impl From<String> for UnclaimDescription {
 pub struct ProofStatus {
     // Note: Can't use `FulfillmentStatus`/`ExecutionStatus` directly because `Serialize_repr` and
     // `Deserialize_repr` aren't derived on it.
+    /// Numeric fulfillment status from the prover network.
     pub fulfillment_status: i32,
+    /// Numeric execution status from the prover network.
     pub execution_status: i32,
+    /// Raw proof bytes.
     pub proof: Vec<u8>,
 }
 
 /// Configuration of the L2 Output Oracle contract. Created once at server start-up, monitors if
 /// there are any changes to the contract's configuration.
+/// Full proposer configuration including keys, commitments, and prover settings.
 #[derive(Clone)]
 pub struct SuccinctProposerConfig {
+    /// Range program verifying key.
     pub range_vk: Arc<SP1VerifyingKey>,
+    /// Range program proving key.
     pub range_pk: Arc<SP1ProvingKey>,
+    /// Aggregation program proving key.
     pub agg_pk: Arc<SP1ProvingKey>,
+    /// Aggregation program verifying key.
     pub agg_vk: Arc<SP1VerifyingKey>,
+    /// Hash of the aggregation verification key.
     pub agg_vkey_hash: B256,
+    /// Commitment to the range verification key.
     pub range_vkey_commitment: B256,
+    /// Hash of the rollup configuration.
     pub rollup_config_hash: B256,
+    /// Fulfillment strategy for range proofs.
     pub range_proof_strategy: FulfillmentStrategy,
+    /// Fulfillment strategy for aggregation proofs.
     pub agg_proof_strategy: FulfillmentStrategy,
+    /// SP1 proof mode for aggregation proofs.
     pub agg_proof_mode: SP1ProofMode,
+    /// Network prover client.
     pub network_prover: Arc<NetworkProver>,
 }
 
@@ -110,23 +145,37 @@ where
         .collect()
 }
 
+/// Cycle-level execution statistics from a proof request.
 #[derive(Serialize)]
 pub struct RequestExecutionStatistics {
+    /// Total instruction cycles executed.
     pub total_instruction_cycles: u64,
+    /// Total SP1 gas consumed.
     pub total_sp1_gas: u64,
+    /// Cycles spent on block execution.
     pub block_execution_cycles: u64,
+    /// Cycles spent on oracle verification.
     pub oracle_verify_cycles: u64,
+    /// Cycles spent on payload derivation.
     pub derivation_cycles: u64,
+    /// Cycles spent on blob verification.
     pub blob_verification_cycles: u64,
+    /// Cycles spent on BN254 point addition precompile.
     pub bn_add_cycles: u64,
+    /// Cycles spent on BN254 scalar multiplication precompile.
     pub bn_mul_cycles: u64,
+    /// Cycles spent on BN254 pairing precompile.
     pub bn_pair_cycles: u64,
+    /// Cycles spent on KZG evaluation precompile.
     pub kzg_eval_cycles: u64,
+    /// Cycles spent on secp256k1 EC recover precompile.
     pub ec_recover_cycles: u64,
+    /// Cycles spent on P-256 signature verification precompile.
     pub p256_verify_cycles: u64,
 }
 
 impl RequestExecutionStatistics {
+    /// Extracts cycle-level statistics from the given execution report.
     pub fn new(execution_report: ExecutionReport) -> Self {
         let get_cycles = |key: &str| *execution_report.cycle_tracker.get(key).unwrap_or(&0);
 

@@ -7,18 +7,27 @@ use chrono::{Local, NaiveDateTime};
 use serde_json::Value;
 use sqlx::{FromRow, PgPool, types::BigDecimal};
 
+/// Lifecycle status of a proof request.
 #[derive(sqlx::Type, Debug, Copy, Clone, PartialEq, Eq, Default)]
 #[sqlx(type_name = "smallint")]
 #[repr(i16)]
 pub enum RequestStatus {
+    /// Not yet submitted for proving.
     #[default]
     Unrequested = 0,
+    /// Witness is being generated.
     WitnessGeneration = 1,
+    /// Program is being executed (mock mode).
     Execution = 2,
+    /// Proof is being generated.
     Prove = 3,
+    /// Proof generation is complete.
     Complete = 4,
+    /// Proof has been relayed on-chain.
     Relayed = 5,
+    /// Request failed.
     Failed = 6,
+    /// Request was cancelled.
     Cancelled = 7,
 }
 
@@ -38,12 +47,15 @@ impl From<i16> for RequestStatus {
     }
 }
 
+/// Whether a proof request is for a range proof or an aggregation proof.
 #[derive(sqlx::Type, Debug, Copy, Clone, PartialEq, Eq, Default)]
 #[sqlx(type_name = "smallint")]
 #[repr(i16)]
 pub enum RequestType {
+    /// Range (span) proof covering a contiguous block range.
     #[default]
     Range = 0,
+    /// Aggregation proof combining multiple range proofs.
     Aggregation = 1,
 }
 
@@ -57,12 +69,15 @@ impl From<i16> for RequestType {
     }
 }
 
+/// Whether a proof request uses real or mock proving.
 #[derive(sqlx::Type, Debug, Copy, Clone, PartialEq, Eq, Default)]
 #[sqlx(type_name = "smallint")]
 #[repr(i16)]
 pub enum RequestMode {
+    /// Real proof generation via the SP1 prover network or cluster.
     #[default]
     Real = 0,
+    /// Mock proof generation for testing.
     Mock = 1,
 }
 
@@ -76,37 +91,68 @@ impl From<i16> for RequestMode {
     }
 }
 
+/// A single proof request row persisted in the driver database.
 #[derive(FromRow, Default, Clone)]
 pub struct OPSuccinctRequest {
+    /// Auto-incrementing primary key.
     pub id: i64,
+    /// Current lifecycle status of this request.
     pub status: RequestStatus,
+    /// Whether this is a range or aggregation proof request.
     pub req_type: RequestType,
+    /// Whether this request uses real or mock proving.
     pub mode: RequestMode,
+    /// First L2 block included in the proof range.
     pub start_block: i64,
+    /// Last L2 block included in the proof range.
     pub end_block: i64,
+    /// Timestamp when the request was created.
     pub created_at: NaiveDateTime,
+    /// Timestamp of the most recent status update.
     pub updated_at: NaiveDateTime,
+    /// Network-mode proof request identifier (B256).
     pub proof_request_id: Option<Vec<u8>>, //B256
+    /// When the proof was submitted to the prover network.
     pub proof_request_time: Option<NaiveDateTime>,
+    /// L1 block number checkpointed for the aggregation proof.
     pub checkpointed_l1_block_number: Option<i64>,
+    /// L1 block hash checkpointed for the aggregation proof (B256).
     pub checkpointed_l1_block_hash: Option<Vec<u8>>, //B256
+    /// JSON blob of per-block execution statistics.
     pub execution_statistics: Value,
+    /// Duration of witness generation in seconds.
     pub witnessgen_duration: Option<i64>,
+    /// Duration of execution in seconds.
     pub execution_duration: Option<i64>,
+    /// Duration of proof generation in seconds.
     pub prove_duration: Option<i64>,
-    pub range_vkey_commitment: Vec<u8>,         //B256
+    /// Commitment hash of the range verification key (B256).
+    pub range_vkey_commitment: Vec<u8>, //B256
+    /// Hash of the aggregation verification key (B256).
     pub aggregation_vkey_hash: Option<Vec<u8>>, //B256
-    pub rollup_config_hash: Vec<u8>,            //B256
-    pub relay_tx_hash: Option<Vec<u8>>,         //B256
-    pub proof: Option<Vec<u8>>,                 // Bytes
+    /// Hash of the rollup configuration (B256).
+    pub rollup_config_hash: Vec<u8>, //B256
+    /// Transaction hash of the on-chain relay (B256).
+    pub relay_tx_hash: Option<Vec<u8>>, //B256
+    /// Serialized proof bytes.
+    pub proof: Option<Vec<u8>>, // Bytes
+    /// Total number of transactions across all blocks in the range.
     pub total_nb_transactions: i64,
+    /// Total gas used across all blocks in the range.
     pub total_eth_gas_used: i64,
+    /// Total L1 fees across all blocks in the range.
     pub total_l1_fees: BigDecimal,
+    /// Total transaction fees across all blocks in the range.
     pub total_tx_fees: BigDecimal,
+    /// L1 chain ID for this request.
     pub l1_chain_id: i64,
+    /// L2 chain ID for this request.
     pub l2_chain_id: i64,
+    /// Contract address associated with this request (Address).
     pub contract_address: Option<Vec<u8>>, //Address
-    pub prover_address: Option<Vec<u8>>,   //Address
+    /// Prover address that submitted the proof (Address).
+    pub prover_address: Option<Vec<u8>>, //Address
+    /// L1 head block number used when creating this request.
     pub l1_head_block_number: Option<i64>, // L1 head block number used for request
     /// Cluster proof handle JSON for self-hosted cluster mode.
     /// Contains {"`proof_id"`: "...", "`proof_output_id"`: "..."} for handle reconstruction.
@@ -223,6 +269,8 @@ impl OPSuccinctRequest {
     }
 }
 
+/// PostgreSQL-backed database client for the validity driver.
 pub struct DriverDBClient {
+    /// Connection pool to the driver database.
     pub pool: PgPool,
 }

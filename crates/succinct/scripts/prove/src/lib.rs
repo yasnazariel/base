@@ -1,3 +1,5 @@
+//! Proving utilities for executing multi-block range proofs.
+
 use std::time::{Duration, Instant};
 
 use anyhow::{Ok, Result};
@@ -8,8 +10,10 @@ use sp1_sdk::{
     blocking::{CpuProver, Prover},
 };
 
+/// Duration representing two weeks, used as a default proving window.
 pub const TWO_WEEKS: Duration = Duration::from_secs(14 * 24 * 60 * 60);
 
+/// Executes a multi-block range proof and returns block data, execution report, and duration.
 pub async fn execute_multi(
     data_fetcher: &OPSuccinctDataFetcher,
     sp1_stdin: SP1Stdin,

@@ -1,3 +1,5 @@
+//! Transaction signing utilities supporting Web3Signer, local private keys, and Google Cloud HSM.
+
 use std::{str::FromStr, sync::Arc};
 
 use alloy_consensus::TxEnvelope;
@@ -19,7 +21,9 @@ use alloy_transport_http::reqwest::Url;
 use anyhow::{Context, Result};
 use tokio::{sync::Mutex, time::Duration};
 
+/// Number of block confirmations to wait for before considering a transaction final.
 pub const NUM_CONFIRMATIONS: u64 = 3;
+/// Timeout in seconds for waiting on transaction receipts.
 pub const TIMEOUT_SECONDS: u64 = 60;
 
 #[derive(Clone, Debug)]
@@ -34,6 +38,7 @@ pub enum Signer {
 }
 
 impl Signer {
+    /// Returns the address associated with this signer.
     pub fn address(&self) -> Address {
         match self {
             Self::Web3Signer(_, address) => *address,
@@ -54,6 +59,9 @@ impl Signer {
         Ok(Self::LocalSigner(private_key))
     }
 
+    /// Creates a signer from environment variables.
+    ///
+    /// Checks for Cloud HSM, Web3Signer, and local private key configurations in that order.
     pub async fn from_env() -> Result<Self> {
         if let (Ok(project_id), Ok(location), Ok(keyring_name)) = (
             std::env::var("GOOGLE_PROJECT_ID"),

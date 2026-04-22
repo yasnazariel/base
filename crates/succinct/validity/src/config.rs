@@ -8,33 +8,49 @@ use base_succinct_host_utils::{
 };
 use sp1_sdk::{SP1ProofMode, SP1ProvingKey, SP1VerifyingKey, network::FulfillmentStrategy};
 
+/// On-chain contract handles for the L2 Output Oracle and Dispute Game Factory.
 pub struct ContractConfig<P>
 where
     P: Provider + 'static,
 {
+    /// Address of the L2 Output Oracle contract.
     pub l2oo_address: Address,
+    /// Address of the Dispute Game Factory contract.
     pub dgf_address: Address,
+    /// Contract instance for the L2 Output Oracle.
     pub l2oo_contract: OPSuccinctL2OOContract<P>,
+    /// Contract instance for the Dispute Game Factory.
     pub dgf_contract: DisputeGameFactoryContract<P>,
 }
 
+/// Cryptographic commitment values used to verify proof identity.
 #[derive(Debug, Clone)]
 pub struct CommitmentConfig {
+    /// Commitment to the range verification key.
     pub range_vkey_commitment: B256,
+    /// Hash of the aggregation verification key.
     pub agg_vkey_hash: B256,
+    /// Hash of the rollup configuration.
     pub rollup_config_hash: B256,
 }
 
+/// SP1 proving and verifying keys for both range and aggregation programs.
 #[derive(Clone)]
 pub struct ProgramConfig {
+    /// Range program verifying key.
     pub range_vk: Arc<SP1VerifyingKey>,
+    /// Range program proving key.
     pub range_pk: Arc<SP1ProvingKey>,
+    /// Aggregation program verifying key.
     pub agg_vk: Arc<SP1VerifyingKey>,
+    /// Aggregation program proving key.
     pub agg_pk: Arc<SP1ProvingKey>,
+    /// Cryptographic commitments derived from the keys and rollup config.
     pub commitments: CommitmentConfig,
 }
 
 impl ProgramConfig {
+    /// Logs the program configuration commitments via structured tracing.
     pub fn log(&self) {
         tracing::info!(
             range_vkey_commitment = %self.commitments.range_vkey_commitment,
@@ -45,23 +61,36 @@ impl ProgramConfig {
     }
 }
 
+/// Configuration for the proof requester controlling proof generation behavior.
 pub struct RequesterConfig {
+    /// L1 chain identifier.
     pub l1_chain_id: i64,
+    /// L2 chain identifier.
     pub l2_chain_id: i64,
+    /// Address of the L2 Output Oracle contract.
     pub l2oo_address: Address,
+    /// Address of the Dispute Game Factory contract.
     pub dgf_address: Address,
     /// The evm gas limit for each range proof. Ranges will be split to not exceed this gas limit.
     /// If 0, will use `range_proof_interval` instead.
     pub evm_gas_limit: u64,
     /// The number of blocks in each range proof. Used when `gas_limit` is 0.
     pub range_proof_interval: u64,
+    /// Minimum number of L2 blocks between on-chain submissions.
     pub submission_interval: u64,
+    /// Maximum number of concurrent witness generation tasks.
     pub max_concurrent_witness_gen: u64,
+    /// Maximum number of concurrent proof requests.
     pub max_concurrent_proof_requests: u64,
+    /// Fulfillment strategy for range proofs.
     pub range_proof_strategy: FulfillmentStrategy,
+    /// Fulfillment strategy for aggregation proofs.
     pub agg_proof_strategy: FulfillmentStrategy,
+    /// SP1 proof mode for aggregation proofs (e.g. Plonk, Groth16).
     pub agg_proof_mode: SP1ProofMode,
+    /// Keccak-256 hash of the succinct config name.
     pub base_succinct_config_name_hash: B256,
+    /// Whether to generate mock proofs instead of real proofs.
     pub mock: bool,
 
     /// Whether to fallback to timestamp-based L1 head estimation even though `SafeDB` is not
