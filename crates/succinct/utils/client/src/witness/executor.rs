@@ -54,9 +54,9 @@ where
     let rollup_config = Arc::new(boot.rollup_config);
     let safe_head_hash = fetch_safe_head_hash(oracle.as_ref(), boot.agreed_l2_output_root).await?;
 
-    let mut l1_provider = OracleL1ChainProvider::new(boot.l1_head, oracle.clone());
+    let mut l1_provider = OracleL1ChainProvider::new(boot.l1_head, Arc::clone(&oracle));
     let mut l2_provider =
-        OracleL2ChainProvider::new(safe_head_hash, rollup_config.clone(), oracle.clone());
+        OracleL2ChainProvider::new(safe_head_hash, Arc::clone(&rollup_config), Arc::clone(&oracle));
 
     // Fetch the safe head's block header.
     let safe_head = l2_provider
@@ -88,7 +88,7 @@ where
         &mut l2_provider,
     )
     .await?;
-    l2_provider.set_cursor(cursor.clone());
+    l2_provider.set_cursor(Arc::clone(&cursor));
 
     Ok((boot_clone, Some((cursor, l1_provider, l2_provider)), safe_head_number))
 }
