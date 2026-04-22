@@ -9,7 +9,7 @@ repository.workspace = true
 
 [dependencies]
 # database
-sqlx = { workspace = true, features = ["runtime-tokio", "postgres", "uuid", "chrono", "derive"] }
+sqlx = { workspace = true, features = ["runtime-tokio", "postgres", "uuid", "chrono", "derive", "tls-native-tls"] }
 
 # serialization
 serde_json.workspace = true
@@ -23,6 +23,13 @@ thiserror.workspace = true
 
 # tracing
 tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[features]
+default = []
+db-tests = []
 
 [lints]
 workspace = true

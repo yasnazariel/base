@@ -241,6 +241,13 @@ base-proof-std-fpvm-proc = { path = "crates/proof/std-fpvm-proc", default-featur
 base-proof-tee-nitro-attestation-prover = { path = "crates/proof/tee/nitro-attestation-prover" }
 base-proof-fpvm-precompiles = { path = "crates/proof/fpvm-precompiles", default-features = false }
 
+# Succinct
+base-succinct-elfs = { path = "crates/succinct/utils/elfs" }
+base-succinct-host-utils = { path = "crates/succinct/utils/host" }
+base-succinct-proof-utils = { path = "crates/succinct/utils/proof" }
+base-succinct-client-utils = { path = "crates/succinct/utils/client" }
+base-succinct-ethereum-host-utils = { path = "crates/succinct/utils/ethereum/host" }
+
 # Actions
 base-action-harness = { path = "actions/harness" }
 
@@ -390,8 +397,10 @@ async-trait = "0.1.83"
 # grpc
 prost = "0.14"
 tonic = "0.14"
+tonic-web = "0.14"
 tonic-prost = "0.14"
 tonic-prost-build = "0.14"
+tonic-reflection = "0.14"
 
 # rpc
 jsonrpsee = "0.26.0"
@@ -428,6 +437,13 @@ aws-sdk-elasticloadbalancingv2 = { version = "1.109.0", default-features = false
 boundless-market = "1.1"
 risc0-ethereum-contracts = "3.0.1"
 risc0-zkvm = { version = "^3.0", default-features = false }
+
+# sp1 / succinct
+sp1-sdk = { version = "=6.1.0", features = ["network", "blocking", "profiling"] }
+sp1-prover-types = "=6.1.0"
+sp1-cluster-utils = { git = "https://github.com/succinctlabs/sp1-cluster", tag = "v2.1.3" }
+sp1-cluster-common = { git = "https://github.com/succinctlabs/sp1-cluster", tag = "v2.1.3" }
+sp1-cluster-artifact = { git = "https://github.com/succinctlabs/sp1-cluster", tag = "v2.1.3" }
 
 # crypto
 sha3 = "0.10"
@@ -482,8 +498,8 @@ similar-asserts = "1"
 proptest-arbitrary-interop = "0.1.0"
 arbitrary = { version = "1", default-features = false }
 wiremock = { version = "0.6.2", default-features = false }
-testcontainers = { version = "0.27", default-features = false }
-testcontainers-modules = { version = "0.15", default-features = false }
+testcontainers = { version = "0.25", default-features = false }
+testcontainers-modules = { version = "0.13", default-features = false }
 
 # misc
 snap = "1"
