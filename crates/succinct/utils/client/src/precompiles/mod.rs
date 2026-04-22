@@ -111,7 +111,7 @@ impl OpZkvmPrecompiles {
             OpSpecId::FJORD => BasePrecompiles::fjord().clone(),
             OpSpecId::GRANITE | OpSpecId::HOLOCENE => BasePrecompiles::granite().clone(),
             OpSpecId::ISTHMUS | OpSpecId::JOVIAN => BasePrecompiles::isthmus().clone(),
-            OpSpecId::AZUL => BasePrecompiles::azul().clone(),
+            OpSpecId::BASE_V1 => BasePrecompiles::base_v1().clone(),
         };
         let mut precompiles_owned = precompiles;
         precompiles_owned.extend(get_precompiles());
