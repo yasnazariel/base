@@ -40,11 +40,11 @@ metrics = { workspace = true, optional = true }
 
 [features]
 metrics = [
-	"dep:metrics",
 	"base-batcher-core/metrics",
 	"base-batcher-encoder/metrics",
 	"base-consensus-rpc/metrics",
 	"base-tx-manager/metrics",
+	"dep:metrics",
 ]
 
 [dev-dependencies]
