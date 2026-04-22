@@ -17,6 +17,7 @@ use common::{DEFAULT_RANGE, post_to_github_pr};
 mod common;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore]
 async fn execute_batch() -> Result<()> {
     dotenv::dotenv()?;
 

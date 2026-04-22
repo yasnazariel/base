@@ -163,6 +163,7 @@ async fn test_cycle_count_diff() -> Result<()> {
 }
 
 #[tokio::test]
+#[ignore]
 async fn test_post_to_github() -> Result<()> {
     let old_stats =
         serde_json::from_reader::<_, ExecutionStats>(File::open("old_cycle_stats.json")?)?;
