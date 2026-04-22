@@ -1,4 +1,4 @@
-use std::{collections::HashMap, ops::Range, str::FromStr, sync::Arc, time::Duration};
+use std::{collections::HashMap, fmt, ops::Range, str::FromStr, sync::Arc, time::Duration};
 
 use alloy_eips::BlockId;
 use alloy_primitives::{Address, B256, U256};
@@ -57,6 +57,15 @@ pub struct DriverConfig {
     pub loop_interval: u64,
 }
 
+impl fmt::Debug for DriverConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DriverConfig")
+            .field("network_prover", &self.network_prover.as_ref().map(|_| ".."))
+            .field("loop_interval", &self.loop_interval)
+            .finish_non_exhaustive()
+    }
+}
+
 /// Type alias for a map of task IDs to their join handles and associated requests.
 pub type TaskMap = HashMap<i64, (tokio::task::JoinHandle<Result<()>>, OPSuccinctRequest)>;
 
@@ -78,6 +87,15 @@ where
     proof_requester: Arc<OPSuccinctProofRequester<H>>,
     /// Currently running proof tasks keyed by request ID.
     tasks: Arc<Mutex<TaskMap>>,
+}
+
+impl<P: Provider + 'static, H: OPSuccinctHost> fmt::Debug for Proposer<P, H> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Proposer")
+            .field("driver_config", &self.driver_config)
+            .field("requester_config", &self.requester_config)
+            .finish_non_exhaustive()
+    }
 }
 
 impl<P, H: OPSuccinctHost> Proposer<P, H>
@@ -169,8 +187,8 @@ where
         let proof_requester = Arc::new(OPSuccinctProofRequester::new(
             host,
             network_prover.clone(),
-            fetcher.clone(),
-            db_client.clone(),
+            Arc::clone(&fetcher),
+            Arc::clone(&db_client),
             program_config.clone(),
             requester_config.mock,
             is_cluster,
@@ -331,7 +349,7 @@ where
                         self.program_config.commitments.rollup_config_hash,
                         self.requester_config.l1_chain_id,
                         self.requester_config.l2_chain_id,
-                        self.driver_config.fetcher.clone(),
+                        Arc::clone(&self.driver_config.fetcher),
                     )
                 })
                 .buffered(10) // Do 10 at a time, otherwise it's too slow when fetching the block range data.
@@ -1097,7 +1115,7 @@ where
                 "Making proof request"
             );
             let request_clone = request.clone();
-            let proof_requester = self.proof_requester.clone();
+            let proof_requester = Arc::clone(&self.proof_requester);
             let handle =
                 tokio::spawn(
                     async move { proof_requester.make_proof_request(request_clone).await },

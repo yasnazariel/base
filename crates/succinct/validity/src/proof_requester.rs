@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    fmt,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -76,6 +77,18 @@ pub struct OPSuccinctProofRequester<H: OPSuccinctHost> {
     pub min_auction_period: u64,
     /// Timeout in seconds for the auction phase of proof fulfillment.
     pub auction_timeout: u64,
+}
+
+impl<H: OPSuccinctHost> fmt::Debug for OPSuccinctProofRequester<H> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("OPSuccinctProofRequester")
+            .field("mock", &self.mock)
+            .field("cluster", &self.cluster)
+            .field("range_strategy", &self.range_strategy)
+            .field("agg_strategy", &self.agg_strategy)
+            .field("agg_mode", &self.agg_mode)
+            .finish_non_exhaustive()
+    }
 }
 
 impl<H: OPSuccinctHost> OPSuccinctProofRequester<H> {
@@ -514,7 +527,7 @@ impl<H: OPSuccinctHost> OPSuccinctProofRequester<H> {
                         self.program_config.commitments.rollup_config_hash,
                         l1_chain_id as i64,
                         l2_chain_id as i64,
-                        self.fetcher.clone(),
+                        Arc::clone(&self.fetcher),
                     )
                     .await?,
                     OPSuccinctRequest::create_range_request(
@@ -525,7 +538,7 @@ impl<H: OPSuccinctHost> OPSuccinctProofRequester<H> {
                         self.program_config.commitments.rollup_config_hash,
                         l1_chain_id as i64,
                         l2_chain_id as i64,
-                        self.fetcher.clone(),
+                        Arc::clone(&self.fetcher),
                     )
                     .await?,
                 ];

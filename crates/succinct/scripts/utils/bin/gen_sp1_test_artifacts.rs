@@ -1,3 +1,5 @@
+//! Binary for generating SP1 test artifacts.
+
 use std::{
     fs::{self},
     path::PathBuf,

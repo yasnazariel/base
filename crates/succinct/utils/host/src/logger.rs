@@ -51,11 +51,11 @@ pub fn setup_logger() {
             std::env::var("OTLP_ENDPOINT").unwrap_or_else(|_| "http://localhost:4317".to_string());
 
         let otlp_enabled = std::env::var("OTLP_ENABLED")
-            .unwrap_or("false".to_string())
+            .unwrap_or_else(|_| "false".to_string())
             .parse::<bool>()
             .unwrap_or(false);
 
-        let service_name = logger_name.unwrap_or("base-succinct".to_string());
+        let service_name = logger_name.unwrap_or_else(|| "base-succinct".to_string());
 
         let resource = Resource::builder_empty()
             .with_attributes([
@@ -66,7 +66,7 @@ pub fn setup_logger() {
 
         global::set_text_map_propagator(TraceContextPropagator::new());
 
-        let log_format = std::env::var("LOG_FORMAT").unwrap_or("pretty".to_string());
+        let log_format = std::env::var("LOG_FORMAT").unwrap_or_else(|_| "pretty".to_string());
         let fmt_layer: Option<Box<dyn Layer<_> + Send + Sync>> =
             match log_format.to_lowercase().as_str() {
                 "json" => {

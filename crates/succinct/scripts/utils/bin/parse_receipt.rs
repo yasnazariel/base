@@ -1,3 +1,5 @@
+//! Binary for parsing transaction receipts from proof data.
+
 use std::{fs, path::PathBuf};
 
 use alloy_primitives::hex;

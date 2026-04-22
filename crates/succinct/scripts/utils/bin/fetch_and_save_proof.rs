@@ -1,3 +1,5 @@
+//! Binary for fetching and saving a succinct proof to disk.
+
 use std::fs;
 
 use alloy_primitives::{B256, hex};

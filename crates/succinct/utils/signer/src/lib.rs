@@ -1,4 +1,4 @@
-//! Transaction signing utilities supporting Web3Signer, local private keys, and Google Cloud HSM.
+//! Transaction signing utilities supporting `Web3Signer`, local private keys, and Google Cloud HSM.
 
 use std::{str::FromStr, sync::Arc};
 
@@ -61,7 +61,7 @@ impl Signer {
 
     /// Creates a signer from environment variables.
     ///
-    /// Checks for Cloud HSM, Web3Signer, and local private key configurations in that order.
+    /// Checks for Cloud HSM, `Web3Signer`, and local private key configurations in that order.
     pub async fn from_env() -> Result<Self> {
         if let (Ok(project_id), Ok(location), Ok(keyring_name)) = (
             std::env::var("GOOGLE_PROJECT_ID"),
@@ -70,7 +70,7 @@ impl Signer {
         ) {
             let key_name = std::env::var("HSM_KEY_NAME").expect("HSM_KEY_NAME");
             let key_version =
-                std::env::var("HSM_KEY_VERSION").unwrap_or("1".to_string()).parse()?;
+                std::env::var("HSM_KEY_VERSION").unwrap_or_else(|_| "1".to_string()).parse()?;
 
             let keyring = GcpKeyRingRef::new(&project_id, &location, &keyring_name);
 

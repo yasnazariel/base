@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use alloy_primitives::Address;
 use anyhow::Result;
 use base_succinct_host_utils::{OPSuccinctL2OutputOracle, fetcher::OPSuccinctDataFetcher};
@@ -7,7 +9,7 @@ pub async fn get_latest_proposed_block_number(
     address: Address,
     fetcher: &OPSuccinctDataFetcher,
 ) -> Result<u64> {
-    let l2_output_oracle = OPSuccinctL2OutputOracle::new(address, fetcher.l1_provider.clone());
+    let l2_output_oracle = OPSuccinctL2OutputOracle::new(address, Arc::clone(&fetcher.l1_provider));
     let block_number = l2_output_oracle.latestBlockNumber().call().await?;
 
     // Convert the block number to a u64.

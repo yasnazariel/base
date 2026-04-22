@@ -41,7 +41,7 @@ pub async fn run_range_program<E>(
     //                          PROLOGUE                          //
     ////////////////////////////////////////////////////////////////
     let (boot_info, input, l2_pre_block_number) =
-        get_inputs_for_pipeline(oracle.clone()).await.unwrap();
+        get_inputs_for_pipeline(Arc::clone(&oracle)).await.unwrap();
     let (boot_info, intermediate_roots) = match input {
         Some((cursor, l1_provider, l2_provider)) => {
             let rollup_config = Arc::new(boot_info.rollup_config.clone());
@@ -51,7 +51,7 @@ pub async fn run_range_program<E>(
                 .create_pipeline(
                     rollup_config,
                     l1_config,
-                    cursor.clone(),
+                    Arc::clone(&cursor),
                     oracle,
                     beacon,
                     l1_provider,

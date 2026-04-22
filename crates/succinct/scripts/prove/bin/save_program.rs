@@ -1,3 +1,5 @@
+//! Binary for saving the SP1 program ELF to disk.
+
 use std::fs;
 use std::path::PathBuf;
 

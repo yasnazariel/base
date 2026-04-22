@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{fmt, sync::Arc};
 
 use alloy_primitives::B256;
 use base_succinct_client_utils::precompiles::cycle_tracker::keys;
@@ -89,7 +89,7 @@ impl From<String> for UnclaimDescription {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 /// The status of a proof request.
 pub struct ProofStatus {
     // Note: Can't use `FulfillmentStatus`/`ExecutionStatus` directly because `Serialize_repr` and
@@ -131,6 +131,19 @@ pub struct SuccinctProposerConfig {
     pub network_prover: Arc<NetworkProver>,
 }
 
+impl fmt::Debug for SuccinctProposerConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SuccinctProposerConfig")
+            .field("agg_vkey_hash", &self.agg_vkey_hash)
+            .field("range_vkey_commitment", &self.range_vkey_commitment)
+            .field("rollup_config_hash", &self.rollup_config_hash)
+            .field("range_proof_strategy", &self.range_proof_strategy)
+            .field("agg_proof_strategy", &self.agg_proof_strategy)
+            .field("agg_proof_mode", &self.agg_proof_mode)
+            .finish_non_exhaustive()
+    }
+}
+
 /// Deserialize a vector of base64 strings into a vector of vectors of bytes. Go serializes
 /// the subproofs as base64 strings.
 fn deserialize_base64_vec<'de, D>(deserializer: D) -> Result<Vec<Vec<u8>>, D::Error>
@@ -146,7 +159,7 @@ where
 }
 
 /// Cycle-level execution statistics from a proof request.
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 pub struct RequestExecutionStatistics {
     /// Total instruction cycles executed.
     pub total_instruction_cycles: u64,

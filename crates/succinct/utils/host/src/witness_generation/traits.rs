@@ -50,15 +50,17 @@ pub trait WitnessGenerator {
             OracleReader::new(preimage_chan),
             HintWriter::new(hint_chan),
         ));
-        let blob_provider = OracleBlobProvider::new(preimage_oracle.clone());
+        let blob_provider = OracleBlobProvider::new(Arc::clone(&preimage_oracle));
 
         let oracle = Arc::new(PreimageWitnessCollector {
-            preimage_oracle: preimage_oracle.clone(),
-            preimage_witness_store: preimage_witness_store.clone(),
+            preimage_oracle: Arc::clone(&preimage_oracle),
+            preimage_witness_store: Arc::clone(&preimage_witness_store),
         });
-        let beacon = OnlineBlobStore { provider: blob_provider.clone(), store: blob_data.clone() };
+        let beacon =
+            OnlineBlobStore { provider: blob_provider.clone(), store: Arc::clone(&blob_data) };
 
-        let (boot_info, input, _safe_head_number) = get_inputs_for_pipeline(oracle.clone()).await?;
+        let (boot_info, input, _safe_head_number) =
+            get_inputs_for_pipeline(Arc::clone(&oracle)).await?;
         if let Some((cursor, l1_provider, l2_provider)) = input {
             let rollup_config = Arc::new(boot_info.rollup_config.clone());
             let l1_config = Arc::new(boot_info.l1_config.clone());
@@ -67,8 +69,8 @@ pub trait WitnessGenerator {
                 .create_pipeline(
                     rollup_config,
                     l1_config,
-                    cursor.clone(),
-                    oracle.clone(),
+                    Arc::clone(&cursor),
+                    Arc::clone(&oracle),
                     beacon,
                     l1_provider.clone(),
                     l2_provider.clone(),

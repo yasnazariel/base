@@ -1,3 +1,5 @@
+//! Binary for fetching the L2 Output Oracle configuration.
+
 use std::{env, sync::Arc};
 
 use alloy_eips::BlockId;
@@ -95,11 +97,10 @@ async fn update_l2oo_config() -> Result<()> {
             let search_start = finalized_l2_block.saturating_sub(num_blocks_for_finality);
 
             // Now search for the highest finalized block with available data
-            let finalized_l2_block_number =
-                match host.get_finalized_l2_block_number(&data_fetcher, search_start).await? {
-                    Some(block_num) => block_num,
-                    None => search_start,
-                };
+            let finalized_l2_block_number = host
+                .get_finalized_l2_block_number(&data_fetcher, search_start)
+                .await?
+                .map_or(search_start, |block_num| block_num);
 
             // NOTE: Starting from block 0 (genesis) is intentionally disallowed because in
             // op-stack chains genesis state is provided as part of the `RollupConfig`, which is

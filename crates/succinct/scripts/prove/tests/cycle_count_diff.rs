@@ -1,3 +1,5 @@
+//! Tests for comparing SP1 cycle counts across program versions.
+
 use std::{fmt::Write as _, fs::File, sync::Arc};
 
 use anyhow::Result;

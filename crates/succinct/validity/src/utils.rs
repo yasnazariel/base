@@ -80,9 +80,9 @@ pub fn get_ranges_to_prove_by_gas(
         // Process blocks in the range (start+1 to end inclusive)
         // Note: We don't prove the start block, only use its hash as starting point
         for block_num in (start + 1)..=end {
-            let block_info = block_infos.get(&(block_num)).ok_or(anyhow!(
-                "Missing BlockInfo for block {block_num} in range ({start}, {end})"
-            ))?;
+            let block_info = block_infos.get(&(block_num)).ok_or_else(|| {
+                anyhow!("Missing BlockInfo for block {block_num} in range ({start}, {end})")
+            })?;
 
             // Validate block number consistency
             if block_info.block_number as i64 != block_num {

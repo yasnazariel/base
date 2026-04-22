@@ -1,3 +1,5 @@
+//! Binary for estimating proving costs across a range of blocks.
+
 use std::{
     cmp::{max, min},
     fs::{self, OpenOptions},
@@ -77,7 +79,7 @@ where
     // Run the host tasks in parallel using join_all
     let handles = host_args.iter().zip(ranges.iter()).map(|(host_args, range)| {
         let host_args = host_args.clone();
-        let host = host.clone();
+        let host = Arc::clone(&host);
         let start = range.start;
         let end = range.end;
         tokio::spawn(async move {

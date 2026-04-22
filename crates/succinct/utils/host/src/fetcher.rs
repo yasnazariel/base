@@ -734,7 +734,7 @@ impl OPSuccinctDataFetcher {
             ));
         }
 
-        let l2_provider = self.l2_provider.clone();
+        let l2_provider = Arc::clone(&self.l2_provider);
 
         // Get L2 output data.
         let l2_output_block = l2_provider

@@ -1,3 +1,5 @@
+//! Binary for generating and displaying succinct configuration values.
+
 use alloy_primitives::B256;
 use anyhow::Result;
 use base_succinct_client_utils::{boot::hash_rollup_config, types::u32_to_u8};

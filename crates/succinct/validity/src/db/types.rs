@@ -92,7 +92,7 @@ impl From<i16> for RequestMode {
 }
 
 /// A single proof request row persisted in the driver database.
-#[derive(FromRow, Default, Clone)]
+#[derive(FromRow, Default, Clone, Debug)]
 pub struct OPSuccinctRequest {
     /// Auto-incrementing primary key.
     pub id: i64,
@@ -270,6 +270,7 @@ impl OPSuccinctRequest {
 }
 
 /// PostgreSQL-backed database client for the validity driver.
+#[derive(Debug)]
 pub struct DriverDBClient {
     /// Connection pool to the driver database.
     pub pool: PgPool,

@@ -1,3 +1,5 @@
+//! Integration tests for multi-block range proof generation.
+
 use std::sync::Arc;
 
 use anyhow::Result;

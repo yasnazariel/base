@@ -69,7 +69,7 @@ pub async fn get_shared_config_data(
 ) -> Result<SharedConfigData> {
     // Determine if we're using mock verifier.
     let use_sp1_mock_verifier = env::var("OP_SUCCINCT_MOCK")
-        .unwrap_or("false".to_string())
+        .unwrap_or_else(|_| "false".to_string())
         .parse::<bool>()
         .unwrap_or(false);
 

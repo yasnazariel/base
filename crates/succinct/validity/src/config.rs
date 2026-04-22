@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{fmt, sync::Arc};
 
 use alloy_primitives::{Address, B256};
 use alloy_provider::Provider;
@@ -9,6 +9,7 @@ use base_succinct_host_utils::{
 use sp1_sdk::{SP1ProofMode, SP1ProvingKey, SP1VerifyingKey, network::FulfillmentStrategy};
 
 /// On-chain contract handles for the L2 Output Oracle and Dispute Game Factory.
+#[derive(Debug)]
 pub struct ContractConfig<P>
 where
     P: Provider + 'static,
@@ -49,6 +50,14 @@ pub struct ProgramConfig {
     pub commitments: CommitmentConfig,
 }
 
+impl fmt::Debug for ProgramConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ProgramConfig")
+            .field("commitments", &self.commitments)
+            .finish_non_exhaustive()
+    }
+}
+
 impl ProgramConfig {
     /// Logs the program configuration commitments via structured tracing.
     pub fn log(&self) {
@@ -62,6 +71,7 @@ impl ProgramConfig {
 }
 
 /// Configuration for the proof requester controlling proof generation behavior.
+#[derive(Debug)]
 pub struct RequesterConfig {
     /// L1 chain identifier.
     pub l1_chain_id: i64,

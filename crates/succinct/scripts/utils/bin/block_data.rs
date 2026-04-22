@@ -1,3 +1,5 @@
+//! Binary for fetching and saving block data for analysis.
+
 use std::{
     fs::{self},
     path::PathBuf,
