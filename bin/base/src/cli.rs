@@ -43,8 +43,7 @@ pub(crate) enum BaseCommand {
     /// Start the integrated Base node.
     #[command(name = "node")]
     Node(NodeArgs),
-    /// Run a standalone EL + CL discv5 bootnode. Hidden from `--help`: this is operator-internal
-    /// infrastructure tooling, not part of the user-facing surface.
+    /// Run a standalone EL + CL discv5 bootnode.
     #[command(name = "bootnode", hide = true)]
     Bootnode(Box<BootnodeArgs>),
 }

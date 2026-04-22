@@ -55,17 +55,9 @@ pub enum BootnodeError {
     #[error("CL discovery build failed: {0}")]
     ClBuild(#[from] base_consensus_disc::Discv5BuilderError),
 
-    /// Failed to load or generate the EL secret key.
-    #[error("failed to load EL secret key: {0}")]
-    ElSecretKey(#[from] reth_cli_util::load_secret_key::SecretKeyError),
-
-    /// The EL discv4 service failed to bind.
-    #[error("EL discv4 bind failed: {0}")]
-    ElDiscv4(#[source] std::io::Error),
-
-    /// The EL discv5 service failed to start.
-    #[error("EL discv5 start failed")]
-    ElDiscv5(#[source] BoxedError),
+    /// The EL bootnode service failed.
+    #[error(transparent)]
+    El(#[from] eyre::Report),
 
     /// A spawned bootnode task failed to join cleanly.
     #[error("bootnode task panicked: {0}")]

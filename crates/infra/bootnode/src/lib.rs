@@ -14,7 +14,7 @@ mod runner;
 pub use runner::{Bootnode, BootnodeSide};
 
 mod el;
-pub use el::{DEFAULT_EL_BOOTNODE_PORT, ElBootnode, ElBootnodeConfig, ElKeyLoader};
+pub use el::{DEFAULT_EL_BOOTNODE_PORT, ElBootnode, ElBootnodeConfig};
 
 mod cl;
 pub use cl::{ClBootnode, ClBootnodeConfig, ClKeyLoader, DEFAULT_CL_BOOTNODE_PORT};

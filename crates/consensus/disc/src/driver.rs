@@ -115,11 +115,9 @@ impl Discv5Driver {
         let initial_store_length = store.len();
 
         let effective: Vec<BootNode> = if replace_chain_defaults {
-            // Bootnode mode: user-supplied list replaces chain defaults entirely; fall back to
-            // chain defaults only when the user supplied nothing.
+            // Fall back to chain defaults when the user supplied nothing.
             if bootnodes.is_empty() { BootNodes::from_chain_id(chain_id).0 } else { bootnodes.0 }
         } else {
-            // Default: merge user-supplied bootnodes with chain defaults.
             bootnodes.0.into_iter().chain(BootNodes::from_chain_id(chain_id).0).collect()
         };
 
