@@ -5402,7 +5402,6 @@ dependencies = [
  "base-proof-primitives",
  "base-protocol",
  "base-succinct-client-utils",
- "base-succinct-elfs",
  "bincode 2.0.1",
  "c-kzg",
  "cargo_metadata 0.18.1",
@@ -5417,7 +5416,6 @@ dependencies = [
  "opentelemetry 0.31.0",
  "opentelemetry-appender-tracing 0.31.1",
  "opentelemetry-otlp 0.31.1",
- "opentelemetry-stdout",
  "opentelemetry_sdk 0.31.0",
  "reqwest 0.13.2",
  "rkyv",
@@ -13487,17 +13485,6 @@ name = "opentelemetry-semantic-conventions"
 version = "0.31.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e62e29dfe041afb8ed2a6c9737ab57db4907285d999ef8ad3a59092a36bdc846"
-
-[[package]]
-name = "opentelemetry-stdout"
-version = "0.31.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc8887887e169414f637b18751487cce4e095be787d23fad13c454e2fb1b3811"
-dependencies = [
- "chrono",
- "opentelemetry 0.31.0",
- "opentelemetry_sdk 0.31.0",
-]
 
 [[package]]
 name = "opentelemetry_sdk"

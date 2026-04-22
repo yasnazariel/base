@@ -18,7 +18,6 @@ sp1-sdk.workspace = true
 
 # local
 base-succinct-client-utils.workspace = true
-base-succinct-elfs.workspace = true
 
 # op-alloy
 base-common-consensus.workspace = true
@@ -74,7 +73,6 @@ tracing-subscriber = { workspace = true, features = ["env-filter", "json"] }
 tracing-opentelemetry.workspace = true
 opentelemetry.workspace = true
 opentelemetry_sdk = { workspace = true, features = ["logs", "trace"] }
-opentelemetry-stdout.workspace = true
 opentelemetry-otlp = { workspace = true, features = ["logs", "grpc-tonic"] }
 opentelemetry-appender-tracing.workspace = true
 
