@@ -1,11 +1,11 @@
 [package]
-name = "op-succinct-prove"
+name = "base-succinct-prove"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
-authors.workspace = true
-repository.workspace = true
 homepage.workspace = true
+repository.workspace = true
 
 [[bin]]
 name = "multi"
@@ -28,12 +28,11 @@ cfg-if.workspace = true
 serde_json.workspace = true
 
 # local
-op-succinct-host-utils.workspace = true
-op-succinct-client-utils.workspace = true
-op-succinct-proof-utils.workspace = true
-op-succinct-scripts = { path = "../utils" }
-op-succinct-elfs.workspace = true
-op-succinct-fp.workspace = true
+base-succinct-host-utils.workspace = true
+base-succinct-client-utils.workspace = true
+base-succinct-proof-utils.workspace = true
+base-succinct-scripts = { path = "../utils" }
+base-succinct-elfs.workspace = true
 
 # alloy
 alloy-contract.workspace = true
@@ -58,10 +57,8 @@ reqwest = { version = "0.12.4", features = ["json"] }
 rustls = { version = "0.23", features = ["ring"] }
 
 [build-dependencies]
-op-succinct-build-utils.workspace = true
+base-succinct-build-utils.workspace = true
 
-[features]
-default = ["ethereum"]
-celestia = ["op-succinct-proof-utils/celestia"]
-eigenda = ["op-succinct-proof-utils/eigenda"]
-ethereum = ["op-succinct-proof-utils/ethereum"]
+[lints]
+workspace = true
+

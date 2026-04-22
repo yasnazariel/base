@@ -1,11 +1,11 @@
 use std::time::{Duration, Instant};
 
 use anyhow::{Ok, Result};
-use op_succinct_host_utils::fetcher::{BlockInfo, OPSuccinctDataFetcher};
-use op_succinct_proof_utils::get_range_elf_embedded;
+use base_succinct_host_utils::fetcher::{BlockInfo, OPSuccinctDataFetcher};
+use base_succinct_proof_utils::get_range_elf_embedded;
 use sp1_sdk::{
-    blocking::{CpuProver, Prover},
     Elf, ExecutionReport, SP1Stdin,
+    blocking::{CpuProver, Prover},
 };
 
 pub const TWO_WEEKS: Duration = Duration::from_secs(14 * 24 * 60 * 60);

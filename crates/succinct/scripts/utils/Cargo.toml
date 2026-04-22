@@ -1,14 +1,14 @@
 [package]
-name = "op-succinct-scripts"
+name = "base-succinct-scripts"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
-authors.workspace = true
-repository.workspace = true
 homepage.workspace = true
+repository.workspace = true
 
 [lib]
-name = "op_succinct_scripts"
+name = "base_succinct_scripts"
 path = "src/lib.rs"
 
 [[bin]]
@@ -32,16 +32,12 @@ name = "fetch-l2oo-config"
 path = "bin/fetch_l2oo_config.rs"
 
 [[bin]]
-name = "fetch-fault-dispute-game-config"
-path = "bin/fetch_fault_dispute_game_config.rs"
-
-[[bin]]
 name = "gen-sp1-test-artifacts"
 path = "bin/gen_sp1_test_artifacts.rs"
 
 [[bin]]
-name = "preflight"
-path = "bin/preflight.rs"
+name = "parse-receipt"
+path = "bin/parse_receipt.rs"
 
 [dependencies]
 
@@ -72,20 +68,17 @@ serde_json.workspace = true
 tracing.workspace = true
 
 # local
-op-succinct-host-utils.workspace = true
-op-succinct-client-utils.workspace = true
-op-succinct-proof-utils.workspace = true
-op-succinct-elfs.workspace = true
-op-succinct-fp.workspace = true
+base-succinct-host-utils.workspace = true
+base-succinct-client-utils.workspace = true
+base-succinct-proof-utils.workspace = true
+base-succinct-elfs.workspace = true
 
 # sp1
 sp1-sdk.workspace = true
 
 [build-dependencies]
-op-succinct-build-utils.workspace = true
+base-succinct-build-utils.workspace = true
 
-[features]
-default = ["ethereum"]
-eigenda = ["op-succinct-proof-utils/eigenda"]
-celestia = ["op-succinct-proof-utils/celestia"]
-ethereum = ["op-succinct-proof-utils/ethereum"]
+[lints]
+workspace = true
+

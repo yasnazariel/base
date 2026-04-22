@@ -1,6 +1,7 @@
+use std::path::PathBuf;
+
 use cargo_metadata::MetadataCommand;
 use lazy_static::lazy_static;
-use std::path::PathBuf;
 
 fn get_workspace_root() -> PathBuf {
     let metadata = MetadataCommand::new().exec().unwrap();
@@ -8,6 +9,7 @@ fn get_workspace_root() -> PathBuf {
 }
 
 lazy_static! {
+    /// Path to the L2 output oracle contract config.
     pub static ref OP_SUCCINCT_L2_OUTPUT_ORACLE_CONFIG_PATH: PathBuf = {
         std::env::var("OP_SUCCINCT_L2_OUTPUT_ORACLE_CONFIG_PATH")
             .ok()
@@ -16,6 +18,7 @@ lazy_static! {
                 get_workspace_root().join("contracts").join("opsuccinctl2ooconfig.json")
             })
     };
+    /// Path to the fault dispute game contract config.
     pub static ref OP_SUCCINCT_FAULT_DISPUTE_GAME_CONFIG_PATH: PathBuf = {
         std::env::var("OP_SUCCINCT_FAULT_DISPUTE_GAME_CONFIG_PATH")
             .ok()

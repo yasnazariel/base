@@ -1,17 +1,18 @@
 #![recursion_limit = "256"]
 
+use std::sync::Arc;
+
 use alloy_provider::{Provider, ProviderBuilder};
 use anyhow::Result;
-use op_succinct_host_utils::{
+use base_succinct_host_utils::{
     fetcher::OPSuccinctDataFetcher,
-    metrics::{init_metrics, MetricsGauge},
+    metrics::{MetricsGauge, init_metrics},
     setup_logger,
 };
-use op_succinct_proof_utils::initialize_host;
-use op_succinct_validity::{
-    read_proposer_env, DriverDBClient, Proposer, RequesterConfig, ValidityGauge,
+use base_succinct_proof_utils::initialize_host;
+use base_succinct_validity::{
+    DriverDBClient, Proposer, RequesterConfig, ValidityGauge, read_proposer_env,
 };
-use std::sync::Arc;
 use tikv_jemallocator::Jemalloc;
 use tracing::info;
 
@@ -33,7 +34,7 @@ async fn main() -> Result<()> {
     let provider = rustls::crypto::ring::default_provider();
     provider
         .install_default()
-        .map_err(|e| anyhow::anyhow!("Failed to install default provider: {:?}", e))?;
+        .map_err(|e| anyhow::anyhow!("Failed to install default provider: {e:?}"))?;
 
     let args = Args::parse();
 
@@ -48,8 +49,8 @@ async fn main() -> Result<()> {
 
     let db_client = Arc::new(DriverDBClient::new(&env_config.db_url).await?);
 
-    let op_succinct_config_name_hash =
-        alloy_primitives::keccak256(env_config.op_succinct_config_name.as_bytes());
+    let base_succinct_config_name_hash =
+        alloy_primitives::keccak256(env_config.base_succinct_config_name.as_bytes());
 
     // Validate that at least one of gas_limit or range_proof_interval is nonzero
     if env_config.evm_gas_limit == 0 && env_config.range_proof_interval == 0 {
@@ -73,7 +74,7 @@ async fn main() -> Result<()> {
         submission_interval: env_config.submission_interval,
         mock: env_config.mock,
         safe_db_fallback: env_config.safe_db_fallback,
-        op_succinct_config_name_hash,
+        base_succinct_config_name_hash,
         use_kms_requester: env_config.use_kms_requester,
         max_price_per_pgu: env_config.max_price_per_pgu,
         proving_timeout: env_config.proving_timeout,

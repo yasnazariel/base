@@ -1,11 +1,16 @@
+//! SP1 cluster proof utilities.
+
+#![recursion_limit = "256"]
+
 use std::{
+    fmt,
     sync::Arc,
     time::{Instant, SystemTime},
 };
 
 use anyhow::{Context, Result};
-use op_succinct_elfs::AGGREGATION_ELF;
-use op_succinct_host_utils::fetcher::OPSuccinctDataFetcher;
+use base_succinct_elfs::AGGREGATION_ELF;
+use base_succinct_host_utils::fetcher::OPSuccinctDataFetcher;
 use serde::{Deserialize, Serialize};
 use sp1_cluster_artifact::{
     redis::RedisArtifactClient,
@@ -13,68 +18,30 @@ use sp1_cluster_artifact::{
 };
 use sp1_cluster_common::client::ClusterServiceClient;
 use sp1_cluster_utils::{
-    check_proof_status, create_request, request_config_from_env, request_proof_from_env,
     ArtifactStoreConfig, ClusterElf, ProofRequest, ProofRequestConfig, ProofRequestResults,
+    check_proof_status, create_request, request_config_from_env, request_proof_from_env,
 };
 use sp1_prover_types::Artifact;
 use sp1_sdk::{
-    blocking::{CpuProver, Prover as BlockingProver},
-    network::proto::types::ProofMode,
     Elf, ProvingKey, SP1ProofMode, SP1ProofWithPublicValues, SP1ProvingKey, SP1Stdin,
     SP1VerifyingKey,
+    blocking::{CpuProver, LightProver, Prover as BlockingProver},
+    network::proto::types::ProofMode,
 };
 
-/// Get the range ELF depending on the feature flag.
-pub fn get_range_elf_embedded() -> &'static [u8] {
-    cfg_if::cfg_if! {
-        if #[cfg(feature = "celestia")] {
-            use op_succinct_elfs::CELESTIA_RANGE_ELF_EMBEDDED;
+/// Get the range ELF.
+pub const fn get_range_elf_embedded() -> &'static [u8] {
+    use base_succinct_elfs::RANGE_ELF_EMBEDDED;
 
-            CELESTIA_RANGE_ELF_EMBEDDED
-        } else if #[cfg(feature = "eigenda")] {
-            use op_succinct_elfs::EIGENDA_RANGE_ELF_EMBEDDED;
-
-            EIGENDA_RANGE_ELF_EMBEDDED
-        } else {
-            use op_succinct_elfs::RANGE_ELF_EMBEDDED;
-
-            RANGE_ELF_EMBEDDED
-        }
-    }
+    RANGE_ELF_EMBEDDED
 }
 
-cfg_if::cfg_if! {
-    if #[cfg(feature = "celestia")] {
-        use op_succinct_celestia_host_utils::host::CelestiaOPSuccinctHost;
+use base_succinct_ethereum_host_utils::host::SingleChainOPSuccinctHost;
 
-        /// Initialize the Celestia host.
-        pub fn initialize_host(
-            fetcher: Arc<OPSuccinctDataFetcher>,
-        ) -> Arc<CelestiaOPSuccinctHost> {
-            tracing::info!("Initializing host with Celestia DA");
-            Arc::new(CelestiaOPSuccinctHost::new(fetcher))
-        }
-    } else if #[cfg(feature = "eigenda")] {
-        use op_succinct_eigenda_host_utils::host::EigenDAOPSuccinctHost;
-
-        /// Initialize the EigenDA host.
-        pub fn initialize_host(
-            fetcher: Arc<OPSuccinctDataFetcher>,
-        ) -> Arc<EigenDAOPSuccinctHost> {
-            tracing::info!("Initializing host with EigenDA");
-            Arc::new(EigenDAOPSuccinctHost::new(fetcher))
-        }
-    } else {
-        use op_succinct_ethereum_host_utils::host::SingleChainOPSuccinctHost;
-
-        /// Initialize the default (ETH-DA) host.
-        pub fn initialize_host(
-            fetcher: Arc<OPSuccinctDataFetcher>,
-        ) -> Arc<SingleChainOPSuccinctHost> {
-            tracing::info!("Initializing host with Ethereum DA");
-            Arc::new(SingleChainOPSuccinctHost::new(fetcher))
-        }
-    }
+/// Initialize the host.
+pub fn initialize_host(fetcher: Arc<OPSuccinctDataFetcher>) -> Arc<SingleChainOPSuccinctHost> {
+    tracing::info!("Initializing host with Ethereum DA");
+    Arc::new(SingleChainOPSuccinctHost::new(fetcher))
 }
 
 /// Returns true if `SP1_PROVER` is set to `"cluster"` (self-hosted cluster mode).
@@ -82,12 +49,12 @@ pub fn is_cluster_mode() -> bool {
     std::env::var("SP1_PROVER").unwrap_or_default() == "cluster"
 }
 
-/// Set up range and aggregation proving/verifying keys via blocking CpuProver.
+/// Set up range and aggregation proving/verifying keys via blocking `CpuProver`.
 ///
 /// Runs in `spawn_blocking` because `CpuProver` creates its own tokio runtime
 /// internally, which would panic if called directly from an async context.
-pub async fn cluster_setup_keys(
-) -> Result<(SP1ProvingKey, SP1VerifyingKey, SP1ProvingKey, SP1VerifyingKey)> {
+pub async fn cluster_setup_keys()
+-> Result<(SP1ProvingKey, SP1VerifyingKey, SP1ProvingKey, SP1VerifyingKey)> {
     tokio::task::spawn_blocking(|| {
         let cpu_prover = CpuProver::new();
         let range_pk = cpu_prover
@@ -102,7 +69,27 @@ pub async fn cluster_setup_keys(
     .await?
 }
 
-fn to_proto_proof_mode(mode: SP1ProofMode) -> ProofMode {
+/// Compute only the verifying keys for the range and aggregation ELFs.
+///
+/// Uses [`LightProver`] which skips the expensive proving-key generation,
+/// making this orders of magnitude faster than [`cluster_setup_keys`].
+/// Use this when you only need VKs (e.g. the ZK prover service startup,
+/// vkey hash generation).
+pub async fn cluster_setup_vkeys() -> Result<(SP1VerifyingKey, SP1VerifyingKey)> {
+    tokio::task::spawn_blocking(|| {
+        let prover = LightProver::new();
+        let range_pk = prover
+            .setup(Elf::Static(get_range_elf_embedded()))
+            .context("range ELF setup failed")?;
+        let range_vk = range_pk.verifying_key().clone();
+        let agg_pk = prover.setup(Elf::Static(AGGREGATION_ELF)).context("agg ELF setup failed")?;
+        let agg_vk = agg_pk.verifying_key().clone();
+        anyhow::Ok((range_vk, agg_vk))
+    })
+    .await?
+}
+
+const fn to_proto_proof_mode(mode: SP1ProofMode) -> ProofMode {
     match mode {
         SP1ProofMode::Core => ProofMode::Core,
         SP1ProofMode::Compressed => ProofMode::Compressed,
@@ -167,13 +154,19 @@ pub async fn cluster_agg_proof(
 // Async (non-blocking) cluster proving API
 // ---------------------------------------------------------------------------
 
-/// Enum dispatching over concrete artifact client types since `ArtifactClient` uses RPITIT
-/// (`-> impl Future<...> + Send`) and is NOT object-safe.
-/// Matches the pattern in `request_proof_with_config()`.
+/// Artifact storage backend for cluster proofs.
 #[derive(Clone)]
 pub enum ClusterArtifactStore {
+    /// Redis-backed storage.
     Redis(RedisArtifactClient),
+    /// S3-backed storage.
     S3(S3ArtifactClient),
+}
+
+impl fmt::Debug for ClusterArtifactStore {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ClusterArtifactStore").finish_non_exhaustive()
+    }
 }
 
 impl ClusterArtifactStore {
@@ -203,10 +196,11 @@ impl ClusterArtifactStore {
     }
 }
 
-/// Shared cluster configuration constructed once at startup.
-/// Always stored behind `Arc` — no `Clone` needed (and `ArtifactStoreConfig` is not `Clone`).
+/// Configuration for cluster-based SP1 proving.
 pub struct ClusterProofConfig {
+    /// Cluster RPC endpoint.
     pub cluster_rpc: String,
+    /// Artifact storage backend.
     pub artifact_store: ClusterArtifactStore,
     /// The raw `ArtifactStoreConfig` from `request_config_from_env()`, used to construct
     /// per-call `ProofRequestConfig`. We pass the real value rather than a dummy to avoid
@@ -216,16 +210,32 @@ pub struct ClusterProofConfig {
     pub service_client: ClusterServiceClient,
 }
 
-/// In-memory handle for a cluster proof in progress.
+impl fmt::Debug for ClusterProofConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ClusterProofConfig").finish_non_exhaustive()
+    }
+}
+
+/// Handle to an in-flight cluster proof request.
 pub struct ClusterProofHandle {
+    /// The underlying proof request.
     pub proof_request: ProofRequest,
+    /// Count of consecutive poll failures.
     pub consecutive_poll_failures: u32,
 }
 
-/// JSON representation stored in the `cluster_proof_handle` JSONB column.
-#[derive(Serialize, Deserialize)]
+impl fmt::Debug for ClusterProofHandle {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ClusterProofHandle").finish_non_exhaustive()
+    }
+}
+
+/// JSON-serializable proof handle for persistence.
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ClusterProofHandleJson {
+    /// Proof request ID.
     pub proof_id: String,
+    /// Proof output ID.
     pub proof_output_id: String,
 }
 

@@ -1,6 +1,14 @@
+//! Multi-block range proof generation binary.
+#![recursion_limit = "256"]
+
+use std::{
+    env, fs,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+
 use anyhow::{Context, Result};
-use clap::Parser;
-use op_succinct_host_utils::{
+use base_succinct_host_utils::{
     block_range::get_validated_block_range,
     fetcher::OPSuccinctDataFetcher,
     host::OPSuccinctHost,
@@ -10,17 +18,13 @@ use op_succinct_host_utils::{
     witness_cache::{load_stdin_from_cache, save_stdin_to_cache},
     witness_generation::WitnessGenerator,
 };
-use op_succinct_proof_utils::{
+use base_succinct_proof_utils::{
     cluster_range_proof, get_range_elf_embedded, initialize_host, is_cluster_mode,
 };
-use op_succinct_prove::execute_multi;
-use op_succinct_scripts::HostExecutorArgs;
-use sp1_sdk::{utils, Elf, ProveRequest, Prover};
-use std::{
-    env, fs,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use base_succinct_prove::execute_multi;
+use base_succinct_scripts::HostExecutorArgs;
+use clap::Parser;
+use sp1_sdk::{Elf, ProveRequest, Prover, utils};
 use tracing::{debug, info, warn};
 
 /// Execute the OP Succinct program for multiple blocks.
@@ -60,7 +64,10 @@ async fn main() -> Result<()> {
         let duration = start_time.elapsed();
 
         // Convert witness to SP1Stdin
-        let stdin = host.witness_generator().get_sp1_stdin(witness)?;
+        let stdin = host.witness_generator().get_sp1_stdin(
+            witness,
+            base_succinct_client_utils::client::DEFAULT_INTERMEDIATE_ROOT_INTERVAL,
+        )?;
 
         // Save to cache if enabled
         if args.cache {

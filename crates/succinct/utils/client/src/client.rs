@@ -1,19 +1,25 @@
+//! High-level client helpers for derivation and execution.
+
+use std::fmt::Debug;
+
 use alloy_consensus::BlockBody;
-use alloy_primitives::B256;
+use alloy_primitives::{B256, Bytes};
 use alloy_rlp::Decodable;
 use anyhow::Result;
-use kona_derive::{Pipeline, PipelineError, PipelineErrorKind, Signal, SignalReceiver};
-use kona_driver::{Driver, DriverError, DriverPipeline, DriverResult, Executor, TipCursor};
-use kona_genesis::RollupConfig;
-use kona_preimage::{CommsClient, PreimageKey};
-use kona_proof::{errors::OracleProviderError, HintType};
-use kona_protocol::L2BlockInfo;
-use op_alloy_consensus::{OpBlock, OpTxEnvelope, OpTxType};
-use std::fmt::Debug;
+use base_common_consensus::{BaseBlock, BaseTxEnvelope, OpTxType};
+use base_consensus_derive::{Pipeline, PipelineError, PipelineErrorKind, Signal, SignalReceiver};
+use base_consensus_genesis::RollupConfig;
+use base_proof::{HintType, OracleProviderError};
+use base_proof_driver::{Driver, DriverError, DriverPipeline, DriverResult, Executor, TipCursor};
+use base_proof_preimage::{CommsClient, PreimageKey};
+use base_protocol::L2BlockInfo;
 use tracing::{error, info, warn};
 
+/// The default interval (in blocks) at which intermediate output roots are recorded.
+pub const DEFAULT_INTERMEDIATE_ROOT_INTERVAL: u64 = 10;
+
 /// Fetches the safe head hash of the L2 chain based on the agreed upon L2 output root in the
-/// [BootInfo].
+/// [`BootInfo`].
 pub(crate) async fn fetch_safe_head_hash<O>(
     caching_oracle: &O,
     agreed_l2_output_root: B256,
@@ -43,30 +49,43 @@ where
 /// ## Takes
 /// - `cfg`: The rollup configuration.
 /// - `target`: The target block number.
+/// - `intermediate_root_interval`: The interval (in blocks) at which to record intermediate output
+///   roots. A value of 1 records every block (default behavior). A value of N > 1 records every
+///   N-th block.
 ///
 /// ## Returns
-/// - `Ok((l2_safe_head, output_root))` - A tuple containing the [L2BlockInfo] of the produced block
-///   and the output root.
+/// - `Ok((l2_safe_head, output_root, intermediate_roots))` - A tuple containing the [`L2BlockInfo`]
+///   of the produced block, the output root, and the intermediate output roots at the specified
+///   interval.
 /// - `Err(e)` - An error if the block could not be produced.
+#[allow(clippy::result_large_err)]
 pub async fn advance_to_target<E, DP, P>(
     driver: &mut Driver<E, DP, P>,
     cfg: &RollupConfig,
     mut target: Option<u64>,
-) -> DriverResult<(L2BlockInfo, B256), E::Error>
+    intermediate_root_interval: u64,
+) -> DriverResult<(L2BlockInfo, B256, Vec<B256>), E::Error>
 where
     E: Executor + Send + Sync + Debug,
     DP: DriverPipeline<P> + Send + Sync + Debug,
     P: Pipeline + SignalReceiver + Send + Sync + Debug,
 {
+    let interval = intermediate_root_interval.max(1);
+    let mut blocks_processed: u64 = 0;
+    let mut intermediate_roots: Vec<B256> = Vec::new();
     loop {
         // Check if we have reached the target block number.
         let pipeline_cursor = driver.cursor.read();
         let tip_cursor = pipeline_cursor.tip();
-        if let Some(tb) = target {
-            if tip_cursor.l2_safe_head.block_info.number >= tb {
-                info!(target: "client", "Derivation complete, reached L2 safe head.");
-                return Ok((tip_cursor.l2_safe_head, tip_cursor.l2_safe_head_output_root));
-            }
+        if let Some(tb) = target
+            && tip_cursor.l2_safe_head.block_info.number >= tb
+        {
+            info!(target: "client", "Derivation complete, reached L2 safe head.");
+            return Ok((
+                tip_cursor.l2_safe_head,
+                tip_cursor.l2_safe_head_output_root,
+                intermediate_roots,
+            ));
         }
 
         #[cfg(target_os = "zkvm")]
@@ -84,11 +103,10 @@ where
 
                 // If we are in interop mode, this error must be handled by the caller.
                 // Otherwise, we continue the loop to halt derivation on the next iteration.
-                if cfg.is_interop_active(driver.cursor.read().l2_safe_head().block_info.number) {
+                if cfg.is_isthmus_active(driver.cursor.read().l2_safe_head().block_info.number) {
                     return Err(PipelineError::EndOfSource.crit().into());
-                } else {
-                    continue;
                 }
+                continue;
             }
             Err(e) => {
                 error!(target: "client", "Failed to produce payload: {:?}", e);
@@ -118,7 +136,7 @@ where
                     driver.pipeline.signal(Signal::FlushChannel).await?;
 
                     // Strip out all transactions that are not deposits.
-                    attributes.transactions = attributes.transactions.map(|txs| {
+                    attributes.transactions = attributes.transactions.map(|txs: Vec<Bytes>| {
                         txs.into_iter()
                             .filter(|tx| !tx.is_empty() && tx[0] == OpTxType::Deposit as u8)
                             .collect::<Vec<_>>()
@@ -146,7 +164,7 @@ where
         println!("cycle-tracker-report-end: block-execution");
 
         // Construct the block.
-        let block = OpBlock {
+        let block = BaseBlock {
             header: outcome.header.inner().clone(),
             body: BlockBody {
                 transactions: attributes
@@ -154,8 +172,10 @@ where
                     .as_ref()
                     .unwrap_or(&Vec::new())
                     .iter()
-                    .map(|tx| OpTxEnvelope::decode(&mut tx.as_ref()).map_err(DriverError::Rlp))
-                    .collect::<DriverResult<Vec<OpTxEnvelope>, E::Error>>()?,
+                    .map(|tx: &Bytes| {
+                        BaseTxEnvelope::decode(&mut tx.as_ref()).map_err(DriverError::Rlp)
+                    })
+                    .collect::<DriverResult<Vec<BaseTxEnvelope>, E::Error>>()?,
                 ommers: Vec::new(),
                 withdrawals: None,
             },
@@ -165,11 +185,12 @@ where
         let origin = driver.pipeline.origin().ok_or(PipelineError::MissingOrigin.crit())?;
         let l2_info =
             L2BlockInfo::from_block_and_genesis(&block, &driver.pipeline.rollup_config().genesis)?;
-        let tip_cursor = TipCursor::new(
-            l2_info,
-            outcome.header,
-            driver.executor.compute_output_root().map_err(DriverError::Executor)?,
-        );
+        let output_root = driver.executor.compute_output_root().map_err(DriverError::Executor)?;
+        blocks_processed += 1;
+        if blocks_processed.is_multiple_of(interval) {
+            intermediate_roots.push(output_root);
+        }
+        let tip_cursor = TipCursor::new(l2_info, outcome.header, output_root);
 
         // Advance the derivation pipeline cursor
         drop(pipeline_cursor);

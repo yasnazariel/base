@@ -1,21 +1,22 @@
-use anyhow::Result;
-use clap::Parser;
-use futures::StreamExt;
-use log::info;
-use op_succinct_host_utils::{
-    block_range::{get_validated_block_range, split_range_basic},
-    fetcher::OPSuccinctDataFetcher,
-    host::OPSuccinctHost,
-    witness_generation::WitnessGenerator,
-};
-use op_succinct_proof_utils::{get_range_elf_embedded, initialize_host};
-use op_succinct_scripts::HostExecutorArgs;
-use sp1_sdk::utils;
 use std::{
     fs::{self},
     path::PathBuf,
     sync::Arc,
 };
+
+use anyhow::Result;
+use base_succinct_host_utils::{
+    block_range::{get_validated_block_range, split_range_basic},
+    fetcher::OPSuccinctDataFetcher,
+    host::OPSuccinctHost,
+    witness_generation::WitnessGenerator,
+};
+use base_succinct_proof_utils::{get_range_elf_embedded, initialize_host};
+use base_succinct_scripts::HostExecutorArgs;
+use clap::Parser;
+use futures::StreamExt;
+use log::info;
+use sp1_sdk::utils;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -56,18 +57,21 @@ async fn main() -> Result<()> {
     let mut successful_ranges = Vec::new();
     for (range, host_args) in split_ranges.iter().zip(host_args.iter()) {
         let witness_data = host.run(host_args).await?;
-        let sp1_stdin = host.witness_generator().get_sp1_stdin(witness_data)?;
+        let sp1_stdin = host.witness_generator().get_sp1_stdin(
+            witness_data,
+            base_succinct_client_utils::client::DEFAULT_INTERMEDIATE_ROOT_INTERVAL,
+        )?;
         successful_ranges.push((sp1_stdin, range.clone()));
     }
 
     // Now, write the successful ranges to
-    // /sp1-testing-suite-artifacts/op-succinct-chain-{l2_chain_id}-{start}-{end} The folders
-    // should each have the RANGE_ELF_EMBEDDED/CELESTIA_RANGE_ELF_EMBEDDED as program.bin, and the
+    // /sp1-testing-suite-artifacts/base-succinct-chain-{l2_chain_id}-{start}-{end} The folders
+    // should each have the RANGE_ELF_EMBEDDED as program.bin, and the
     // serialized stdin should be written to stdin.bin.
     let cargo_metadata = cargo_metadata::MetadataCommand::new().exec().unwrap();
     let root_dir = PathBuf::from(cargo_metadata.workspace_root).join("sp1-testing-suite-artifacts");
 
-    let dir_name = root_dir.join(format!("op-succinct-chain-{l2_chain_id}"));
+    let dir_name = root_dir.join(format!("base-succinct-chain-{l2_chain_id}"));
     info!("Writing artifacts to {dir_name:?}");
     for (sp1_stdin, range) in successful_ranges {
         let program_dir =
@@ -76,7 +80,10 @@ async fn main() -> Result<()> {
 
         fs::write(program_dir.join("program.bin"), get_range_elf_embedded())?;
 
-        fs::write(program_dir.join("stdin.bin"), bincode::serialize(&sp1_stdin).unwrap())?;
+        fs::write(
+            program_dir.join("stdin.bin"),
+            bincode::serde::encode_to_vec(&sp1_stdin, bincode::config::standard()).unwrap(),
+        )?;
     }
 
     Ok(())

@@ -1,10 +1,10 @@
 use alloy_consensus::Header;
 use alloy_primitives::{Address, B256};
 use anyhow::Result;
-use op_succinct_client_utils::{boot::BootInfoStruct, types::AggregationInputs};
+use base_succinct_client_utils::{boot::BootInfoStruct, types::AggregationInputs};
 use sp1_sdk::{HashableKey, SP1Proof, SP1Stdin};
 
-/// Get the stdin for the aggregation proof.
+/// Build the SP1 stdin for the aggregation proof from range proofs and headers.
 pub fn get_agg_proof_stdin(
     proofs: Vec<SP1Proof>,
     boot_infos: Vec<BootInfoStruct>,
@@ -21,7 +21,6 @@ pub fn get_agg_proof_stdin(
         stdin.write_proof(*compressed_proof, multi_block_vkey.vk.clone());
     }
 
-    // Write the aggregation inputs to the stdin.
     stdin.write(&AggregationInputs {
         boot_infos,
         latest_l1_checkpoint_head: latest_checkpoint_head,

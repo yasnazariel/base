@@ -1,29 +1,21 @@
 use std::{fmt::Write as _, fs::File, sync::Arc};
 
 use anyhow::Result;
-use common::{post_to_github_pr, DEFAULT_RANGE};
-use op_succinct_host_utils::{
+use base_succinct_host_utils::{
     block_range::get_rolling_block_range,
     fetcher::OPSuccinctDataFetcher,
     host::OPSuccinctHost,
     stats::{ExecutionStats, MarkdownExecutionStats},
     witness_generation::WitnessGenerator,
 };
-use op_succinct_proof_utils::initialize_host;
-use op_succinct_prove::execute_multi;
+use base_succinct_proof_utils::initialize_host;
+use base_succinct_prove::execute_multi;
+use common::{DEFAULT_RANGE, post_to_github_pr};
 
 mod common;
 
-fn elf_label() -> &'static str {
-    cfg_if::cfg_if! {
-        if #[cfg(feature = "celestia")] {
-            "celestia-range-elf-embedded"
-        } else if #[cfg(feature = "eigenda")] {
-            "eigenda-range-elf-embedded"
-        } else {
-            "range-elf-embedded"
-        }
-    }
+const fn elf_label() -> &'static str {
+    "range-elf-embedded"
 }
 
 fn create_diff_report(base: &ExecutionStats, current: &ExecutionStats) -> String {
@@ -124,7 +116,7 @@ async fn test_cycle_count_diff() -> Result<()> {
     let provider = rustls::crypto::ring::default_provider();
     provider
         .install_default()
-        .map_err(|e| anyhow::anyhow!("Failed to install default provider: {:?}", e))?;
+        .map_err(|e| anyhow::anyhow!("Failed to install default provider: {e:?}"))?;
 
     let data_fetcher = OPSuccinctDataFetcher::new_with_rollup_config().await?;
 
@@ -145,7 +137,10 @@ async fn test_cycle_count_diff() -> Result<()> {
     let host_args = host.fetch(l2_start_block, l2_end_block, None, false).await?;
 
     let witness_data = host.run(&host_args).await?;
-    let sp1_stdin = host.witness_generator().get_sp1_stdin(witness_data)?;
+    let sp1_stdin = host.witness_generator().get_sp1_stdin(
+        witness_data,
+        base_succinct_client_utils::client::DEFAULT_INTERMEDIATE_ROOT_INTERVAL,
+    )?;
     let (block_data, report, execution_duration) =
         execute_multi(&data_fetcher, sp1_stdin, l2_start_block, l2_end_block).await?;
 
@@ -174,15 +169,14 @@ async fn test_post_to_github() -> Result<()> {
     let report = create_diff_report(&old_stats, &new_stats);
 
     if std::env::var("POST_TO_GITHUB").ok().and_then(|v| v.parse::<bool>().ok()).unwrap_or_default()
-    {
-        if let (Ok(owner), Ok(repo), Ok(pr_number), Ok(token)) = (
+        && let (Ok(owner), Ok(repo), Ok(pr_number), Ok(token)) = (
             std::env::var("REPO_OWNER"),
             std::env::var("REPO_NAME"),
             std::env::var("PR_NUMBER"),
             std::env::var("GITHUB_TOKEN"),
-        ) {
-            post_to_github_pr(&owner, &repo, &pr_number, &token, &report).await.unwrap();
-        }
+        )
+    {
+        post_to_github_pr(&owner, &repo, &pr_number, &token, &report).await.unwrap();
     }
 
     Ok(())

@@ -1,11 +1,9 @@
 //! [`PrecompileProvider`] for FPVM-accelerated OP Stack precompiles.
 
 use alloc::{boxed::Box, string::String, vec::Vec};
+
 use alloy_primitives::{Address, Bytes};
-use op_revm::{
-    precompiles::{fjord, granite, isthmus},
-    OpSpecId,
-};
+use base_common_evm::{BasePrecompiles, OpSpecId};
 use revm::{
     context::{Cfg, ContextTr},
     handler::{EthPrecompiles, PrecompileProvider},
@@ -32,22 +30,34 @@ pub mod cycle_tracker {
 
     /// Individual tracker names (without prefix).
     pub mod names {
+        /// BN254 addition.
         pub const BN_ADD: &str = "bn-add";
+        /// BN254 scalar multiplication.
         pub const BN_MUL: &str = "bn-mul";
+        /// BN254 pairing check.
         pub const BN_PAIR: &str = "bn-pair";
+        /// ECDSA recovery.
         pub const EC_RECOVER: &str = "ec-recover";
+        /// P-256 signature verification.
         pub const P256_VERIFY: &str = "p256-verify";
+        /// KZG point evaluation.
         pub const KZG_EVAL: &str = "kzg-eval";
     }
 
     /// Full cycle tracker keys (with "precompile-" prefix).
-    /// These match the keys in ExecutionReport.cycle_tracker.
+    /// These match the keys in `ExecutionReport.cycle_tracker`.
     pub mod keys {
+        /// BN254 addition (prefixed).
         pub const BN_ADD: &str = "precompile-bn-add";
+        /// BN254 scalar multiplication (prefixed).
         pub const BN_MUL: &str = "precompile-bn-mul";
+        /// BN254 pairing check (prefixed).
         pub const BN_PAIR: &str = "precompile-bn-pair";
+        /// ECDSA recovery (prefixed).
         pub const EC_RECOVER: &str = "precompile-ec-recover";
+        /// P-256 signature verification (prefixed).
         pub const P256_VERIFY: &str = "precompile-p256-verify";
+        /// KZG point evaluation (prefixed).
         pub const KZG_EVAL: &str = "precompile-kzg-eval";
     }
 }
@@ -68,7 +78,7 @@ fn get_precompiles() -> Vec<PrecompileWithAddress> {
 /// Returns None if the precompile is not accelerated/tracked.
 #[cfg(any(test, target_os = "zkvm"))]
 #[inline]
-fn get_precompile_tracker_name(id: &PrecompileId) -> Option<&'static str> {
+const fn get_precompile_tracker_name(id: &PrecompileId) -> Option<&'static str> {
     match id {
         PrecompileId::Bn254Add => Some(cycle_tracker::names::BN_ADD),
         PrecompileId::Bn254Mul => Some(cycle_tracker::names::BN_MUL),
@@ -94,17 +104,16 @@ impl OpZkvmPrecompiles {
     #[inline]
     pub fn new_with_spec(spec: OpSpecId) -> Self {
         let precompiles = match spec {
-            spec @ (OpSpecId::BEDROCK |
-            OpSpecId::REGOLITH |
-            OpSpecId::CANYON |
-            OpSpecId::ECOTONE) => Precompiles::new(spec.into_eth_spec().into()).clone(),
-            OpSpecId::FJORD => fjord().clone(),
-            OpSpecId::GRANITE | OpSpecId::HOLOCENE => granite().clone(),
-            OpSpecId::ISTHMUS | OpSpecId::INTEROP | OpSpecId::OSAKA | OpSpecId::JOVIAN => {
-                isthmus().clone()
-            }
+            spec @ (OpSpecId::BEDROCK
+            | OpSpecId::REGOLITH
+            | OpSpecId::CANYON
+            | OpSpecId::ECOTONE) => Precompiles::new(spec.into_eth_spec().into()).clone(),
+            OpSpecId::FJORD => BasePrecompiles::fjord().clone(),
+            OpSpecId::GRANITE | OpSpecId::HOLOCENE => BasePrecompiles::granite().clone(),
+            OpSpecId::ISTHMUS | OpSpecId::JOVIAN => BasePrecompiles::isthmus().clone(),
+            OpSpecId::AZUL => BasePrecompiles::azul().clone(),
         };
-        let mut precompiles_owned = precompiles.clone();
+        let mut precompiles_owned = precompiles;
         precompiles_owned.extend(get_precompiles());
         let precompiles = Box::leak(Box::new(precompiles_owned));
 
@@ -211,16 +220,17 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy_primitives::U256;
-    use op_revm::{DefaultOp as _, OpContext};
+    use base_common_evm::{DefaultOp as _, OpContext};
     use revm::{
+        Context,
         database::EmptyDB,
         handler::PrecompileProvider,
         interpreter::{CallInput, CallScheme, CallValue},
-        Context,
     };
     use revm_precompile::PrecompileId;
+
+    use super::*;
 
     type TestContext = OpContext<EmptyDB>;
 
@@ -301,7 +311,7 @@ mod tests {
         assert_eq!(interpreter_result.result, InstructionResult::PrecompileOOG);
     }
 
-    /// Test SharedBuffer input handling.
+    /// Test `SharedBuffer` input handling.
     #[test]
     fn test_run_with_shared_buffer_empty() {
         let mut ctx = create_test_context();
@@ -417,11 +427,10 @@ mod tests {
                 key,
                 cycle_tracker::PREFIX
             );
-            assert!(!key.contains(' '), "Key '{}' contains spaces", key);
+            assert!(!key.contains(' '), "Key '{key}' contains spaces");
             assert!(
                 !key[cycle_tracker::PREFIX.len()..].contains('_'),
-                "Key '{}' contains underscores (should use dashes)",
-                key
+                "Key '{key}' contains underscores (should use dashes)"
             );
         }
     }

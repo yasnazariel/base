@@ -1,72 +1,48 @@
 use alloy_primitives::B256;
 use anyhow::Result;
 use async_trait::async_trait;
-use hana_host::celestia::CelestiaChainHost;
-use hokulea_host_bin::cfg::SingleChainHostWithEigenDA;
-use kona_host::single::{SingleChainHost, SingleChainHostError};
-use kona_preimage::{BidirectionalChannel, Channel};
+use base_proof_host::{Host, HostConfig, HostError};
+use base_proof_preimage::{BidirectionalChannel, Channel};
 use tokio::task::JoinHandle;
 
 use crate::{fetcher::OPSuccinctDataFetcher, witness_generation::WitnessGenerator};
 
+/// Starts a preimage hint/oracle server.
 #[async_trait]
 pub trait PreimageServerStarter {
+    /// Launch the server on the given hint and preimage channels.
     async fn start_server<C>(
         &self,
         hint: C,
         preimage: C,
-    ) -> Result<JoinHandle<Result<(), SingleChainHostError>>, SingleChainHostError>
+    ) -> Result<JoinHandle<Result<(), HostError>>, HostError>
     where
         C: Channel + Send + Sync + 'static;
 }
 
 #[async_trait]
-impl PreimageServerStarter for SingleChainHost {
+impl PreimageServerStarter for HostConfig {
     async fn start_server<C>(
         &self,
         hint: C,
         preimage: C,
-    ) -> Result<JoinHandle<Result<(), SingleChainHostError>>, SingleChainHostError>
+    ) -> Result<JoinHandle<Result<(), HostError>>, HostError>
     where
         C: Channel + Send + Sync + 'static,
     {
-        self.start_server(hint, preimage).await
+        Host::new(self.clone()).start_server(hint, preimage).await
     }
 }
 
-#[async_trait]
-impl PreimageServerStarter for CelestiaChainHost {
-    async fn start_server<C>(
-        &self,
-        hint: C,
-        preimage: C,
-    ) -> Result<JoinHandle<Result<(), SingleChainHostError>>, SingleChainHostError>
-    where
-        C: Channel + Send + Sync + 'static,
-    {
-        self.start_server(hint, preimage).await
-    }
-}
-
-#[async_trait]
-impl PreimageServerStarter for SingleChainHostWithEigenDA {
-    async fn start_server<C>(
-        &self,
-        hint: C,
-        preimage: C,
-    ) -> Result<JoinHandle<Result<(), SingleChainHostError>>, SingleChainHostError>
-    where
-        C: Channel + Send + Sync + 'static,
-    {
-        self.start_server(hint, preimage).await
-    }
-}
-
+/// Host interface for OP Succinct proof generation.
 #[async_trait]
 pub trait OPSuccinctHost: Send + Sync + 'static {
+    /// Host arguments (e.g. [`HostConfig`]).
     type Args: Send + Sync + 'static + Clone + PreimageServerStarter;
+    /// Witness generator type.
     type WitnessGenerator: WitnessGenerator + Send + Sync;
 
+    /// Return a reference to the witness generator.
     fn witness_generator(&self) -> &Self::WitnessGenerator;
 
     /// Fetch the host arguments.
@@ -76,7 +52,7 @@ pub trait OPSuccinctHost: Send + Sync + 'static {
     /// - `l2_end_block`: The ending L2 block number.
     /// - `l1_head_hash`: Optionally supplied L1 head block hash used as the L1 origin.
     /// - `safe_db_fallback`: Flag to indicate whether to fallback to timestamp-based L1 head
-    ///   estimation when SafeDB is not available.
+    ///   estimation when `SafeDB` is not available.
     async fn fetch(
         &self,
         l2_start_block: u64,
@@ -111,8 +87,7 @@ pub trait OPSuccinctHost: Send + Sync + 'static {
     /// Get the finalized L2 block number. This is used to determine the highest block that can be
     /// included in a range proof.
     ///
-    /// For ETH DA, this is the finalized L2 block number.
-    /// For Celestia, this is the highest L2 block included in the latest Blobstream commitment.
+    /// This is the finalized L2 block number.
     ///
     /// The latest proposed block number is assumed to be the highest block number that has been
     /// successfully processed by the host.
@@ -124,14 +99,12 @@ pub trait OPSuccinctHost: Send + Sync + 'static {
 
     /// Calculate a safe L1 head hash for the given L2 end block.
     ///
-    /// This method is DA-specific:
-    /// - For ETH DA: Uses simple offset logic.
-    /// - For Celestia DA: Uses blobstream commitment logic to ensure data availability.
+    /// This method uses simple offset logic to find a safe L1 head.
     ///
     /// Parameters:
     /// - `fetcher`: The data fetcher for accessing blockchain data.
     /// - `l2_end_block`: The ending L2 block number for the range.
-    /// - `safe_db_fallback`: Whether to fallback to timestamp-based estimation when SafeDB is
+    /// - `safe_db_fallback`: Whether to fallback to timestamp-based estimation when `SafeDB` is
     ///   unavailable.
     async fn calculate_safe_l1_head(
         &self,

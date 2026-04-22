@@ -1,11 +1,11 @@
 [package]
-name = "op-succinct-validity"
+name = "base-succinct-validity"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
-authors.workspace = true
-repository.workspace = true
 homepage.workspace = true
+repository.workspace = true
 
 [[bin]]
 name = "validity"
@@ -22,11 +22,11 @@ tracing.workspace = true
 
 
 # local
-op-succinct-client-utils.workspace = true
-op-succinct-elfs.workspace = true
-op-succinct-host-utils.workspace = true
-op-succinct-proof-utils.workspace = true
-op-succinct-signer-utils.workspace = true
+base-succinct-client-utils.workspace = true
+base-succinct-elfs.workspace = true
+base-succinct-host-utils.workspace = true
+base-succinct-proof-utils.workspace = true
+base-succinct-signer-utils.workspace = true
 
 # sp1
 sp1-sdk.workspace = true
@@ -64,13 +64,11 @@ strum = { workspace = true, features = ["derive"] }
 strum_macros.workspace = true
 
 [build-dependencies]
-op-succinct-build-utils.workspace = true
+base-succinct-build-utils.workspace = true
 
 [dev-dependencies]
 postgresql_embedded = { version = "0.20", features = ["bundled"] }
 
-[features]
-default = ["ethereum"]
-celestia = ["op-succinct-proof-utils/celestia"]
-eigenda = ["op-succinct-proof-utils/eigenda"]
-ethereum = ["op-succinct-proof-utils/ethereum"]
+[lints]
+workspace = true
+

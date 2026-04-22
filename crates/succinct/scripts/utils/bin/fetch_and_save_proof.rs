@@ -1,17 +1,17 @@
-use alloy_primitives::{hex, B256};
-use alloy_sol_types::SolValue;
-use anyhow::Result;
-use clap::Parser;
-use op_succinct_client_utils::{boot::BootInfoStruct, AGGREGATION_OUTPUTS_SIZE};
-use op_succinct_host_utils::proof_cache::{get_range_proof_dir, save_range_proof};
-use sp1_sdk::{
-    network::proto::{
-        types::{ExecutionStatus, FulfillmentStatus},
-        GetProofRequestStatusResponse,
-    },
-    ProverClient, SP1ProofWithPublicValues,
-};
 use std::fs;
+
+use alloy_primitives::{B256, hex};
+use anyhow::Result;
+use base_succinct_client_utils::boot::BootInfoStruct;
+use base_succinct_host_utils::proof_cache::{get_range_proof_dir, save_range_proof};
+use clap::Parser;
+use sp1_sdk::{
+    ProverClient, SP1ProofWithPublicValues,
+    network::proto::{
+        GetProofRequestStatusResponse,
+        types::{ExecutionStatus, FulfillmentStatus},
+    },
+};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -60,13 +60,12 @@ async fn main() -> Result<()> {
     };
 
     if args.agg_proof {
-        let mut raw_boot_info = [0u8; AGGREGATION_OUTPUTS_SIZE];
-        proof.public_values.read_slice(&mut raw_boot_info);
-        let boot_info = BootInfoStruct::abi_decode(&raw_boot_info).unwrap();
+        let raw_pv = proof.public_values.as_slice().to_vec();
+        assert_eq!(raw_pv.len(), 32, "expected 32-byte keccak256 digest as public values");
 
         let proof_bytes = proof.bytes();
         println!("Proof bytes: {:?}", hex::encode(proof_bytes));
-        println!("Boot info: {boot_info:?}");
+        println!("Aggregation journal digest (keccak256): 0x{}", hex::encode(&raw_pv));
     } else {
         // Read the BootInfoStruct from the proof
         let _boot_info: BootInfoStruct = proof.public_values.read();

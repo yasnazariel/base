@@ -1,13 +1,15 @@
+//! Utilities for running the range program.
+
 use std::sync::Arc;
 
-use kona_proof::{l1::OracleL1ChainProvider, l2::OracleL2ChainProvider};
-use op_succinct_client_utils::{
+use base_proof::{OracleL1ChainProvider, OracleL2ChainProvider};
+use base_succinct_client_utils::{
+    BlobStore,
     boot::BootInfoStruct,
     witness::{
-        executor::{get_inputs_for_pipeline, WitnessExecutor},
+        executor::{WitnessExecutor, get_inputs_for_pipeline},
         preimage_store::PreimageStore,
     },
-    BlobStore,
 };
 
 /// Sets up tracing for the range program
@@ -20,8 +22,13 @@ pub fn setup_tracing() {
     tracing::subscriber::set_global_default(subscriber).map_err(|e| anyhow!(e)).unwrap();
 }
 
-pub async fn run_range_program<E>(executor: E, oracle: Arc<PreimageStore>, beacon: BlobStore)
-where
+/// Runs the range program.
+pub async fn run_range_program<E>(
+    executor: E,
+    oracle: Arc<PreimageStore>,
+    beacon: BlobStore,
+    intermediate_root_interval: u64,
+) where
     E: WitnessExecutor<
             O = PreimageStore,
             B = BlobStore,
@@ -33,8 +40,9 @@ where
     ////////////////////////////////////////////////////////////////
     //                          PROLOGUE                          //
     ////////////////////////////////////////////////////////////////
-    let (boot_info, input) = get_inputs_for_pipeline(oracle.clone()).await.unwrap();
-    let boot_info = match input {
+    let (boot_info, input, l2_pre_block_number) =
+        get_inputs_for_pipeline(oracle.clone()).await.unwrap();
+    let (boot_info, intermediate_roots) = match input {
         Some((cursor, l1_provider, l2_provider)) => {
             let rollup_config = Arc::new(boot_info.rollup_config.clone());
             let l1_config = Arc::new(boot_info.l1_config.clone());
@@ -52,10 +60,13 @@ where
                 .await
                 .unwrap();
 
-            executor.run(boot_info, pipeline, cursor, l2_provider).await.unwrap()
+            executor
+                .run(boot_info, pipeline, cursor, l2_provider, intermediate_root_interval)
+                .await
+                .unwrap()
         }
-        None => boot_info,
+        None => (boot_info, Vec::new()),
     };
 
-    sp1_zkvm::io::commit(&BootInfoStruct::from(boot_info));
+    sp1_zkvm::io::commit(&BootInfoStruct::new(boot_info, l2_pre_block_number, intermediate_roots));
 }

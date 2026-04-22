@@ -1,8 +1,11 @@
 [package]
-name = "op-succinct-signer-utils"
+name = "base-succinct-signer-utils"
 version.workspace = true
-license.workspace = true
 edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
 
 [dependencies]
 
@@ -26,8 +29,9 @@ rustls = { version = "0.23", default-features = false, features = [
     "tls12",
     "aws-lc-rs",
 ] }
-gcloud-sdk.workspace = true
-
 [dev-dependencies]
 dotenv.workspace = true
-op-succinct-host-utils.workspace = true
+base-succinct-host-utils.workspace = true
+
+[lints]
+workspace = true

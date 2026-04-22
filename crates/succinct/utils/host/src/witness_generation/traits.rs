@@ -2,26 +2,29 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use async_trait::async_trait;
-use kona_preimage::{HintWriter, NativeChannel, OracleReader};
-use kona_proof::{
-    l1::{OracleBlobProvider, OracleL1ChainProvider},
-    l2::OracleL2ChainProvider,
-    CachingOracle,
-};
-use op_succinct_client_utils::witness::{
-    executor::{get_inputs_for_pipeline, WitnessExecutor},
-    preimage_store::PreimageStore,
-    BlobData, WitnessData,
+use base_proof::{CachingOracle, OracleBlobProvider, OracleL1ChainProvider, OracleL2ChainProvider};
+use base_proof_preimage::{HintWriter, NativeChannel, OracleReader};
+use base_succinct_client_utils::{
+    client::DEFAULT_INTERMEDIATE_ROOT_INTERVAL,
+    witness::{
+        BlobData, WitnessData,
+        executor::{WitnessExecutor, get_inputs_for_pipeline},
+        preimage_store::PreimageStore,
+    },
 };
 use sp1_sdk::SP1Stdin;
 
 use crate::witness_generation::{OnlineBlobStore, PreimageWitnessCollector};
 
+/// Default oracle type backed by native preimage channels.
 pub type DefaultOracleBase = CachingOracle<OracleReader<NativeChannel>, HintWriter<NativeChannel>>;
 
+/// Generates witness data by driving derivation and execution pipelines.
 #[async_trait]
 pub trait WitnessGenerator {
+    /// Output witness data type.
     type WitnessData: WitnessData;
+    /// Executor that creates and runs the derivation pipeline.
     type WitnessExecutor: WitnessExecutor<
             O = PreimageWitnessCollector<DefaultOracleBase>,
             B = OnlineBlobStore<OracleBlobProvider<DefaultOracleBase>>,
@@ -30,8 +33,10 @@ pub trait WitnessGenerator {
         > + Sync
         + Send;
 
+    /// Return a reference to the witness executor.
     fn get_executor(&self) -> &Self::WitnessExecutor;
 
+    /// Run witness generation over the given preimage and hint channels.
     async fn run(
         &self,
         preimage_chan: NativeChannel,
@@ -53,7 +58,7 @@ pub trait WitnessGenerator {
         });
         let beacon = OnlineBlobStore { provider: blob_provider.clone(), store: blob_data.clone() };
 
-        let (boot_info, input) = get_inputs_for_pipeline(oracle.clone()).await?;
+        let (boot_info, input, _safe_head_number) = get_inputs_for_pipeline(oracle.clone()).await?;
         if let Some((cursor, l1_provider, l2_provider)) = input {
             let rollup_config = Arc::new(boot_info.rollup_config.clone());
             let l1_config = Arc::new(boot_info.l1_config.clone());
@@ -70,7 +75,10 @@ pub trait WitnessGenerator {
                 )
                 .await
                 .unwrap();
-            self.get_executor().run(boot_info, pipeline, cursor, l2_provider).await?;
+            let _ = self
+                .get_executor()
+                .run(boot_info, pipeline, cursor, l2_provider, DEFAULT_INTERMEDIATE_ROOT_INTERVAL)
+                .await?;
         }
 
         let witness = Self::WitnessData::from_parts(
@@ -81,5 +89,10 @@ pub trait WitnessGenerator {
         Ok(witness)
     }
 
-    fn get_sp1_stdin(&self, witness: Self::WitnessData) -> Result<SP1Stdin>;
+    /// Build SP1 stdin from the collected witness data.
+    fn get_sp1_stdin(
+        &self,
+        witness: Self::WitnessData,
+        intermediate_root_interval: u64,
+    ) -> Result<SP1Stdin>;
 }

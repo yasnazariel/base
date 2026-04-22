@@ -1,16 +1,21 @@
-use alloy_consensus::Blob;
-use alloy_eips::eip4844::{env_settings::EnvKzgSettings, IndexedBlobHash};
-use anyhow::Result;
-use async_trait::async_trait;
-use kona_derive::BlobProvider;
-use kona_protocol::BlockInfo;
-use kzg_rs::{Blob as KzgRsBlob, Bytes48};
-use op_succinct_client_utils::witness::BlobData;
 use std::sync::{Arc, Mutex};
 
+use alloy_consensus::Blob;
+use alloy_eips::eip4844::env_settings::EnvKzgSettings;
+use alloy_primitives::B256;
+use anyhow::Result;
+use async_trait::async_trait;
+use base_consensus_derive::BlobProvider;
+use base_protocol::BlockInfo;
+use base_succinct_client_utils::witness::BlobData;
+use kzg_rs::{Blob as KzgRsBlob, Bytes48};
+
+/// Blob store that fetches blobs online and records them for witness replay.
 #[derive(Clone, Debug)]
 pub struct OnlineBlobStore<T: BlobProvider> {
+    /// Underlying blob provider.
     pub provider: T,
+    /// Collected blob data for witness generation.
     pub store: Arc<Mutex<BlobData>>,
 }
 
@@ -23,7 +28,7 @@ impl<T: BlobProvider + Send> BlobProvider for OnlineBlobStore<T> {
     async fn get_and_validate_blobs(
         &mut self,
         block_ref: &BlockInfo,
-        blob_hashes: &[IndexedBlobHash],
+        blob_hashes: &[B256],
     ) -> Result<Vec<Box<Blob>>, Self::Error> {
         let blobs = self.provider.get_and_validate_blobs(block_ref, blob_hashes).await?;
         let settings = EnvKzgSettings::default();

@@ -2,7 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use clap::Parser;
-use op_succinct_proof_utils::get_range_elf_embedded;
+use base_succinct_proof_utils::get_range_elf_embedded;
 
 #[derive(Parser)]
 #[command(about = "Save the range program ELF to a file")]

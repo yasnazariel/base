@@ -1,42 +1,68 @@
 use std::fmt;
 
-use crate::fetcher::BlockInfo;
+use base_succinct_client_utils::precompiles::cycle_tracker::keys;
 use num_format::{Locale, ToFormattedString};
-use op_succinct_client_utils::precompiles::cycle_tracker::keys;
 use serde::{Deserialize, Serialize};
 use sp1_sdk::ExecutionReport;
+
+use crate::fetcher::BlockInfo;
 
 /// Statistics for the range execution.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ExecutionStats {
+    /// L1 head block number.
     pub l1_head: u64,
+    /// First L2 block in the batch.
     pub batch_start: u64,
+    /// Last L2 block in the batch.
     pub batch_end: u64,
     /// The wall clock time to generate the witness.
     pub witness_generation_time_sec: u64,
     /// The wall clock time to execute the range on the machine.
     pub total_execution_time_sec: u64,
+    /// Total RISC-V instructions executed.
     pub total_instruction_count: u64,
+    /// Instructions for oracle verification.
     pub oracle_verify_instruction_count: u64,
+    /// Instructions for derivation.
     pub derivation_instruction_count: u64,
+    /// Instructions for block execution.
     pub block_execution_instruction_count: u64,
+    /// Instructions for blob verification.
     pub blob_verification_instruction_count: u64,
+    /// Total SP1 gas consumed.
     pub total_sp1_gas: u64,
+    /// Number of blocks in the batch.
     pub nb_blocks: u64,
+    /// Number of transactions in the batch.
     pub nb_transactions: u64,
+    /// Total Ethereum gas used.
     pub eth_gas_used: u64,
+    /// Total L1 fees (wei).
     pub l1_fees: u128,
+    /// Total transaction fees (wei).
     pub total_tx_fees: u128,
+    /// Average cycles per block.
     pub cycles_per_block: u64,
+    /// Average cycles per transaction.
     pub cycles_per_transaction: u64,
+    /// Average transactions per block.
     pub transactions_per_block: u64,
+    /// Average gas used per block.
     pub gas_used_per_block: u64,
+    /// Average gas used per transaction.
     pub gas_used_per_transaction: u64,
+    /// BN254 pairing cycles.
     pub bn_pair_cycles: u64,
+    /// BN254 addition cycles.
     pub bn_add_cycles: u64,
+    /// BN254 multiplication cycles.
     pub bn_mul_cycles: u64,
+    /// KZG point evaluation cycles.
     pub kzg_eval_cycles: u64,
+    /// ECDSA recovery cycles.
     pub ec_recover_cycles: u64,
+    /// P-256 verification cycles.
     pub p256_verify_cycles: u64,
 }
 
@@ -87,6 +113,10 @@ impl ExecutionStats {
         witness_generation_time_sec: u64,
         total_execution_time_sec: u64,
     ) -> Self {
+        if block_data.is_empty() {
+            return Self::default();
+        }
+
         // Sort the block data by block number.
         let mut block_data = block_data.to_vec();
         block_data.sort_by_key(|b| b.block_number);
@@ -94,8 +124,11 @@ impl ExecutionStats {
         let get_cycles = |key: &str| *report.cycle_tracker.get(key).unwrap_or(&0);
 
         let nb_blocks = block_data.len() as u64;
-        let nb_transactions = block_data.iter().map(|b| b.transaction_count).sum();
+        let nb_transactions: u64 = block_data.iter().map(|b| b.transaction_count).sum();
         let total_gas_used: u64 = block_data.iter().map(|b| b.gas_used).sum();
+        let total_instructions = report.total_instruction_count();
+
+        let safe_div = |a: u64, b: u64| if b > 0 { a / b } else { 0 };
 
         Self {
             l1_head,
@@ -104,7 +137,7 @@ impl ExecutionStats {
             // blockhash they're proving from.
             batch_start: block_data[0].block_number - 1,
             batch_end: block_data[block_data.len() - 1].block_number,
-            total_instruction_count: report.total_instruction_count(),
+            total_instruction_count: total_instructions,
             total_sp1_gas: report.gas().unwrap_or(0),
             block_execution_instruction_count: get_cycles("block-execution"),
             oracle_verify_instruction_count: get_cycles("oracle-verify"),
@@ -121,23 +154,24 @@ impl ExecutionStats {
             l1_fees: block_data.iter().map(|b| b.total_l1_fees).sum(),
             total_tx_fees: block_data.iter().map(|b| b.total_tx_fees).sum(),
             nb_blocks,
-            cycles_per_block: report.total_instruction_count() / nb_blocks,
-            cycles_per_transaction: report.total_instruction_count() / nb_transactions,
-            transactions_per_block: nb_transactions / nb_blocks,
-            gas_used_per_block: total_gas_used / nb_blocks,
-            gas_used_per_transaction: total_gas_used / nb_transactions,
+            cycles_per_block: safe_div(total_instructions, nb_blocks),
+            cycles_per_transaction: safe_div(total_instructions, nb_transactions),
+            transactions_per_block: safe_div(nb_transactions, nb_blocks),
+            gas_used_per_block: safe_div(total_gas_used, nb_blocks),
+            gas_used_per_transaction: safe_div(total_gas_used, nb_transactions),
             witness_generation_time_sec,
             total_execution_time_sec,
         }
     }
 }
 
-/// A [ExecutionStats] that can be displayed as Markdown.
+/// Wrapper for markdown-formatted [`ExecutionStats`] display.
+#[derive(Debug)]
 pub struct MarkdownExecutionStats(ExecutionStats);
 
 impl MarkdownExecutionStats {
-    /// Creates a [MarkdownExecutionStats].
-    pub fn new(inner: ExecutionStats) -> Self {
+    /// Creates a [`MarkdownExecutionStats`].
+    pub const fn new(inner: ExecutionStats) -> Self {
         Self(inner)
     }
 }

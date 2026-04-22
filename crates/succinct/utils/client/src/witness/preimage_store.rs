@@ -1,22 +1,55 @@
+use std::collections::{HashMap, hash_map::Entry};
+
 use alloy_primitives::keccak256;
 use async_trait::async_trait;
-use kona_preimage::{
+use base_proof_preimage::{
+    FlushableCache, HintWriterClient, PreimageKey, PreimageKeyType, PreimageOracleClient,
     errors::{PreimageOracleError, PreimageOracleResult},
-    HintWriterClient, PreimageKey, PreimageKeyType, PreimageOracleClient,
 };
-use kona_proof::FlushableCache;
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
-use std::collections::{hash_map::Entry, HashMap};
 
+/// In-memory store of preimage key-value pairs for the zkVM oracle.
 #[derive(
     Clone, Debug, Default, Serialize, Deserialize, rkyv::Serialize, rkyv::Archive, rkyv::Deserialize,
 )]
 pub struct PreimageStore {
+    /// Map of preimage keys to their values.
+    #[serde(with = "preimage_map_serde")]
     pub preimage_map: HashMap<PreimageKey, Vec<u8>>,
 }
 
+/// Serialize/deserialize `HashMap<PreimageKey, Vec<u8>>` as a sequence of `(PreimageKey, Vec<u8>)`
+/// pairs. This avoids the serde requirement that map keys serialize as strings.
+mod preimage_map_serde {
+    use serde::{
+        de::Deserializer,
+        ser::{SerializeSeq, Serializer},
+    };
+
+    use super::{Deserialize, HashMap, PreimageKey};
+
+    pub(super) fn serialize<S: Serializer>(
+        map: &HashMap<PreimageKey, Vec<u8>>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        let mut seq = serializer.serialize_seq(Some(map.len()))?;
+        for (k, v) in map {
+            seq.serialize_element(&(k, v))?;
+        }
+        seq.end()
+    }
+
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<HashMap<PreimageKey, Vec<u8>>, D::Error> {
+        let pairs: Vec<(PreimageKey, Vec<u8>)> = Deserialize::deserialize(deserializer)?;
+        Ok(pairs.into_iter().collect())
+    }
+}
+
 impl PreimageStore {
+    /// Validate all stored preimages against their key hashes.
     pub fn check_preimages(&self) -> PreimageOracleResult<()> {
         for (key, value) in &self.preimage_map {
             check_preimage(key, value)?;
@@ -24,6 +57,7 @@ impl PreimageStore {
         Ok(())
     }
 
+    /// Insert a preimage, rejecting overwrites with different values.
     pub fn save_preimage(&mut self, key: PreimageKey, value: Vec<u8>) -> PreimageOracleResult<()> {
         check_preimage(&key, &value)?;
 
@@ -33,7 +67,7 @@ impl PreimageStore {
             }
             Entry::Occupied(e) => {
                 if e.get() != &value {
-                    return Err(PreimageOracleError::Other("cannot overwrite key".to_string()))
+                    return Err(PreimageOracleError::Other("cannot overwrite key".to_string()));
                 }
             }
         };
@@ -50,10 +84,9 @@ pub fn check_preimage(key: &PreimageKey, value: &[u8]) -> PreimageOracleResult<(
         PreimageKeyType::Local | PreimageKeyType::GlobalGeneric => None,
         PreimageKeyType::Precompile => unimplemented!("Precompile not supported in zkVM"),
         PreimageKeyType::Blob => unreachable!("Blob keys validated in blob witness"),
-    } {
-        if key != &PreimageKey::new(expected_hash, key.key_type()) {
-            return Err(PreimageOracleError::InvalidPreimageKey);
-        }
+    } && key != &PreimageKey::new(expected_hash, key.key_type())
+    {
+        return Err(PreimageOracleError::InvalidPreimageKey);
     }
     Ok(())
 }

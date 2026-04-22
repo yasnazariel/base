@@ -1,19 +1,18 @@
 use std::{fmt::Debug, sync::Arc};
 
+use alloy_genesis::ChainConfig;
 use anyhow::Result;
 use async_trait::async_trait;
-use kona_derive::{BlobProvider, EthereumDataSource};
-use kona_driver::PipelineCursor;
-use kona_genesis::{L1ChainConfig, RollupConfig};
-use kona_preimage::CommsClient;
-use kona_proof::{
-    l1::{OracleL1ChainProvider, OraclePipeline},
-    l2::OracleL2ChainProvider,
-    FlushableCache,
-};
-use op_succinct_client_utils::witness::executor::WitnessExecutor;
+use base_consensus_derive::{BlobProvider, EthereumDataSource};
+use base_consensus_genesis::RollupConfig;
+use base_proof::{OracleL1ChainProvider, OracleL2ChainProvider, OraclePipeline};
+use base_proof_driver::PipelineCursor;
+use base_proof_preimage::{CommsClient, FlushableCache};
+use base_succinct_client_utils::witness::executor::WitnessExecutor;
 use spin::RwLock;
 
+/// Witness executor for Ethereum data availability.
+#[derive(Debug)]
 pub struct ETHDAWitnessExecutor<O, B>
 where
     O: CommsClient + FlushableCache + Send + Sync + Debug,
@@ -28,7 +27,8 @@ where
     O: CommsClient + FlushableCache + Send + Sync + Debug,
     B: BlobProvider + Send + Sync + Debug + Clone,
 {
-    pub fn new() -> Self {
+    /// Create a new executor.
+    pub const fn new() -> Self {
         Self { _marker: std::marker::PhantomData }
     }
 }
@@ -48,7 +48,7 @@ where
     async fn create_pipeline(
         &self,
         rollup_config: Arc<RollupConfig>,
-        l1_config: Arc<L1ChainConfig>,
+        l1_config: Arc<ChainConfig>,
         cursor: Arc<RwLock<PipelineCursor>>,
         oracle: Arc<Self::O>,
         beacon: Self::B,

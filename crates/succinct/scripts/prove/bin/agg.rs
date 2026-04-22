@@ -1,23 +1,26 @@
+//! Aggregation proof generation binary.
+#![recursion_limit = "256"]
+
+use std::env;
+
 use alloy_primitives::{Address, B256};
 use anyhow::{Context, Result};
-use clap::Parser;
-use op_succinct_client_utils::{boot::BootInfoStruct, types::u32_to_u8};
-use op_succinct_elfs::AGGREGATION_ELF;
-use op_succinct_host_utils::{
+use base_succinct_client_utils::{boot::BootInfoStruct, types::u32_to_u8};
+use base_succinct_elfs::AGGREGATION_ELF;
+use base_succinct_host_utils::{
     fetcher::OPSuccinctDataFetcher,
     get_agg_proof_stdin,
     network::{build_network_prover_from_env, parse_fulfillment_strategy},
     proof_cache::{get_range_proof_dir, save_agg_proof},
 };
-use op_succinct_proof_utils::{
-    cluster_agg_proof, cluster_setup_keys, get_range_elf_embedded, is_cluster_mode,
-};
+use base_succinct_proof_utils::{cluster_agg_proof, get_range_elf_embedded, is_cluster_mode};
+use clap::Parser;
 use sp1_sdk::{
-    blocking::{self, Prover as BlockingProver},
-    utils, Elf, HashableKey, ProveRequest, Prover, ProvingKey, SP1Proof, SP1ProofMode,
+    Elf, HashableKey, ProveRequest, Prover, ProvingKey, SP1Proof, SP1ProofMode,
     SP1ProofWithPublicValues, SP1Stdin, SP1VerifyingKey,
+    blocking::{self, Prover as BlockingProver},
+    utils,
 };
-use std::env;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -38,7 +41,7 @@ struct Args {
     #[arg(default_value = ".env", short, long)]
     env_file: String,
 
-    /// Cluster proving timeout in seconds (only used when SP1_PROVER=cluster).
+    /// Cluster proving timeout in seconds (only used when `SP1_PROVER=cluster`).
     #[arg(long, default_value = "21600")]
     cluster_timeout: u64,
 }
@@ -60,7 +63,7 @@ async fn load_aggregation_proof_data(
 
         let prover = blocking::CpuProver::new();
 
-        for proof_name in proof_names.iter() {
+        for proof_name in &proof_names {
             let proof_path = proof_directory.join(format!("{proof_name}.bin"));
             if !proof_path.exists() {
                 panic!("Proof file not found: {}", proof_path.display());
@@ -118,7 +121,7 @@ async fn main() -> Result<()> {
     let chain_id = fetcher.get_l2_chain_id().await?;
 
     if is_cluster_mode() {
-        let (_range_pk, vkey, _agg_pk, agg_vk) = cluster_setup_keys().await?;
+        let (vkey, agg_vk) = base_succinct_proof_utils::cluster_setup_vkeys().await?;
 
         println!("Aggregate ELF Verification Key: {:?}", agg_vk.bytes32());
 

@@ -1,5 +1,6 @@
-use clap::Parser;
 use std::path::PathBuf;
+
+use clap::Parser;
 
 pub mod config_common;
 
@@ -30,11 +31,11 @@ pub struct HostExecutorArgs {
     /// Whether to generate proofs.
     #[arg(long)]
     pub prove: bool,
-    /// Whether to fallback to timestamp-based L1 head estimation even though SafeDB is not
+    /// Whether to fallback to timestamp-based L1 head estimation even though `SafeDB` is not
     /// activated for op-node.
     #[clap(long)]
     pub safe_db_fallback: bool,
-    /// Cluster proving timeout in seconds (only used when SP1_PROVER=cluster).
+    /// Cluster proving timeout in seconds (only used when `SP1_PROVER=cluster`).
     #[arg(long, default_value = "21600")]
     pub cluster_timeout: u64,
 }
@@ -42,7 +43,7 @@ pub struct HostExecutorArgs {
 impl HostExecutorArgs {
     /// When both start and end are explicitly provided, default the batch size
     /// to the full range so it is processed as a single batch.
-    pub fn effective_batch_size(&self) -> u64 {
+    pub const fn effective_batch_size(&self) -> u64 {
         match (self.start, self.end) {
             (Some(start), Some(end)) if end > start => end - start,
             _ => self.batch_size,

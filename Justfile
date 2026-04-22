@@ -12,6 +12,8 @@ mod actions 'actions'
 mod devnet 'etc/docker'
 # Load testing for networks
 mod load-test 'crates/infra/load-tests'
+# SP1 / succinct ELF builds and proving helpers
+mod succinct 'crates/succinct'
 
 alias t := test
 alias f := fix

@@ -1,13 +1,13 @@
 use std::{env, sync::OnceLock};
 
 use anyhow::{Context, Result};
-use opentelemetry::{global, KeyValue};
+use opentelemetry::{KeyValue, global};
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
-use opentelemetry_otlp::{Protocol, WithExportConfig};
-use opentelemetry_sdk::{logs, propagation::TraceContextPropagator, runtime, Resource};
+use opentelemetry_otlp::{LogExporter, WithExportConfig};
+use opentelemetry_sdk::{Resource, logs::SdkLoggerProvider, propagation::TraceContextPropagator};
 use tracing_subscriber::{
-    fmt::format::JsonFields, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer,
-    Registry,
+    EnvFilter, Layer, Registry, fmt::format::JsonFields, layer::SubscriberExt,
+    util::SubscriberInitExt,
 };
 
 static INIT: OnceLock<Result<()>> = OnceLock::new();
@@ -31,17 +31,17 @@ fn build_env_filter() -> EnvFilter {
         .add_directive("client_derivation_driver=error".parse().unwrap())
         .add_directive("block_builder=error".parse().unwrap())
         .add_directive("host_server=error".parse().unwrap())
-        .add_directive("kona_protocol=error".parse().unwrap())
+        .add_directive("base_protocol=error".parse().unwrap())
         .add_directive("sp1_core_executor=off".parse().unwrap())
         .add_directive("sp1_core_machine=error".parse().unwrap())
 }
 
-/// Set up the logger with optional OpenTelemetry export.
+/// Set up the logger with optional `OpenTelemetry` export.
 ///
 /// # Environment Variables
-/// - `LOGGER_NAME`: Service name for opentelemetry logs (defaults to `op-succinct`)
-/// - `OTLP_ENDPOINT`: OpenTelemetry endpoint (defaults to http://localhost:4317)
-/// - `OTLP_ENABLED`: Whether to enable OpenTelemetry export (defaults to false)
+/// - `LOGGER_NAME`: Service name for opentelemetry logs (defaults to `base-succinct`)
+/// - `OTLP_ENDPOINT`: `OpenTelemetry` endpoint (defaults to <http://localhost:4317>)
+/// - `OTLP_ENABLED`: Whether to enable `OpenTelemetry` export (defaults to false)
 /// - `RUST_LOG`: Standard Rust log level configuration
 /// - `LOG_FORMAT`: Output format (pretty or json, defaults to pretty)
 pub fn setup_logger() {
@@ -55,14 +55,15 @@ pub fn setup_logger() {
             .parse::<bool>()
             .unwrap_or(false);
 
-        let service_name = logger_name.unwrap_or("op-succinct".to_string());
+        let service_name = logger_name.unwrap_or("base-succinct".to_string());
 
-        let params = vec![
-            KeyValue::new("service.name", service_name),
-            KeyValue::new("service.version", env!("CARGO_PKG_VERSION").to_string()),
-        ];
+        let resource = Resource::builder_empty()
+            .with_attributes([
+                KeyValue::new("service.name", service_name),
+                KeyValue::new("service.version", env!("CARGO_PKG_VERSION").to_string()),
+            ])
+            .build();
 
-        let resource = Resource::new(params);
         global::set_text_map_propagator(TraceContextPropagator::new());
 
         let log_format = std::env::var("LOG_FORMAT").unwrap_or("pretty".to_string());
@@ -82,8 +83,8 @@ pub fn setup_logger() {
                 }
                 _ => {
                     // Default to pretty formatting with ANSI colors
-                    let ansi = cfg!(feature = "ansi") &&
-                        env::var("NO_COLOR").map_or(true, |v| v.is_empty());
+                    let ansi = cfg!(feature = "ansi")
+                        && env::var("NO_COLOR").map_or(true, |v| v.is_empty());
 
                     Some(Box::new(
                         tracing_subscriber::fmt::layer()
@@ -100,19 +101,19 @@ pub fn setup_logger() {
             };
 
         let log_export_layer: Option<Box<dyn Layer<_> + Send + Sync>> = if otlp_enabled {
-            let export_layer = opentelemetry_otlp::new_pipeline()
-                .logging()
-                .with_log_config(logs::config().with_resource(resource))
-                .with_exporter(
-                    opentelemetry_otlp::new_exporter()
-                        .tonic()
-                        .with_endpoint(&otlp_endpoint)
-                        .with_protocol(Protocol::Grpc),
-                )
-                .install_batch(runtime::Tokio)
-                .context("Failed to install OpenTelemetry logging pipeline")?;
+            let exporter = LogExporter::builder()
+                .with_tonic()
+                .with_endpoint(&otlp_endpoint)
+                .build()
+                .context("Failed to build OTLP log exporter")?;
+
+            let logger_provider = SdkLoggerProvider::builder()
+                .with_resource(resource)
+                .with_batch_exporter(exporter)
+                .build();
+
             Some(Box::new(
-                OpenTelemetryTracingBridge::new(&export_layer).with_filter(build_env_filter()),
+                OpenTelemetryTracingBridge::new(&logger_provider).with_filter(build_env_filter()),
             ))
         } else {
             None

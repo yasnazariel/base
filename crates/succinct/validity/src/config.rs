@@ -1,11 +1,12 @@
+use std::sync::Arc;
+
 use alloy_primitives::{Address, B256};
 use alloy_provider::Provider;
-use op_succinct_host_utils::{
+use base_succinct_host_utils::{
     DisputeGameFactory::DisputeGameFactoryInstance as DisputeGameFactoryContract,
     OPSuccinctL2OutputOracle::OPSuccinctL2OutputOracleInstance as OPSuccinctL2OOContract,
 };
-use sp1_sdk::{network::FulfillmentStrategy, SP1ProofMode, SP1ProvingKey, SP1VerifyingKey};
-use std::sync::Arc;
+use sp1_sdk::{SP1ProofMode, SP1ProvingKey, SP1VerifyingKey, network::FulfillmentStrategy};
 
 pub struct ContractConfig<P>
 where
@@ -50,9 +51,9 @@ pub struct RequesterConfig {
     pub l2oo_address: Address,
     pub dgf_address: Address,
     /// The evm gas limit for each range proof. Ranges will be split to not exceed this gas limit.
-    /// If 0, will use range_proof_interval instead.
+    /// If 0, will use `range_proof_interval` instead.
     pub evm_gas_limit: u64,
-    /// The number of blocks in each range proof. Used when gas_limit is 0.
+    /// The number of blocks in each range proof. Used when `gas_limit` is 0.
     pub range_proof_interval: u64,
     pub submission_interval: u64,
     pub max_concurrent_witness_gen: u64,
@@ -60,14 +61,14 @@ pub struct RequesterConfig {
     pub range_proof_strategy: FulfillmentStrategy,
     pub agg_proof_strategy: FulfillmentStrategy,
     pub agg_proof_mode: SP1ProofMode,
-    pub op_succinct_config_name_hash: B256,
+    pub base_succinct_config_name_hash: B256,
     pub mock: bool,
 
-    /// Whether to fallback to timestamp-based L1 head estimation even though SafeDB is not
+    /// Whether to fallback to timestamp-based L1 head estimation even though `SafeDB` is not
     /// activated for op-node.
     pub safe_db_fallback: bool,
 
-    /// Whether to expect NETWORK_PRIVATE_KEY to be an AWS KMS key ARN instead of a
+    /// Whether to expect `NETWORK_PRIVATE_KEY` to be an AWS KMS key ARN instead of a
     /// plaintext private key.
     pub use_kms_requester: bool,
 
@@ -118,7 +119,7 @@ impl RequesterConfig {
             range_proof_strategy = ?self.range_proof_strategy,
             agg_proof_strategy = ?self.agg_proof_strategy,
             agg_proof_mode = ?self.agg_proof_mode,
-            op_succinct_config_name_hash = %self.op_succinct_config_name_hash,
+            base_succinct_config_name_hash = %self.base_succinct_config_name_hash,
             mock = self.mock,
             safe_db_fallback = self.safe_db_fallback,
             use_kms_requester = self.use_kms_requester,

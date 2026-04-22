@@ -1,16 +1,18 @@
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use kona_preimage::{
+use base_proof_preimage::{
+    CommsClient, FlushableCache, HintWriterClient, PreimageKey, PreimageOracleClient,
     errors::{PreimageOracleError, PreimageOracleResult},
-    CommsClient, HintWriterClient, PreimageKey, PreimageOracleClient,
 };
-use kona_proof::FlushableCache;
-use op_succinct_client_utils::witness::preimage_store::PreimageStore;
+use base_succinct_client_utils::witness::preimage_store::PreimageStore;
 
+/// Wraps a preimage oracle and records all fetched preimages for witness generation.
 #[derive(Clone, Debug)]
 pub struct PreimageWitnessCollector<P: CommsClient + FlushableCache + Send + Sync + Clone> {
+    /// Inner preimage oracle.
     pub preimage_oracle: Arc<P>,
+    /// Store for collected preimage witness data.
     pub preimage_witness_store: Arc<Mutex<PreimageStore>>,
 }
 
@@ -55,6 +57,7 @@ impl<P> PreimageWitnessCollector<P>
 where
     P: CommsClient + FlushableCache + Send + Sync + Clone,
 {
+    /// Persist a preimage key-value pair to the witness store.
     pub fn save(&self, key: PreimageKey, value: &[u8]) -> PreimageOracleResult<()> {
         let mut witness_store_lock = self.preimage_witness_store.lock().map_err(|_| {
             PreimageOracleError::Other("Failed to acquire preimage_witness_store lock".to_string())

@@ -1,11 +1,16 @@
+use std::{
+    cmp::{max, min},
+    fs::{self, OpenOptions},
+    io::Seek,
+    path::PathBuf,
+    sync::Arc,
+};
+
 use anyhow::Result;
-use clap::Parser;
-use futures::StreamExt;
-use log::info;
-use op_succinct_host_utils::{
+use base_succinct_host_utils::{
     block_range::{
-        get_rolling_block_range, get_validated_block_range, split_range_based_on_safe_heads,
-        split_range_basic, SpanBatchRange,
+        SpanBatchRange, get_rolling_block_range, get_validated_block_range,
+        split_range_based_on_safe_heads, split_range_basic,
     },
     fetcher::OPSuccinctDataFetcher,
     host::OPSuccinctHost,
@@ -13,19 +18,16 @@ use op_succinct_host_utils::{
     witness_cache::{load_stdin_from_cache, save_stdin_to_cache},
     witness_generation::WitnessGenerator,
 };
-use op_succinct_proof_utils::{get_range_elf_embedded, initialize_host};
-use op_succinct_scripts::HostExecutorArgs;
+use base_succinct_proof_utils::{get_range_elf_embedded, initialize_host};
+use base_succinct_scripts::HostExecutorArgs;
+use clap::Parser;
+use futures::StreamExt;
+use log::info;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use sp1_sdk::{
+    Elf,
     blocking::{CpuProver, Prover},
-    utils, Elf,
-};
-use std::{
-    cmp::{max, min},
-    fs::{self, OpenOptions},
-    io::Seek,
-    path::PathBuf,
-    sync::Arc,
+    utils,
 };
 
 /// Run the zkVM execution process for each split range in parallel. Writes the execution stats for
@@ -62,10 +64,10 @@ where
     let report_path =
         root_dir.join(format!("execution-reports/{l2_chain_id}/{start}-{end}-report.csv"));
     // Create the parent directory if it doesn't exist
-    if let Some(parent) = report_path.parent() {
-        if !parent.exists() {
-            fs::create_dir_all(parent).unwrap();
-        }
+    if let Some(parent) = report_path.parent()
+        && !parent.exists()
+    {
+        fs::create_dir_all(parent).unwrap();
     }
 
     // Create an empty file since canonicalize requires the path to exist
@@ -83,25 +85,31 @@ where
             if cache_enabled {
                 match load_stdin_from_cache(l2_chain_id, start, end) {
                     Ok(Some(stdin)) => {
-                        info!("Loaded stdin from cache for range {}-{}", start, end);
+                        info!("Loaded stdin from cache for range {start}-{end}");
                         return stdin;
                     }
                     Ok(None) => {} // No cache, generate below
                     Err(e) => {
-                        log::warn!("Failed to load stdin cache for range {}-{}: {e}", start, end);
+                        log::warn!("Failed to load stdin cache for range {start}-{end}: {e}");
                     }
                 }
             }
 
             // Generate witness and convert to SP1Stdin
             let witness_data = host.run(&host_args).await.unwrap();
-            let stdin = host.witness_generator().get_sp1_stdin(witness_data).unwrap();
+            let stdin = host
+                .witness_generator()
+                .get_sp1_stdin(
+                    witness_data,
+                    base_succinct_client_utils::client::DEFAULT_INTERMEDIATE_ROOT_INTERVAL,
+                )
+                .unwrap();
 
             // Save SP1Stdin to cache
-            if cache_enabled {
-                if let Ok(cache_path) = save_stdin_to_cache(l2_chain_id, start, end, &stdin) {
-                    info!("Saved stdin to cache: {}", cache_path.display());
-                }
+            if cache_enabled
+                && let Ok(cache_path) = save_stdin_to_cache(l2_chain_id, start, end, &stdin)
+            {
+                info!("Saved stdin to cache: {}", cache_path.display());
             }
 
             stdin
@@ -155,7 +163,7 @@ where
                 .from_writer(file);
 
             csv_writer
-                .serialize(execution_stats.clone())
+                .serialize(execution_stats)
                 .expect("Failed to write execution stats to CSV.");
             csv_writer.flush().expect("Failed to flush CSV writer.");
         });
@@ -201,15 +209,17 @@ fn aggregate_execution_stats(
 
     // For statistics that are per-block or per-transaction, we take the average over the entire
     // range.
+    let safe_div = |a: u64, b: u64| if b > 0 { a / b } else { 0 };
     aggregate_stats.cycles_per_block =
-        aggregate_stats.total_instruction_count / aggregate_stats.nb_blocks;
+        safe_div(aggregate_stats.total_instruction_count, aggregate_stats.nb_blocks);
     aggregate_stats.cycles_per_transaction =
-        aggregate_stats.total_instruction_count / aggregate_stats.nb_transactions;
+        safe_div(aggregate_stats.total_instruction_count, aggregate_stats.nb_transactions);
     aggregate_stats.transactions_per_block =
-        aggregate_stats.nb_transactions / aggregate_stats.nb_blocks;
-    aggregate_stats.gas_used_per_block = aggregate_stats.eth_gas_used / aggregate_stats.nb_blocks;
+        safe_div(aggregate_stats.nb_transactions, aggregate_stats.nb_blocks);
+    aggregate_stats.gas_used_per_block =
+        safe_div(aggregate_stats.eth_gas_used, aggregate_stats.nb_blocks);
     aggregate_stats.gas_used_per_transaction =
-        aggregate_stats.eth_gas_used / aggregate_stats.nb_transactions;
+        safe_div(aggregate_stats.eth_gas_used, aggregate_stats.nb_transactions);
 
     // Use the earliest start and latest end across all blocks.
     aggregate_stats.batch_start = batch_start;

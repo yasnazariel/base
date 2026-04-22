@@ -1,0 +1,52 @@
+_cargo_prove := "~/.sp1/bin/cargo-prove"
+_sp1_tag := "v6.1.0"
+
+# Show available succinct commands
+default:
+    @just --justfile {{ source_file() }} --list
+
+# Build all SP1 ELF files (range + aggregation)
+build-elfs: build-range-elf build-agg-elf
+
+# Build the range program ELF (reproducible docker build)
+build-range-elf:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd programs/range/ethereum
+    {{ _cargo_prove }} prove build \
+        --elf-name range-elf-embedded \
+        --tag {{ _sp1_tag }} \
+        --docker \
+        --output-directory ../../../elf
+
+# Build the aggregation program ELF (reproducible docker build)
+build-agg-elf:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd programs/aggregation
+    {{ _cargo_prove }} prove build \
+        --elf-name aggregation-elf \
+        --tag {{ _sp1_tag }} \
+        --docker \
+        --output-directory ../../elf
+
+# Remove built ELF artifacts
+clean-elfs:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    shopt -s nullglob
+    rm -f elf/range-elf-embedded elf/aggregation-elf elf/*.bin
+
+# Print range and aggregation verification key hashes as a markdown table
+vkeys:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Generating verification key hashes..."
+    ETH_OUTPUT=$(RUST_LOG=error cargo run -p base-succinct-scripts --bin config --release 2>&1)
+    ETH_RANGE=$(echo "$ETH_OUTPUT" | grep "Range Verification Key Hash" | awk '{print $NF}')
+    AGG_KEY=$(echo "$ETH_OUTPUT" | grep "Aggregation Verification Key Hash" | awk '{print $NF}')
+    echo ""
+    echo "| Program | Verification Key Hash |"
+    echo "|--------|------------------------|"
+    echo "| Range Verification Key | $ETH_RANGE |"
+    echo "| Aggregation Verification Key | $AGG_KEY |"

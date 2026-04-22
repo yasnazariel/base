@@ -1,4 +1,6 @@
+/// Pipeline construction and block execution.
 pub mod executor;
+/// In-memory preimage oracle for the zkVM.
 pub mod preimage_store;
 
 use std::{fmt::Debug, sync::Arc};
@@ -11,12 +13,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::BlobStore;
 
+/// Witness data that can be split into a preimage store and blob data.
 #[async_trait]
 pub trait WitnessData: Sized {
-    /// Creates a new WitnessData from the given preimage store and blob data.
+    /// Creates a new `WitnessData` from the given preimage store and blob data.
     fn from_parts(preimage_store: PreimageStore, blob_data: BlobData) -> Self;
 
-    /// Consumes the WitnessData to extract its core components.
+    /// Consumes the `WitnessData` to extract its core components.
     fn into_parts(self) -> (PreimageStore, BlobData);
 
     /// Gets the oracle and blob provider from the witness data and validates the correctness of the
@@ -41,9 +44,12 @@ pub trait WitnessData: Sized {
     }
 }
 
+/// Default [`WitnessData`] backed by rkyv serialization.
 #[derive(Clone, Debug, Default, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct DefaultWitnessData {
+    /// Preimage oracle contents.
     pub preimage_store: PreimageStore,
+    /// EIP-4844 blob data with KZG proofs.
     pub blob_data: BlobData,
 }
 
@@ -58,31 +64,15 @@ impl WitnessData for DefaultWitnessData {
     }
 }
 
-#[derive(Clone, Debug, Default, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
-pub struct EigenDAWitnessData {
-    pub preimage_store: PreimageStore,
-    pub blob_data: BlobData,
-    // EigenDAWitness.
-    // See https://github.com/Layr-Labs/hokulea/blob/c99e17ec99574a237e10ca2ddb3110acefdb6ca6/crates/proof/src/eigenda_witness.rs#L69.
-    pub eigenda_data: Option<Vec<u8>>,
-}
-
-#[async_trait]
-impl WitnessData for EigenDAWitnessData {
-    fn from_parts(preimage_store: PreimageStore, blob_data: BlobData) -> Self {
-        Self { preimage_store, blob_data, eigenda_data: None }
-    }
-
-    fn into_parts(self) -> (PreimageStore, BlobData) {
-        (self.preimage_store, self.blob_data)
-    }
-}
-
+/// EIP-4844 blob data with commitments and KZG proofs.
 #[derive(
     Clone, Debug, Default, Serialize, Deserialize, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
 )]
 pub struct BlobData {
+    /// Raw blobs.
     pub blobs: Vec<Blob>,
+    /// KZG commitments.
     pub commitments: Vec<Bytes48>,
+    /// KZG proofs.
     pub proofs: Vec<Bytes48>,
 }

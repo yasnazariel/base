@@ -1,13 +1,16 @@
-use crate::witness::BlobData;
 use alloc::{boxed::Box, vec::Vec};
+
 use alloy_consensus::Blob;
-use alloy_eips::eip4844::{kzg_to_versioned_hash, IndexedBlobHash};
+use alloy_eips::eip4844::kzg_to_versioned_hash;
 use alloy_primitives::B256;
 use async_trait::async_trait;
-use kona_derive::{BlobProvider, BlobProviderError};
-use kona_protocol::BlockInfo;
+use base_consensus_derive::{BlobProvider, BlobProviderError};
+use base_protocol::BlockInfo;
 use kzg_rs::get_kzg_settings;
 
+use crate::witness::BlobData;
+
+/// KZG-verified blob storage for the zkVM oracle.
 #[derive(Clone, Debug, Default)]
 pub struct BlobStore {
     versioned_blobs: Vec<(B256, Blob)>,
@@ -33,7 +36,7 @@ impl From<BlobData> for BlobStore {
         ) {
             Ok(true) => {} // Verification passed
             Ok(false) => panic!("KZG proof verification failed: invalid proofs"),
-            Err(e) => panic!("KZG proof verification error: {}", e),
+            Err(e) => panic!("KZG proof verification error: {e}"),
         }
 
         Self { versioned_blobs }
@@ -47,13 +50,13 @@ impl BlobProvider for BlobStore {
     async fn get_and_validate_blobs(
         &mut self,
         _: &BlockInfo,
-        blob_hashes: &[IndexedBlobHash],
+        blob_hashes: &[B256],
     ) -> Result<Vec<Box<Blob>>, Self::Error> {
         Ok(blob_hashes
             .iter()
             .filter_map(|hash| {
                 let (blob_hash, blob) = self.versioned_blobs.pop().unwrap();
-                (hash.hash == blob_hash).then(|| Box::new(blob))
+                (*hash == blob_hash).then(|| Box::new(blob))
             })
             .collect())
     }

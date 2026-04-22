@@ -1,4 +1,6 @@
-use sp1_build::{build_program_with_args, BuildArgs};
+//! Build script for the utils crate.
+
+use sp1_build::{BuildArgs, build_program_with_args};
 
 #[allow(unused)]
 fn build_program(program_name: &str, elf_name: &str, features: Option<Vec<String>>) {
@@ -9,7 +11,7 @@ fn build_program(program_name: &str, elf_name: &str, features: Option<Vec<String
         elf_name: Some(elf_name.to_string()),
         output_directory: Some("../../elf".to_string()),
         docker: true,
-        tag: "v6.0.2".to_string(),
+        tag: "v6.1.0".to_string(),
         workspace_directory: Some("../../".to_string()),
         ..Default::default()
     };
@@ -26,17 +28,7 @@ fn build_program(program_name: &str, elf_name: &str, features: Option<Vec<String
 
 /// Build all the native programs and the native host runner. Optional flag to build the zkVM
 /// programs.
-pub fn build_all() {
+pub const fn build_all() {
     // build_program("aggregation", "aggregation-elf", None);
     // build_program("range/ethereum", "range-elf-embedded", Some(vec!["embedded".to_string()]));
-    // build_program(
-    //     "range/celestia",
-    //     "celestia-range-elf-embedded",
-    //     Some(vec!["embedded".to_string()]),
-    // );
-    // build_program(
-    //     "range/eigenda",
-    //     "eigenda-range-elf-embedded",
-    //     Some(vec!["embedded".to_string()]),
-    // );
 }

@@ -1,11 +1,10 @@
 //! RPC Types for Optimism Rollup
 //!
-//! These types are copied from kona-rpc to avoid bringing in rollup-boost dependencies
-//! which cause alloy version conflicts with hokulea v1.1.4.
+//! These types are copied from kona-rpc to avoid bringing in rollup-boost dependencies.
 
 use alloy_eips::BlockNumHash;
 use alloy_primitives::B256;
-use kona_protocol::{L2BlockInfo, SyncStatus};
+use base_protocol::{L2BlockInfo, SyncStatus};
 use serde::{Deserialize, Serialize};
 
 /// An [output response][or] for Optimism Rollup.
