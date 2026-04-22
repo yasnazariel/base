@@ -13,20 +13,25 @@ pub use config::BatcherConfig;
 mod recent_txs;
 pub use recent_txs::{MAX_CHECK_RECENT_TXS_DEPTH, RecentTxScanner, SCAN_FETCH_CONCURRENCY};
 
+mod endpoint_pool;
+pub use endpoint_pool::{EndpointPool, HealthMonitor, Probe};
+
 mod source;
-pub use source::RpcPollingSource;
+pub use source::{L2EndpointPool, RpcPollingSource};
 
 mod subscription;
 pub use subscription::{NullSubscription, WsBlockSubscription};
 
 mod l1_source;
-pub use l1_source::{NullL1HeadSubscription, RpcL1HeadPollingSource, WsL1HeadSubscription};
+pub use l1_source::{
+    L1EndpointPool, NullL1HeadSubscription, RpcL1HeadPollingSource, WsL1HeadSubscription,
+};
 
 mod throttle;
-pub use throttle::RpcThrottleClient;
+pub use throttle::{EndpointRole, RpcThrottleClient};
 
 mod safe_head_poller;
-pub use safe_head_poller::{SafeHeadPoller, SafeHeadProvider};
+pub use safe_head_poller::{RollupEndpointPool, SafeHeadPoller, SafeHeadProvider};
 
 mod service;
 pub use service::{BatcherService, ReadyBatcher};

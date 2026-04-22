@@ -47,16 +47,25 @@ impl Cli {
 pub(crate) struct BatcherArgs {
     /// L1 RPC endpoint(s).
     ///
-    /// Accepts a comma-separated list. The service connects to each in order at
-    /// startup and uses the first that responds; later endpoints serve as
-    /// startup-time fallbacks only (no per-call rotation).
+    /// Accepts a comma-separated list. The L1 head poller and recent-tx scan
+    /// share an endpoint pool with runtime active-endpoint failover (probed
+    /// every `--active-endpoint-check-interval`).
+    ///
+    /// **Caveat:** L1 transaction submission (`base-tx-manager`) currently
+    /// reads from the first connectable endpoint at startup and does not
+    /// participate in runtime rotation. If that endpoint dies, batches stop
+    /// being submitted until the batcher is restarted. Pooling tx submission
+    /// is tracked as a follow-up.
     #[arg(long = "l1-rpc-url", env = "BATCHER_L1_RPC_URL", value_delimiter = ',', num_args = 1..)]
     pub l1_rpc_url: Vec<Url>,
 
     /// L2 HTTP RPC endpoint(s) (used for all JSON-RPC calls including throttle control).
     ///
-    /// Accepts a comma-separated list with the same connection-time failover
-    /// semantics as `--l1-rpc-url`.
+    /// Accepts a comma-separated list. The L2 polling source shares an
+    /// endpoint pool with runtime active-endpoint failover. The pool is
+    /// probed every `--active-endpoint-check-interval` using a head-
+    /// advancement check, so a passive sequencer that responds to RPC but
+    /// isn't producing blocks is detected and rotated past.
     #[arg(long = "l2-rpc-url", env = "BATCHER_L2_RPC_URL", value_delimiter = ',', num_args = 1..)]
     pub l2_rpc_url: Vec<Url>,
 
@@ -77,8 +86,9 @@ pub(crate) struct BatcherArgs {
 
     /// Rollup node RPC endpoint(s).
     ///
-    /// Accepts a comma-separated list with the same connection-time failover
-    /// semantics as `--l1-rpc-url`.
+    /// Accepts a comma-separated list. The rollup-node clients (used for
+    /// `optimism_syncStatus` and `optimism_rollupConfig`) share an endpoint
+    /// pool with runtime active-endpoint failover.
     #[arg(
         long = "rollup-rpc-url",
         env = "BATCHER_ROLLUP_RPC_URL",
@@ -178,6 +188,21 @@ pub(crate) struct BatcherArgs {
     #[arg(long = "no-throttle", env = "BATCHER_NO_THROTTLE")]
     pub no_throttle: bool,
 
+    /// Additional RPC endpoints that receive `miner_setMaxDASize` throttle signals.
+    ///
+    /// Throttle signals are fanned out in parallel to every endpoint in
+    /// `--l2-rpc-url` plus every endpoint listed here. Use this for rollup-boost
+    /// builders or any other downstream block-builder that needs to honour the
+    /// same DA limits as the primary sequencer. Accepts a comma-separated list.
+    /// Matches op-batcher's `--throttle.additional-endpoints`.
+    #[arg(
+        long = "throttle-additional-endpoints",
+        env = "BATCHER_THROTTLE_ADDITIONAL_ENDPOINTS",
+        value_delimiter = ',',
+        num_args = 0..,
+    )]
+    pub throttle_additional_endpoints: Vec<Url>,
+
     /// Number of recent L1 blocks to scan on startup for already-submitted batcher frames.
     ///
     /// When set to a nonzero value N, the batcher walks back N L1 blocks from the
@@ -244,6 +269,38 @@ pub(crate) struct BatcherArgs {
     )]
     pub wait_node_sync_timeout_secs: u64,
 
+    /// Interval at which the active-endpoint health monitor probes pooled
+    /// L1, L2, and rollup-node providers (seconds).
+    ///
+    /// On each tick, the currently-active endpoint is probed. L1 uses a
+    /// simple `eth_blockNumber` liveness check; L2 uses head-advancement
+    /// detection (see `--head-advancement-max-stalls`); rollup-rpc uses
+    /// `optimism_syncStatus`. If the probe fails, the pool fails over to
+    /// the first healthy alternative. Single-endpoint pools skip
+    /// monitoring entirely. Matches op-batcher's
+    /// `--active-sequencer-check-duration` (default 5s).
+    #[arg(
+        long = "active-endpoint-check-interval",
+        default_value = "5",
+        env = "BATCHER_ACTIVE_ENDPOINT_CHECK_INTERVAL"
+    )]
+    pub active_endpoint_check_interval_secs: u64,
+
+    /// Number of consecutive ticks the L2 endpoint head can fail to advance
+    /// before the pool fails over.
+    ///
+    /// The L2 health probe checks for head advancement (not just liveness)
+    /// so a passive sequencer or paused replica that responds OK without
+    /// producing blocks is detected. Larger values tolerate more probe
+    /// noise; smaller values fail over more aggressively.
+    /// Default: 2 (10s of stall tolerance at the default 5s probe interval).
+    #[arg(
+        long = "head-advancement-max-stalls",
+        default_value = "2",
+        env = "BATCHER_HEAD_ADVANCEMENT_MAX_STALLS"
+    )]
+    pub head_advancement_max_stalls: u32,
+
     /// Disable the throttle-driven blob-DA override.
     ///
     /// By default, when DA-backlog throttling activates, the encoder is forced
@@ -300,12 +357,17 @@ impl BatcherArgs {
                     ..Default::default()
                 })
             },
+            throttle_additional_endpoints: self.throttle_additional_endpoints,
             check_recent_txs_depth: self.check_recent_txs_depth,
             admin_addr: self.admin_port.map(|port| SocketAddr::new(self.admin_addr, port)),
             stopped: self.stopped,
             wait_node_sync: self.wait_node_sync,
             wait_node_sync_timeout: Duration::from_secs(self.wait_node_sync_timeout_secs),
             force_blobs_when_throttling: !self.no_force_blobs_when_throttling,
+            active_endpoint_check_interval: Duration::from_secs(
+                self.active_endpoint_check_interval_secs,
+            ),
+            head_advancement_max_stalls: self.head_advancement_max_stalls,
         })
     }
 
@@ -474,5 +536,45 @@ mod tests {
         let cli = parse_cli(&["--no-force-blobs-when-throttling"]);
         let config = cli.args.into_config().expect("config should build");
         assert!(!config.force_blobs_when_throttling);
+    }
+
+    #[test]
+    fn throttle_additional_endpoints_default_empty() {
+        let cli = parse_cli(&[]);
+        let config = cli.args.into_config().expect("config should build");
+        assert!(config.throttle_additional_endpoints.is_empty());
+    }
+
+    #[test]
+    fn head_advancement_max_stalls_default_two() {
+        let cli = parse_cli(&[]);
+        let config = cli.args.into_config().expect("config should build");
+        assert_eq!(config.head_advancement_max_stalls, 2);
+    }
+
+    #[test]
+    fn head_advancement_max_stalls_overrides_via_flag() {
+        let cli = parse_cli(&["--head-advancement-max-stalls", "5"]);
+        let config = cli.args.into_config().expect("config should build");
+        assert_eq!(config.head_advancement_max_stalls, 5);
+    }
+
+    #[test]
+    fn active_endpoint_check_interval_default_five_secs() {
+        let cli = parse_cli(&[]);
+        let config = cli.args.into_config().expect("config should build");
+        assert_eq!(config.active_endpoint_check_interval, Duration::from_secs(5));
+    }
+
+    #[test]
+    fn throttle_additional_endpoints_accepts_comma_separated_list() {
+        let cli = parse_cli(&[
+            "--throttle-additional-endpoints",
+            "http://builder-a:8545,http://builder-b:8545",
+        ]);
+        let config = cli.args.into_config().expect("config should build");
+        assert_eq!(config.throttle_additional_endpoints.len(), 2);
+        assert_eq!(config.throttle_additional_endpoints[0].as_str(), "http://builder-a:8545/");
+        assert_eq!(config.throttle_additional_endpoints[1].as_str(), "http://builder-b:8545/");
     }
 }

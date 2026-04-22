@@ -62,6 +62,14 @@ pub struct BatcherConfig {
     pub resubmission_timeout: Duration,
     /// Throttle configuration (optional).
     pub throttle: Option<ThrottleConfig>,
+    /// Additional RPC endpoints to fan throttle signals out to.
+    ///
+    /// `miner_setMaxDASize` is sent to every endpoint in
+    /// [`l2_rpc_url`](Self::l2_rpc_url) **and** every endpoint listed here, in
+    /// parallel. Use this to push the same throttle parameters to builder
+    /// endpoints (e.g. rollup-boost) that aren't part of the primary L2 RPC
+    /// rotation. Empty by default.
+    pub throttle_additional_endpoints: Vec<Url>,
     /// Number of recent L1 blocks to scan on startup for already-submitted batcher frames.
     ///
     /// When nonzero, the service walks back this many blocks from the current L1 head
@@ -101,6 +109,21 @@ pub struct BatcherConfig {
     /// emit blob-typed submissions even when its configured `da_type` is
     /// calldata. No-op for blob-configured batchers. Default: `true`.
     pub force_blobs_when_throttling: bool,
+    /// Interval at which the active-endpoint health monitor probes pooled
+    /// L1, L2, and rollup-node providers.
+    ///
+    /// On each tick, the currently-active endpoint is probed; if it fails,
+    /// the pool fails over to the first healthy alternative. Pools that
+    /// were configured with a single endpoint (no comma-separated list)
+    /// skip monitoring entirely. Matches op-batcher's
+    /// `--active-sequencer-check-duration` (default 5s).
+    pub active_endpoint_check_interval: Duration,
+    /// Number of consecutive head-advancement-probe ticks the L2 pool
+    /// tolerates before flagging the active sequencer as stuck.
+    ///
+    /// Drives [`Probe::head_advancement`](crate::Probe::head_advancement)
+    /// — see that function for full semantics. Default: 2.
+    pub head_advancement_max_stalls: u32,
 }
 
 impl Default for BatcherConfig {
@@ -118,12 +141,15 @@ impl Default for BatcherConfig {
             num_confirmations: 1,
             resubmission_timeout: Duration::from_secs(48),
             throttle: Some(ThrottleConfig::default()),
+            throttle_additional_endpoints: Vec::new(),
             check_recent_txs_depth: 0,
             admin_addr: None,
             stopped: false,
             wait_node_sync: false,
             wait_node_sync_timeout: Duration::from_secs(600),
             force_blobs_when_throttling: true,
+            active_endpoint_check_interval: Duration::from_secs(5),
+            head_advancement_max_stalls: 2,
         }
     }
 }

@@ -7,24 +7,42 @@ use async_trait::async_trait;
 use base_batcher_source::{L1HeadPolling, L1HeadSubscription, SourceError};
 use futures::{StreamExt, stream::BoxStream};
 
+use crate::EndpointPool;
+
+/// Type alias for the L1 endpoint pool used by the head poller.
+pub type L1EndpointPool = EndpointPool<dyn Provider + Send + Sync>;
+
 /// Polling source that fetches the latest L1 head block number from an L1 RPC endpoint.
+///
+/// Resolves the active provider through an [`L1EndpointPool`] on every call so
+/// that runtime failover decisions made by
+/// [`HealthMonitor`](crate::HealthMonitor) take effect immediately.
 #[derive(derive_more::Debug)]
 pub struct RpcL1HeadPollingSource {
     #[debug(skip)]
-    provider: Arc<dyn Provider + Send + Sync>,
+    pool: Arc<L1EndpointPool>,
 }
 
 impl RpcL1HeadPollingSource {
-    /// Create a new [`RpcL1HeadPollingSource`] wrapping the given provider.
-    pub fn new(provider: Arc<dyn Provider + Send + Sync>) -> Self {
-        Self { provider }
+    /// Create a new [`RpcL1HeadPollingSource`] backed by the given endpoint pool.
+    pub fn new(pool: Arc<L1EndpointPool>) -> Self {
+        Self { pool }
     }
 }
 
 #[async_trait]
 impl L1HeadPolling for RpcL1HeadPollingSource {
     async fn latest_head(&self) -> Result<u64, SourceError> {
-        self.provider.get_block_number().await.map_err(|e| SourceError::Provider(e.to_string()))
+        match self.pool.active().get_block_number().await {
+            Ok(n) => {
+                self.pool.record_call_success();
+                Ok(n)
+            }
+            Err(e) => {
+                self.pool.record_call_failure();
+                Err(SourceError::Provider(e.to_string()))
+            }
+        }
     }
 }
 

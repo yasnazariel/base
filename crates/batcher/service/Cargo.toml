@@ -36,9 +36,11 @@ base-consensus-rpc = { workspace = true, features = ["client"] }
 base-common-genesis = { workspace = true, features = ["std"] }
 alloy-provider = { workspace = true, features = ["pubsub", "ws"] }
 jsonrpsee = { workspace = true, features = ["http-client", "macros"] }
+metrics = { workspace = true, optional = true }
 
 [features]
 metrics = [
+	"dep:metrics",
 	"base-batcher-core/metrics",
 	"base-batcher-encoder/metrics",
 	"base-consensus-rpc/metrics",

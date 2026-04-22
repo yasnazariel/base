@@ -1,8 +1,8 @@
 //! Batcher service startup and wiring.
 
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
-use alloy_provider::{Provider, ProviderBuilder, RootProvider};
+use alloy_provider::{Provider, ProviderBuilder, RootProvider, network::Ethereum};
 use alloy_rpc_types_eth::BlockNumberOrTag;
 use base_batcher_admin::AdminServer;
 use base_batcher_core::{
@@ -23,9 +23,10 @@ use tracing::{info, warn};
 use url::Url;
 
 use crate::{
-    BatcherConfig, MAX_CHECK_RECENT_TXS_DEPTH, NullL1HeadSubscription, NullSubscription,
-    RecentTxScanner, RpcL1HeadPollingSource, RpcPollingSource, RpcThrottleClient, SafeHeadPoller,
-    WsBlockSubscription, WsL1HeadSubscription,
+    BatcherConfig, EndpointPool, EndpointRole, HealthMonitor, L1EndpointPool, L2EndpointPool,
+    MAX_CHECK_RECENT_TXS_DEPTH, NullL1HeadSubscription, NullSubscription, Probe, RecentTxScanner,
+    RollupEndpointPool, RpcL1HeadPollingSource, RpcPollingSource, RpcThrottleClient,
+    SafeHeadPoller, WsBlockSubscription, WsL1HeadSubscription,
 };
 
 /// Service-internal throttle client variant: either a no-op or an RPC client.
@@ -164,7 +165,7 @@ impl BatcherService {
     /// [`HybridBlockSource`]: base_batcher_source::HybridBlockSource
     async fn build_l2_subscription(
         url: Option<&Url>,
-        fetch_provider: Arc<dyn Provider<Base> + Send + Sync>,
+        fetch_pool: Arc<L2EndpointPool>,
     ) -> Subscription {
         let Some(url) = url else {
             return Subscription::Null(NullSubscription);
@@ -189,7 +190,10 @@ impl BatcherService {
         let stream = sub
             .into_stream()
             .then(move |header| {
-                let provider = Arc::clone(&fetch_provider);
+                // Resolve the active provider per-header so the fetch follows
+                // the L2 pool's failover decisions instead of pinning to the
+                // initial active endpoint for the lifetime of the subscription.
+                let provider = fetch_pool.active();
                 async move {
                     let rpc_block = provider
                         .get_block_by_number(BlockNumberOrTag::Number(header.number))
@@ -280,17 +284,58 @@ impl BatcherService {
         ))
     }
 
+    /// Try every URL and return all successful (url, provider) pairs.
+    ///
+    /// Returns an error only if every URL fails to connect. URLs that fail at
+    /// startup are logged and excluded from the resulting pool — they cannot
+    /// participate in runtime failover until the operator restarts the batcher.
+    /// The list must be non-empty.
+    async fn connect_each<T, F, Fut, E>(
+        urls: &[Url],
+        label: &'static str,
+        mut build: F,
+    ) -> eyre::Result<Vec<(Url, T)>>
+    where
+        F: FnMut(&Url) -> Fut,
+        Fut: std::future::Future<Output = Result<T, E>>,
+        E: std::fmt::Display,
+    {
+        let mut entries = Vec::new();
+        let mut errors = Vec::new();
+        for url in urls {
+            match build(url).await {
+                Ok(t) => {
+                    info!(endpoint = %label, url = %url, "connected to endpoint");
+                    entries.push((url.clone(), t));
+                }
+                Err(e) => {
+                    warn!(endpoint = %label, url = %url, error = %e, "endpoint connection failed");
+                    errors.push(format!("{url}: {e}"));
+                }
+            }
+        }
+        if entries.is_empty() {
+            return Err(eyre::eyre!(
+                "failed to connect to any {label} endpoint ({} candidate(s)): {}",
+                urls.len(),
+                errors.join("; "),
+            ));
+        }
+        Ok(entries)
+    }
+
     /// Block until the rollup node reports a non-zero sync status, or until
     /// `timeout` elapses.
     ///
-    /// Polls `optimism_syncStatus` on `poll_interval` and returns once both
-    /// `current_l1.number` and `unsafe_l2.block_info.number` are non-zero.
-    /// RPC errors are logged and retried with exponential backoff (capped at
-    /// 30 seconds) so a permanently-broken endpoint is not hammered at the
-    /// poll cadence. Returns an error when `timeout` is exceeded so operators
-    /// see an explicit failure rather than a silent hang.
+    /// Polls `optimism_syncStatus` on `poll_interval` against the pool's
+    /// active endpoint and returns once both `current_l1.number` and
+    /// `unsafe_l2.block_info.number` are non-zero. RPC errors are logged and
+    /// retried with exponential backoff (capped at 30 seconds) so a
+    /// permanently-broken endpoint is not hammered at the poll cadence.
+    /// Returns an error when `timeout` is exceeded so operators see an
+    /// explicit failure rather than a silent hang.
     async fn wait_for_node_sync(
-        rollup_client: &HttpClient,
+        rollup_pool: &Arc<RollupEndpointPool>,
         poll_interval: std::time::Duration,
         timeout: std::time::Duration,
     ) -> eyre::Result<()> {
@@ -305,7 +350,7 @@ impl BatcherService {
         let deadline = std::time::Instant::now() + timeout;
         let mut error_backoff = poll_interval;
         loop {
-            match rollup_client.sync_status().await {
+            match rollup_pool.active().sync_status().await {
                 Ok(status)
                     if status.current_l1.number > 0 && status.unsafe_l2.block_info.number > 0 =>
                 {
@@ -403,10 +448,12 @@ impl BatcherService {
             "starting batcher service"
         );
 
-        // Connect to the L2 RPC endpoint, with connection-time failover across
-        // the configured endpoint list.
-        let l2_provider: Arc<dyn Provider<Base> + Send + Sync> = Arc::new(
-            Self::connect_first(&self.config.l2_rpc_url, "l2-rpc", |url| {
+        // Connect to every L2 RPC endpoint and build a pool. The active
+        // endpoint is the first one that connected; the health monitor
+        // (spawned below) probes it periodically and rotates the active
+        // selection when the current endpoint stops responding.
+        let l2_entries: Vec<(Url, Arc<dyn Provider<Base> + Send + Sync>)> =
+            Self::connect_each(&self.config.l2_rpc_url, "l2-rpc", |url| {
                 let url = url.clone();
                 async move {
                     ProviderBuilder::new()
@@ -414,44 +461,46 @@ impl BatcherService {
                         .network::<Base>()
                         .connect(url.as_str())
                         .await
+                        .map(|p| Arc::new(p) as Arc<dyn Provider<Base> + Send + Sync>)
                 }
             })
-            .await?,
-        );
+            .await?;
+        let l2_pool: Arc<L2EndpointPool> = Arc::new(EndpointPool::new(l2_entries)?);
 
         // Build the L2 block subscription. When l2_ws_url is configured the
-        // subscription owns its provider Arc so the connection stays live for
-        // the full driver run.
+        // subscription owns its WS provider Arc so the connection stays live
+        // for the full driver run. The per-header `fetch_pool` resolves
+        // through the L2 pool on every block, so when the pool fails over
+        // the subscription's full-block fetches follow the active endpoint.
         let l2_subscription =
-            Self::build_l2_subscription(self.config.l2_ws_url.as_ref(), Arc::clone(&l2_provider))
-                .await;
+            Self::build_l2_subscription(self.config.l2_ws_url.as_ref(), Arc::clone(&l2_pool)).await;
 
-        // Connect to the rollup node using a typed jsonrpsee HTTP client so that
-        // `optimism_rollupConfig` and `optimism_syncStatus` are called through the
-        // generated `RollupNodeApiClient` trait rather than raw JSON requests.
-        // `HttpClientBuilder::build` is sync but only validates the URL; the first
-        // real RPC call below (`rollup_config`) is what actually exercises the
-        // endpoint, so we probe via `rollup_config` to drive failover.
-        let rollup_client: HttpClient =
-            Self::connect_first(&self.config.rollup_rpc_url, "rollup-rpc", |url| {
+        // Connect to every rollup-node RPC endpoint and build a pool. Each
+        // URL is probed via `optimism_rollupConfig` during connection so that
+        // unresponsive endpoints are excluded from the pool at startup. The
+        // health monitor (spawned below) keeps the pool's active selection
+        // fresh by probing on a fixed interval.
+        let rollup_entries: Vec<(Url, Arc<HttpClient>)> =
+            Self::connect_each(&self.config.rollup_rpc_url, "rollup-rpc", |url| {
                 let url = url.clone();
                 async move {
                     let client = HttpClientBuilder::default()
                         .build(url.as_str())
                         .map_err(|e| eyre::eyre!("failed to build rollup RPC client: {e}"))?;
-                    // Issue a cheap probe call so a non-responsive endpoint
-                    // triggers failover instead of falling through to the next
-                    // step and erroring with no fallback.
+                    // Cheap probe call so a non-responsive endpoint is dropped
+                    // from the pool rather than left to fail on first real use.
                     client
                         .rollup_config()
                         .await
                         .map_err(|e| eyre::eyre!("optimism_rollupConfig probe failed: {e}"))?;
-                    eyre::Ok(client)
+                    eyre::Ok(Arc::new(client))
                 }
             })
             .await?;
+        let rollup_pool: Arc<RollupEndpointPool> = Arc::new(EndpointPool::new(rollup_entries)?);
         let rollup_config = Arc::new(
-            rollup_client
+            rollup_pool
+                .active()
                 .rollup_config()
                 .await
                 .map_err(|e| eyre::eyre!("optimism_rollupConfig RPC failed: {e}"))?,
@@ -465,7 +514,7 @@ impl BatcherService {
         // sync status. Mirrors op-batcher's `--wait-node-sync`.
         if self.config.wait_node_sync {
             Self::wait_for_node_sync(
-                &rollup_client,
+                &rollup_pool,
                 self.config.poll_interval,
                 self.config.wait_node_sync_timeout,
             )
@@ -473,7 +522,8 @@ impl BatcherService {
         }
 
         // Fetch sync status to determine the safe L2 head for startup backfill.
-        let sync_status = rollup_client
+        let sync_status = rollup_pool
+            .active()
             .sync_status()
             .await
             .map_err(|e| eyre::eyre!("optimism_syncStatus RPC failed: {e}"))?;
@@ -493,9 +543,32 @@ impl BatcherService {
             ));
         }
 
-        // Connect to L1 early so it is available for the optional recent-tx scan.
+        // Connect to every L1 RPC endpoint and build a pool used by the L1
+        // head polling source. The health monitor (spawned below) probes the
+        // active endpoint and rotates on failure.
+        let l1_entries: Vec<(Url, Arc<dyn Provider + Send + Sync>)> =
+            Self::connect_each(&self.config.l1_rpc_url, "l1-rpc", |url| {
+                let url = url.clone();
+                async move {
+                    ProviderBuilder::new()
+                        .disable_recommended_fillers()
+                        .connect(url.as_str())
+                        .await
+                        .map(|p: RootProvider| Arc::new(p) as Arc<dyn Provider + Send + Sync>)
+                }
+            })
+            .await?;
+        let l1_pool: Arc<L1EndpointPool> = Arc::new(EndpointPool::new(l1_entries)?);
+
+        // Build a separate concrete `RootProvider` for the recent-tx scanner
+        // and the tx manager. These callers need a typed `RootProvider`
+        // (the tx manager is parameterised over the concrete provider type),
+        // and they currently lack runtime failover — connecting once at
+        // startup matches the prior behaviour. Rotating these on a dead
+        // endpoint is a follow-up that requires plumbing the pool into the
+        // tx manager.
         let l1_provider: RootProvider =
-            Self::connect_first(&self.config.l1_rpc_url, "l1-rpc", |url| {
+            Self::connect_first(&self.config.l1_rpc_url, "l1-rpc-tx", |url| {
                 let url = url.clone();
                 async move {
                     ProviderBuilder::new().disable_recommended_fillers().connect(url.as_str()).await
@@ -527,7 +600,8 @@ impl BatcherService {
         };
 
         // Get the current L2 latest block to decide whether historical backfill is needed.
-        let latest_l2 = l2_provider
+        let latest_l2 = l2_pool
+            .active()
             .get_block_number()
             .await
             .map_err(|e| eyre::eyre!("failed to fetch L2 latest block number: {e}"))?;
@@ -538,6 +612,8 @@ impl BatcherService {
 
         // Build the L2 polling source. If blocks between cursor_start+1 and latest
         // were not yet submitted, use sequential catchup mode to avoid skipping them.
+        // The poller resolves its provider through the L2 pool on every call so
+        // runtime failover takes effect immediately.
         let poller = if cursor_start < latest_l2 {
             info!(
                 safe_l2 = %safe_l2_number,
@@ -545,9 +621,9 @@ impl BatcherService {
                 latest_l2 = %latest_l2,
                 "starting sequential backfill from cursor"
             );
-            RpcPollingSource::new_from(Arc::clone(&l2_provider), cursor_start + 1)
+            RpcPollingSource::new_from(Arc::clone(&l2_pool), cursor_start + 1)
         } else {
-            RpcPollingSource::new(Arc::clone(&l2_provider))
+            RpcPollingSource::new(Arc::clone(&l2_pool))
         };
 
         // Assemble the hybrid L2 block source.
@@ -561,14 +637,42 @@ impl BatcherService {
             BatchEncoder::new(Arc::clone(&rollup_config), self.config.encoder_config.clone());
 
         // Build the throttle controller and the appropriate client. The throttle
-        // RPC uses the L2 endpoint(s); `RpcThrottleClient` rotates per-call
-        // across the full L2 endpoint list so a single dead L2 RPC does not
-        // silently disable throttle delivery to the sequencer.
+        // RPC uses the L2 endpoint(s) plus any `throttle_additional_endpoints`
+        // (e.g. rollup-boost builders); `RpcThrottleClient` fans `miner_setMaxDASize`
+        // out to every endpoint in parallel so the throttle signal reaches
+        // both the sequencer and every builder at once.
         let throttle_client = match &self.config.throttle {
             None => ServiceThrottle::Noop(NoopThrottleClient),
             Some(_) => {
-                let urls: Vec<&str> = self.config.l2_rpc_url.iter().map(Url::as_str).collect();
-                ServiceThrottle::Rpc(RpcThrottleClient::new(&urls)?)
+                // Dedup endpoints: an operator may legitimately list the same
+                // URL in both `--l2-rpc-url` and `--throttle-additional-endpoints`
+                // (e.g. when their builder is also a sequencer endpoint).
+                // Without dedup we'd double-fan to that node every tick. The
+                // `--l2-rpc-url` entries are always tagged Sequencer; on a
+                // collision we keep the Sequencer role rather than demoting
+                // to Builder.
+                let mut seen = HashSet::new();
+                let endpoints: Vec<(String, EndpointRole)> = self
+                    .config
+                    .l2_rpc_url
+                    .iter()
+                    .map(|u| (u.as_str().to_string(), EndpointRole::Sequencer))
+                    .chain(
+                        self.config
+                            .throttle_additional_endpoints
+                            .iter()
+                            .map(|u| (u.as_str().to_string(), EndpointRole::Builder)),
+                    )
+                    .filter(|(s, _)| seen.insert(s.clone()))
+                    .collect();
+                let client = RpcThrottleClient::new(&endpoints)?;
+                info!(
+                    endpoints = client.endpoint_count(),
+                    sequencers = client.sequencer_count(),
+                    additional = self.config.throttle_additional_endpoints.len(),
+                    "throttle client fan-out configured"
+                );
+                ServiceThrottle::Rpc(client)
             }
         };
         let (throttle_config, throttle_strategy) = self.config.throttle.clone().map_or_else(
@@ -578,17 +682,10 @@ impl BatcherService {
         let throttle = ThrottleController::new(throttle_config, throttle_strategy);
 
         // Build the L1 head source: a hybrid of optional WS subscription + polling.
+        // The polling path resolves through the L1 pool on every call.
         let l1_head_subscription =
             Self::build_l1_subscription(self.config.l1_ws_url.as_ref()).await;
-        let l1_head_poller = RpcL1HeadPollingSource::new(Arc::new(
-            Self::connect_first(&self.config.l1_rpc_url, "l1-rpc-poller", |url| {
-                let url = url.clone();
-                async move {
-                    ProviderBuilder::new().disable_recommended_fillers().connect(url.as_str()).await
-                }
-            })
-            .await?,
-        ));
+        let l1_head_poller = RpcL1HeadPollingSource::new(Arc::clone(&l1_pool));
         let l1_head_source = HybridL1HeadSource::new(
             l1_head_subscription,
             l1_head_poller,
@@ -628,10 +725,53 @@ impl BatcherService {
         // Spawn the safe-head poller. It polls `optimism_syncStatus` at the
         // configured interval and advances the watch when the safe L2 head
         // moves forward, allowing the encoder to prune confirmed blocks.
-        // Extract the raw token so the poller can use it before the runtime
-        // moves into the driver below.
-        SafeHeadPoller::new(rollup_client, self.config.poll_interval, safe_head_tx)
+        // The pool wrapper resolves the active rollup-rpc endpoint per call,
+        // so the poller follows the rollup pool's failover decisions.
+        SafeHeadPoller::new(Arc::clone(&rollup_pool), self.config.poll_interval, safe_head_tx)
             .spawn(runtime.token().clone());
+
+        // Spawn the L1 and L2 endpoint health monitors. Each probes its pool's
+        // active endpoint on `active_endpoint_check_interval` and rotates the
+        // active selection on failure. Single-endpoint pools short-circuit
+        // inside `HealthMonitor::run` so this is a no-op when the operator
+        // configured exactly one URL.
+        let interval = self.config.active_endpoint_check_interval;
+        let token = runtime.token().clone();
+        // L1 pool: simple liveness probe — we don't care about leader status
+        // on the L1 read path, only that the endpoint responds.
+        HealthMonitor::new(
+            Arc::clone(&l1_pool),
+            interval,
+            "l1-rpc",
+            Probe::block_number::<_, Ethereum>(),
+        )
+        .spawn(token.clone());
+        // L2 pool: head-advancement probe so a passive sequencer (or paused
+        // replica) that responds OK without producing blocks is detected and
+        // we fail over to a node that's actually keeping up.
+        HealthMonitor::new(
+            Arc::clone(&l2_pool),
+            interval,
+            "l2-rpc",
+            Probe::head_advancement::<_, Base>(self.config.head_advancement_max_stalls),
+        )
+        .spawn(token.clone());
+
+        // Rollup-rpc probe: `optimism_syncStatus` both checks liveness and
+        // proves the endpoint is actually serving the consensus API (a node
+        // with the rollup namespace disabled would respond OK to a generic
+        // RPC but fail this call).
+        HealthMonitor::new(
+            Arc::clone(&rollup_pool),
+            interval,
+            "rollup-rpc",
+            |_idx, client: Arc<HttpClient>| {
+                Box::pin(async move {
+                    client.sync_status().await.map(|_| ()).map_err(|e| e.to_string())
+                })
+            },
+        )
+        .spawn(token);
 
         // Build the driver — all fallible setup is complete at this point.
         let mut driver = BatchDriver::new(

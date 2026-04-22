@@ -1,10 +1,19 @@
 //! Background poller that keeps the safe L2 head watch channel up to date.
 
-use std::{future::Future, time::Duration};
+use std::{future::Future, sync::Arc, time::Duration};
 
+use base_consensus_rpc::RollupNodeApiClient;
+use jsonrpsee::http_client::HttpClient;
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
+
+use crate::EndpointPool;
+
+/// Pool of rollup-node JSON-RPC clients with runtime active-endpoint
+/// failover. Used for `optimism_syncStatus` and `optimism_rollupConfig`
+/// reads, including the safe-head poller that drives encoder pruning.
+pub type RollupEndpointPool = EndpointPool<HttpClient>;
 
 /// Fetches the current safe L2 head block number from the rollup node.
 ///
@@ -17,11 +26,41 @@ pub trait SafeHeadProvider: Send + Sync + 'static {
     ) -> impl Future<Output = Result<u64, Box<dyn std::error::Error + Send + Sync>>> + Send + '_;
 }
 
-impl SafeHeadProvider for jsonrpsee::http_client::HttpClient {
+impl SafeHeadProvider for HttpClient {
     async fn safe_l2_number(&self) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
-        use base_consensus_rpc::RollupNodeApiClient;
         let status = self.sync_status().await?;
         Ok(status.safe_l2.block_info.number)
+    }
+}
+
+/// Reads the safe head through an [`EndpointPool`] of rollup-node clients,
+/// resolving `pool.active()` on every poll so failover decisions made by the
+/// pool's [`HealthMonitor`](crate::HealthMonitor) take effect immediately. On
+/// transport error the pool's circuit-breaker rotates the active endpoint
+/// after the pool's configured threshold of consecutive failures, mirroring the L1/L2
+/// polling sources.
+impl SafeHeadProvider for RollupEndpointPool {
+    async fn safe_l2_number(&self) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
+        match self.active().safe_l2_number().await {
+            Ok(n) => {
+                self.record_call_success();
+                Ok(n)
+            }
+            Err(e) => {
+                self.record_call_failure();
+                Err(e)
+            }
+        }
+    }
+}
+
+/// Blanket impl so callers that own a [`SafeHeadProvider`] behind an [`Arc`]
+/// (the typical shape when the inner provider is shared with a
+/// [`HealthMonitor`](crate::HealthMonitor)) can pass the [`Arc`] directly to
+/// [`SafeHeadPoller::new`] without wrapping or unwrapping.
+impl<T: SafeHeadProvider + ?Sized> SafeHeadProvider for Arc<T> {
+    async fn safe_l2_number(&self) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
+        (**self).safe_l2_number().await
     }
 }
 
