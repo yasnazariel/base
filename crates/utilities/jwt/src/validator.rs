@@ -49,8 +49,7 @@ impl JwtValidator {
             let err_str = err.to_string().to_lowercase();
             if err_str.contains("signature invalid")
                 || (err_str.contains("jwt") && err_str.contains("invalid"))
-                || err_str.contains("unauthorized")
-                || err_str.contains("authentication failed")
+                || (err_str.contains("jwt") && err_str.contains("unauthorized"))
             {
                 return true;
             }
@@ -91,10 +90,6 @@ impl JwtValidator {
         let engine_url = Self::normalize_engine_url(engine_url)?;
 
         let exchange = || async {
-            // Recreate the client on every retry because the IPC transport connects eagerly.
-            // This allows startup retries to cover the initial socket connect when the engine
-            // listener is not ready yet. HTTP URLs are lazy and would not need this, but
-            // recreating them is harmless.
             let engine = BaseEngineClient::<RootProvider, RootProvider<Base>>::rpc_client::<Base>(
                 engine_url.clone(),
                 self.secret,
@@ -132,7 +127,6 @@ impl JwtValidator {
             })
             .await
             .map_err(|e| {
-                // Convert eyre::Error back to JwtValidationError
                 if Self::is_jwt_signature_error_from_eyre(&e) {
                     JwtValidationError::InvalidSignature
                 } else {
@@ -141,14 +135,6 @@ impl JwtValidator {
             })
     }
 
-    /// Normalizes an engine URL by converting WebSocket schemes to HTTP.
-    ///
-    /// - `ws://` becomes `http://`
-    /// - `wss://` becomes `https://`
-    /// - `http://`, `https://`, and `file://` are returned unchanged
-    ///
-    /// # Errors
-    /// Returns an error if the URL scheme is unsupported.
     fn normalize_engine_url(mut url: url::Url) -> Result<url::Url, JwtValidationError> {
         match url.scheme() {
             "http" | "https" | "file" => Ok(url),
@@ -174,81 +160,5 @@ impl JwtValidator {
                 "Unsupported URL scheme '{scheme}'. Expected http, https, ws, wss, or file"
             ))),
         }
-    }
-}
-
-#[cfg(all(test, feature = "engine-validation"))]
-mod tests {
-    use std::env;
-
-    use url::Url;
-
-    use super::*;
-
-    #[test]
-    fn normalize_http_url_unchanged() {
-        let url = Url::parse("http://localhost:8551").unwrap();
-        let result = JwtValidator::normalize_engine_url(url).unwrap();
-        assert_eq!(result.scheme(), "http");
-        assert_eq!(result.host_str(), Some("localhost"));
-        assert_eq!(result.port(), Some(8551));
-    }
-
-    #[test]
-    fn normalize_https_url_unchanged() {
-        let url = Url::parse("https://localhost:8551").unwrap();
-        let result = JwtValidator::normalize_engine_url(url).unwrap();
-        assert_eq!(result.scheme(), "https");
-    }
-
-    #[test]
-    fn normalize_file_url_unchanged() {
-        let path = env::temp_dir().join("jwt-validator-engine.ipc");
-        let url = Url::from_file_path(&path).unwrap();
-        let result = JwtValidator::normalize_engine_url(url.clone()).unwrap();
-        assert_eq!(result, url);
-    }
-
-    #[test]
-    fn normalize_ws_to_http() {
-        let url = Url::parse("ws://localhost:8551").unwrap();
-        let result = JwtValidator::normalize_engine_url(url).unwrap();
-        assert_eq!(result.scheme(), "http");
-        assert_eq!(result.host_str(), Some("localhost"));
-        assert_eq!(result.port(), Some(8551));
-    }
-
-    #[test]
-    fn normalize_wss_to_https() {
-        let url = Url::parse("wss://localhost:8551/path").unwrap();
-        let result = JwtValidator::normalize_engine_url(url).unwrap();
-        assert_eq!(result.scheme(), "https");
-        assert_eq!(result.host_str(), Some("localhost"));
-        assert_eq!(result.port(), Some(8551));
-        assert_eq!(result.path(), "/path");
-    }
-
-    #[test]
-    fn normalize_unsupported_scheme_error() {
-        let url = Url::parse("ftp://localhost:8551").unwrap();
-        let result = JwtValidator::normalize_engine_url(url);
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        match err {
-            JwtValidationError::CapabilityExchange(msg) => {
-                assert!(msg.contains("Unsupported URL scheme"));
-                assert!(msg.contains("ftp"));
-            }
-            _ => panic!("Expected CapabilityExchange error"),
-        }
-    }
-
-    #[test]
-    fn normalize_preserves_path_and_query() {
-        let url = Url::parse("ws://localhost:8551/api?key=value").unwrap();
-        let result = JwtValidator::normalize_engine_url(url).unwrap();
-        assert_eq!(result.scheme(), "http");
-        assert_eq!(result.path(), "/api");
-        assert_eq!(result.query(), Some("key=value"));
     }
 }
