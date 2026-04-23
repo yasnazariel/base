@@ -793,21 +793,17 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
 name = "base-common-chains"
-version = "0.0.0"
+version = "0.8.0"
 dependencies = [
- "alloy-chains",
- "alloy-eips",
- "alloy-genesis",
  "alloy-hardforks",
  "alloy-primitives",
  "auto_impl",
- "base-common-genesis",
- "spin 0.10.0",
+ "serde",
 ]
 
 [[package]]
 name = "base-common-consensus"
-version = "0.0.0"
+version = "0.8.0"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -827,7 +823,7 @@ dependencies = [
 
 [[package]]
 name = "base-common-evm"
-version = "0.0.0"
+version = "0.8.0"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -844,27 +840,11 @@ dependencies = [
 
 [[package]]
 name = "base-common-flz"
-version = "0.0.0"
-
-[[package]]
-name = "base-common-genesis"
-version = "0.0.0"
-dependencies = [
- "alloy-chains",
- "alloy-consensus",
- "alloy-eips",
- "alloy-hardforks",
- "alloy-primitives",
- "alloy-sol-types",
- "derive_more",
- "serde",
- "thiserror",
- "tracing",
-]
+version = "0.8.0"
 
 [[package]]
 name = "base-common-rpc-types-engine"
-version = "0.0.0"
+version = "0.8.0"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -880,7 +860,7 @@ dependencies = [
 
 [[package]]
 name = "base-consensus-derive"
-version = "0.0.0"
+version = "0.8.0"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -890,8 +870,8 @@ dependencies = [
  "alloy-rpc-types-engine",
  "async-trait",
  "base-common-consensus",
- "base-common-genesis",
  "base-common-rpc-types-engine",
+ "base-consensus-genesis",
  "base-consensus-upgrades",
  "base-metrics",
  "base-protocol",
@@ -900,8 +880,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "base-consensus-genesis"
+version = "0.8.0"
+dependencies = [
+ "alloy-chains",
+ "alloy-consensus",
+ "alloy-eips",
+ "alloy-hardforks",
+ "alloy-primitives",
+ "alloy-sol-types",
+ "base-common-chains",
+ "derive_more",
+ "serde",
+ "thiserror",
+ "tracing",
+]
+
+[[package]]
+name = "base-consensus-registry"
+version = "0.8.0"
+dependencies = [
+ "alloy-chains",
+ "alloy-eips",
+ "alloy-genesis",
+ "alloy-hardforks",
+ "alloy-primitives",
+ "base-common-chains",
+ "base-consensus-genesis",
+ "derive_more",
+ "spin 0.10.0",
+]
+
+[[package]]
 name = "base-consensus-upgrades"
-version = "0.0.0"
+version = "0.8.0"
 dependencies = [
  "alloy-eips",
  "alloy-primitives",
@@ -910,11 +922,11 @@ dependencies = [
 
 [[package]]
 name = "base-metrics"
-version = "0.0.0"
+version = "0.8.0"
 
 [[package]]
 name = "base-proof"
-version = "0.0.0"
+version = "0.8.0"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -926,12 +938,12 @@ dependencies = [
  "ark-bls12-381",
  "ark-ff 0.5.0",
  "async-trait",
- "base-common-chains",
  "base-common-consensus",
  "base-common-evm",
- "base-common-genesis",
  "base-common-rpc-types-engine",
  "base-consensus-derive",
+ "base-consensus-genesis",
+ "base-consensus-registry",
  "base-proof-driver",
  "base-proof-executor",
  "base-proof-mpt",
@@ -947,7 +959,7 @@ dependencies = [
 
 [[package]]
 name = "base-proof-driver"
-version = "0.0.0"
+version = "0.8.0"
 dependencies = [
  "alloy-consensus",
  "alloy-evm",
@@ -955,9 +967,9 @@ dependencies = [
  "alloy-rlp",
  "async-trait",
  "base-common-consensus",
- "base-common-genesis",
  "base-common-rpc-types-engine",
  "base-consensus-derive",
+ "base-consensus-genesis",
  "base-proof-executor",
  "base-protocol",
  "spin 0.10.0",
@@ -967,7 +979,7 @@ dependencies = [
 
 [[package]]
 name = "base-proof-executor"
-version = "0.0.0"
+version = "0.8.0"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -977,8 +989,8 @@ dependencies = [
  "alloy-trie",
  "base-common-consensus",
  "base-common-evm",
- "base-common-genesis",
  "base-common-rpc-types-engine",
+ "base-consensus-genesis",
  "base-proof-mpt",
  "base-protocol",
  "getrandom 0.2.17",
@@ -989,7 +1001,7 @@ dependencies = [
 
 [[package]]
 name = "base-proof-mpt"
-version = "0.0.0"
+version = "0.8.0"
 dependencies = [
  "alloy-primitives",
  "alloy-rlp",
@@ -1000,7 +1012,7 @@ dependencies = [
 
 [[package]]
 name = "base-proof-preimage"
-version = "0.0.0"
+version = "0.8.0"
 dependencies = [
  "alloy-primitives",
  "async-trait",
@@ -1012,20 +1024,20 @@ dependencies = [
 
 [[package]]
 name = "base-proof-primitives"
-version = "0.0.0"
+version = "0.8.0"
 dependencies = [
  "alloy-chains",
  "alloy-eips",
  "alloy-primitives",
  "async-trait",
- "base-common-genesis",
+ "base-consensus-genesis",
  "base-proof-preimage",
  "thiserror",
 ]
 
 [[package]]
 name = "base-protocol"
-version = "0.0.0"
+version = "0.8.0"
 dependencies = [
  "alloc-no-stdlib",
  "alloy-consensus",
@@ -1038,8 +1050,8 @@ dependencies = [
  "ambassador",
  "async-trait",
  "base-common-consensus",
- "base-common-genesis",
  "base-common-rpc-types-engine",
+ "base-consensus-genesis",
  "brotli",
  "derive_more",
  "miniz_oxide",
@@ -1050,7 +1062,7 @@ dependencies = [
 
 [[package]]
 name = "base-succinct-client-utils"
-version = "0.0.0"
+version = "0.8.0"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -1063,8 +1075,8 @@ dependencies = [
  "async-trait",
  "base-common-consensus",
  "base-common-evm",
- "base-common-genesis",
  "base-consensus-derive",
+ "base-consensus-genesis",
  "base-proof",
  "base-proof-driver",
  "base-proof-executor",
@@ -1085,13 +1097,13 @@ dependencies = [
 
 [[package]]
 name = "base-succinct-ethereum-client-utils"
-version = "0.0.0"
+version = "0.8.0"
 dependencies = [
  "alloy-genesis",
  "anyhow",
  "async-trait",
- "base-common-genesis",
  "base-consensus-derive",
+ "base-consensus-genesis",
  "base-proof",
  "base-proof-driver",
  "base-proof-executor",
