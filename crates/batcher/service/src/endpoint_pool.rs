@@ -167,9 +167,17 @@ impl<P: ?Sized> EndpointPool<P> {
         if len <= 1 {
             return;
         }
+        // Snapshot the active index at call time. If a concurrent rotation
+        // changes the active endpoint between our load and CAS, we discard
+        // the failure rather than penalising the newly-active endpoint
+        // with a stale error count.
+        let expected_active = self.active_index() as u32;
         loop {
             let current = self.state.load(Ordering::Acquire);
             let (active, failures) = unpack(current);
+            if active != expected_active {
+                return;
+            }
             let new_failures = failures + 1;
             let new_state = if new_failures >= self.rotate_threshold {
                 let next = (active as usize + 1) % len;
@@ -252,7 +260,7 @@ impl<P: ?Sized + Send + Sync + 'static> HealthMonitor<P> {
             interval_secs = self.interval.as_secs(),
             "starting endpoint health monitor"
         );
-        let mut ticker = tokio::time::interval(self.interval);
+        let mut ticker = tokio::time::interval(self.interval.max(Duration::from_millis(100)));
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         // Skip the immediate first tick — the active endpoint was already
         // probed at startup by `connect_first`, so an extra probe in the

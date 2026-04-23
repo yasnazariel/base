@@ -159,7 +159,11 @@ impl ThrottleClient for RpcThrottleClient {
                             error = %e,
                             "throttle endpoint failed during fan-out"
                         );
-                        errors.push(format!("{role} {url}: {e}"));
+                        // Cap collected error detail to avoid unbounded strings
+                        // from verbose RPC errors across many endpoints.
+                        if errors.len() < 10 {
+                            errors.push(format!("{role} {url}: {e}"));
+                        }
                     }
                 }
             }

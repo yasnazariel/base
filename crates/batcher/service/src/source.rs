@@ -81,9 +81,12 @@ impl PollingSource for RpcPollingSource {
 impl RpcPollingSource {
     async fn fetch_head(&self) -> Result<BaseBlock, SourceError> {
         let sequential = *self.next_sequential.lock().unwrap();
+        // Snapshot the active provider once so all RPC calls within this
+        // poll cycle hit the same endpoint, even if the pool fails over
+        // between calls.
+        let provider = self.pool.active();
 
         if let Some(n) = sequential {
-            let provider = self.pool.active();
             let latest_number = provider
                 .get_block_number()
                 .await
@@ -106,7 +109,6 @@ impl RpcPollingSource {
             }
         }
 
-        let provider = self.pool.active();
         let block = provider
             .get_block_by_number(BlockNumberOrTag::Latest)
             .full()

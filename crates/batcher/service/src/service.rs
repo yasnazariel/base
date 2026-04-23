@@ -354,6 +354,7 @@ impl BatcherService {
                 Ok(status)
                     if status.current_l1.number > 0 && status.unsafe_l2.block_info.number > 0 =>
                 {
+                    rollup_pool.record_call_success();
                     info!(
                         current_l1 = %status.current_l1.number,
                         unsafe_l2 = %status.unsafe_l2.block_info.number,
@@ -363,6 +364,7 @@ impl BatcherService {
                     return Ok(());
                 }
                 Ok(status) => {
+                    rollup_pool.record_call_success();
                     // Reset error backoff: the RPC is responsive, the node
                     // just hasn't produced/derived blocks yet.
                     error_backoff = poll_interval;
@@ -374,6 +376,7 @@ impl BatcherService {
                     Self::sleep_or_timeout(poll_interval, deadline).await?;
                 }
                 Err(e) => {
+                    rollup_pool.record_call_failure();
                     warn!(
                         error = %e,
                         backoff_secs = %error_backoff.as_secs(),
