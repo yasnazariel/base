@@ -1,6 +1,6 @@
 //! [`PrecompileProvider`] for FPVM-accelerated OP Stack precompiles.
 
-use alloc::{boxed::Box, string::String, vec::Vec};
+use alloc::{string::String, vec::Vec};
 
 use alloy_primitives::{Address, Bytes};
 use base_common_evm::{BasePrecompiles, OpSpecId};
@@ -74,6 +74,36 @@ fn get_precompiles() -> Vec<PrecompileWithAddress> {
     ]
 }
 
+/// Cache of leaked precompiles per [`OpSpecId`], ensuring each spec variant is only
+/// allocated once rather than on every [`OpZkvmPrecompiles::set_spec`] call.
+static PRECOMPILE_CACHE: spin::Mutex<Vec<(OpSpecId, &'static Precompiles)>> =
+    spin::Mutex::new(Vec::new());
+
+/// Returns a `&'static Precompiles` for the given spec, creating and caching it on first use.
+fn get_or_create_precompiles(spec: OpSpecId) -> &'static Precompiles {
+    let cache = PRECOMPILE_CACHE.lock();
+    if let Some((_, precompiles)) = cache.iter().find(|(s, _)| *s == spec) {
+        return precompiles;
+    }
+    drop(cache);
+
+    let base = match spec {
+        spec @ (OpSpecId::BEDROCK | OpSpecId::REGOLITH | OpSpecId::CANYON | OpSpecId::ECOTONE) => {
+            Precompiles::new(spec.into_eth_spec().into()).clone()
+        }
+        OpSpecId::FJORD => BasePrecompiles::fjord().clone(),
+        OpSpecId::GRANITE | OpSpecId::HOLOCENE => BasePrecompiles::granite().clone(),
+        OpSpecId::ISTHMUS | OpSpecId::JOVIAN => BasePrecompiles::isthmus().clone(),
+        OpSpecId::BASE_V1 => BasePrecompiles::base_v1().clone(),
+    };
+    let mut precompiles = base;
+    precompiles.extend(get_precompiles());
+    let leaked: &'static Precompiles = alloc::boxed::Box::leak(alloc::boxed::Box::new(precompiles));
+
+    PRECOMPILE_CACHE.lock().push((spec, leaked));
+    leaked
+}
+
 /// Get the cycle tracker name for a precompile by its ID.
 /// Returns None if the precompile is not accelerated/tracked.
 #[cfg(any(test, target_os = "zkvm"))]
@@ -103,20 +133,7 @@ impl OpZkvmPrecompiles {
     /// Create a new precompile provider with the given [`OpSpecId`].
     #[inline]
     pub fn new_with_spec(spec: OpSpecId) -> Self {
-        let precompiles = match spec {
-            spec @ (OpSpecId::BEDROCK
-            | OpSpecId::REGOLITH
-            | OpSpecId::CANYON
-            | OpSpecId::ECOTONE) => Precompiles::new(spec.into_eth_spec().into()).clone(),
-            OpSpecId::FJORD => BasePrecompiles::fjord().clone(),
-            OpSpecId::GRANITE | OpSpecId::HOLOCENE => BasePrecompiles::granite().clone(),
-            OpSpecId::ISTHMUS | OpSpecId::JOVIAN => BasePrecompiles::isthmus().clone(),
-            OpSpecId::BASE_V1 => BasePrecompiles::base_v1().clone(),
-        };
-        let mut precompiles_owned = precompiles;
-        precompiles_owned.extend(get_precompiles());
-        let precompiles = Box::leak(Box::new(precompiles_owned));
-
+        let precompiles = get_or_create_precompiles(spec);
         Self { inner: EthPrecompiles { precompiles, spec: SpecId::default() }, spec }
     }
 }

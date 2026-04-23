@@ -185,6 +185,10 @@ pub trait WitnessExecutor {
             output_root = output_root
         );
 
+        // SAFETY: Inside the zkVM, the process exits after proof generation completes.
+        // Dropping `driver` and `rollup_config` triggers deep recursive destructors that
+        // waste significant zkVM cycles without benefit, since all memory is reclaimed
+        // on process exit. We intentionally leak them to avoid this overhead.
         #[cfg(target_os = "zkvm")]
         {
             std::mem::forget(driver);

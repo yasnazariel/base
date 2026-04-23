@@ -29,7 +29,7 @@ base-succinct-proof-utils.workspace = true
 base-succinct-signer-utils.workspace = true
 
 # sp1
-sp1-sdk.workspace = true
+sp1-sdk = { workspace = true, features = ["network", "blocking", "profiling"] }
 sp1-cluster-utils.workspace = true
 
 # alloy

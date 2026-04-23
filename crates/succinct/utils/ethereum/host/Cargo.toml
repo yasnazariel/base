@@ -9,7 +9,7 @@ repository.workspace = true
 
 [dependencies]
 # sp1
-sp1-sdk.workspace = true
+sp1-sdk = { workspace = true, features = ["network", "blocking", "profiling"] }
 
 # local
 base-succinct-client-utils.workspace = true

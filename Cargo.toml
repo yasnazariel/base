@@ -310,7 +310,6 @@ revm-primitives = { version = "22.0.0", default-features = false }
 revm-context-interface = { version = "14.0.0", default-features = false }
 
 # alloy
-alloy = { version = "1.8", features = ["reqwest", "network", "providers", "sol-types", "rpc-types"] }
 alloy-signer = "1.8"
 alloy-pubsub = "1.8"
 alloy-network = "1.8"
@@ -472,9 +471,9 @@ risc0-ethereum-contracts = "3.0.1"
 risc0-zkvm = { version = "^3.0", default-features = false }
 
 # SP1 v6.1.0 (Hypercube) — used by crates/succinct
-sp1-sdk = { version = "=6.1.0", features = ["network", "blocking", "profiling"] }
-sp1-lib = { version = "=6.1.0", features = ["verify"] }
-sp1-zkvm = { version = "=6.1.0", features = ["verify"] }
+sp1-sdk = { version = "=6.1.0" }
+sp1-lib = { version = "=6.1.0" }
+sp1-zkvm = { version = "=6.1.0" }
 sp1-build = "=6.1.0"
 sp1-prover-types = "=6.1.0"
 sp1-cluster-artifact = { git = "https://github.com/succinctlabs/sp1-cluster", tag = "v2.1.4" }

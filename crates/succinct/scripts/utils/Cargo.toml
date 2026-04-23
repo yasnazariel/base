@@ -74,7 +74,7 @@ base-succinct-proof-utils.workspace = true
 base-succinct-elfs.workspace = true
 
 # sp1
-sp1-sdk.workspace = true
+sp1-sdk = { workspace = true, features = ["network", "blocking", "profiling"] }
 
 [build-dependencies]
 base-succinct-build-utils.workspace = true

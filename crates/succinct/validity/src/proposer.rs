@@ -1543,56 +1543,27 @@ where
 
     /// Handle the ongoing witness generation and execution tasks.
     async fn handle_ongoing_tasks(&self) -> Result<()> {
-        let mut tasks = self.tasks.lock().await;
-        let mut completed = Vec::new();
+        let completed_tasks = {
+            let mut tasks = self.tasks.lock().await;
+            let finished_ids: Vec<i64> = tasks
+                .iter()
+                .filter(|(_, (handle, _))| handle.is_finished())
+                .map(|(id, _)| *id)
+                .collect();
 
-        // Check and process completed tasks
-        for (id, (handle, _)) in tasks.iter() {
-            if handle.is_finished() {
-                completed.push(*id);
-            }
-        }
+            finished_ids.into_iter().filter_map(|id| tasks.remove(&id)).collect::<Vec<_>>()
+        };
 
-        // Process completed tasks - this will properly await and drop them
-        for id in completed {
-            if let Some((handle, request)) = tasks.remove(&id) {
-                // First await the handle to properly clean up the task.
-                match handle.await {
-                    Ok(result) => {
-                        if let Err(e) = result {
-                            warn!(
-                                request_id = request.id,
-                                request_type = ?request.req_type,
-                                error = ?e,
-                                "Task failed with error"
-                            );
-                            // Now safe to retry as original task is cleaned up
-                            match self
-                                .proof_requester
-                                .handle_failed_request(
-                                    request,
-                                    ExecutionStatus::UnspecifiedExecutionStatus as i32,
-                                )
-                                .await
-                            {
-                                Ok(_) => {
-                                    ValidityGauge::ProofRequestRetryCount.increment(1.0);
-                                }
-                                Err(retry_err) => {
-                                    warn!(error = ?retry_err, "Failed to retry request");
-                                    ValidityGauge::RetryErrorCount.increment(1.0);
-                                }
-                            }
-                        }
-                    }
-                    Err(e) => {
+        for (handle, request) in completed_tasks {
+            match handle.await {
+                Ok(result) => {
+                    if let Err(e) = result {
                         warn!(
                             request_id = request.id,
                             request_type = ?request.req_type,
                             error = ?e,
-                            "Task panicked"
+                            "Task failed with error"
                         );
-                        // Now safe to retry as original task is cleaned up
                         match self
                             .proof_requester
                             .handle_failed_request(
@@ -1605,9 +1576,33 @@ where
                                 ValidityGauge::ProofRequestRetryCount.increment(1.0);
                             }
                             Err(retry_err) => {
-                                warn!(error = ?retry_err, "Failed to retry request after panic");
+                                warn!(error = ?retry_err, "Failed to retry request");
                                 ValidityGauge::RetryErrorCount.increment(1.0);
                             }
+                        }
+                    }
+                }
+                Err(e) => {
+                    warn!(
+                        request_id = request.id,
+                        request_type = ?request.req_type,
+                        error = ?e,
+                        "Task panicked"
+                    );
+                    match self
+                        .proof_requester
+                        .handle_failed_request(
+                            request,
+                            ExecutionStatus::UnspecifiedExecutionStatus as i32,
+                        )
+                        .await
+                    {
+                        Ok(_) => {
+                            ValidityGauge::ProofRequestRetryCount.increment(1.0);
+                        }
+                        Err(retry_err) => {
+                            warn!(error = ?retry_err, "Failed to retry request after panic");
+                            ValidityGauge::RetryErrorCount.increment(1.0);
                         }
                     }
                 }
