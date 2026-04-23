@@ -3,6 +3,8 @@
 pub enum ViewId {
     /// Main menu home screen.
     Home,
+    /// Live bootnode and Kademlia DHT peer stats.
+    Bootnodes,
     /// Combined monitoring command center.
     CommandCenter,
     /// Data availability backlog monitor.

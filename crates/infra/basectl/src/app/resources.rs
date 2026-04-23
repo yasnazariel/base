@@ -3,6 +3,8 @@ use std::{
     sync::{Arc, atomic::AtomicBool},
 };
 
+use base_bootnode_monitor::BootnodeSnapshot;
+
 use base_common_flashblocks::Flashblock;
 use base_common_genesis::SystemConfig;
 use tokio::{
@@ -22,6 +24,32 @@ use crate::{
 
 const MAX_FLASH_BLOCKS: usize = 30;
 const MAX_RECENT_DA_FLASHBLOCK_IDS: usize = 512;
+
+/// State for bootnode routing-table monitoring.
+#[derive(Debug, Default)]
+pub struct BootnodesState {
+    /// Most recent bootnode snapshot.
+    pub snapshot: Option<BootnodeSnapshot>,
+    /// Whether a background poller has been configured for this network.
+    pub configured: bool,
+    rx: Option<tokio::sync::mpsc::Receiver<BootnodeSnapshot>>,
+}
+
+impl BootnodesState {
+    /// Sets the channel for receiving bootnode snapshots and marks this network as configured.
+    pub fn set_channel(&mut self, rx: tokio::sync::mpsc::Receiver<BootnodeSnapshot>) {
+        self.rx = Some(rx);
+        self.configured = true;
+    }
+
+    /// Drains the latest snapshot from the background poller.
+    pub fn poll(&mut self) {
+        let Some(ref mut rx) = self.rx else { return };
+        while let Ok(snapshot) = rx.try_recv() {
+            self.snapshot = Some(snapshot);
+        }
+    }
+}
 
 /// State for HA conductor cluster monitoring.
 #[derive(Debug, Default)]
@@ -162,6 +190,8 @@ pub struct Resources {
     pub flash: FlashState,
     /// Toast notification state.
     pub toasts: ToastState,
+    /// Bootnode routing-table monitoring state.
+    pub bootnodes: BootnodesState,
     /// HA conductor cluster monitoring state.
     pub conductor: ConductorState,
     /// Validator node monitoring state.
@@ -227,6 +257,7 @@ impl Resources {
             da: DaState::new(),
             flash: FlashState::new(),
             toasts: ToastState::new(),
+            bootnodes: BootnodesState::default(),
             conductor: ConductorState::default(),
             validators: ValidatorState::default(),
             proofs: ProofsState::default(),

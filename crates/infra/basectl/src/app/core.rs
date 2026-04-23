@@ -116,6 +116,7 @@ impl App {
             self.resources.conductor.poll();
             self.resources.validators.poll();
             self.resources.proofs.poll();
+            self.resources.bootnodes.poll();
             // When a conductor cluster is configured, bridge the Raft leader's
             // safe head into the DA tracker each tick.  The conductor poller
             // already queries `sync_status` from every node's CL, so the

@@ -34,6 +34,12 @@ const MENU_ITEMS: &[MenuItem] = &[
         view_id: Some(ViewId::CommandCenter),
     },
     MenuItem {
+        key: 'b',
+        label: "Bootnodes",
+        description: "Live bootnode and Kademlia DHT peer stats",
+        view_id: Some(ViewId::Bootnodes),
+    },
+    MenuItem {
         key: 'c',
         label: "Config",
         description: "View chain configuration and L1 SystemConfig",
@@ -80,6 +86,7 @@ const MENU_ITEMS: &[MenuItem] = &[
 
 const KEYBINDINGS: &[Keybinding] = &[
     Keybinding { key: "a", description: "Command Center" },
+    Keybinding { key: "b", description: "Bootnodes" },
     Keybinding { key: "c", description: "Config" },
     Keybinding { key: "d", description: "DA Monitor" },
     Keybinding { key: "f", description: "Flashblocks" },
@@ -113,6 +120,7 @@ impl View for HomeView {
     fn handle_key(&mut self, key: KeyEvent, _resources: &mut Resources) -> Action {
         match key.code {
             KeyCode::Char('a') => Action::SwitchView(ViewId::CommandCenter),
+            KeyCode::Char('b') => Action::SwitchView(ViewId::Bootnodes),
             KeyCode::Char('c') => Action::SwitchView(ViewId::Config),
             KeyCode::Char('d') => Action::SwitchView(ViewId::DaMonitor),
             KeyCode::Char('f') => Action::SwitchView(ViewId::Flashblocks),

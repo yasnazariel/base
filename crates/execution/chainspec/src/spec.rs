@@ -554,6 +554,7 @@ mod tests {
         );
     }
 
+
     #[test]
     fn latest_base_mainnet_fork_id() {
         assert_eq!(

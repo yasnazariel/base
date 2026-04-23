@@ -136,6 +136,29 @@ pub fn start_background_services(config: &MonitoringConfig, resources: &mut Reso
             proofs_toast_tx,
         ));
     }
+
+    let chain_bootnodes: Option<(u64, &'static [&'static str])> = match config.name.as_str() {
+        "mainnet" => Some((8453, base_common_chains::ChainConfig::mainnet().bootnodes)),
+        "sepolia" => Some((84532, base_common_chains::ChainConfig::sepolia().bootnodes)),
+        "zeronet" => Some((763360, base_common_chains::ChainConfig::zeronet().bootnodes)),
+        _ => None,
+    };
+
+    if let Some((chain_id, bootnodes)) = chain_bootnodes {
+        if let Some(fork_hash) = base_bootnode_monitor::fork_hash_for_chain(chain_id) {
+            let (bootnode_tx, bootnode_rx) =
+                mpsc::channel::<base_bootnode_monitor::BootnodeSnapshot>(4);
+            resources.bootnodes.set_channel(bootnode_rx);
+            let network_name = config.name.clone();
+            let bootnodes_vec: Vec<String> = bootnodes.iter().map(|s| s.to_string()).collect();
+            tokio::spawn(base_bootnode_monitor::run_bootnode_poller(
+                network_name,
+                fork_hash,
+                bootnodes_vec,
+                bootnode_tx,
+            ));
+        }
+    }
 }
 
 /// Streams flashblocks as JSON lines to stdout.

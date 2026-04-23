@@ -20,6 +20,7 @@ alloy-contract = { workspace = true }
 base-load-tests = { workspace = true }
 base-common-chains = { workspace = true }
 base-common-network = { workspace = true }
+base-bootnode-monitor = { workspace = true }
 base-consensus-gossip = { workspace = true }
 base-common-flashblocks = { workspace = true }
 url = { workspace = true, features = ["serde"] }

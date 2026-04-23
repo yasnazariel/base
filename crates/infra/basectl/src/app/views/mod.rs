@@ -1,5 +1,8 @@
 //! TUI view components for basectl panels and dashboards.
 
+mod bootnodes;
+pub use bootnodes::BootnodesView;
+
 mod command_center;
 pub use command_center::CommandCenterView;
 

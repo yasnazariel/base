@@ -2710,6 +2710,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "base-bootnode-monitor"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "bytes",
+ "discv5",
+ "hex",
+ "tokio",
+ "tracing",
+ "unsigned-varint 0.8.0",
+]
+
+[[package]]
 name = "base-builder-bin"
 version = "0.0.0"
 dependencies = [
@@ -5299,6 +5312,7 @@ dependencies = [
  "alloy-sol-types",
  "anyhow",
  "arboard",
+ "base-bootnode-monitor",
  "base-common-chains",
  "base-common-consensus",
  "base-common-flashblocks",
