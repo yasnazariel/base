@@ -1,6 +1,6 @@
 //! The gas limit update type.
 
-use alloy_primitives::{LogData, U64, U256};
+use alloy_primitives::{LogData, U256};
 use alloy_sol_types::{SolType, sol};
 
 use crate::{GasLimitUpdateError, SystemConfig, SystemConfigLog};
@@ -53,7 +53,7 @@ impl TryFrom<&SystemConfigLog> for GasLimitUpdate {
             return Err(GasLimitUpdateError::GasLimitDecodingError);
         }
 
-        Ok(Self { gas_limit: U64::from(gas_limit).saturating_to::<u64>() })
+        Ok(Self { gas_limit: gas_limit.to::<u64>() })
     }
 }
 
