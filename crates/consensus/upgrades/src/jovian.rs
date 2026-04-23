@@ -73,10 +73,12 @@ impl Jovian {
 
     /// Returns the bytecode to enable the gas price oracle for Jovian.
     pub fn gas_price_oracle_enable_jovian_bytecode() -> Bytes {
-        let mut bytes = Vec::new();
-        bytes.extend_from_slice(&keccak256("setJovian()")[..4]);
-        bytes.into()
-    }
+    const SELECTOR: [u8; 4] = hex!("b3d72079");
+
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(&SELECTOR);
+    bytes.into()
+}
 
     /// Returns the list of [`TxDeposit`]s for the network upgrade.
     pub fn deposits() -> impl Iterator<Item = TxDeposit> {
