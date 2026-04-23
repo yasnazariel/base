@@ -27,6 +27,10 @@ reth-storage-api.workspace = true
 reth-transaction-pool.workspace = true
 reth-primitives-traits.workspace = true
 
+# audit
+audit-archiver-lib.workspace = true
+
+# base
 base-common-flz.workspace = true
 base-common-chains.workspace = true
 base-common-evm.workspace = true

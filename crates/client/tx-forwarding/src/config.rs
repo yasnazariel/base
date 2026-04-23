@@ -7,6 +7,11 @@ use base_execution_txpool::{
 };
 use url::Url;
 
+use crate::audit_config::{
+    AuditDispatcherConfig, DEFAULT_AUDIT_BATCH_SIZE, DEFAULT_AUDIT_CHANNEL_SIZE,
+    DEFAULT_AUDIT_MAX_RPS,
+};
+
 /// Default resend-after window in milliseconds (~2 blocks on Base).
 pub const DEFAULT_RESEND_AFTER_MS: u64 = 4000;
 /// Default maximum number of transactions per RPC batch.
@@ -26,6 +31,14 @@ pub struct TxForwardingConfig {
     pub max_batch_size: usize,
     /// Maximum RPC requests per second per forwarder (0 = unlimited).
     pub max_rps: u32,
+    /// URL of the audit service for forwarding events.
+    pub audit_url: Option<Url>,
+    /// Channel buffer size for audit events.
+    pub audit_channel_size: usize,
+    /// Max batch size for audit RPC.
+    pub audit_batch_size: usize,
+    /// Max RPS for audit RPC.
+    pub audit_max_rps: u32,
 }
 
 impl Default for TxForwardingConfig {
@@ -33,10 +46,13 @@ impl Default for TxForwardingConfig {
         Self {
             enabled: false,
             builder_urls: Vec::new(),
-            // Default: 2 blocks (~4 seconds on Base)
             resend_after_ms: DEFAULT_RESEND_AFTER_MS,
             max_batch_size: DEFAULT_MAX_BATCH_SIZE,
             max_rps: DEFAULT_MAX_RPS,
+            audit_url: None,
+            audit_channel_size: DEFAULT_AUDIT_CHANNEL_SIZE,
+            audit_batch_size: DEFAULT_AUDIT_BATCH_SIZE,
+            audit_max_rps: DEFAULT_AUDIT_MAX_RPS,
         }
     }
 }
@@ -82,5 +98,39 @@ impl TxForwardingConfig {
             .with_builder_urls(self.builder_urls.clone())
             .with_max_batch_size(self.max_batch_size)
             .with_max_rps(self.max_rps)
+    }
+
+    /// Sets the audit service URL.
+    pub fn with_audit_url(mut self, url: Option<Url>) -> Self {
+        self.audit_url = url;
+        self
+    }
+
+    /// Sets the audit channel size.
+    pub const fn with_audit_channel_size(mut self, size: usize) -> Self {
+        self.audit_channel_size = size;
+        self
+    }
+
+    /// Sets the audit batch size.
+    pub const fn with_audit_batch_size(mut self, size: usize) -> Self {
+        self.audit_batch_size = size;
+        self
+    }
+
+    /// Sets the audit max RPS.
+    pub const fn with_audit_max_rps(mut self, rps: u32) -> Self {
+        self.audit_max_rps = rps;
+        self
+    }
+
+    /// Converts to audit dispatcher config if audit URL is set.
+    pub fn to_audit_dispatcher_config(&self) -> Option<AuditDispatcherConfig> {
+        self.audit_url.clone().map(|url| {
+            AuditDispatcherConfig::new(url)
+                .with_channel_size(self.audit_channel_size)
+                .with_max_batch_size(self.audit_batch_size)
+                .with_max_rps(self.audit_max_rps)
+        })
     }
 }

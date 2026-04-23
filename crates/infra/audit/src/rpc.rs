@@ -1,7 +1,8 @@
 //! RPC server for the audit archiver.
 //!
 //! Exposes the `base_persistRejectedTransactionBatch` method for receiving batches
-//! of rejected transactions from the builder and persisting them to S3.
+//! of rejected transactions from the builder and persisting them to S3, and
+//! `base_persistEvent` for receiving batches of bundle events from mempool nodes.
 
 use std::sync::Arc;
 
@@ -11,7 +12,7 @@ use jsonrpsee::{core::RpcResult, proc_macros::rpc, types::error::ErrorObjectOwne
 use jsonrpsee_types::error::ErrorCode;
 use tracing::{error, info};
 
-use crate::storage::S3EventReaderWriter;
+use crate::{events::BundleEvent, reader::Event, storage::S3EventReaderWriter};
 
 const MAX_BATCH_SIZE: usize = 500;
 
@@ -25,6 +26,11 @@ pub trait AuditArchiverApi {
         &self,
         batch: Vec<RejectedTransaction>,
     ) -> RpcResult<u32>;
+
+    /// Persists a batch of bundle events to S3 storage.
+    /// Returns the number of items successfully persisted.
+    #[method(name = "persistEvent")]
+    async fn persist_event(&self, events: Vec<BundleEvent>) -> RpcResult<u32>;
 }
 
 /// RPC handler for audit archiver requests.
@@ -83,6 +89,53 @@ impl AuditArchiverApiServer for AuditArchiverRpc {
                         error = %e,
                         tx_hash = %tx.tx_hash,
                         "Failed to persist rejected transaction"
+                    );
+                    persisted
+                } else {
+                    persisted + 1
+                }
+            })
+            .await;
+
+        Ok(persisted)
+    }
+
+    async fn persist_event(&self, events: Vec<BundleEvent>) -> RpcResult<u32> {
+        if events.is_empty() {
+            return Ok(0);
+        }
+
+        let batch_size = events.len();
+        if batch_size > MAX_BATCH_SIZE {
+            return Err(ErrorObjectOwned::owned(
+                ErrorCode::InvalidParams.code(),
+                format!("Batch size {batch_size} exceeds maximum of {MAX_BATCH_SIZE}"),
+                None::<()>,
+            ));
+        }
+
+        info!(batch_size, "Persisting bundle events");
+
+        let storage = Arc::clone(&self.storage);
+
+        let persisted = stream::iter(events)
+            .map(move |event| {
+                let storage = Arc::clone(&storage);
+                async move {
+                    let key = event.generate_event_key();
+                    let timestamp = chrono::Utc::now().timestamp_millis();
+                    let wrapped = Event { key, timestamp, event };
+                    let result = storage.write_event(&wrapped).await;
+                    (wrapped, result)
+                }
+            })
+            .buffer_unordered(5)
+            .fold(0u32, |persisted, (event, result)| async move {
+                if let Err(e) = result {
+                    error!(
+                        error = %e,
+                        event_key = %event.key,
+                        "Failed to persist bundle event"
                     );
                     persisted
                 } else {

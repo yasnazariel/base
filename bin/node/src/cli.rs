@@ -3,6 +3,7 @@
 use base_flashblocks::FlashblocksConfig;
 use base_node_core::args::RollupArgs;
 use base_tx_forwarding::{
+    DEFAULT_AUDIT_BATCH_SIZE, DEFAULT_AUDIT_CHANNEL_SIZE, DEFAULT_AUDIT_MAX_RPS,
     DEFAULT_MAX_BATCH_SIZE, DEFAULT_MAX_RPS, DEFAULT_RESEND_AFTER_MS, TxForwardingConfig,
 };
 use url::Url;
@@ -129,6 +130,37 @@ pub struct Args {
         requires = "enable_tx_forwarding"
     )]
     pub tx_forwarding_max_rps: u32,
+
+    /// URL of the audit service for forwarding events
+    #[arg(long = "audit-url", value_name = "AUDIT_URL")]
+    pub audit_url: Option<Url>,
+
+    /// Channel buffer size for audit events
+    #[arg(
+        long = "audit-channel-size",
+        value_name = "AUDIT_CHANNEL_SIZE",
+        default_value_t = DEFAULT_AUDIT_CHANNEL_SIZE,
+        requires = "audit_url"
+    )]
+    pub audit_channel_size: usize,
+
+    /// Max batch size for audit RPC
+    #[arg(
+        long = "audit-batch-size",
+        value_name = "AUDIT_BATCH_SIZE",
+        default_value_t = DEFAULT_AUDIT_BATCH_SIZE,
+        requires = "audit_url"
+    )]
+    pub audit_batch_size: usize,
+
+    /// Max RPS for audit RPC
+    #[arg(
+        long = "audit-max-rps",
+        value_name = "AUDIT_MAX_RPS",
+        default_value_t = DEFAULT_AUDIT_MAX_RPS,
+        requires = "audit_url"
+    )]
+    pub audit_max_rps: u32,
 }
 
 impl From<&Args> for Option<FlashblocksConfig> {
@@ -151,5 +183,9 @@ impl From<&Args> for TxForwardingConfig {
             .with_resend_after_ms(args.tx_forwarding_resend_after_ms)
             .with_max_batch_size(args.tx_forwarding_batch_size)
             .with_max_rps(args.tx_forwarding_max_rps)
+            .with_audit_url(args.audit_url.clone())
+            .with_audit_channel_size(args.audit_channel_size)
+            .with_audit_batch_size(args.audit_batch_size)
+            .with_audit_max_rps(args.audit_max_rps)
     }
 }

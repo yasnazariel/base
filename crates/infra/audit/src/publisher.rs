@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use tracing::{debug, error, info};
 
-use crate::types::BundleEvent;
+use crate::events::BundleEvent;
 
 /// Trait for publishing bundle events.
 #[async_trait]

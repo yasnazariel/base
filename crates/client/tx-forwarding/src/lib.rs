@@ -3,6 +3,15 @@
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 
+mod audit_config;
+pub use audit_config::{
+    AuditDispatcherConfig, DEFAULT_AUDIT_BATCH_SIZE, DEFAULT_AUDIT_CHANNEL_SIZE,
+    DEFAULT_AUDIT_MAX_RPS,
+};
+
+mod audit_dispatcher;
+pub use audit_dispatcher::AuditDispatcher;
+
 mod config;
 pub use config::{
     DEFAULT_MAX_BATCH_SIZE, DEFAULT_MAX_RPS, DEFAULT_RESEND_AFTER_MS, TxForwardingConfig,

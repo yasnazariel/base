@@ -33,10 +33,13 @@ pub use storage::{
     S3Key, TransactionMetadata,
 };
 
+mod events;
+pub use events::BundleEvent;
+
 mod types;
 use tokio::sync::mpsc;
 use tracing::error;
-pub use types::{BundleEvent, BundleId, DropReason, Transaction, TransactionId};
+pub use types::{BundleId, DropReason, Transaction, TransactionId};
 
 /// Connects bundle event receivers to publishers.
 #[derive(Debug)]

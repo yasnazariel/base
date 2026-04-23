@@ -2,10 +2,11 @@
 
 use std::{sync::Arc, time::Duration};
 
+use audit_archiver_lib::BundleEvent;
 use jsonrpsee::http_client::HttpClientBuilder;
 use reth_tasks::TaskExecutor;
 use reth_transaction_pool::{PoolTransaction, ValidPoolTransaction};
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
@@ -38,6 +39,7 @@ impl SpawnedForwarder {
         sender: &broadcast::Sender<Arc<ValidPoolTransaction<T>>>,
         config: ForwarderConfig,
         executor: &TaskExecutor,
+        audit_event_tx: Option<mpsc::Sender<BundleEvent>>,
     ) -> Self
     where
         T: PoolTransaction + BundleTransaction + 'static,
@@ -70,6 +72,7 @@ impl SpawnedForwarder {
                 receiver,
                 Arc::clone(&config),
                 cancel.child_token(),
+                audit_event_tx.clone(),
             );
 
             let handle = executor.spawn_task(Box::pin(async move {

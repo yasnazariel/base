@@ -1858,6 +1858,7 @@ dependencies = [
  "base-bundles",
  "base-metrics",
  "bytes",
+ "chrono",
  "futures",
  "jsonrpsee",
  "jsonrpsee-types",
@@ -3990,6 +3991,7 @@ dependencies = [
  "alloy-eips",
  "alloy-primitives",
  "async-trait",
+ "audit-archiver-lib",
  "base-common-chains",
  "base-common-consensus",
  "base-common-evm",
@@ -5048,8 +5050,13 @@ dependencies = [
 name = "base-tx-forwarding"
 version = "0.0.0"
 dependencies = [
+ "alloy-primitives",
+ "audit-archiver-lib",
  "base-execution-txpool",
  "base-node-runner",
+ "jsonrpsee",
+ "tokio",
+ "tokio-util",
  "tracing",
  "url",
 ]

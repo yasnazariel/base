@@ -11,7 +11,7 @@ use rdkafka::{
 use tokio::time::sleep;
 use tracing::{error, info};
 
-use crate::{load_kafka_config_from_file, types::BundleEvent};
+use crate::{events::BundleEvent, load_kafka_config_from_file};
 
 /// Creates a Kafka consumer from a properties file.
 pub fn create_kafka_consumer(kafka_properties_file: &str) -> Result<StreamConsumer> {

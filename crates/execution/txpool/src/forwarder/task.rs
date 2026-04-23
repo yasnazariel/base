@@ -1,7 +1,8 @@
 use std::{collections::VecDeque, sync::Arc, time::Instant};
 
 use alloy_eips::Encodable2718;
-use alloy_primitives::Bytes;
+use alloy_primitives::{Bytes, keccak256};
+use audit_archiver_lib::BundleEvent;
 use jsonrpsee::{
     core::{
         ClientError,
@@ -11,7 +12,10 @@ use jsonrpsee::{
     http_client::HttpClient,
 };
 use reth_transaction_pool::{PoolTransaction, ValidPoolTransaction};
-use tokio::{sync::broadcast, time};
+use tokio::{
+    sync::{broadcast, mpsc},
+    time,
+};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, trace, warn};
 
@@ -90,6 +94,7 @@ pub struct Forwarder<T: PoolTransaction> {
     cancel: CancellationToken,
     limiter: RateLimiter,
     buffer: Vec<ValidatedTransaction>,
+    audit_event_tx: Option<mpsc::Sender<BundleEvent>>,
 }
 
 impl<T> Forwarder<T>
@@ -104,12 +109,23 @@ where
         receiver: broadcast::Receiver<Arc<ValidPoolTransaction<T>>>,
         config: Arc<ForwarderConfig>,
         cancel: CancellationToken,
+        audit_event_tx: Option<mpsc::Sender<BundleEvent>>,
     ) -> Self {
         let limiter = RateLimiter::new(config.max_rps);
         let initial_capacity = if config.max_batch_size == 0 { 256 } else { config.max_batch_size };
         let buffer = Vec::with_capacity(initial_capacity);
         let url_label: Arc<str> = builder_url.to_string().into();
-        Self { builder_url, url_label, client, receiver, config, cancel, limiter, buffer }
+        Self {
+            builder_url,
+            url_label,
+            client,
+            receiver,
+            config,
+            cancel,
+            limiter,
+            buffer,
+            audit_event_tx,
+        }
     }
 
     /// Runs the forwarder loop until cancelled.
@@ -253,9 +269,20 @@ where
 
                     let mut ok_count = 0u64;
                     let mut err_count = 0u64;
-                    for res in response {
+                    for (validated_tx, res) in batch.iter().zip(response.iter()) {
                         match res {
-                            Ok(()) => ok_count += 1,
+                            Ok(()) => {
+                                ok_count += 1;
+                                if let Some(ref tx) = self.audit_event_tx {
+                                    let tx_hash = keccak256(&validated_tx.raw);
+                                    let event = BundleEvent::MempoolForwarded { tx_hash };
+                                    if tx.try_send(event).is_err() {
+                                        trace!(
+                                            "audit channel full, dropping MempoolForwarded event"
+                                        );
+                                    }
+                                }
+                            }
                             Err(e) => {
                                 debug!(
                                     builder_url = %self.builder_url,
@@ -301,6 +328,16 @@ where
                         "RPC send failed, dropping batch",
                     );
                     ForwarderMetrics::rpc_errors(Arc::clone(&self.url_label)).increment(1);
+
+                    if let Some(ref tx) = self.audit_event_tx {
+                        for validated_tx in &batch {
+                            let tx_hash = keccak256(&validated_tx.raw);
+                            let event = BundleEvent::MempoolDropped { tx_hash };
+                            if tx.try_send(event).is_err() {
+                                trace!("audit channel full, dropping MempoolDropped event");
+                            }
+                        }
+                    }
                     return;
                 }
             }

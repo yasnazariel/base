@@ -14,10 +14,15 @@ workspace = true
 [dependencies]
 # workspace
 base-node-runner.workspace = true
+audit-archiver-lib.workspace = true
 base-execution-txpool.workspace = true
 
 # misc
 url.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+jsonrpsee.workspace = true
+alloy-primitives.workspace = true
 tracing = { workspace = true, features = ["std"] }
 
 [dev-dependencies]
