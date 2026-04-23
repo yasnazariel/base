@@ -1,5 +1,6 @@
 _cargo_prove := "~/.sp1/bin/cargo-prove"
 _sp1_tag := "v6.1.0"
+_repo_root := justfile_directory() + "/../.."
 
 # Show available succinct commands
 default:
@@ -17,6 +18,7 @@ build-range-elf:
         --elf-name range-elf-embedded \
         --tag {{ _sp1_tag }} \
         --docker \
+        --workspace-directory {{ _repo_root }} \
         --output-directory ../../../elf
 
 # Build the aggregation program ELF (reproducible docker build)
@@ -28,6 +30,7 @@ build-agg-elf:
         --elf-name aggregation-elf \
         --tag {{ _sp1_tag }} \
         --docker \
+        --workspace-directory {{ _repo_root }} \
         --output-directory ../../elf
 
 # Remove built ELF artifacts

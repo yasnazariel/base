@@ -118,13 +118,13 @@ install-nextest:
 
 # Runs tests across workspace with all features enabled (excludes devnet)
 test: install-nextest build-contracts
-    cargo nextest run --workspace --all-features --exclude devnet --exclude range --exclude aggregation --no-fail-fast
+    cargo nextest run --workspace --all-features --exclude devnet --no-fail-fast
 
 # Runs tests only for crates affected by changes vs main (excludes devnet)
 test-affected base="main": install-nextest build-contracts
     #!/usr/bin/env bash
     set -euo pipefail
-    affected=$(python3 etc/scripts/local/affected-crates.py {{ base }} --exclude devnet --exclude range --exclude aggregation)
+    affected=$(python3 etc/scripts/local/affected-crates.py {{ base }} --exclude devnet)
     if [ -z "$affected" ]; then
         echo "No affected crates to test."
         exit 0
@@ -138,13 +138,13 @@ test-affected base="main": install-nextest build-contracts
 
 # Runs tests with ci profile for minimal disk usage
 test-ci: install-nextest build-contracts
-    cargo nextest run --locked --workspace --all-features --exclude devnet --exclude range --exclude aggregation --cargo-profile ci
+    cargo nextest run --locked --workspace --all-features --exclude devnet --cargo-profile ci
 
 # Runs tests only for affected crates with ci profile (for PRs)
 test-affected-ci base="main": install-nextest build-contracts
     #!/usr/bin/env bash
     set -euo pipefail
-    affected=$(python3 etc/scripts/local/affected-crates.py {{ base }} --exclude devnet --exclude range --exclude aggregation)
+    affected=$(python3 etc/scripts/local/affected-crates.py {{ base }} --exclude devnet)
     if [ -z "$affected" ]; then
         echo "No affected crates to test."
         exit 0
