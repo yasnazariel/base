@@ -975,25 +975,29 @@ where
         send_state: &SendState,
         nonce_override: Option<u64>,
     ) -> bool {
-        match result {
-            Ok(_) => false,
-            // Always reset on NonceTooHigh — the publish failed, no tx
-            // entered the mempool, and reserved_high_water protects
-            // concurrent reservations from collision after reset.
-            Err(TxManagerError::NonceTooHigh) => true,
-            // When a nonce_override was used, the nonce was irrevocably
-            // consumed at reserve_nonce() time. Resetting the nonce manager
-            // would corrupt concurrent send_async reservations.
-            _ if nonce_override.is_some() => false,
-            // Always reset on timeout — the timeout may have cancelled
-            // prepare() mid-flight during a fee bump, leaking a nonce
-            // from the nonce manager's internal counter.
-            Err(TxManagerError::SendTimeout) => true,
-            // For other errors, reset only if nothing was ever published.
-            // Once a transaction is pending, the next send_tx will re-sync
-            // via the chain's pending nonce anyway.
-            Err(_) => !send_state.has_published(),
-        }
+    match result {
+    Ok(_) => false,
+
+    // Always reset on NonceTooHigh — the publish failed, no tx
+    // entered the mempool, and reserved_high_water protects
+    // concurrent reservations from collision after reset.
+    Err(TxManagerError::NonceTooHigh) => true,
+
+    // Always reset on timeout — the timeout may have cancelled
+    // prepare() mid-flight during a fee bump, leaking a nonce
+    // from the nonce manager's internal counter.
+    Err(TxManagerError::SendTimeout) => true,
+
+    // When a nonce_override was used, the nonce was irrevocably
+    // consumed at reserve_nonce() time. Resetting the nonce manager
+    // would corrupt concurrent send_async reservations.
+    _ if nonce_override.is_some() => false,
+
+    // For other errors, reset only if nothing was ever published.
+    // Once a transaction is pending, the next send_tx will re-sync
+    // via the chain's pending nonce anyway.
+    Err(_) => !send_state.has_published(),
+}
     }
 
     /// Returns `true` when a pre-reserved nonce should be returned to the
@@ -1890,7 +1894,7 @@ mod tests {
     #[case::success(false, Ok(()), None, false)]
     #[case::nonce_too_high_no_override(false, Err(TxManagerError::NonceTooHigh), None, true)]
     #[case::nonce_too_high_with_override(false, Err(TxManagerError::NonceTooHigh), Some(42), true)]
-    #[case::nonce_override_timeout(false, Err(TxManagerError::SendTimeout), Some(42), false)]
+    #[case::nonce_override_timeout(false, Err(TxManagerError::SendTimeout), Some(42), true)]
     #[case::nonce_override_pre_publish_error(
         false,
         Err(TxManagerError::ChannelClosed),
